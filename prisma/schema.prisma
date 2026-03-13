@@ -1,0 +1,430 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ──────────────────────────────────────────
+enum Role {
+  ADMIN
+  MODERADOR
+  TECNICO
+}
+
+enum Prioridad {
+  BAJA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+// ─── USUARIOS ───────────────────────────────────────
+model User {
+  id        String   @id @default(cuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  rol       Role     @default(TECNICO)
+  activo    Boolean  @default(true)
+  telefono  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prediosCreados      Predio[]          @relation("CreadorPredio")
+  asignaciones        Asignacion[]
+  comentarios         Comentario[]
+  actividades         Actividad[]
+  notificaciones      Notificacion[]
+  tareasCreadas       TareaCalendario[] @relation("CreadorTarea")
+  tareasAsignadas     TareaCalendario[] @relation("AsignadoTarea")
+  instructivosCreados Instructivo[]     @relation("CreadorInstructivo")
+  actasSubidas        Acta[]            @relation("SubidorActa")
+  espaciosCreados     EspacioTrabajo[]  @relation("CreadorEspacio")
+  monitoreos          MonitoreoPostCambio[]
+  pushSubscriptions   PushSubscription[]
+  delegacionesDadas   Delegacion[] @relation("DelegadorUser")
+  delegacionesRecibidas Delegacion[] @relation("DelegadoUser")
+  facturas             Factura[]    @relation("SubidorFactura")
+}
+
+// ─── DELEGACIONES (visibilidad cruzada de tareas) ──
+model Delegacion {
+  id          String   @id @default(cuid())
+  delegadorId String   // El usuario que comparte sus tareas
+  delegadoId  String   // El usuario que puede ver las tareas del delegador
+  activo      Boolean  @default(true)
+  notas       String?
+  createdAt   DateTime @default(now())
+
+  delegador   User     @relation("DelegadorUser", fields: [delegadorId], references: [id], onDelete: Cascade)
+  delegado    User     @relation("DelegadoUser", fields: [delegadoId], references: [id], onDelete: Cascade)
+
+  @@unique([delegadorId, delegadoId])
+  @@index([delegadoId])
+  @@index([delegadorId])
+}
+
+// ─── ESTADOS PERSONALIZADOS ────────────────────────
+model EstadoConfig {
+  id      String  @id @default(cuid())
+  nombre  String
+  clave   String  @unique
+  color   String  @default("#3b82f6")
+  orden   Int     @default(0)
+  entidad String  @default("PREDIO")
+  activo  Boolean @default(true)
+
+  predios Predio[]
+}
+
+// ─── ESPACIOS DE TRABAJO ────────────────────────────
+model EspacioTrabajo {
+  id          String   @id @default(cuid())
+  nombre      String
+  descripcion String?
+  color       String   @default("#3b82f6")
+  icono       String   @default("folder")
+  orden       Int      @default(0)
+  activo      Boolean  @default(true)
+
+  parentId    String?
+  parent      EspacioTrabajo?  @relation("EspacioHijos", fields: [parentId], references: [id], onDelete: Cascade)
+  hijos       EspacioTrabajo[] @relation("EspacioHijos")
+
+  creadorId   String
+  creador     User     @relation("CreadorEspacio", fields: [creadorId], references: [id])
+
+  predios     Predio[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([orden])
+}
+
+// ─── PREDIOS ────────────────────────────────────────
+model Predio {
+  id              String    @id @default(cuid())
+  nombre          String
+  codigo          String?   @unique
+  direccion       String?
+  ciudad          String?
+  tipo            String?
+  latitud         Float?
+  longitud        Float?
+  notas           String?
+  orden           Int       @default(0)
+  fechaProgramada DateTime?
+  prioridad       Prioridad @default(MEDIA)
+  seccion         String?
+
+  // ── Campos del Cronograma (estilo ClickUp) ──
+  incidencias       String?   // Código de incidencias (NI-000135...)
+  lacR              String?   // SI/NO
+  cue               String?   // CUE (código único establecimiento)
+  fechaDesde        DateTime? // Fecha inicio
+  fechaHasta        DateTime? // Fecha fin
+  ambito            String?   // Urbano/Rural
+  equipoAsignado    String?   // TH09, TH01, etc.
+  provincia         String?   // Santa Fe, Buenos Aires, etc.
+  cuePredio         String?   // CUE del predio
+  gpsPredio         String?   // Coordenadas GPS
+  fechaActualizacion DateTime? // Última actualización del registro
+  camposExtra       Json?     // Campos dinámicos adicionales
+
+  merakiNetworkId   String?
+  merakiOrgId       String?
+  merakiNetworkName String?
+
+  espacioId String?
+  espacio   EspacioTrabajo? @relation(fields: [espacioId], references: [id], onDelete: SetNull)
+
+  estadoId  String?
+  estado    EstadoConfig? @relation(fields: [estadoId], references: [id])
+  creadorId String?
+  creador   User?         @relation("CreadorPredio", fields: [creadorId], references: [id])
+
+  equipos      Equipo[]
+  etiquetas    PredioEtiqueta[]
+  comentarios  Comentario[]
+  asignaciones Asignacion[]
+  tareas       TareaCalendario[]
+  actas        Acta[]
+  monitoreos   MonitoreoPostCambio[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([merakiNetworkId])
+  @@index([estadoId])
+  @@index([codigo])
+  @@index([provincia])
+  @@index([equipoAsignado])
+  @@index([espacioId])
+}
+
+// ─── EQUIPOS (STOCK) ────────────────────────────────
+model Equipo {
+  id          String  @id @default(cuid())
+  nombre      String
+  descripcion String?
+  numeroSerie String? @unique
+  modelo      String?
+  marca       String?
+  cantidad    Int     @default(1)
+  estado      String  @default("DISPONIBLE")
+  categoria   String?
+  ubicacion   String?
+  notas       String?
+  predioId    String?
+  predio      Predio? @relation(fields: [predioId], references: [id])
+
+  comentarios  Comentario[]
+  asignaciones Asignacion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── ETIQUETAS ──────────────────────────────────────
+model Etiqueta {
+  id     String @id @default(cuid())
+  nombre String @unique
+  color  String @default("#3b82f6")
+
+  predios PredioEtiqueta[]
+}
+
+model PredioEtiqueta {
+  predioId   String
+  etiquetaId String
+  predio     Predio   @relation(fields: [predioId], references: [id], onDelete: Cascade)
+  etiqueta   Etiqueta @relation(fields: [etiquetaId], references: [id], onDelete: Cascade)
+
+  @@id([predioId, etiquetaId])
+}
+
+// ─── COMENTARIOS ────────────────────────────────────
+model Comentario {
+  id        String   @id @default(cuid())
+  contenido String
+  userId    String
+  predioId  String?
+  equipoId  String?
+  usuario   User     @relation(fields: [userId], references: [id])
+  predio    Predio?  @relation(fields: [predioId], references: [id], onDelete: Cascade)
+  equipo    Equipo?  @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([predioId])
+  @@index([equipoId])
+}
+
+// ─── ASIGNACIONES ───────────────────────────────────
+model Asignacion {
+  id       String  @id @default(cuid())
+  tipo     String
+  notas    String?
+  userId   String
+  predioId String?
+  equipoId String?
+  usuario  User    @relation(fields: [userId], references: [id])
+  predio   Predio? @relation(fields: [predioId], references: [id], onDelete: Cascade)
+  equipo   Equipo? @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([predioId])
+}
+
+// ─── NOTIFICACIONES ─────────────────────────────────
+model Notificacion {
+  id        String  @id @default(cuid())
+  tipo      String
+  titulo    String
+  mensaje   String
+  leida     Boolean @default(false)
+  enlace    String?
+  entidad   String?
+  entidadId String?
+  userId    String
+  usuario   User    @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, leida])
+  @@index([createdAt])
+}
+
+// ─── ACTIVIDAD ──────────────────────────────────────
+model Actividad {
+  id          String   @id @default(cuid())
+  accion      String
+  descripcion String?
+  entidad     String
+  entidadId   String
+  metadata    Json?
+  userId      String
+  usuario     User     @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entidad])
+  @@index([createdAt])
+}
+
+// ─── TAREAS CALENDARIO ──────────────────────────────
+model TareaCalendario {
+  id             String    @id @default(cuid())
+  titulo         String
+  descripcion    String?
+  fecha          DateTime
+  horaInicio     String?
+  horaFin        String?
+  tipo           String    @default("TAREA")
+  prioridad      Prioridad @default(MEDIA)
+  completada     Boolean   @default(false)
+  color          String    @default("#3b82f6")
+  notificarPush  Boolean   @default(true)
+  esAsignada     Boolean   @default(false)
+  creadorId      String
+  asignadoId     String?
+  predioId       String?
+  creador        User      @relation("CreadorTarea", fields: [creadorId], references: [id])
+  asignado       User?     @relation("AsignadoTarea", fields: [asignadoId], references: [id])
+  predio         Predio?   @relation(fields: [predioId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fecha])
+  @@index([asignadoId])
+  @@index([creadorId])
+}
+
+// ─── INSTRUCTIVOS ───────────────────────────────────
+model Instructivo {
+  id          String  @id @default(cuid())
+  titulo      String
+  descripcion String?
+  contenido   String? @db.Text
+  videoUrl    String?
+  videoNombre String?
+  videoRuta   String?
+  videoTipo   String?
+  videoSize   Int?
+  categoria   String  @default("General")
+  orden       Int     @default(0)
+  activo      Boolean @default(true)
+  creadoPorId String
+  creador     User    @relation("CreadorInstructivo", fields: [creadoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoria])
+}
+
+// ─── ACTAS ──────────────────────────────────────────
+model Acta {
+  id            String  @id @default(cuid())
+  nombre        String
+  descripcion   String?
+  archivoNombre String
+  archivoTipo   String
+  archivoRuta   String
+  archivoSize   Int
+  version       Int     @default(1)
+  predioId      String?
+  predio        Predio? @relation(fields: [predioId], references: [id], onDelete: SetNull)
+  subidoPorId   String
+  subidoPor     User    @relation("SubidorActa", fields: [subidoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([predioId])
+}
+
+// ─── MONITOREO POST-CAMBIO DE ESTADO ─────────────────
+model MonitoreoPostCambio {
+  id              String   @id @default(cuid())
+  predioId        String
+  predio          Predio   @relation(fields: [predioId], references: [id], onDelete: Cascade)
+  userId          String
+  usuario         User     @relation(fields: [userId], references: [id])
+  estadoAnterior  String?  // Nombre del estado anterior
+  estadoNuevo     String?  // Nombre del estado nuevo
+  networkId       String?  // merakiNetworkId del predio
+  orgId           String?  // merakiOrgId del predio
+
+  checksRealizados Int     @default(0)  // 0, 1, 2
+  maxChecks        Int     @default(2)
+  intervaloMin     Int     @default(15) // minutos entre checks
+  proximoCheck     DateTime             // cuándo ejecutar el próximo
+  completado       Boolean @default(false)
+  resultados       Json?               // últimos resultados de checks
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([completado, proximoCheck])
+  @@index([userId])
+}
+
+// ─── PUSH SUBSCRIPTIONS ──────────────────────────────
+model PushSubscription {
+  id       String @id @default(cuid())
+  userId   String
+  usuario  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─── FACTURAS ────────────────────────────────────────
+model Factura {
+  id              String   @id @default(cuid())
+  numero          String?
+  concepto        String
+  monto           Float?
+  moneda          String   @default("ARS")
+  fechaEmision    DateTime?
+  estado          String   @default("PENDIENTE") // PENDIENTE, APROBADA, RECHAZADA, PAGADA
+  notas           String?
+  archivoNombre   String
+  archivoTipo     String
+  archivoRuta     String
+  archivoSize     Int
+  subidoPorId     String
+  subidoPor       User     @relation("SubidorFactura", fields: [subidoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subidoPorId])
+  @@index([estado])
+  @@index([createdAt])
+}
+
+// ─── PERMISOS POR SECCIÓN ────────────────────────────
+model PermisoSeccion {
+  id        String @id @default(cuid())
+  seccion   String // clave de sección: tareas, calendario, stock, etc.
+  rol       Role
+  ver       Boolean @default(true)
+  editar    Boolean @default(false)
+
+  @@unique([seccion, rol])
+  @@index([seccion])
+}

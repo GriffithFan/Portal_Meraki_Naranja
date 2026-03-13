@@ -1,0 +1,73 @@
+.tooltip-wrapper { position: relative; display: inline-block; z-index: 1; }
+.tooltip-wrapper:hover { z-index: 10000; }
+
+.tooltip-content {
+  position: absolute; z-index: 99999;
+  background: rgba(15,23,42,.97); color: #fff;
+  padding: 8px 24px; border-radius: 8px;
+  font-size: 13px; line-height: 1.5; white-space: normal;
+  box-shadow: 0 4px 20px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.1);
+  pointer-events: none; animation: tooltipFadeIn .15s ease-out;
+  backdrop-filter: blur(10px); min-width: 135px; max-width: min(510px, calc(100vw - 2rem));
+}
+.tooltip-content:has(.tooltip-title) { min-width: min(340px, calc(100vw - 2rem)); }
+.tooltip-top { bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%); }
+.tooltip-bottom { top: calc(100% + 12px); left: 50%; transform: translateX(-50%); }
+.tooltip-left { right: calc(100% + 12px); top: 50%; transform: translateY(-50%); }
+.tooltip-right { left: calc(100% + 12px); top: 50%; transform: translateY(-50%); }
+
+/* Fixed positioning — overrides directional classes so overflow:auto parents don't clip */
+.tooltip-fixed.tooltip-top,
+.tooltip-fixed.tooltip-bottom,
+.tooltip-fixed.tooltip-left,
+.tooltip-fixed.tooltip-right {
+  bottom: auto; right: auto;
+  /* top/left/transform set via inline style */
+}
+
+.tooltip-top::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: rgba(15,23,42,.97); }
+.tooltip-bottom::after { content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-bottom-color: rgba(15,23,42,.97); }
+.tooltip-left::after { content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); border: 6px solid transparent; border-left-color: rgba(15,23,42,.97); }
+.tooltip-right::after { content: ''; position: absolute; left: -6px; top: 50%; transform: translateY(-50%); border: 6px solid transparent; border-right-color: rgba(15,23,42,.97); }
+
+.tooltip-fixed.tooltip-top::after,
+.tooltip-fixed.tooltip-bottom::after { left: 50%; }
+.tooltip-fixed.tooltip-top::after { bottom: -6px; top: auto; }
+.tooltip-fixed.tooltip-bottom::after { top: -6px; bottom: auto; }
+
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.tooltip-content .tooltip-row { display: flex; justify-content: space-between; gap: 24px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.1); }
+.tooltip-content .tooltip-row:last-child { border-bottom: none; padding-bottom: 0; }
+.tooltip-content .tooltip-label { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; flex-shrink: 0; min-width: 120px; }
+.tooltip-content .tooltip-value { color: #fff; font-weight: 600; text-align: right; }
+.tooltip-content .tooltip-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.2); padding-bottom: 6px; }
+.tooltip-content .tooltip-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.tooltip-badge.success { background: #059669; color: #fff; }
+.tooltip-badge.warning { background: #f59e0b; color: #fff; }
+.tooltip-badge.error { background: #ef4444; color: #fff; }
+.tooltip-badge.info { background: #3b82f6; color: #fff; }
+
+/* Modal for touch */
+.tooltip-modal-content {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: min(720px, calc(100% - 32px)); max-height: calc(100vh - 96px); overflow: auto;
+  background: #fff; color: #0f172a; border-radius: 14px; padding: 14px 16px 18px;
+  box-shadow: 0 20px 60px rgba(2,6,23,.35); z-index: 1910;
+  animation: tooltipModalIn 220ms cubic-bezier(.2,.9,.2,1) both;
+}
+.tooltip-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.42); z-index: 1905; }
+@keyframes tooltipModalIn {
+  from { transform: translate(-50%,-48%) scale(.99); opacity: 0; }
+  to { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+}
+.tooltip-modal-content .tooltip-modal-inner { padding-top: 8px; }
+.tooltip-modal-content .tooltip-title { color: #0f172a; font-size: 16px; margin-bottom: 10px; border-bottom: none; padding-bottom: 0; font-weight: 600; }
+.tooltip-modal-content .tooltip-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #eef2f7; }
+.tooltip-modal-content .tooltip-row:last-child { border-bottom: none; }
+.tooltip-modal-content .tooltip-label { color: #64748b; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.tooltip-modal-content .tooltip-value { color: #0f172a; font-weight: 600; }
+.tooltip-modal-content .tooltip-modal-text { white-space: pre-wrap; line-height: 1.45; color: #0f172a; }

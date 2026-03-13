@@ -1,0 +1,90 @@
+import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
+import { createToken, setTokenCookie } from "@/lib/auth";
+
+/* ── Rate limiter en memoria (por IP) ── */
+const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutos
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record || now - record.lastAttempt > WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, lastAttempt: now });
+    return false;
+  }
+  record.count++;
+  record.lastAttempt = now;
+  if (record.count > MAX_ATTEMPTS) return true;
+  return false;
+}
+
+function clearRateLimit(ip: string) {
+  loginAttempts.delete(ip);
+}
+
+export async function POST(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+
+  if (isRateLimited(ip)) {
+    return NextResponse.json(
+      { error: "Demasiados intentos. Intente de nuevo en 15 minutos." },
+      { status: 429 }
+    );
+  }
+
+  try {
+    const { email, password } = await request.json();
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email y contraseña son requeridos" },
+        { status: 400 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user || !user.activo) {
+      return NextResponse.json(
+        { error: "Credenciales inválidas" },
+        { status: 401 }
+      );
+    }
+
+    const valid = await bcrypt.compare(password, user.password);
+
+    if (!valid) {
+      return NextResponse.json(
+        { error: "Credenciales inválidas" },
+        { status: 401 }
+      );
+    }
+
+    const token = await createToken({
+      userId: user.id,
+      email: user.email,
+      rol: user.rol,
+      nombre: user.nombre,
+    });
+
+    await setTokenCookie(token);
+    clearRateLimit(ip);
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        nombre: user.nombre,
+        email: user.email,
+        rol: user.rol,
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Error interno del servidor" },
+      { status: 500 }
+    );
+  }
+}
