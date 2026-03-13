@@ -10,21 +10,40 @@ export async function GET(request: NextRequest) {
   const desde = searchParams.get("desde");
   const hasta = searchParams.get("hasta");
   const tipo = searchParams.get("tipo");
+  const categoria = searchParams.get("categoria");
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const where: any = {};
 
   if (desde && hasta) {
-    where.fecha = { gte: new Date(desde), lte: new Date(hasta) };
+    const desdeDt = new Date(desde);
+    const hastaDt = new Date(hasta);
+    // Incluir eventos cuyo rango [fecha, fechaFin] intersecte con [desde, hasta]
+    where.OR = [
+      { fecha: { gte: desdeDt, lte: hastaDt } },
+      { fechaFin: { gte: desdeDt, lte: hastaDt } },
+      { AND: [{ fecha: { lte: desdeDt } }, { fechaFin: { gte: hastaDt } }] },
+    ];
   }
   if (tipo) where.tipo = tipo;
+  if (categoria) where.categoria = categoria;
 
   // Técnicos: solo sus tareas asignadas o creadas
   if (session.rol === "TECNICO") {
-    where.OR = [
-      { asignadoId: session.userId },
-      { creadorId: session.userId },
-    ];
+    // Si ya hay un OR (por rango de fechas), envolverlo en AND
+    if (where.OR) {
+      const dateFilter = { OR: where.OR };
+      delete where.OR;
+      where.AND = [
+        dateFilter,
+        { OR: [{ asignadoId: session.userId }, { creadorId: session.userId }] },
+      ];
+    } else {
+      where.OR = [
+        { asignadoId: session.userId },
+        { creadorId: session.userId },
+      ];
+    }
   }
 
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "500") || 500, 1), 2000);
@@ -49,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { titulo, descripcion, fecha, horaInicio, hora, horaFin, tipo, prioridad, color, asignadoId, predioId, notificarPush } = body;
+    const { titulo, descripcion, fecha, fechaFin, horaInicio, hora, horaFin, tipo, categoria, prioridad, color, todoElDia, ubicacion, notas, asignadoId, predioId, notificarPush } = body;
 
     if (!titulo || !fecha) {
       return NextResponse.json({ error: "Título y fecha son requeridos" }, { status: 400 });
@@ -69,11 +88,16 @@ export async function POST(request: NextRequest) {
         titulo,
         descripcion: descripcion || null,
         fecha: new Date(fecha),
-        horaInicio: horaInicio || hora || null,
-        horaFin: horaFin || null,
+        fechaFin: fechaFin ? new Date(fechaFin) : null,
+        horaInicio: todoElDia ? null : (horaInicio || hora || null),
+        horaFin: todoElDia ? null : (horaFin || null),
         tipo: tipo || "TAREA",
+        categoria: categoria || "GENERAL",
         prioridad: prioridad || "MEDIA",
         color: color || "#3b82f6",
+        todoElDia: todoElDia || false,
+        ubicacion: ubicacion || null,
+        notas: notas || null,
         notificarPush: notificarPush !== false,
         esAsignada,
         creadorId: session.userId,

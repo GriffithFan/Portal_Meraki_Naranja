@@ -45,19 +45,24 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { titulo, descripcion, fecha, horaInicio, hora, horaFin, tipo, prioridad, completada, color, asignadoId, predioId, notificarPush } = body;
+    const { titulo, descripcion, fecha, fechaFin, horaInicio, hora, horaFin, tipo, categoria, prioridad, completada, color, todoElDia, ubicacion, notas, asignadoId, predioId, notificarPush } = body;
 
     const updateData: any = {};
     if (titulo !== undefined) updateData.titulo = titulo;
     if (descripcion !== undefined) updateData.descripcion = descripcion;
     if (fecha !== undefined) updateData.fecha = new Date(fecha);
+    if (fechaFin !== undefined) updateData.fechaFin = fechaFin ? new Date(fechaFin) : null;
     if (horaInicio !== undefined) updateData.horaInicio = horaInicio;
     else if (hora !== undefined) updateData.horaInicio = hora;
     if (horaFin !== undefined) updateData.horaFin = horaFin;
     if (tipo !== undefined) updateData.tipo = tipo;
+    if (categoria !== undefined) updateData.categoria = categoria;
     if (prioridad !== undefined) updateData.prioridad = prioridad;
     if (completada !== undefined) updateData.completada = completada;
     if (color !== undefined) updateData.color = color;
+    if (todoElDia !== undefined) updateData.todoElDia = todoElDia;
+    if (ubicacion !== undefined) updateData.ubicacion = ubicacion;
+    if (notas !== undefined) updateData.notas = notas;
     if (notificarPush !== undefined) updateData.notificarPush = notificarPush;
     if (asignadoId !== undefined) {
       updateData.asignadoId = asignadoId || null;

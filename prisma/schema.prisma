@@ -298,14 +298,19 @@ model TareaCalendario {
   titulo         String
   descripcion    String?
   fecha          DateTime
+  fechaFin       DateTime? // Para eventos de varios días
   horaInicio     String?
   horaFin        String?
   tipo           String    @default("TAREA")
+  categoria      String    @default("GENERAL") // INSTALACION, MANTENIMIENTO, REUNION, VISITA, GUARDIA, RECORDATORIO, GENERAL
   prioridad      Prioridad @default(MEDIA)
   completada     Boolean   @default(false)
   color          String    @default("#3b82f6")
+  todoElDia      Boolean   @default(false)
+  ubicacion      String?
   notificarPush  Boolean   @default(true)
   esAsignada     Boolean   @default(false)
+  notas          String?   @db.Text
   creadorId      String
   asignadoId     String?
   predioId       String?
@@ -322,6 +327,7 @@ model TareaCalendario {
   @@index([asignadoId, fecha])
   @@index([creadorId, fecha])
   @@index([completada, fecha])
+  @@index([categoria])
 }
 
 // ─── INSTRUCTIVOS ───────────────────────────────────
