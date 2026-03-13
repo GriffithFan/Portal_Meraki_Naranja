@@ -8,6 +8,7 @@ import {
   getOrgDevicesUplinksLossAndLatency,
   getDeviceLossAndLatencyHistory,
 } from "@/lib/meraki";
+import { getSession, isModOrAdmin } from "@/lib/auth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -15,6 +16,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ networkId: string }> }
 ) {
+  const session = await getSession();
+  if (!session || !isModOrAdmin(session.rol))
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+
   const { networkId } = await params;
   const sp = request.nextUrl.searchParams;
   const timespan = parseInt(sp.get("timespan") || "3600", 10);

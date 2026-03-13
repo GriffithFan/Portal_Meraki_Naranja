@@ -9,7 +9,7 @@ if (!JWT_SECRET) {
 const secret = new TextEncoder().encode(JWT_SECRET);
 const COOKIE_NAME = "pmn-token";
 
-const publicPaths = ["/login", "/api/auth/login", "/api/health"];
+const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

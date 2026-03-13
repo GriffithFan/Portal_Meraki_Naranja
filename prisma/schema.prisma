@@ -47,7 +47,7 @@ model User {
   pushSubscriptions   PushSubscription[]
   delegacionesDadas   Delegacion[] @relation("DelegadorUser")
   delegacionesRecibidas Delegacion[] @relation("DelegadoUser")
-  facturas             Factura[]    @relation("SubidorFactura")
+  facturas             ReporteFacturacion[] @relation("GeneradorReporte")
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -393,28 +393,23 @@ model PushSubscription {
   @@index([userId])
 }
 
-// ─── FACTURAS ────────────────────────────────────────
-model Factura {
+// ─── REPORTES DE FACTURACIÓN ─────────────────────────
+model ReporteFacturacion {
   id              String   @id @default(cuid())
-  numero          String?
-  concepto        String
-  monto           Float?
-  moneda          String   @default("ARS")
-  fechaEmision    DateTime?
-  estado          String   @default("PENDIENTE") // PENDIENTE, APROBADA, RECHAZADA, PAGADA
-  notas           String?
-  archivoNombre   String
-  archivoTipo     String
-  archivoRuta     String
-  archivoSize     Int
-  subidoPorId     String
-  subidoPor       User     @relation("SubidorFactura", fields: [subidoPorId], references: [id])
+  semana          String   // Ej: "2026-W11" (año-semana ISO)
+  fechaDesde      DateTime // Inicio del período (lunes)
+  fechaHasta      DateTime // Fin del período (viernes)
+  totalTareas     Int      // Total de tareas CONFORME en el período
+  resumen         Json     // Array de { tecnicoId, tecnicoNombre, cantidad, tareaIds }
+  csvRuta         String?  // Ruta al CSV generado
+  csvNombre       String?  // Nombre del archivo CSV
+  generadoEn      String   @default("AUTO") // AUTO o MANUAL
+  generadoPorId   String
+  generadoPor     User     @relation("GeneradorReporte", fields: [generadoPorId], references: [id])
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  @@index([subidoPorId])
-  @@index([estado])
+  @@unique([semana])
   @@index([createdAt])
 }
 

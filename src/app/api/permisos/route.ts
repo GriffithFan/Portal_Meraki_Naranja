@@ -17,7 +17,7 @@ export async function GET() {
 // Secciones configurables (excluye monitoreo que es visible para todos)
 const SECCIONES_VALIDAS = [
   "tareas", "calendario", "stock", "importar",
-  "bandeja", "actividad", "instructivo", "actas", "facturas", "usuarios",
+  "bandeja", "actividad", "instructivo", "actas", "facturacion", "usuarios",
 ];
 
 // PUT: actualizar permisos (solo ADMIN)

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getNetworkInfo, getDevice, getOrganizationDevices, getOrganizations } from "@/lib/meraki";
 import { getFromCache, setInCache } from "@/lib/merakiCache";
+import { getSession, isModOrAdmin } from "@/lib/auth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -19,6 +20,10 @@ const MAC_RAW_REGEX = /^[0-9a-f]{12}$/i;
  *   3. 404
  */
 export async function GET(request: NextRequest) {
+  const session = await getSession();
+  if (!session || !isModOrAdmin(session.rol))
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+
   try {
     const q = request.nextUrl.searchParams.get("q")?.trim()?.slice(0, 100) ?? "";
     if (!q) return NextResponse.json({ error: "Parámetro q requerido" }, { status: 400 });

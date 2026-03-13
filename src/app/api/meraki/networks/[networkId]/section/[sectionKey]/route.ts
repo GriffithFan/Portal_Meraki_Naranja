@@ -22,6 +22,7 @@ import {
 } from "@/lib/meraki";
 import { toGraphFromLinkLayer } from "@/lib/merakiTransformers";
 import { getFromCache, setInCache, getOrFetch, invalidateCache } from "@/lib/merakiCache";
+import { getSession, isModOrAdmin } from "@/lib/auth";
 
 const DEFAULT_WIRELESS_TIMESPAN = 3600;
 
@@ -31,6 +32,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ networkId: string; sectionKey: string }> }
 ) {
+  const session = await getSession();
+  if (!session || !isModOrAdmin(session.rol))
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+
   const { networkId, sectionKey } = await params;
   const startTime = Date.now();
 
@@ -801,9 +806,7 @@ async function buildApplianceSection(
       // Note: config only tells if port is enabled, NOT if something is connected
       // enabled + no status data → "Disconnected" (no carrier info available)
       // Track if we're using config fallback (no real port status data)
-      let isConfigFallback = false;
       if ((!ports || ports.length === 0) && networkPortConfigs.length > 0) {
-        isConfigFallback = true;
         ports = networkPortConfigs.map((cfg: any) => ({
           portId: String(cfg.number),
           number: cfg.number,

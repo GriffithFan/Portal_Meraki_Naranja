@@ -21,7 +21,7 @@ const SECCIONES = [
   { clave: "actividad", label: "Actividad", grupo: "Comunicación" },
   { clave: "instructivo", label: "Instructivo", grupo: "Recursos" },
   { clave: "actas", label: "Actas", grupo: "Recursos" },
-  { clave: "facturas", label: "Facturas", grupo: "Recursos" },
+  { clave: "facturacion", label: "Facturación", grupo: "Recursos" },
   { clave: "usuarios", label: "Usuarios", grupo: "Administración" },
 ];
 
