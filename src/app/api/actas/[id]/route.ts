@@ -26,11 +26,21 @@ export async function GET(
     }
     const fileBuffer = await readFile(filePath);
 
+    // Forzar Content-Type seguro
+    const SAFE_MIME: Record<string, string> = {
+      ".pdf": "application/pdf",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    };
+    const ext = path.extname(acta.archivoRuta).toLowerCase();
+    const safeContentType = SAFE_MIME[ext] || "application/octet-stream";
+
     return new NextResponse(fileBuffer, {
       headers: {
-        "Content-Type": acta.archivoTipo || "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${acta.archivoNombre}"`,
+        "Content-Type": safeContentType,
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(acta.archivoNombre)}"`,
         "Content-Length": String(fileBuffer.length),
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch {

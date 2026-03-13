@@ -14,6 +14,11 @@ const publicPaths = ["/login", "/api/auth/login", "/api/health"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Bloquear acceso directo a /uploads/ — solo se accede vía API autenticada
+  if (pathname.startsWith("/uploads")) {
+    return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+  }
+
   // Permitir rutas públicas y archivos estáticos
   if (
     publicPaths.some((p) => pathname.startsWith(p)) ||

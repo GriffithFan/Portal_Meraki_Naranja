@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       data: {
         nombre,
         descripcion: descripcion || null,
-        archivoNombre: file.name,
+        archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() ]/g, '_').slice(0, 200),
         archivoTipo: file.type || ext.replace(".", ""),
         archivoRuta: `/uploads/actas/${safeName}`,
         archivoSize: file.size,
