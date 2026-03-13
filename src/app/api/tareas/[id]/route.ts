@@ -143,13 +143,20 @@ export async function PATCH(
     if (body.asignadoIds !== undefined && Array.isArray(body.asignadoIds)) {
       await prisma.asignacion.deleteMany({ where: { predioId: id } });
       if (body.asignadoIds.length > 0) {
-        await prisma.asignacion.createMany({
-          data: body.asignadoIds.map((uid: string) => ({
-            tipo: "TAREA",
-            userId: uid,
-            predioId: id,
-          })),
+        const validUsers = await prisma.user.findMany({
+          where: { id: { in: body.asignadoIds }, activo: true },
+          select: { id: true },
         });
+        const validIds = validUsers.map((u: { id: string }) => u.id);
+        if (validIds.length > 0) {
+          await prisma.asignacion.createMany({
+            data: validIds.map((uid: string) => ({
+              tipo: "TAREA",
+              userId: uid,
+              predioId: id,
+            })),
+          });
+        }
       }
       // Recargar asignaciones en el response
       updated.asignaciones = await prisma.asignacion.findMany({
@@ -237,13 +244,20 @@ export async function PUT(
     if (asignadoIds !== undefined && Array.isArray(asignadoIds)) {
       await prisma.asignacion.deleteMany({ where: { predioId: id } });
       if (asignadoIds.length > 0) {
-        await prisma.asignacion.createMany({
-          data: asignadoIds.map((uid: string) => ({
-            tipo: "TAREA",
-            userId: uid,
-            predioId: id,
-          })),
+        const validUsers = await prisma.user.findMany({
+          where: { id: { in: asignadoIds }, activo: true },
+          select: { id: true },
         });
+        const validIds = validUsers.map((u: { id: string }) => u.id);
+        if (validIds.length > 0) {
+          await prisma.asignacion.createMany({
+            data: validIds.map((uid: string) => ({
+              tipo: "TAREA",
+              userId: uid,
+              predioId: id,
+            })),
+          });
+        }
       }
     }
 

@@ -127,8 +127,16 @@ export async function POST(request: NextRequest) {
 
     // Asignar usuarios si se proporcionan
     if (asignadoIds && Array.isArray(asignadoIds) && asignadoIds.length > 0) {
+      const validUsers = await prisma.user.findMany({
+        where: { id: { in: asignadoIds }, activo: true },
+        select: { id: true },
+      });
+      const validIds = validUsers.map((u: { id: string }) => u.id);
+      if (validIds.length === 0) {
+        return NextResponse.json({ error: "Ningún usuario válido para asignar" }, { status: 400 });
+      }
       await prisma.asignacion.createMany({
-        data: asignadoIds.map((uid: string) => ({
+        data: validIds.map((uid: string) => ({
           tipo: "TAREA",
           userId: uid,
           predioId: predio.id,
@@ -137,7 +145,7 @@ export async function POST(request: NextRequest) {
 
       // Notificar a los asignados
       await prisma.notificacion.createMany({
-        data: asignadoIds
+        data: validIds
           .filter((uid: string) => uid !== session.userId)
           .map((uid: string) => ({
             tipo: "TAREA",

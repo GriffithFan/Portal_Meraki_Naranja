@@ -24,9 +24,8 @@ export async function GET(request: NextRequest) {
   if (!cronSecret) {
     return NextResponse.json({ error: "CRON_SECRET no configurado" }, { status: 503 });
   }
-  const { searchParams } = new URL(request.url);
-  const secret = searchParams.get("secret");
-  if (secret !== cronSecret) {
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ") || authHeader.slice(7) !== cronSecret) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 

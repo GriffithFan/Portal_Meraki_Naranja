@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         moneda: moneda || "ARS",
         fechaEmision: fechaEmision ? new Date(fechaEmision) : null,
         notas: notas || null,
-        archivoNombre: file.name,
+        archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() ]/g, '_').slice(0, 200),
         archivoTipo: file.type || ext.replace(".", ""),
         archivoRuta: `/uploads/facturas/${safeName}`,
         archivoSize: file.size,

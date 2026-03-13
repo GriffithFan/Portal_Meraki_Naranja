@@ -277,6 +277,7 @@ model Actividad {
   @@index([userId])
   @@index([entidad])
   @@index([createdAt])
+  @@index([entidad, createdAt])
 }
 
 // ─── TAREAS CALENDARIO ──────────────────────────────

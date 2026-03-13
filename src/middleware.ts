@@ -3,13 +3,13 @@ import { jwtVerify } from "jose";
 
 // Validación crítica: JWT_SECRET debe estar definido en producción
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("FATAL: JWT_SECRET no está configurado en producción");
+if (!JWT_SECRET) {
+  throw new Error("FATAL: JWT_SECRET no está configurado. Defínelo en .env");
 }
-const secret = new TextEncoder().encode(JWT_SECRET || "dev-fallback-secret-do-not-use-in-prod");
+const secret = new TextEncoder().encode(JWT_SECRET);
 const COOKIE_NAME = "pmn-token";
 
-const publicPaths = ["/login", "/api/auth/login"];
+const publicPaths = ["/login", "/api/auth/login", "/api/health"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
