@@ -28,15 +28,39 @@ interface TareaCalendario {
   predio: { id: string; nombre: string } | null;
 }
 
+/* ── SVG icon helper ── */
+const svgIcon = (d: string, cls = "w-3.5 h-3.5 inline-block") => (
+  <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+    <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+  </svg>
+);
+
+const ICON = {
+  clipboard: "M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z",
+  wrench: "M21.75 6.75a4.5 4.5 0 01-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 11-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 016.336-4.486l-3.276 3.276a3.004 3.004 0 002.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852z",
+  cog: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281zM15 12a3 3 0 11-6 0 3 3 0 016 0z",
+  users: "M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z",
+  mapPin: "M15 10.5a3 3 0 11-6 0 3 3 0 016 0zM19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z",
+  shield: "M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z",
+  bell: "M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0",
+  tag: "M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3zM6 6h.008v.008H6V6z",
+  clock: "M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z",
+  lock: "M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z",
+  pencil: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125",
+  trash: "M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0",
+  calendar: "M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5",
+  check: "M4.5 12.75l6 6 9-13.5",
+};
+
 const CATEGORIAS: Record<string, { label: string; icon: string; color: string }> = {
-  GENERAL: { label: "General", icon: "📋", color: "#6b7280" },
-  INSTALACION: { label: "Instalación", icon: "🔧", color: "#3b82f6" },
-  MANTENIMIENTO: { label: "Mantenimiento", icon: "🛠️", color: "#f59e0b" },
-  REUNION: { label: "Reunión", icon: "👥", color: "#8b5cf6" },
-  VISITA: { label: "Visita", icon: "📍", color: "#10b981" },
-  GUARDIA: { label: "Guardia", icon: "🛡️", color: "#ef4444" },
-  RECORDATORIO: { label: "Recordatorio", icon: "⏰", color: "#ec4899" },
-  OTRO: { label: "Otro", icon: "📌", color: "#64748b" },
+  GENERAL: { label: "General", icon: ICON.clipboard, color: "#6b7280" },
+  INSTALACION: { label: "Instalación", icon: ICON.wrench, color: "#3b82f6" },
+  MANTENIMIENTO: { label: "Mantenimiento", icon: ICON.cog, color: "#f59e0b" },
+  REUNION: { label: "Reunión", icon: ICON.users, color: "#8b5cf6" },
+  VISITA: { label: "Visita", icon: ICON.mapPin, color: "#10b981" },
+  GUARDIA: { label: "Guardia", icon: ICON.shield, color: "#ef4444" },
+  RECORDATORIO: { label: "Recordatorio", icon: ICON.bell, color: "#ec4899" },
+  OTRO: { label: "Otro", icon: ICON.tag, color: "#64748b" },
 };
 
 const PRIORIDAD_COLOR: Record<string, string> = {
@@ -273,7 +297,7 @@ export default function CalendarioPage() {
           <h1 className="text-xl font-semibold text-surface-800 tracking-tight">Calendario</h1>
           <p className="text-xs text-surface-400 mt-0.5">
             {todayTasks.length > 0
-              ? `Hoy: ${todayTasks.length} pendiente${todayTasks.length > 1 ? "s" : ""} — ${todayTasks.map(t => `${catInfo(t.categoria).icon} ${t.titulo}`).slice(0, 2).join(", ")}${todayTasks.length > 2 ? ` +${todayTasks.length - 2}` : ""}`
+              ? `Hoy: ${todayTasks.length} pendiente${todayTasks.length > 1 ? "s" : ""} — ${todayTasks.map(t => t.titulo).slice(0, 2).join(", ")}${todayTasks.length > 2 ? ` +${todayTasks.length - 2}` : ""}`
               : "Sin pendientes hoy"}
           </p>
         </div>
@@ -298,7 +322,7 @@ export default function CalendarioPage() {
         </div>
         <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="ml-auto px-2 py-1 text-xs border border-surface-200 rounded-md bg-white focus:outline-none">
           <option value="">Todas las categorías</option>
-          {Object.entries(CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+          {Object.entries(CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
       </div>
 
@@ -377,7 +401,7 @@ export default function CalendarioPage() {
                           <div key={t.id} onClick={() => { setSelectedDay(d); openEdit(t); }}
                             className={`p-1.5 rounded text-[10px] cursor-pointer border-l-2 transition-colors hover:shadow-sm ${t.completada ? "opacity-40" : ""}`}
                             style={{ borderColor: catInfo(t.categoria).color, backgroundColor: catInfo(t.categoria).color + "08" }}>
-                            <div className="font-medium truncate text-surface-700">{catInfo(t.categoria).icon} {t.titulo}</div>
+                            <div className="font-medium truncate text-surface-700 flex items-center gap-1">{svgIcon(catInfo(t.categoria).icon, "w-3 h-3 flex-shrink-0")} <span className="truncate">{t.titulo}</span></div>
                             {t.horaInicio && <div className="text-surface-400">{t.horaInicio}{t.horaFin ? ` – ${t.horaFin}` : ""}</div>}
                             {t.todoElDia && <div className="text-surface-400">Todo el día</div>}
                           </div>
@@ -421,7 +445,7 @@ export default function CalendarioPage() {
 
             {dayTasks.length === 0 ? (
               <div className="py-8 text-center">
-                <p className="text-2xl mb-1">📅</p>
+                <div className="mb-1 text-surface-300 flex justify-center">{svgIcon(ICON.calendar, "w-8 h-8")}</div>
                 <p className="text-xs text-surface-400">Sin eventos este día</p>
                 <button onClick={() => openCreate(selectedDay)} className="text-xs text-surface-500 hover:text-surface-700 mt-2">Crear uno</button>
               </div>
@@ -440,37 +464,37 @@ export default function CalendarioPage() {
                         <button onClick={() => toggleComplete(t.id, t.completada)}
                           className={`w-4.5 h-4.5 rounded-full border-2 flex-shrink-0 flex items-center justify-center text-[9px] mt-0.5
                             ${t.completada ? "bg-green-500 border-green-500 text-white" : "border-surface-300 hover:border-surface-500"}`}>
-                          {t.completada && "✓"}
+                          {t.completada && svgIcon(ICON.check, "w-2.5 h-2.5")}
                         </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1">
-                            <span className="text-xs">{cat.icon}</span>
+                            <span className="text-xs flex-shrink-0">{svgIcon(cat.icon, "w-3.5 h-3.5")}</span>
                             <p className={`text-sm font-medium truncate ${t.completada ? "line-through text-surface-400" : "text-surface-800"}`}>{t.titulo}</p>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px] text-surface-500">
                             {t.todoElDia ? (
                               <span>Todo el día</span>
                             ) : t.horaInicio ? (
-                              <span>🕐 {t.horaInicio}{t.horaFin ? ` – ${t.horaFin}` : ""}</span>
+                              <span className="flex items-center gap-0.5">{svgIcon(ICON.clock, "w-2.5 h-2.5")}{t.horaInicio}{t.horaFin ? ` – ${t.horaFin}` : ""}</span>
                             ) : null}
-                            {t.ubicacion && <span>📍 {t.ubicacion}</span>}
+                            {t.ubicacion && <span className="flex items-center gap-0.5">{svgIcon(ICON.mapPin, "w-2.5 h-2.5")}{t.ubicacion}</span>}
                             {t.asignado && <span>→ {t.asignado.nombre}</span>}
-                            {t.predio && <span>📋 {t.predio.nombre}</span>}
+                            {t.predio && <span className="flex items-center gap-0.5">{svgIcon(ICON.clipboard, "w-2.5 h-2.5")}{t.predio.nombre}</span>}
                           </div>
                           {t.descripcion && <p className="text-[10px] text-surface-400 mt-1 line-clamp-2">{t.descripcion}</p>}
                           <div className="flex items-center gap-1.5 mt-1.5">
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium text-white ${PRIORIDAD_COLOR[t.prioridad]}`}>{t.prioridad}</span>
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-medium text-white" style={{ backgroundColor: cat.color }}>{cat.label}</span>
-                            {t.esAsignada && !isModOrAdmin && <span className="text-[10px]" title="Asignada">🔒</span>}
-                            {t.notificarPush && <span className="text-[10px]" title="Push activado">🔔</span>}
+                            {t.esAsignada && !isModOrAdmin && <span className="text-[10px]" title="Asignada">{svgIcon(ICON.lock, "w-3 h-3")}</span>}
+                            {t.notificarPush && <span className="text-[10px]" title="Push activado">{svgIcon(ICON.bell, "w-3 h-3")}</span>}
                           </div>
                         </div>
                         <div className="flex flex-col gap-1 flex-shrink-0">
                           {puedeEditar && (
-                            <button onClick={() => openEdit(t)} className="text-[10px] text-surface-400 hover:text-surface-700" title="Editar">✏️</button>
+                            <button onClick={() => openEdit(t)} className="text-surface-400 hover:text-surface-700" title="Editar">{svgIcon(ICON.pencil, "w-3.5 h-3.5")}</button>
                           )}
                           {puedeBorrar && (
-                            <button onClick={() => handleDelete(t.id)} className="text-[10px] text-red-400 hover:text-red-600" title="Eliminar">🗑️</button>
+                            <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600" title="Eliminar">{svgIcon(ICON.trash, "w-3.5 h-3.5")}</button>
                           )}
                         </div>
                       </div>
@@ -504,7 +528,7 @@ export default function CalendarioPage() {
                     <button key={k} type="button" onClick={() => setForm({ ...form, categoria: k })}
                       className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] border transition-all
                         ${form.categoria === k ? "border-surface-400 bg-surface-100 font-medium" : "border-surface-200 hover:bg-surface-50"}`}>
-                      <span>{v.icon}</span> {v.label}
+                      {svgIcon(v.icon, "w-3 h-3")} {v.label}
                     </button>
                   ))}
                 </div>
@@ -561,9 +585,9 @@ export default function CalendarioPage() {
                   <label className="block text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-1">Prioridad</label>
                   <select value={form.prioridad} onChange={(e) => setForm({ ...form, prioridad: e.target.value })}
                     className="w-full px-3 py-2 border border-surface-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-surface-400">
-                    <option value="BAJA">🔵 Baja</option>
-                    <option value="MEDIA">🟡 Media</option>
-                    <option value="ALTA">🔴 Alta</option>
+                    <option value="BAJA">● Baja</option>
+                    <option value="MEDIA">● Media</option>
+                    <option value="ALTA">● Alta</option>
                   </select>
                 </div>
                 <div>
@@ -589,7 +613,7 @@ export default function CalendarioPage() {
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="notificarPush2" checked={form.notificarPush} onChange={(e) => setForm({ ...form, notificarPush: e.target.checked })}
                   className="w-4 h-4 rounded border-surface-300" />
-                <label htmlFor="notificarPush2" className="text-xs text-surface-600">🔔 Notificaciones push</label>
+                <label htmlFor="notificarPush2" className="text-xs text-surface-600 flex items-center gap-1">{svgIcon(ICON.bell, "w-3.5 h-3.5")} Notificaciones push</label>
               </div>
             </div>
 
