@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
     ];
   }
 
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "500") || 500, 1), 2000);
+
   const tareas = await prisma.tareaCalendario.findMany({
     where,
     include: {
@@ -35,6 +37,7 @@ export async function GET(request: NextRequest) {
       predio: { select: { id: true, nombre: true } },
     },
     orderBy: { fecha: "asc" },
+    take: limit,
   });
 
   return NextResponse.json(tareas);

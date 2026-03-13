@@ -165,6 +165,8 @@ model Predio {
   @@index([provincia])
   @@index([equipoAsignado])
   @@index([espacioId])
+  @@index([estadoId, fechaActualizacion])
+  @@index([creadorId])
 }
 
 // ─── EQUIPOS (STOCK) ────────────────────────────────
@@ -188,6 +190,10 @@ model Equipo {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([estado])
+  @@index([categoria])
+  @@index([predioId])
 }
 
 // ─── ETIQUETAS ──────────────────────────────────────
@@ -222,6 +228,8 @@ model Comentario {
 
   @@index([predioId])
   @@index([equipoId])
+  @@index([userId])
+  @@index([predioId, createdAt])
 }
 
 // ─── ASIGNACIONES ───────────────────────────────────
@@ -240,6 +248,7 @@ model Asignacion {
 
   @@index([userId])
   @@index([predioId])
+  @@index([userId, predioId])
 }
 
 // ─── NOTIFICACIONES ─────────────────────────────────
@@ -258,6 +267,7 @@ model Notificacion {
   createdAt DateTime @default(now())
 
   @@index([userId, leida])
+  @@index([userId, createdAt])
   @@index([createdAt])
 }
 
@@ -278,6 +288,8 @@ model Actividad {
   @@index([entidad])
   @@index([createdAt])
   @@index([entidad, createdAt])
+  @@index([userId, createdAt])
+  @@index([entidadId])
 }
 
 // ─── TAREAS CALENDARIO ──────────────────────────────
@@ -307,6 +319,9 @@ model TareaCalendario {
   @@index([fecha])
   @@index([asignadoId])
   @@index([creadorId])
+  @@index([asignadoId, fecha])
+  @@index([creadorId, fecha])
+  @@index([completada, fecha])
 }
 
 // ─── INSTRUCTIVOS ───────────────────────────────────

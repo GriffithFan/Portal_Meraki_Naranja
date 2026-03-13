@@ -9,7 +9,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const entidad = searchParams.get("entidad");
   const entidadId = searchParams.get("entidadId");
-  const limite = parseInt(searchParams.get("limite") || "50");
+  const limite = Math.min(parseInt(searchParams.get("limite") || "50") || 50, 200);
+  const page = Math.max(parseInt(searchParams.get("page") || "1") || 1, 1);
+  const skip = (page - 1) * limite;
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const where: any = {};
@@ -22,14 +24,18 @@ export async function GET(request: NextRequest) {
   if (entidad) where.entidad = entidad;
   if (entidadId) where.entidadId = entidadId;
 
-  const actividades = await prisma.actividad.findMany({
-    where,
-    include: {
-      usuario: { select: { id: true, nombre: true, rol: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: Math.min(limite, 200),
-  });
+  const [actividades, total] = await Promise.all([
+    prisma.actividad.findMany({
+      where,
+      include: {
+        usuario: { select: { id: true, nombre: true, rol: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: limite,
+      skip,
+    }),
+    prisma.actividad.count({ where }),
+  ]);
 
-  return NextResponse.json({ actividades });
+  return NextResponse.json({ actividades, total, page, totalPages: Math.ceil(total / limite) });
 }

@@ -75,11 +75,13 @@ export async function GET(
       comentarios: {
         include: { usuario: { select: { nombre: true } } },
         orderBy: { createdAt: "desc" },
+        take: 50,
       },
       equipos: { select: { id: true, nombre: true, estado: true } },
       tareas: {
         include: { asignado: { select: { id: true, nombre: true } } },
         orderBy: { fecha: "asc" },
+        take: 100,
       },
     },
   });
@@ -145,25 +147,27 @@ export async function PATCH(
       },
     });
 
-    // Actualizar asignaciones si se proporcionan
+    // Actualizar asignaciones si se proporcionan (dentro de transacción para evitar race conditions)
     if (body.asignadoIds !== undefined && Array.isArray(body.asignadoIds)) {
-      await prisma.asignacion.deleteMany({ where: { predioId: id } });
-      if (body.asignadoIds.length > 0) {
-        const validUsers = await prisma.user.findMany({
-          where: { id: { in: body.asignadoIds }, activo: true },
-          select: { id: true },
-        });
-        const validIds = validUsers.map((u: { id: string }) => u.id);
-        if (validIds.length > 0) {
-          await prisma.asignacion.createMany({
-            data: validIds.map((uid: string) => ({
-              tipo: "TAREA",
-              userId: uid,
-              predioId: id,
-            })),
+      await prisma.$transaction(async (tx) => {
+        await tx.asignacion.deleteMany({ where: { predioId: id } });
+        if (body.asignadoIds.length > 0) {
+          const validUsers = await tx.user.findMany({
+            where: { id: { in: body.asignadoIds }, activo: true },
+            select: { id: true },
           });
+          const validIds = validUsers.map((u: { id: string }) => u.id);
+          if (validIds.length > 0) {
+            await tx.asignacion.createMany({
+              data: validIds.map((uid: string) => ({
+                tipo: "TAREA",
+                userId: uid,
+                predioId: id,
+              })),
+            });
+          }
         }
-      }
+      });
       // Recargar asignaciones en el response
       updated.asignaciones = await prisma.asignacion.findMany({
         where: { predioId: id },

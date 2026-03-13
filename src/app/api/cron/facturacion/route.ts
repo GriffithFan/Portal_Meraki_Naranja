@@ -134,12 +134,12 @@ export async function GET(request: NextRequest) {
     const csvPath = path.join(csvDir, csvFileName);
     await writeFile(csvPath, csvContent, "utf-8");
 
-    // Buscar primer ADMIN para asociar el reporte
-    const admin = await prisma.user.findFirst({
+    // Buscar admins para asociar el reporte y notificar (una sola query)
+    const admins = await prisma.user.findMany({
       where: { rol: "ADMIN", activo: true },
       select: { id: true },
     });
-    if (!admin) {
+    if (admins.length === 0) {
       return NextResponse.json({ error: "No hay administradores activos" }, { status: 500 });
     }
 
@@ -154,16 +154,11 @@ export async function GET(request: NextRequest) {
         csvRuta: `/uploads/reportes/${csvFileName}`,
         csvNombre: csvFileName,
         generadoEn: "AUTO",
-        generadoPorId: admin.id,
+        generadoPorId: admins[0].id,
       },
     });
 
     // Notificar a TODOS los admins (bandeja interna solamente)
-    const admins = await prisma.user.findMany({
-      where: { rol: "ADMIN", activo: true },
-      select: { id: true },
-    });
-
     await prisma.notificacion.createMany({
       data: admins.map((a) => ({
         tipo: "REPORTE_FACTURACION",
@@ -182,7 +177,7 @@ export async function GET(request: NextRequest) {
         descripcion: `Reporte facturación automático semana ${semana} (${totalTareas} tareas)`,
         entidad: "REPORTE",
         entidadId: reporte.id,
-        userId: admin.id,
+        userId: admins[0].id,
       },
     });
 

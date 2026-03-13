@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
   const estado = searchParams.get("estado");
   const categoria = searchParams.get("categoria");
   const buscar = sanitizeSearch(searchParams.get("buscar"));
+  const page = Math.max(parseInt(searchParams.get("page") || "1") || 1, 1);
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100") || 100, 1), 500);
+  const skip = (page - 1) * limit;
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const where: any = {};
@@ -33,6 +36,8 @@ export async function GET(request: NextRequest) {
         _count: { select: { comentarios: true } },
       },
       orderBy: { updatedAt: "desc" },
+      take: limit,
+      skip,
     }),
     prisma.equipo.count({ where }),
   ]);
@@ -46,6 +51,9 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     equipos,
     total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
     categorias: categorias.map((c) => c.categoria).filter(Boolean),
   });
 }
