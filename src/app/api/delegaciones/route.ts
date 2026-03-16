@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { delegacionSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 // GET: obtener delegaciones del usuario actual, o todas si es admin/mod
 export async function GET(req: NextRequest) {
@@ -40,19 +41,10 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   if (!isModOrAdmin(session.rol)) return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
-  const body = await req.json();
-  const { delegadorId, delegadoId, notas } = body as {
-    delegadorId?: string;
-    delegadoId?: string;
-    notas?: string;
-  };
+  const data = await parseBody(req, delegacionSchema);
+  if (isErrorResponse(data)) return data;
 
-  if (!delegadorId || !delegadoId) {
-    return NextResponse.json({ error: "delegadorId y delegadoId requeridos" }, { status: 400 });
-  }
-  if (delegadorId === delegadoId) {
-    return NextResponse.json({ error: "No se puede delegar a sí mismo" }, { status: 400 });
-  }
+  const { delegadorId, delegadoId, notas } = data;
 
   // Verificar que ambos usuarios existen
   const [delegador, delegado] = await Promise.all([

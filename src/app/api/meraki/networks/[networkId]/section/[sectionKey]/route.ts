@@ -21,7 +21,7 @@ import {
   getOrgWirelessDevicesEthernetStatuses,
 } from "@/lib/meraki";
 import { toGraphFromLinkLayer } from "@/lib/merakiTransformers";
-import { getFromCache, setInCache, getOrFetch, invalidateCache } from "@/lib/merakiCache";
+import { getFromCache, setInCache, getOrFetch, invalidateCache, TTL } from "@/lib/merakiCache";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 
 const DEFAULT_WIRELESS_TIMESPAN = 3600;
@@ -65,17 +65,22 @@ export async function GET(
       invalidateCache("networkById", `availHistory:${networkId}`);
     }
 
-    const network = await getOrFetch("networkById", `info:${networkId}`, () => getNetworkInfo(networkId));
+    const network = await getOrFetch("networkById", `info:${networkId}`, () => getNetworkInfo(networkId), TTL.SLOW);
     const orgId = (network as any)?.organizationId;
-    const devices: any[] = await getOrFetch("networkById", `devices:${networkId}`, () => getNetworkDevices(networkId));
+
+    // Cargar devices y statuses en paralelo (no dependen entre sí)
+    const [devices, statusesRaw] = await Promise.all([
+      getOrFetch<any[]>("networkById", `devices:${networkId}`, () => getNetworkDevices(networkId), TTL.SLOW),
+      orgId
+        ? getOrFetch<any[]>("networkById", `statuses:${networkId}`, () =>
+            getOrganizationDevicesStatuses(orgId, { "networkIds[]": networkId }),
+            TTL.FAST,
+          )
+        : Promise.resolve([] as any[]),
+    ]);
 
     const statusMap = new Map<string, any>();
-    if (orgId) {
-      const statuses: any[] = await getOrFetch("networkById", `statuses:${networkId}`, () =>
-        getOrganizationDevicesStatuses(orgId, { "networkIds[]": networkId })
-      );
-      statuses.forEach((s) => statusMap.set(s.serial, s));
-    }
+    (statusesRaw || []).forEach((s) => statusMap.set(s.serial, s));
 
     const switches = devices.filter((d) => /^ms/i.test(d.model));
     const accessPoints = devices.filter((d) => /^mr/i.test(d.model));
@@ -84,7 +89,7 @@ export async function GET(
 
     switch (sectionKey) {
       case "topology": {
-        const rawTopology = await getOrFetch("networkById", `topology:${networkId}`, () => getNetworkTopologyLinkLayer(networkId));
+        const rawTopology = await getOrFetch("networkById", `topology:${networkId}`, () => getNetworkTopologyLinkLayer(networkId), TTL.SLOW);
         const topology = toGraphFromLinkLayer(rawTopology, statusMap);
         result.topology = topology;
         result.devices = devices.map((d) => ({
@@ -131,8 +136,11 @@ export async function GET(
     }
 
     result.elapsedMs = Date.now() - startTime;
-    setInCache("section", cacheKey, result);
-    return NextResponse.json(result);
+    setInCache("section", cacheKey, result, TTL.SECTION);
+    const response = NextResponse.json(result);
+    // Cache en el browser: 60s fresh, sirve stale hasta 5min mientras revalida
+    response.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=240");
+    return response;
   } catch (error: any) {
     console.error(`[section/${sectionKey}]`, error?.response?.data || error.message);
     return NextResponse.json({ error: "Error obteniendo sección" }, { status: 500 });
@@ -148,7 +156,7 @@ async function buildSwitchesSection(networkId: string, orgId: string | undefined
 
   // Network-wide port statuses (includes serial per entry)
   let switchPortsRaw: any[] = [];
-  try { switchPortsRaw = await getOrFetch("networkById", `swPortStatuses:${networkId}`, () => getNetworkSwitchPortsStatuses(networkId)); } catch (e) { console.error(`[Section:switches] getNetworkSwitchPortsStatuses(${networkId}):`, e); }
+  try { switchPortsRaw = await getOrFetch("networkById", `swPortStatuses:${networkId}`, () => getNetworkSwitchPortsStatuses(networkId), TTL.FAST); } catch (e) { console.error(`[Section:switches] getNetworkSwitchPortsStatuses(${networkId}):`, e); }
 
   const portsBySerial: Record<string, any[]> = {};
   switchPortsRaw.forEach((e) => {
@@ -161,7 +169,7 @@ async function buildSwitchesSection(networkId: string, orgId: string | undefined
 
   // Fetch topology for fallback switch→MX detection
   let rawTopology: any = null;
-  try { rawTopology = await getOrFetch("networkById", `topology:${networkId}`, () => getNetworkTopologyLinkLayer(networkId)); } catch (e) { console.error(`[Section:switches] getNetworkTopologyLinkLayer(${networkId}):`, e); }
+  try { rawTopology = await getOrFetch("networkById", `topology:${networkId}`, () => getNetworkTopologyLinkLayer(networkId), TTL.SLOW); } catch (e) { console.error(`[Section:switches] getNetworkTopologyLinkLayer(${networkId}):`, e); }
 
   const detailedPortsMap: Record<string, any[]> = {};
   const lldpSnapshots: Record<string, any> = {};
@@ -183,7 +191,7 @@ async function buildSwitchesSection(networkId: string, orgId: string | undefined
   const availabilityBySerial = new Map<string, any[]>();
   if (orgId) {
     try {
-      const history: any[] = await getOrFetch("networkById", `availHistory:${networkId}`, () => getOrganizationDevicesAvailabilitiesChangeHistory(orgId, { "networkIds[]": networkId, timespan: 86400 }));
+      const history: any[] = await getOrFetch("networkById", `availHistory:${networkId}`, () => getOrganizationDevicesAvailabilitiesChangeHistory(orgId, { "networkIds[]": networkId, timespan: 86400 }), TTL.FAST);
       if (Array.isArray(history)) {
         for (const evt of history) {
           const serial = evt?.device?.serial;
@@ -363,7 +371,7 @@ async function buildAccessPointsSection(
   const gatewayDevices = devices.filter((d: any) => /^mx|^z[13]/i.test(d.model));
   const gatewaySerials = new Set(gatewayDevices.map((d: any) => d.serial));
   try {
-    const rawTopology = await getOrFetch("networkById", `topology:${networkId}`, () => getNetworkTopologyLinkLayer(networkId));
+    const rawTopology = await getOrFetch("networkById", `topology:${networkId}`, () => getNetworkTopologyLinkLayer(networkId), TTL.SLOW);
     if (rawTopology?.links) {
       const apSerials = new Set(accessPoints.map((a: any) => a.serial));
       const swSerials = new Set(switches.map((s: any) => s.serial));
@@ -409,7 +417,7 @@ async function buildAccessPointsSection(
 
   // --- Datos auxiliares ---
   let switchPortsRaw: any[] = [];
-  try { switchPortsRaw = await getOrFetch("networkById", `swPortStatuses:${networkId}`, () => getNetworkSwitchPortsStatuses(networkId)); } catch (e) { console.error(`[Section:aps] getNetworkSwitchPortsStatuses(${networkId}):`, e); }
+  try { switchPortsRaw = await getOrFetch("networkById", `swPortStatuses:${networkId}`, () => getNetworkSwitchPortsStatuses(networkId), TTL.FAST); } catch (e) { console.error(`[Section:aps] getNetworkSwitchPortsStatuses(${networkId}):`, e); }
 
   let wirelessEthernetStatuses: any[] = [];
   if (orgId) {
@@ -437,7 +445,7 @@ async function buildAccessPointsSection(
   const apAvailabilityBySerial = new Map<string, any[]>();
   if (orgId) {
     try {
-      const history: any[] = await getOrFetch("networkById", `availHistory:${networkId}`, () => getOrganizationDevicesAvailabilitiesChangeHistory(orgId, { "networkIds[]": networkId, timespan: 86400 }));
+      const history: any[] = await getOrFetch("networkById", `availHistory:${networkId}`, () => getOrganizationDevicesAvailabilitiesChangeHistory(orgId, { "networkIds[]": networkId, timespan: 86400 }), TTL.FAST);
       if (Array.isArray(history)) {
         for (const evt of history) {
           const serial = evt?.device?.serial;

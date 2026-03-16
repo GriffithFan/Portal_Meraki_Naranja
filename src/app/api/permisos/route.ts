@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { permisosSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 // GET: obtener permisos de todas las secciones (cualquier autenticado puede consultar)
 export async function GET() {
@@ -27,14 +28,10 @@ export async function PUT(request: NextRequest) {
   if (session.rol !== "ADMIN")
     return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
 
-  const body = await request.json();
-  const { permisos } = body as {
-    permisos: { seccion: string; rol: string; ver: boolean; editar: boolean }[];
-  };
+  const data = await parseBody(request, permisosSchema);
+  if (isErrorResponse(data)) return data;
 
-  if (!Array.isArray(permisos)) {
-    return NextResponse.json({ error: "Se requiere array de permisos" }, { status: 400 });
-  }
+  const { permisos } = data;
 
   // Validar y aplicar cada permiso
   const results = [];

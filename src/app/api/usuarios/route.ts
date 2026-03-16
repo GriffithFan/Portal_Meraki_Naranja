@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
+import { updateRolSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 export async function GET() {
   const session = await getSession();
@@ -16,19 +17,15 @@ export async function GET() {
   return NextResponse.json(usuarios);
 }
 
-const VALID_ROLES = ["ADMIN", "MODERADOR", "TECNICO"] as const;
-
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   if (!isAdmin(session.rol)) return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
 
-  const body = await req.json();
-  const { userId, rol } = body as { userId?: string; rol?: string };
+  const data = await parseBody(req, updateRolSchema);
+  if (isErrorResponse(data)) return data;
 
-  if (!userId || !rol || !VALID_ROLES.includes(rol as typeof VALID_ROLES[number])) {
-    return NextResponse.json({ error: "userId y rol válido requeridos" }, { status: 400 });
-  }
+  const { userId, rol } = data;
 
   if (userId === session.userId) {
     return NextResponse.json({ error: "No puedes cambiar tu propio rol" }, { status: 400 });
@@ -36,7 +33,7 @@ export async function PATCH(req: NextRequest) {
 
   const updated = await prisma.user.update({
     where: { id: userId },
-    data: { rol: rol as typeof VALID_ROLES[number] },
+    data: { rol },
     select: { id: true, nombre: true, email: true, rol: true },
   });
 

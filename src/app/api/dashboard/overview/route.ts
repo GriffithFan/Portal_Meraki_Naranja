@@ -5,6 +5,7 @@ import {
   getOrganizationDevicesStatuses,
   getNetworks,
 } from "@/lib/meraki";
+import { getOrFetch } from "@/lib/merakiCache";
 
 export async function GET() {
   const session = await getSession();
@@ -74,11 +75,12 @@ export async function GET() {
   if (orgId) {
     try {
       const [deviceStatuses, networks] = await Promise.all([
-        getOrganizationDevicesStatuses(orgId),
-        getNetworks(orgId),
+        getOrFetch("organizations", `devStatuses:${orgId}`, () => getOrganizationDevicesStatuses(orgId)),
+        getOrFetch("networksByOrg", `networks:${orgId}`, () => getNetworks(orgId)),
       ]);
 
-      const devices = Array.isArray(deviceStatuses) ? deviceStatuses : [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const devices: any[] = Array.isArray(deviceStatuses) ? deviceStatuses : [];
       const networkCount = Array.isArray(networks) ? networks.length : 0;
 
       const statusCounts = { online: 0, offline: 0, alerting: 0, dormant: 0 };

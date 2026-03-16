@@ -50,6 +50,11 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.networks || [];
+        // Auto-selección: si hay exactamente 1 resultado, seleccionar directamente
+        if (list.length === 1) {
+          handleSelectNetwork(list[0]);
+          return;
+        }
         setResults(list);
         setIsOpen(true);
         setActiveIdx(-1);
@@ -106,7 +111,12 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             if (!isOpen || !isMonitoring) return;
             if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx((i) => Math.min(i + 1, results.length - 1)); }
             else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx((i) => Math.max(i - 1, 0)); }
-            else if (e.key === "Enter" && activeIdx >= 0 && results[activeIdx]) { e.preventDefault(); handleSelectNetwork(results[activeIdx]); }
+            else if (e.key === "Enter") {
+              e.preventDefault();
+              if (activeIdx >= 0 && results[activeIdx]) { handleSelectNetwork(results[activeIdx]); }
+              else if (results.length === 1) { handleSelectNetwork(results[0]); }
+              else if (results.length > 0) { handleSelectNetwork(results[0]); }
+            }
             else if (e.key === "Escape") { setIsOpen(false); }
           }}
           placeholder={

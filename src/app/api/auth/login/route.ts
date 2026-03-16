@@ -2,11 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { createToken, setTokenCookie } from "@/lib/auth";
+import { loginSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 /* ── Rate limiter en memoria (por IP) ── */
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 3;
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutos
+
+// Limpieza periódica para evitar memory leak
+setInterval(() => {
+  const now = Date.now();
+  loginAttempts.forEach((record, key) => {
+    if (now - record.lastAttempt > WINDOW_MS) loginAttempts.delete(key);
+  });
+}, 5 * 60_000);
+
+// Hash dummy para anti-timing oracle (evita revelar si el email existe)
+const DUMMY_HASH = "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012";
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
@@ -36,27 +48,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { email, password } = await request.json();
+    const data = await parseBody(request, loginSchema);
+    if (isErrorResponse(data)) return data;
 
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: "Email y contraseña son requeridos" },
-        { status: 400 }
-      );
-    }
+    const { email, password } = data;
 
     const user = await prisma.user.findUnique({ where: { email } });
 
-    if (!user || !user.activo) {
-      return NextResponse.json(
-        { error: "Credenciales inválidas" },
-        { status: 401 }
-      );
-    }
+    // Anti-timing oracle: siempre ejecutar bcrypt.compare para que el tiempo
+    // de respuesta sea constante, sin importar si el email existe o no.
+    const hashToCompare = user?.activo ? user.password : DUMMY_HASH;
+    const valid = await bcrypt.compare(password, hashToCompare);
 
-    const valid = await bcrypt.compare(password, user.password);
-
-    if (!valid) {
+    if (!user || !user.activo || !valid) {
       return NextResponse.json(
         { error: "Credenciales inválidas" },
         { status: 401 }

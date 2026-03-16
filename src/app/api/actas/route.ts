@@ -12,6 +12,11 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const buscar = sanitizeSearch(searchParams.get("buscar"));
   const predioId = searchParams.get("predioId");
+  const limitParam = searchParams.get("limit");
+  const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 500);
+  const pageParam = searchParams.get("page");
+  const page = Math.max(parseInt(pageParam || "1") || 1, 1);
+  const skip = (page - 1) * limit;
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const where: any = {};
@@ -25,17 +30,21 @@ export async function GET(request: NextRequest) {
     ];
   }
 
-  const actas = await prisma.acta.findMany({
-    where,
-    include: {
-      predio: { select: { id: true, nombre: true } },
-      subidoPor: { select: { id: true, nombre: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const [actas, total] = await Promise.all([
+    prisma.acta.findMany({
+      where,
+      include: {
+        predio: { select: { id: true, nombre: true } },
+        subidoPor: { select: { id: true, nombre: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.acta.count({ where }),
+  ]);
 
-  return NextResponse.json({ actas });
+  return NextResponse.json({ actas, total, page, limit });
 }
 
 export async function POST(request: NextRequest) {
@@ -62,7 +71,7 @@ export async function POST(request: NextRequest) {
     ];
     const allowedExtensions = /\.(pdf|docx|doc)$/i;
 
-    if (!allowedTypes.includes(file.type) && !file.name.match(allowedExtensions)) {
+    if (!allowedTypes.includes(file.type) || !file.name.match(allowedExtensions)) {
       return NextResponse.json({ error: "Solo se permiten archivos PDF y DOCX" }, { status: 400 });
     }
 

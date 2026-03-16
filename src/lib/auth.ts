@@ -47,7 +47,7 @@ export async function setTokenCookie(token: string) {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     maxAge: 60 * 60 * 8, // 8 horas
     path: "/",
   });
@@ -55,7 +55,13 @@ export async function setTokenCookie(token: string) {
 
 export async function removeTokenCookie() {
   const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+  cookieStore.set(COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 0,
+    path: "/",
+  });
 }
 
 export function isAdmin(rol: string): boolean {

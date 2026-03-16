@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { verifyCronAuth } from "@/lib/cronAuth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -11,21 +12,15 @@ import path from "path";
  * Genera automáticamente el reporte semanal de facturación.
  * Diseñado para ejecutarse cada viernes a las 14:00.
  *
- * Protegido por CRON_SECRET (Bearer token).
+ * Protegido por CRON_SECRET (Bearer token, timing-safe).
  *
  * Busca todas las tareas (predios) que pasaron a estado CONFORME
  * durante la semana actual (lunes 00:00 a viernes 14:00),
  * agrupa por técnico asignado, genera CSV y notifica al ADMIN.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET no configurado" }, { status: 503 });
-  }
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ") || authHeader.slice(7) !== cronSecret) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  }
+  const authError = verifyCronAuth(request);
+  if (authError) return authError;
 
   try {
     const ahora = new Date();

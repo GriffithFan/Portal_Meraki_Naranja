@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { parseBody, isErrorResponse, espacioUpdateSchema } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -12,6 +13,8 @@ export async function GET(
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  if (!isModOrAdmin(session.rol))
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
   const espacio = await prisma.espacioTrabajo.findUnique({
     where: { id: params.id },
@@ -118,13 +121,8 @@ export async function PATCH(
   if (!session || !isModOrAdmin(session.rol))
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
-  const body = await request.json();
-  const allowed = ["nombre", "descripcion", "color", "icono", "orden", "activo"];
-  const data: any = {};
-
-  for (const key of allowed) {
-    if (key in body) data[key] = body[key];
-  }
+  const data = await parseBody(request, espacioUpdateSchema);
+  if (isErrorResponse(data)) return data;
 
   const espacio = await prisma.espacioTrabajo.update({
     where: { id: params.id },

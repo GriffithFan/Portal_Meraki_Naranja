@@ -1,33 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { IconX, IconChevron, IconCheck, IconClock } from "@/components/ui/Icons";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-// ── Iconos ──────────────────────────────────────
-const IconX = ({ className = "w-5 h-5" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-  </svg>
-);
-
-const IconChevron = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={`${className}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-  </svg>
-);
-
-const IconCheck = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-  </svg>
-);
-
-const IconClock = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-  </svg>
-);
 
 // ── Props ──────────────────────────────────────
 interface TareaDetalleModalProps {

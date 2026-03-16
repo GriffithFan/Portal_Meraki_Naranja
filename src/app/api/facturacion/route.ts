@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { parseBody, isErrorResponse, facturacionSchema } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,7 +42,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
+    const body = await parseBody(request, facturacionSchema);
+    if (isErrorResponse(body)) return body;
 
     // Calcular período
     const ahora = new Date();

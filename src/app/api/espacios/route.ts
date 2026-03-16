@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { espacioSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -45,10 +46,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
   try {
-    const { nombre, descripcion, color, icono, parentId } = await request.json();
+    const data = await parseBody(request, espacioSchema);
+    if (isErrorResponse(data)) return data;
 
-    if (!nombre?.trim())
-      return NextResponse.json({ error: "Nombre requerido" }, { status: 400 });
+    const { nombre, descripcion, color, icono, parentId } = data;
 
     // Calcular siguiente orden
     const maxOrden = await prisma.espacioTrabajo.aggregate({

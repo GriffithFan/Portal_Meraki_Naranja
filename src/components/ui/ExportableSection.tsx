@@ -1,7 +1,5 @@
 "use client";
 import { useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import { useNetworkContext } from "@/contexts/NetworkContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -23,6 +21,7 @@ export default function ExportableSection({ sectionName, children }: ExportableS
 
   const captureSection = async () => {
     if (!contentRef.current) return null;
+    const html2canvas = (await import("html2canvas")).default;
     await new Promise<void>((r) => setTimeout(r, 100));
     return html2canvas(contentRef.current, {
       scale: 2,
@@ -72,6 +71,7 @@ export default function ExportableSection({ sectionName, children }: ExportableS
       const canvas = await captureSection();
       if (!canvas) return;
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({
         orientation: canvas.width > canvas.height ? "landscape" : "portrait",
         unit: "px",

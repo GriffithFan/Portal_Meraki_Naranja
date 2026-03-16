@@ -9,10 +9,62 @@ if (!JWT_SECRET) {
 const secret = new TextEncoder().encode(JWT_SECRET);
 const COOKIE_NAME = "pmn-token";
 
+/* ── Rate Limiting in-memory ──────────────────────────────── */
+const RATE_LIMIT_WINDOW = 60_000; // 1 minuto
+const RATE_LIMIT_MAX = 120;       // máx 120 requests por ventana por IP
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+// Limpieza periódica para evitar memory leak
+setInterval(() => {
+  const now = Date.now();
+  rateLimitMap.forEach((entry, key) => {
+    if (entry.resetAt < now) rateLimitMap.delete(key);
+  });
+}, 60_000);
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || entry.resetAt < now) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
+
+/* ── Body size limit (16 KB para la mayoría de rutas API) ── */
+const MAX_BODY_BYTES = 16 * 1024; // 16 KB
+const LARGE_BODY_PATHS = ["/api/tareas", "/api/stock", "/api/calendario"]; // rutas con payloads más grandes
+const MAX_LARGE_BODY_BYTES = 256 * 1024; // 256 KB
+
 const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // ── Rate Limiting ──
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json(
+      { error: "Demasiadas solicitudes. Intenta más tarde." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
+  }
+
+  // ── Body size limit (solo POST/PUT/PATCH) ──
+  if (["POST", "PUT", "PATCH"].includes(request.method) && pathname.startsWith("/api")) {
+    const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
+    const maxBytes = LARGE_BODY_PATHS.some(p => pathname.startsWith(p))
+      ? MAX_LARGE_BODY_BYTES
+      : MAX_BODY_BYTES;
+    if (contentLength > maxBytes) {
+      return NextResponse.json(
+        { error: "Payload demasiado grande" },
+        { status: 413 }
+      );
+    }
+  }
 
   // Bloquear acceso directo a /uploads/ — solo se accede vía API autenticada
   if (pathname.startsWith("/uploads")) {

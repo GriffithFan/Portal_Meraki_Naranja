@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { stockUpdateSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -42,8 +43,10 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const body = await request.json();
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas } = body;
+    const data = await parseBody(request, stockUpdateSchema);
+    if (isErrorResponse(data)) return data;
+
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas } = data;
 
     const existing = await prisma.equipo.findUnique({ where: { id } });
     if (!existing) {
@@ -58,7 +61,7 @@ export async function PUT(
         ...(numeroSerie !== undefined && { numeroSerie: numeroSerie || null }),
         ...(modelo !== undefined && { modelo }),
         ...(marca !== undefined && { marca }),
-        ...(cantidad !== undefined && { cantidad: parseInt(cantidad) }),
+        ...(cantidad !== undefined && { cantidad: parseInt(String(cantidad)) }),
         ...(estado !== undefined && { estado }),
         ...(categoria !== undefined && { categoria }),
         ...(ubicacion !== undefined && { ubicacion }),

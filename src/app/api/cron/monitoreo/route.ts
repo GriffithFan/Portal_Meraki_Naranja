@@ -6,6 +6,7 @@ import {
   getOrgWirelessDevicesEthernetStatuses,
 } from "@/lib/meraki";
 import { enviarPushYBandeja } from "@/lib/pushNotifications";
+import { verifyCronAuth } from "@/lib/cronAuth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -16,18 +17,11 @@ import { enviarPushYBandeja } from "@/lib/pushNotifications";
  * Procesa monitoreos pendientes y envía notificaciones push + bandeja
  * cuando detecta caídas de velocidad en APs o errores CRC en switches.
  *
- * Protegido por CRON_SECRET en producción.
+ * Protegido por CRON_SECRET (Bearer token, timing-safe).
  */
 export async function GET(request: NextRequest) {
-  // Verificar autorización
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET no configurado" }, { status: 503 });
-  }
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ") || authHeader.slice(7) !== cronSecret) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  }
+  const authError = verifyCronAuth(request);
+  if (authError) return authError;
 
   const ahora = new Date();
 
@@ -48,9 +42,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ processed: 0, message: "Sin monitoreos pendientes" });
   }
 
-  const resultados: any[] = [];
-
-  for (const mon of pendientes) {
+  const procesarMonitoreo = async (mon: typeof pendientes[number]) => {
     const networkId = mon.networkId || mon.predio.merakiNetworkId;
     const orgId = mon.orgId || mon.predio.merakiOrgId;
     const predioNombre = mon.predio.codigo || mon.predio.nombre;
@@ -61,18 +53,18 @@ export async function GET(request: NextRequest) {
 
     try {
       if (networkId) {
-        // 1. Verificar velocidad de APs
-        const apProblemas = await checkApSpeed(networkId, orgId);
-        if (apProblemas.length > 0) {
-          problemas.push(...apProblemas);
-          detalles.apSpeed = apProblemas;
-        }
+        const [apProblemas, crcProblemas] = await Promise.allSettled([
+          checkApSpeed(networkId, orgId),
+          checkCrcErrors(networkId),
+        ]);
 
-        // 2. Verificar errores CRC en switches
-        const crcProblemas = await checkCrcErrors(networkId);
-        if (crcProblemas.length > 0) {
-          problemas.push(...crcProblemas);
-          detalles.crcErrors = crcProblemas;
+        if (apProblemas.status === "fulfilled" && apProblemas.value.length > 0) {
+          problemas.push(...apProblemas.value);
+          detalles.apSpeed = apProblemas.value;
+        }
+        if (crcProblemas.status === "fulfilled" && crcProblemas.value.length > 0) {
+          problemas.push(...crcProblemas.value);
+          detalles.crcErrors = crcProblemas.value;
         }
       }
     } catch (err) {
@@ -127,14 +119,13 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    resultados.push({
-      predioId: mon.predioId,
-      predio: predioNombre,
-      check: checkNum,
-      problemas: problemas.length,
-      completado,
-    });
-  }
+    return { predioId: mon.predioId, predio: predioNombre, check: checkNum, problemas: problemas.length, completado };
+  };
+
+  const settled = await Promise.allSettled(pendientes.map(procesarMonitoreo));
+  const resultados: any[] = settled
+    .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+    .map((r) => r.value);
 
   return NextResponse.json({ processed: resultados.length, resultados });
 }

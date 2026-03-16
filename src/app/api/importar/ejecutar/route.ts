@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { parseBody, isErrorResponse, importarEjecutarSchema } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -57,6 +58,10 @@ const EQUIPO_FIELDS: Record<string, string> = {
 };
 
 export async function GET() {
+  const session = await getSession();
+  if (!session || !isModOrAdmin(session.rol)) {
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  }
   // También devolver estados disponibles
   const estados = await prisma.estadoConfig.findMany({ 
     where: { activo: true }, 
@@ -77,18 +82,9 @@ export async function POST(request: NextRequest) {
 
   let body: ImportPayload;
   try {
-    const raw = await request.json();
-    // Validar estructura del payload
-    if (!raw || typeof raw !== "object") throw new Error("Payload inválido");
-    if (!["PREDIO", "EQUIPO"].includes(raw.tipo)) throw new Error("Tipo inválido");
-    if (!Array.isArray(raw.mappings) || raw.mappings.length === 0) throw new Error("Mappings vacíos");
-    if (!Array.isArray(raw.rows) || raw.rows.length === 0) throw new Error("Rows vacíos");
-    for (const m of raw.mappings) {
-      if (typeof m.excelColumn !== "number" || typeof m.dbField !== "string") {
-        throw new Error("Mapping malformado");
-      }
-    }
-    body = raw as ImportPayload;
+    const parsed = await parseBody(request, importarEjecutarSchema);
+    if (isErrorResponse(parsed)) return parsed;
+    body = parsed as ImportPayload;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "JSON inválido";
     return NextResponse.json({ error: msg }, { status: 400 });

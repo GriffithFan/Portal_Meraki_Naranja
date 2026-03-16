@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyCronAuth } from "@/lib/cronAuth";
 
 /**
  * GET /api/cron/cleanup
@@ -11,15 +12,11 @@ import { prisma } from "@/lib/prisma";
  * - MonitoreoPostCambio completados > 30 días → eliminados
  *
  * Ejecutar diariamente a las 03:00.
- * Protegido por CRON_SECRET (Bearer token).
+ * Protegido por CRON_SECRET (Bearer token, timing-safe).
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  }
+  const authError = verifyCronAuth(request);
+  if (authError) return authError;
 
   try {
     const now = new Date();

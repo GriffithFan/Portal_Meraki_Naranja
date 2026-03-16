@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
+import { parseBody, isErrorResponse, tareaCreateSchema } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -16,6 +17,9 @@ export async function GET(request: NextRequest) {
   const espacioId = searchParams.get("espacioId");
   const limitParam = searchParams.get("limit");
   const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 2000);
+  const pageParam = searchParams.get("page");
+  const page = Math.max(parseInt(pageParam || "1") || 1, 1);
+  const skip = (page - 1) * limit;
 
   const where: any = {};
 
@@ -64,12 +68,13 @@ export async function GET(request: NextRequest) {
         _count: { select: { comentarios: true, equipos: true } },
       },
       orderBy: [{ prioridad: "desc" }, { updatedAt: "desc" }],
+      skip,
       take: limit,
     }),
     prisma.predio.count({ where }),
   ]);
 
-  return NextResponse.json({ predios, total });
+  return NextResponse.json({ predios, total, page, limit });
 }
 
 export async function POST(request: NextRequest) {
@@ -79,18 +84,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
+    const parsed = await parseBody(request, tareaCreateSchema);
+    if (isErrorResponse(parsed)) return parsed;
     const { 
       nombre, codigo, direccion, ciudad, tipo, notas, prioridad, 
       asignadoIds, fechaProgramada, estadoId, espacioId,
-      // Campos del cronograma SF 2026
       incidencias, lacR, cue, ambito, equipoAsignado,
       provincia, cuePredio, gpsPredio, fechaDesde, fechaHasta
-    } = body;
-
-    if (!nombre) {
-      return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 });
-    }
+    } = parsed;
 
     const data: any = {
       nombre,

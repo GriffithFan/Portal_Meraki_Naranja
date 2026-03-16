@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
+import { stockCreateSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -65,12 +66,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas } = body;
+    const data = await parseBody(request, stockCreateSchema);
+    if (isErrorResponse(data)) return data;
 
-    if (!nombre) {
-      return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 });
-    }
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas } = data;
 
     if (numeroSerie) {
       const existing = await prisma.equipo.findUnique({ where: { numeroSerie } });
@@ -86,7 +85,7 @@ export async function POST(request: NextRequest) {
         numeroSerie: numeroSerie || null,
         modelo,
         marca,
-        cantidad: cantidad ? parseInt(cantidad) : 1,
+        cantidad: cantidad ? parseInt(String(cantidad)) : 1,
         estado: estado || "DISPONIBLE",
         categoria,
         ubicacion,

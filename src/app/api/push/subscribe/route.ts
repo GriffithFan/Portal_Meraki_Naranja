@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { parseBody, isErrorResponse, pushSubscribeSchema, pushUnsubscribeSchema } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const body = await request.json();
-  const { endpoint, keys } = body;
-
-  if (!endpoint || !keys?.p256dh || !keys?.auth) {
-    return NextResponse.json({ error: "Datos de suscripción incompletos" }, { status: 400 });
-  }
+  const data = await parseBody(request, pushSubscribeSchema);
+  if (isErrorResponse(data)) return data;
+  const { endpoint, keys } = data;
 
   await prisma.pushSubscription.upsert({
     where: { endpoint },
@@ -35,12 +33,9 @@ export async function DELETE(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const body = await request.json();
-  const { endpoint } = body;
-
-  if (!endpoint) {
-    return NextResponse.json({ error: "Endpoint requerido" }, { status: 400 });
-  }
+  const data = await parseBody(request, pushUnsubscribeSchema);
+  if (isErrorResponse(data)) return data;
+  const { endpoint } = data;
 
   await prisma.pushSubscription.deleteMany({
     where: { endpoint, userId: session.userId },

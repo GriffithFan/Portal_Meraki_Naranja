@@ -19,6 +19,16 @@ export type CacheBucket = keyof typeof caches;
 
 const DEFAULT_TTL = 5 * 60 * 1000; // 5 minutos
 
+/** TTLs diferenciados por tipo de dato — datos que cambian poco se cachean más */
+export const TTL = {
+  /** Dispositivos, topología, config de puertos — cambian rara vez */
+  SLOW: 10 * 60 * 1000, // 10 min
+  /** Statuses, port statuses — cambian con frecuencia */
+  FAST: 3 * 60 * 1000,  // 3 min
+  /** Secciones completas montadas — el frontend controla el refetch */
+  SECTION: 5 * 60 * 1000, // 5 min
+} as const;
+
 /* ── In-flight request deduplication ── */
 const inflight = new Map<string, Promise<unknown>>();
 

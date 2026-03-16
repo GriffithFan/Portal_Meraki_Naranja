@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { calendarioUpdateSchema, calendarioCompletarSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -26,10 +27,8 @@ export async function PUT(
     if (!admin && !esCreador) {
       if (tareaAnterior.esAsignada && esAsignatario) {
         // Asignatario solo puede marcar como completada
-        const body = await request.json();
-        if (Object.keys(body).length !== 1 || body.completada === undefined) {
-          return NextResponse.json({ error: "Solo puedes marcar como completada las tareas asignadas" }, { status: 403 });
-        }
+        const body = await parseBody(request, calendarioCompletarSchema);
+        if (isErrorResponse(body)) return body;
         const tarea = await prisma.tareaCalendario.update({
           where: { id },
           data: { completada: body.completada },
@@ -44,8 +43,10 @@ export async function PUT(
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { titulo, descripcion, fecha, fechaFin, horaInicio, hora, horaFin, tipo, categoria, prioridad, completada, color, todoElDia, ubicacion, notas, asignadoId, predioId, notificarPush } = body;
+    const data = await parseBody(request, calendarioUpdateSchema);
+    if (isErrorResponse(data)) return data;
+
+    const { titulo, descripcion, fecha, fechaFin, horaInicio, hora, horaFin, tipo, categoria, prioridad, completada, color, todoElDia, ubicacion, notas, asignadoId, predioId, notificarPush } = data;
 
     const updateData: any = {};
     if (titulo !== undefined) updateData.titulo = titulo;

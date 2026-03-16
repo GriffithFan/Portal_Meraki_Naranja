@@ -95,7 +95,7 @@ model EspacioTrabajo {
   hijos       EspacioTrabajo[] @relation("EspacioHijos")
 
   creadorId   String
-  creador     User     @relation("CreadorEspacio", fields: [creadorId], references: [id])
+  creador     User     @relation("CreadorEspacio", fields: [creadorId], references: [id], onDelete: Cascade)
 
   predios     Predio[]
 
@@ -144,9 +144,9 @@ model Predio {
   espacio   EspacioTrabajo? @relation(fields: [espacioId], references: [id], onDelete: SetNull)
 
   estadoId  String?
-  estado    EstadoConfig? @relation(fields: [estadoId], references: [id])
+  estado    EstadoConfig? @relation(fields: [estadoId], references: [id], onDelete: SetNull)
   creadorId String?
-  creador   User?         @relation("CreadorPredio", fields: [creadorId], references: [id])
+  creador   User?         @relation("CreadorPredio", fields: [creadorId], references: [id], onDelete: SetNull)
 
   equipos      Equipo[]
   etiquetas    PredioEtiqueta[]
@@ -183,7 +183,7 @@ model Equipo {
   ubicacion   String?
   notas       String?
   predioId    String?
-  predio      Predio? @relation(fields: [predioId], references: [id])
+  predio      Predio? @relation(fields: [predioId], references: [id], onDelete: SetNull)
 
   comentarios  Comentario[]
   asignaciones Asignacion[]
@@ -221,7 +221,7 @@ model Comentario {
   userId    String
   predioId  String?
   equipoId  String?
-  usuario   User     @relation(fields: [userId], references: [id])
+  usuario   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   predio    Predio?  @relation(fields: [predioId], references: [id], onDelete: Cascade)
   equipo    Equipo?  @relation(fields: [equipoId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
@@ -240,7 +240,7 @@ model Asignacion {
   userId   String
   predioId String?
   equipoId String?
-  usuario  User    @relation(fields: [userId], references: [id])
+  usuario  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   predio   Predio? @relation(fields: [predioId], references: [id], onDelete: Cascade)
   equipo   Equipo? @relation(fields: [equipoId], references: [id], onDelete: Cascade)
 
@@ -262,7 +262,7 @@ model Notificacion {
   entidad   String?
   entidadId String?
   userId    String
-  usuario   User    @relation(fields: [userId], references: [id])
+  usuario   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
@@ -280,7 +280,7 @@ model Actividad {
   entidadId   String
   metadata    Json?
   userId      String
-  usuario     User     @relation(fields: [userId], references: [id])
+  usuario     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 

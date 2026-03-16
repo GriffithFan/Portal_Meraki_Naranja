@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isModOrAdmin } from '@/lib/auth';
+import { parseBody, isErrorResponse, estadoCreateSchema } from '@/lib/validation';
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -26,12 +27,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const { nombre, color, entidad } = body;
-
-    if (!nombre) {
-      return NextResponse.json({ error: 'El nombre es requerido' }, { status: 400 });
-    }
+    const parsed = await parseBody(request, estadoCreateSchema);
+    if (isErrorResponse(parsed)) return parsed;
+    const { nombre, color, entidad } = parsed;
 
     // Generar clave automáticamente
     const clave = nombre

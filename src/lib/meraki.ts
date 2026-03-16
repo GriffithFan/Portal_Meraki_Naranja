@@ -14,6 +14,21 @@ const client: AxiosInstance = axios.create({
   },
 });
 
+/* ── Retry automático para 429 (Meraki rate limit: 10 req/s) ──── */
+client.interceptors.response.use(undefined, async (error) => {
+  const config = error.config;
+  if (!config || !error.response || error.response.status !== 429) {
+    return Promise.reject(error);
+  }
+  const attempt = (config.__retryCount || 0) + 1;
+  if (attempt > 3) return Promise.reject(error);
+  config.__retryCount = attempt;
+  const retryAfter = parseInt(error.response.headers["retry-after"] || "1", 10);
+  const delayMs = Math.max(retryAfter, 1) * 1000;
+  await new Promise((r) => setTimeout(r, delayMs));
+  return client(config);
+});
+
 /* ── Paginación ───────────────────────────────────────── */
 
 function parseNextCursor(linkHeader: string | string[] | undefined): string | null {
@@ -44,27 +59,37 @@ function getNextCursorFromHeaders(headers: Record<string, string> = {}): string 
 async function fetchAllPages<T = unknown>(
   path: string,
   params: Record<string, unknown> = {},
-  opts: { perPage?: number; maxPages?: number } = {}
+  opts: { perPage?: number; maxPages?: number; timeoutMs?: number } = {}
 ): Promise<T[]> {
-  const { perPage = 1000, maxPages = 100 } = opts;
+  const { perPage = 1000, maxPages = 100, timeoutMs = 60_000 } = opts;
   const results: T[] = [];
   let cursor = params.startingAfter as string | undefined;
   let page = 0;
 
-  while (page < maxPages) {
-    const query: Record<string, unknown> = { ...params, perPage };
-    if (cursor) query.startingAfter = cursor;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    const { data, headers } = await client.get(path, { params: query });
+  try {
+    while (page < maxPages) {
+      const query: Record<string, unknown> = { ...params, perPage };
+      if (cursor) query.startingAfter = cursor;
 
-    if (Array.isArray(data)) results.push(...data);
-    else if (data?.items && Array.isArray(data.items)) results.push(...data.items);
-    else if (data) results.push(data);
+      const { data, headers } = await client.get(path, {
+        params: query,
+        signal: controller.signal,
+      });
 
-    const next = getNextCursorFromHeaders(headers as Record<string, string>);
-    if (!next || next === cursor) break;
-    cursor = next;
-    page++;
+      if (Array.isArray(data)) results.push(...data);
+      else if (data?.items && Array.isArray(data.items)) results.push(...data.items);
+      else if (data) results.push(data);
+
+      const next = getNextCursorFromHeaders(headers as Record<string, string>);
+      if (!next || next === cursor) break;
+      cursor = next;
+      page++;
+    }
+  } finally {
+    clearTimeout(timer);
   }
   return results;
 }
@@ -75,7 +100,11 @@ async function safeGet<T = unknown>(path: string, params: Record<string, unknown
   try {
     const { data } = await client.get(path, { params });
     return data as T;
-  } catch {
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    if (status !== 404) {
+      console.error(`[Meraki] safeGet ${path} failed (${status ?? "unknown"}):`, axios.isAxiosError(err) ? err.message : err);
+    }
     return fallback;
   }
 }
@@ -106,8 +135,7 @@ export async function getNetworkDevices(networkId: string) {
 /* ── Devices / Statuses ───────────────────────────────── */
 
 export async function getOrganizationDevicesStatuses(orgId: string, params: Record<string, unknown> = {}) {
-  const { data } = await client.get(`/organizations/${orgId}/devices/statuses`, { params });
-  return data;
+  return fetchAllPages(`/organizations/${orgId}/devices/statuses`, params);
 }
 
 /* ── Topology ──────────────────────────────────────────── */

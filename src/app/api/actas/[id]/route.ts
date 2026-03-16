@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, isModOrAdmin } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import path from "path";
 
@@ -16,6 +16,20 @@ export async function GET(
 
   if (!acta) {
     return NextResponse.json({ error: "Acta no encontrada" }, { status: 404 });
+  }
+
+  // IDOR: técnicos solo pueden descargar actas de predios asignados/creados
+  if (!isModOrAdmin(session.rol) && acta.predioId) {
+    const asignacion = await prisma.asignacion.findFirst({
+      where: { predioId: acta.predioId, userId: session.userId },
+    });
+    const predio = await prisma.predio.findUnique({
+      where: { id: acta.predioId },
+      select: { creadorId: true },
+    });
+    if (!asignacion && predio?.creadorId !== session.userId) {
+      return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
+    }
   }
 
   try {

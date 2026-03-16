@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { comentarioSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -35,15 +36,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { contenido, predioId, equipoId } = await request.json();
+    const data = await parseBody(request, comentarioSchema);
+    if (isErrorResponse(data)) return data;
 
-    if (!contenido?.trim()) {
-      return NextResponse.json({ error: "El comentario no puede estar vacío" }, { status: 400 });
-    }
-
-    if (!predioId && !equipoId) {
-      return NextResponse.json({ error: "Se requiere predioId o equipoId" }, { status: 400 });
-    }
+    const { contenido, predioId, equipoId } = data;
 
     const comentario = await prisma.comentario.create({
       data: {

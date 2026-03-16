@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { parseBody, isErrorResponse, tareaUpdateSchema } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -90,6 +91,17 @@ export async function GET(
     return NextResponse.json({ error: "Tarea no encontrada" }, { status: 404 });
   }
 
+  // IDOR: técnicos solo pueden ver predios asignados a ellos o que crearon
+  if (!isModOrAdmin(session.rol)) {
+    const isCreator = predio.creador?.id === session.userId;
+    const isAssigned = predio.asignaciones?.some(
+      (a: { usuario: { id: string } }) => a.usuario.id === session.userId
+    );
+    if (!isCreator && !isAssigned) {
+      return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
+    }
+  }
+
   return NextResponse.json(predio);
 }
 
@@ -111,26 +123,28 @@ export async function PATCH(
   }
 
   try {
-    const body = await request.json();
+    const body = await parseBody(request, tareaUpdateSchema);
+    if (isErrorResponse(body)) return body;
+    const bodyAny = body as Record<string, unknown>;
     const data: any = {
       fechaActualizacion: new Date(),
     };
 
     // Solo actualizar campos permitidos
     for (const field of EDITABLE_FIELDS) {
-      if (body[field] !== undefined) {
+      if (bodyAny[field] !== undefined) {
         // Convertir fechas
         if (["fechaDesde", "fechaHasta", "fechaProgramada"].includes(field)) {
-          data[field] = body[field] ? new Date(body[field]) : null;
+          data[field] = bodyAny[field] ? new Date(bodyAny[field] as string) : null;
         }
         // Convertir coordenadas
         else if (["latitud", "longitud"].includes(field)) {
-          const val = parseFloat(String(body[field]).replace(",", "."));
+          const val = parseFloat(String(bodyAny[field]).replace(",", "."));
           data[field] = isNaN(val) ? null : val;
         }
         // Valores normales
         else {
-          data[field] = body[field] || null;
+          data[field] = bodyAny[field] || null;
         }
       }
     }
@@ -148,12 +162,13 @@ export async function PATCH(
     });
 
     // Actualizar asignaciones si se proporcionan (dentro de transacción para evitar race conditions)
-    if (body.asignadoIds !== undefined && Array.isArray(body.asignadoIds)) {
+    const asignadoIds = body.asignadoIds;
+    if (asignadoIds !== undefined && Array.isArray(asignadoIds)) {
       await prisma.$transaction(async (tx) => {
         await tx.asignacion.deleteMany({ where: { predioId: id } });
-        if (body.asignadoIds.length > 0) {
+        if (asignadoIds.length > 0) {
           const validUsers = await tx.user.findMany({
-            where: { id: { in: body.asignadoIds }, activo: true },
+            where: { id: { in: asignadoIds }, activo: true },
             select: { id: true },
           });
           const validIds = validUsers.map((u: { id: string }) => u.id);
@@ -214,7 +229,8 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const body = await request.json();
+    const body = await parseBody(request, tareaUpdateSchema);
+    if (isErrorResponse(body)) return body;
     const { nombre, codigo, direccion, ciudad, tipo, notas, prioridad, estadoId, fechaProgramada, asignadoIds,
       incidencias, lacR, cue, ambito, equipoAsignado, provincia, cuePredio, gpsPredio, fechaDesde, fechaHasta } = body;
 

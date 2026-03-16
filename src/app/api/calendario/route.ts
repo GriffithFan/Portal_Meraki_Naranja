@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { calendarioCreateSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -67,12 +68,10 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   try {
-    const body = await request.json();
-    const { titulo, descripcion, fecha, fechaFin, horaInicio, hora, horaFin, tipo, categoria, prioridad, color, todoElDia, ubicacion, notas, asignadoId, predioId, notificarPush } = body;
+    const data = await parseBody(request, calendarioCreateSchema);
+    if (isErrorResponse(data)) return data;
 
-    if (!titulo || !fecha) {
-      return NextResponse.json({ error: "Título y fecha son requeridos" }, { status: 400 });
-    }
+    const { titulo, descripcion, fecha, fechaFin, horaInicio, hora, horaFin, tipo, categoria, prioridad, color, todoElDia, ubicacion, notas, asignadoId, predioId, notificarPush } = data;
 
     // Solo admin/mod pueden asignar tareas a otros usuarios
     const finalAsignadoId = asignadoId || null;

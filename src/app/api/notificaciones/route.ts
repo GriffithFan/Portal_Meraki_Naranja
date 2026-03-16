@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { notificacionMarcarSchema, notificacionCrearSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -32,8 +33,10 @@ export async function PUT(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   try {
-    const body = await request.json();
-    const { ids, marcarTodas } = body;
+    const data = await parseBody(request, notificacionMarcarSchema);
+    if (isErrorResponse(data)) return data;
+
+    const { ids, marcarTodas } = data;
 
     if (marcarTodas) {
       await prisma.notificacion.updateMany({
@@ -61,12 +64,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const { tipo, titulo, mensaje, userIds, enlace } = body;
+    const data = await parseBody(request, notificacionCrearSchema);
+    if (isErrorResponse(data)) return data;
 
-    if (!titulo || !mensaje || !userIds?.length) {
-      return NextResponse.json({ error: "Título, mensaje y destinatarios son requeridos" }, { status: 400 });
-    }
+    const { tipo, titulo, mensaje, userIds, enlace } = data;
 
     await prisma.notificacion.createMany({
       data: userIds.map((uid: string) => ({

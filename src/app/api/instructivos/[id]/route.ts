@@ -72,7 +72,7 @@ export async function PUT(
 
     // Si se sube un nuevo video, eliminar el anterior
     if (video && video.size > 0) {
-      if (!ALLOWED_VIDEO_TYPES.includes(video.type) && !video.name.match(ALLOWED_VIDEO_EXT)) {
+      if (!ALLOWED_VIDEO_TYPES.includes(video.type) || !video.name.match(ALLOWED_VIDEO_EXT)) {
         return NextResponse.json(
           { error: "Solo se permiten videos MP4, WebM u OGG" },
           { status: 400 }
