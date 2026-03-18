@@ -1,29 +1,33 @@
-# Deploy en VPS Ubuntu + Integración WordPress (thnet.com/carrot)
+# Deploy en VPS Ubuntu — carrot.thnet.com.ar
 
-Guía para desplegar **Carrot** en un VPS Ubuntu que ya tiene otro proyecto corriendo, e integrarlo con el sitio WordPress en `thnet.com` bajo la ruta `/carrot`.
+Guía de despliegue de **Carrot** en un VPS Ubuntu 24.04 con subdominio dedicado.
 
-> **Deploy automático**: Podés usar `scripts/deploy-vps.sh` para automatizar la mayoría de estos pasos. Ver sección 11.
+> **Estado actual**: Desplegado y corriendo en producción.
+> **URL**: https://carrot.thnet.com.ar
+> **VPS**: 72.61.32.146
 
 ---
 
-## Arquitectura
+## Arquitectura actual
 
 ```
-                    ┌──────────────┐
-  Usuario ──────▶   │   thnet.com  │  (WordPress - host separado)
-                    │   Nginx/WP   │
-                    └──────┬───────┘
-                           │
-                   /carrot │  reverse proxy
-                           ▼
-                    ┌──────────────┐
-                    │  TU VPS      │
-                    │  Ubuntu      │
-                    │  Nginx :80   │──▶ Next.js :3001 (PM2)
-                    │              │──▶ Otro proyecto :XXXX
-                    │              │──▶ PostgreSQL :5432
-                    └──────────────┘
+                    ┌──────────────────────────┐
+  Usuario ──────▶   │  carrot.thnet.com.ar     │
+                    │  (A record → 72.61.32.146)│
+                    └──────────┬───────────────┘
+                               │ HTTPS :443
+                               ▼
+                    ┌──────────────────────────┐
+                    │  VPS Ubuntu 24.04        │
+                    │  Nginx :443 (TLS)        │──▶ Next.js :3001 (PM2 "carrot")
+                    │                          │──▶ Portal Meraki :XXXX
+                    │                          │──▶ PostgreSQL :5432 (carrot_db)
+                    └──────────────────────────┘
 ```
+
+- **Sin basePath** — El subdominio apunta directo a la app (no `/carrot`)
+- **SSH**: solo usuario `deploy` con clave ed25519
+- **DB**: usuario app `carrot_app` (solo CRUD, sin DDL)
 
 ---
 
@@ -42,8 +46,11 @@ sudo npm install -g pm2
 # PostgreSQL
 sudo apt-get install -y postgresql postgresql-contrib
 
-# Nginx (probablemente ya lo tengas)
+# Nginx
 sudo apt-get install -y nginx
+
+# Certbot (SSL)
+sudo apt-get install -y certbot python3-certbot-nginx
 ```
 
 ### 1.2 Crear la base de datos
@@ -51,17 +58,29 @@ sudo apt-get install -y nginx
 ```bash
 sudo -u postgres psql
 
-CREATE USER carrot_user WITH PASSWORD 'TU_PASSWORD_SEGURO';
-CREATE DATABASE carrot_db OWNER carrot_user;
-GRANT ALL PRIVILEGES ON DATABASE carrot_db TO carrot_user;
+CREATE DATABASE carrot_db;
+-- Usuario app (solo CRUD, sin DDL)
+CREATE USER carrot_app WITH PASSWORD 'PASSWORD_GENERADA_CON_OPENSSL';
+GRANT CONNECT ON DATABASE carrot_db TO carrot_app;
+\c carrot_db
+GRANT USAGE ON SCHEMA public TO carrot_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO carrot_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO carrot_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO carrot_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO carrot_app;
 \q
 ```
 
-### 1.3 Crear directorio del proyecto
+> **Nota**: Para migraciones Prisma (ALTER TABLE, CREATE TABLE), usar el usuario `postgres` temporalmente.
+
+### 1.3 Crear usuario deploy y directorio
 
 ```bash
+sudo adduser --disabled-password --gecos "" deploy
+sudo usermod -aG sudo deploy
+echo "deploy ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/deploy
 sudo mkdir -p /var/www/carrot
-sudo chown $USER:$USER /var/www/carrot
+sudo chown deploy:deploy /var/www/carrot
 ```
 
 ---
@@ -70,16 +89,16 @@ sudo chown $USER:$USER /var/www/carrot
 
 ### 2.1 Subir archivos
 
-Opción A — Git (recomendado):
 ```bash
-cd /var/www/carrot
-git clone https://github.com/GriffithFan/Portal_Meraki_Naranja.git .
+# Desde tu máquina local (PowerShell) — con SSH key
+scp -i ~/.ssh/id_ed25519 -r .\portal-meraki-naranja\* deploy@72.61.32.146:/var/www/carrot/
 ```
 
-Opción B — SCP:
+O con Git:
 ```bash
-# Desde tu máquina local (PowerShell)
-scp -r .\portal-meraki-naranja\* usuario@TU_VPS_IP:/var/www/carrot/
+ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
+cd /var/www/carrot
+git clone https://github.com/GriffithFan/Portal_Meraki_Naranja.git .
 ```
 
 ### 2.2 Configurar variables de entorno
@@ -91,18 +110,17 @@ nano .env
 
 Contenido del `.env`:
 ```env
-DATABASE_URL="postgresql://carrot_user:TU_PASSWORD_SEGURO@localhost:5432/carrot_db"
-JWT_SECRET="genera_un_string_aleatorio_largo_aqui"
-NEXTAUTH_URL="https://thnet.com/carrot"
-NEXT_PUBLIC_BASE_PATH="/carrot"
-MERAKI_API_KEY="tu_api_key_de_meraki"
+DATABASE_URL="postgresql://carrot_app:TU_PASSWORD@localhost:5432/carrot_db"
+JWT_SECRET="genera_con_crypto_randomBytes_48"
+MERAKI_API_KEY="tu_api_key"
 NODE_ENV="production"
 PORT=3001
+NEXT_PUBLIC_VAPID_KEY="tu_vapid_public_key"
+VAPID_PRIVATE_KEY="tu_vapid_private_key"
 ```
 
-> **Importante**: Usamos puerto **3001** para no chocar con tu otro proyecto. Ajustá si 3001 ya está en uso.
->
-> **basePath**: Se configura automáticamente via la variable `NEXT_PUBLIC_BASE_PATH`. No es necesario editar `next.config.mjs`.
+> **Puerto 3001** para no chocar con otros proyectos en el VPS.
+> **Sin NEXT_PUBLIC_BASE_PATH** — el subdominio apunta directo a la raíz.
 
 ### 2.3 Instalar dependencias y buildear
 
@@ -110,7 +128,7 @@ PORT=3001
 cd /var/www/carrot
 npm ci --omit=dev
 npx prisma generate
-npx prisma db push
+npx prisma db push    # usar usuario postgres para migraciones
 npm run build
 ```
 
@@ -120,7 +138,7 @@ npm run build
 
 ### 3.1 Ecosystem file
 
-El proyecto incluye `ecosystem.config.js` preconfigurado. Si necesitás ajustarlo:
+El proyecto incluye `ecosystem.config.js` preconfigurado:
 
 ```js
 module.exports = {
@@ -153,7 +171,7 @@ cd /var/www/carrot
 mkdir -p logs
 pm2 start ecosystem.config.js
 pm2 save
-pm2 startup  # Sigue las instrucciones que imprime para auto-arranque
+pm2 startup  # Auto-arranque al reiniciar VPS
 ```
 
 ### 3.3 Verificar
@@ -161,215 +179,145 @@ pm2 startup  # Sigue las instrucciones que imprime para auto-arranque
 ```bash
 pm2 status
 pm2 logs carrot
-curl http://localhost:3001/carrot  # Debería responder
+curl http://localhost:3001  # Debería responder HTML
 ```
 
 ---
 
-## 4. Nginx en el VPS
+## 4. Nginx — Reverse Proxy con TLS
 
-Configurá Nginx para servir tu proyecto bajo un subdominio o path. Como ya tenés otro proyecto, **agregás un nuevo `location` block** sin tocar el existente.
-
-### 4.1 Editar configuración de Nginx
-
-```bash
-sudo nano /etc/nginx/sites-available/default
-# O el archivo de config que uses
-```
-
-Agregá dentro del bloque `server` existente:
+Config actual en `/etc/nginx/sites-available/carrot`:
 
 ```nginx
-# ── Carrot bajo /carrot ─────────────────────────────
-location /carrot {
-    proxy_pass http://127.0.0.1:3001;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_cache_bypass $http_upgrade;
-    proxy_read_timeout 86400;
-}
+limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
 
-location /carrot/_next/static {
-    proxy_pass http://127.0.0.1:3001;
-    proxy_cache_valid 200 365d;
-    add_header Cache-Control "public, max-age=31536000, immutable";
-}
-```
-
-### 4.2 Testear y recargar
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### 4.3 Si el VPS tiene su propio dominio
-
-Si querés acceder directo al VPS (ej: `vps.tudominio.com/carrot`), la config anterior ya lo cubre. Si querés un subdominio dedicado (ej: `carrot.tudominio.com`), creá un nuevo server block:
-
-```nginx
 server {
-    listen 80;
-    server_name carrot.tudominio.com;
+    server_name carrot.thnet.com.ar;
 
-    location / {
-        proxy_pass http://127.0.0.1:3001/carrot;
+    access_log /var/log/nginx/carrot-access.log;
+    error_log /var/log/nginx/carrot-error.log;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml+rss image/svg+xml;
+
+    location /uploads/ {
+        deny all;
+        return 403;
+    }
+
+    location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    location /_next/static {
+        proxy_pass http://127.0.0.1:3001;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/carrot.thnet.com.ar/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/carrot.thnet.com.ar/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    if ($host = carrot.thnet.com.ar) {
+        return 301 https://$host$request_uri;
+    }
+    listen 80;
+    server_name carrot.thnet.com.ar;
+    return 404;
 }
 ```
 
----
-
-## 5. Integración con WordPress (thnet.com/carrot)
-
-El sitio WordPress está en **otro servidor**. Para que `thnet.com/carrot` apunte a tu VPS:
-
-### Opción A: Reverse proxy desde WordPress server (Recomendada)
-
-En el servidor donde corre WordPress, editá la config de Nginx:
+### 4.1 Habilitar y testear
 
 ```bash
-# En el servidor de thnet.com
-sudo nano /etc/nginx/sites-available/thnet.com
-```
-
-Agregá este location block **ANTES** del bloque `location /` de WordPress:
-
-```nginx
-# Proxy a Carrot en el VPS
-location /carrot {
-    proxy_pass http://IP_DE_TU_VPS:3001;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_cache_bypass $http_upgrade;
-}
-
-location /carrot/_next/static {
-    proxy_pass http://IP_DE_TU_VPS:3001;
-    proxy_cache_valid 200 365d;
-    add_header Cache-Control "public, max-age=31536000, immutable";
-}
-```
-
-```bash
+sudo ln -s /etc/nginx/sites-available/carrot /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### Opción B: Si WordPress usa Apache
+---
 
-Agregá al `.htaccess` o config del virtualhost:
+## 5. DNS — Configuración del subdominio
 
-```apache
-# En el virtualhost de thnet.com
-ProxyPreserveHost On
+En el panel DNS del dominio `thnet.com.ar`:
 
-ProxyPass /carrot http://IP_DE_TU_VPS:3001/carrot
-ProxyPassReverse /carrot http://IP_DE_TU_VPS:3001/carrot
-```
+| Tipo | Nombre | Valor | TTL |
+|------|--------|-------|-----|
+| A | carrot | 72.61.32.146 | 3600 |
 
-Habilitá los módulos necesarios:
-```bash
-sudo a2enmod proxy proxy_http proxy_wstunnel
-sudo systemctl restart apache2
-```
-
-### Opción C: Cloudflare / DNS (si no podés tocar el server de WordPress)
-
-Si no tenés acceso al servidor de WordPress, podés usar **Cloudflare Workers** o un subdominio:
-
-1. Crear subdominio `carrot.thnet.com` apuntando al VPS
-2. En ese caso, no necesitás `NEXT_PUBLIC_BASE_PATH` — dejá la variable vacía o no la definas
+> Si se usa Cloudflare: activar proxy (nube naranja) y SSL/TLS → Full (Strict).
 
 ---
 
-## 6. Firewall del VPS
+## 6. SSL / HTTPS
 
 ```bash
-# Permitir tráfico en el puerto del proxy (si el WordPress server necesita llegar)
-sudo ufw allow from IP_SERVIDOR_WORDPRESS to any port 3001
-
-# O si ya tenés el 80/443 abierto y usás Nginx local:
-sudo ufw allow 80
-sudo ufw allow 443
+sudo certbot --nginx -d carrot.thnet.com.ar
+sudo certbot renew --dry-run  # verificar renovación automática
 ```
+
+Certbot configura automáticamente el server block de Nginx y programa la renovación.
 
 ---
 
-## 7. SSL / HTTPS
+## 7. Firewall
 
-### Si el VPS tiene su propio dominio:
 ```bash
-sudo apt-get install certbot python3-certbot-nginx
-sudo certbot --nginx -d carrot.tudominio.com
+sudo ufw allow 22/tcp   # SSH
+sudo ufw allow 80/tcp   # HTTP (redirige a HTTPS)
+sudo ufw allow 443/tcp  # HTTPS
+sudo ufw enable
 ```
 
-### Para thnet.com/carrot:
-El SSL lo maneja el servidor de WordPress. Si thnet.com ya tiene HTTPS (Let's Encrypt, Cloudflare, etc.), el tráfico hacia `/carrot` se encripta automáticamente en el tramo usuario→WordPress. El tramo WordPress→VPS va por la red interna. Si querés encriptar también ese tramo, usá un túnel SSH o WireGuard.
+> El puerto 3001 NO se expone — Nginx actúa como proxy.
 
 ---
 
-## 8. Acceso desde WordPress
-
-Para agregar un botón/icono de acceso desde el sitio WordPress:
-
-### Opción 1: Widget HTML en WordPress
-
-En el dashboard de WordPress → Apariencia → Widgets, agregá un widget **HTML personalizado**:
-
-```html
-<a href="https://thnet.com/carrot" 
-   style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#6366f1;color:white;border-radius:8px;text-decoration:none;font-size:14px;"
-   title="Carrot">
-  🥕 Carrot
-</a>
-```
-
-### Opción 2: Menú de navegación
-
-En WordPress → Apariencia → Menús:
-1. Agregar un **enlace personalizado**
-2. URL: `https://thnet.com/carrot`
-3. Texto del enlace: `🥕 Carrot`
-
-### Opción 3: En el header con código PHP
-
-Si usás un tema child, en `header.php`:
-```php
-<a href="/carrot" class="carrot-login-btn" title="Carrot">
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/>
-  </svg>
-</a>
-```
-
----
-
-## 9. Comandos útiles post-deploy
+## 8. Comandos útiles post-deploy
 
 ```bash
+# Conexión SSH
+ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
+
 # Ver logs
-pm2 logs carrot
+pm2 logs carrot --lines 100
 
-# Reiniciar
+# Reiniciar app
 pm2 restart carrot
 
-# Actualizar código (o usar scripts/update.sh)
+# Actualizar código
 cd /var/www/carrot
 git pull
 npm ci --omit=dev
@@ -381,32 +329,39 @@ pm2 restart carrot
 # Monitorear
 pm2 monit
 
-# Ver estado de todos los procesos
+# Estado de todos los procesos
 pm2 status
+
+# Backup manual de DB
+sudo -u postgres pg_dump carrot_db | gzip > /opt/backups/db_manual_$(date +%Y%m%d).sql.gz
 ```
 
 ---
 
-## 10. Checklist de Deploy
+## 9. Checklist de Deploy
 
-- [ ] Node.js 20+ instalado
-- [ ] PostgreSQL corriendo con usuario y base creados
-- [ ] Proyecto clonado en `/var/www/carrot`
-- [ ] `.env` configurado con DATABASE_URL, JWT_SECRET, MERAKI_API_KEY, NEXT_PUBLIC_BASE_PATH
-- [ ] `npm ci && npx prisma db push && npm run build` exitoso
-- [ ] PM2 corriendo (`pm2 status` muestra "online")
-- [ ] `curl http://localhost:3001/carrot` responde
-- [ ] Nginx en VPS configurado con `location /carrot`
-- [ ] Nginx en servidor WordPress configurado con proxy a VPS
-- [ ] Firewall permite tráfico entre servidores
-- [ ] SSL funcionando
-- [ ] Enlace agregado en WordPress
-- [ ] Probado desde navegador: `https://thnet.com/carrot` → login
-- [ ] Primer usuario admin creado: `npx prisma db seed`
+- [x] Node.js 20+ instalado
+- [x] PostgreSQL corriendo con usuario `carrot_app` (solo CRUD)
+- [x] Proyecto clonado en `/var/www/carrot`
+- [x] `.env` configurado (DATABASE_URL, JWT_SECRET, MERAKI_API_KEY)
+- [x] `npm ci && npx prisma db push && npm run build` exitoso
+- [x] PM2 corriendo (`pm2 status` muestra "online")
+- [x] `curl http://localhost:3001` responde
+- [x] Nginx configurado con server block para `carrot.thnet.com.ar`
+- [x] DNS registro A apuntando al VPS
+- [x] SSL/TLS con Let's Encrypt (certbot)
+- [x] Firewall UFW habilitado (22/80/443)
+- [x] SSH hardening (solo deploy con key, sin root, sin password)
+- [x] Fail2ban activo (sshd + nginx-limit-req)
+- [x] PM2 logrotate configurado
+- [x] Backup automático de DB (cron 3 AM)
+- [x] Primer usuario admin creado: `npx prisma db seed`
+- [x] Probado desde navegador: `https://carrot.thnet.com.ar`
+- [ ] Cloudflare proxy (opcional)
 
 ---
 
-## 11. Deploy automático
+## 10. Deploy automático
 
 El proyecto incluye scripts para automatizar el proceso:
 

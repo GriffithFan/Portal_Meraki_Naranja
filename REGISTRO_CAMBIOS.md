@@ -199,6 +199,69 @@
 
 *Próximo: Fase 2.3 — Funciones Meraki faltantes + datos históricos reales*
 
+## Fase 3: Gestión de Predios — ClickUp Integration
+
+### Importación masiva desde ClickUp
+- Importación de **48 predios** desde ClickUp al sistema con mapeo completo de campos.
+- Campos mapeados: nombre, código, dirección, provincia, estado, equipo asignado, prioridad, CUE, ámbito, correo viático, observaciones.
+- Vinculación automática con redes Meraki por nombre.
+
+### Estados configurables
+- **12 estados** importados desde ClickUp con colores, claves y orden.
+- Componente `StatusIcon` para representación visual de estados con iconos SVG y colores por clave.
+- Flujo visual del avance: `backlog → por_confirmar → confirmado → en_progreso → instalado → activo → conforme → facturado → incidencia → suspendido → cerrado → cancelado`.
+
+### Espacios de trabajo (Workspaces)
+- Creación de jerarquía de espacios de trabajo para organizar predios.
+- Estadísticas agregadas por espacio: distribución por estado, equipo, provincia.
+- Fix de bug en la creación de workspaces (cascade de permisos).
+
+---
+
+## Fase 4: Deploy a Producción + Hardening de Seguridad
+
+### Deploy VPS (2026-03-18)
+- **Servidor**: Ubuntu 24.04, VPS en 72.61.32.146
+- **Dominio**: `carrot.thnet.com.ar` (registro A, Let's Encrypt TLS)
+- **Stack**: Node.js v20.19.5, PM2 6.0.13, Nginx 1.24.0, PostgreSQL 16.13
+- **Build**: `npm run build` exitoso, PM2 "carrot" corriendo en puerto 3001
+- **Seed**: 48 predios importados, 12 estados, usuario admin creado
+
+### Hardening de seguridad (2026-03-18)
+Todos los ítems de `SEGURIDAD_VPS.md` aplicados:
+
+**Riesgo bajo (aplicados sin interrupción):**
+- Fail2ban instalado y configurado (sshd: maxretry=3/bantime=3600, nginx-limit-req: maxretry=10/bantime=600)
+- PM2 logrotate (50M, 7 retenciones, compresión)
+- Nginx rate limiting `/api/` (30r/s burst=20 nodelay)
+- Nginx HSTS header (max-age=31536000; includeSubDomains)
+- Nginx bloqueo de `/uploads/` (403)
+- Backup automático PostgreSQL (cron 3 AM, retención 30 días, destino `/opt/backups/`)
+
+**Precaución (aplicados con validación):**
+- Usuario `deploy` creado con `--disabled-password`, sudo NOPASSWD
+- SSH key ed25519 generada y configurada
+- SSH hardening: `PermitRootLogin no`, `PasswordAuthentication no`, `MaxAuthTries 3`, `AllowUsers deploy`
+- Usuario PostgreSQL dedicado `carrot_app` con permisos mínimos (SELECT/INSERT/UPDATE/DELETE — sin DDL)
+- Secretos de producción regenerados (JWT_SECRET, API keys)
+
+**Ya activos previamente:**
+- UFW habilitado (22/80/443)
+- Unattended-upgrades para patches de seguridad
+- HTTPS + certbot auto-renew
+- Headers de seguridad en Nginx (X-Frame, X-Content-Type, X-XSS)
+
+### Documentación actualizada
+- `CREDENCIALES.md` creado con todas las contraseñas de producción (excluido de git)
+- `.gitignore` actualizado para excluir `CREDENCIALES.md`
+- `SEGURIDAD_VPS.md` actualizado con checklist completo marcado
+- `DEPLOY_VPS_WORDPRESS.md` actualizado a arquitectura de subdominio
+- `README.md` ampliado con info de producción y seguridad
+
+---
+
+*Próximo: Fase 5 — Funciones Meraki faltantes + ConnectivityBar con datos reales + Cloudflare (opcional)*
+
 ## Fase 3: Secciones de Gestión
 
 ### Sidebar

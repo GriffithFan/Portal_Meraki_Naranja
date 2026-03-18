@@ -1,14 +1,17 @@
-# Portal Meraki Naranja
+# Portal Meraki Naranja 🥕
 
 Panel de monitoreo y gestión para redes Cisco Meraki. Construido con Next.js 14, Prisma, PostgreSQL y Tailwind CSS.
+
+> **Producción**: https://carrot.thnet.com.ar
+> **VPS**: Ubuntu 24.04 — 72.61.32.146
 
 ## Stack
 
 - **Frontend**: Next.js 14 (App Router), React, Tailwind CSS
 - **Backend**: API Routes (Next.js), Prisma ORM
-- **Base de datos**: PostgreSQL
+- **Base de datos**: PostgreSQL 16
 - **Autenticación**: JWT con cookies httpOnly
-- **Producción**: PM2, Nginx
+- **Producción**: PM2, Nginx, Let's Encrypt, Fail2ban
 
 ## Inicio rápido
 
@@ -38,8 +41,9 @@ src/
 │   ├── dashboard/    # Páginas del panel
 │   └── login/        # Autenticación
 ├── components/       # Componentes reutilizables
+├── contexts/         # Providers (Session, Network)
 ├── hooks/            # Custom hooks
-├── lib/              # Utilidades del servidor
+├── lib/              # Utilidades del servidor (Meraki, auth, cache)
 ├── types/            # Definiciones TypeScript
 └── utils/            # Utilidades del cliente
 ```
@@ -49,3 +53,28 @@ src/
 - **Admin**: Acceso total, gestión de usuarios y permisos
 - **Moderador**: Gestión de tareas, stock, actas, facturas
 - **Técnico**: Monitoreo, tareas asignadas, calendario
+
+## Deploy a producción
+
+Ver [DEPLOY_VPS_WORDPRESS.md](DEPLOY_VPS_WORDPRESS.md) para la guía completa.
+
+```bash
+ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
+cd /var/www/carrot
+git pull && npm ci --omit=dev && npm run build && pm2 restart carrot
+```
+
+## Seguridad
+
+Ver [SEGURIDAD_VPS.md](SEGURIDAD_VPS.md) para el checklist completo de seguridad aplicado.
+
+- SSH hardening (solo key ed25519, sin root, sin password)
+- Fail2ban (sshd + nginx-limit-req)
+- Rate limiting Nginx (/api/ 30r/s)
+- PostgreSQL con usuario CRUD-only (sin DDL)
+- TLS con renovación automática (certbot)
+- Backups automáticos de DB (cron 3 AM)
+
+## Credenciales
+
+Las credenciales de producción están en `CREDENCIALES.md` (excluido de git via `.gitignore`).

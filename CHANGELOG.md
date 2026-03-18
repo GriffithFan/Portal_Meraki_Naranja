@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-03-18] — Deploy a producción + Hardening de seguridad
+
+### Deploy VPS
+- App desplegada en `carrot.thnet.com.ar` (VPS Ubuntu 24.04, 72.61.32.146).
+- PM2 "carrot" en puerto 3001, Nginx reverse proxy con TLS.
+- PostgreSQL 16.13 con 48 predios importados.
+
+### Seguridad aplicada
+1. **Fail2ban** — sshd (3 intentos/ban 1h) + nginx-limit-req (10 intentos/ban 10min).
+2. **SSH hardening** — Usuario `deploy` con key ed25519, root login desactivado, password auth desactivado.
+3. **PostgreSQL hardening** — Usuario `carrot_app` con permisos CRUD-only (sin DDL).
+4. **Nginx rate limiting** — `/api/` limitado a 30r/s burst=20.
+5. **Nginx HSTS** — max-age=31536000; includeSubDomains.
+6. **Nginx /uploads/** — Bloqueado con 403.
+7. **PM2 logrotate** — 50M, 7 retenciones, compresión.
+8. **Backups PostgreSQL** — Cron diario 3 AM, retención 30 días.
+9. **Secretos regenerados** — JWT_SECRET y credenciales de producción nuevos.
+10. **CREDENCIALES.md** — Archivo con todas las credenciales, excluido de git.
+
+---
+
+## [2026-03-18] — ClickUp Integration + Estados + Workspaces
+
+### Gestión de predios
+1. **Importación ClickUp** — 48 predios importados con mapeo completo de campos.
+2. **12 estados configurables** — Importados desde ClickUp con colores y orden.
+3. **StatusIcon component** — Iconos SVG por clave de estado con colores dinámicos.
+4. **Espacios de trabajo** — Jerarquía de carpetas con estadísticas agregadas.
+5. **Fix workspace creation** — Corrección de bug en cascade de permisos.
+
+---
+
 ## [Próximas mejoras pendientes]
 
 ### Rendimiento

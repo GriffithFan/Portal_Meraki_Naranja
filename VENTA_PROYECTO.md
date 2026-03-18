@@ -302,12 +302,15 @@ Cuando un técnico cambia el estado de un sitio, el sistema lanza automáticamen
 | ✅ Disponible | Gestión de cronograma con tabla editable |
 | ✅ Disponible | Calendario con drag & drop |
 | ✅ Disponible | Inventario de equipos |
-| ✅ Disponible | Importación masiva Excel/CSV |
+| ✅ Disponible | Importación masiva Excel/CSV + ClickUp |
 | ✅ Disponible | Documentación y actas |
 | ✅ Disponible | Facturación automatizada |
 | ✅ Disponible | Monitoreo post-cambio automático |
 | ✅ Disponible | Push notifications (PWA) |
 | ✅ Disponible | Roles y permisos granulares |
+| ✅ Disponible | 12 estados configurables con iconos |
+| ✅ Disponible | Espacios de trabajo jerárquicos |
+| ✅ Disponible | Deploy producción con hardening completo |
 | 🔜 Próximo | Mapa interactivo de sitios con GPS |
 | 🔜 Próximo | Dashboard ejecutivo con KPIs |
 | 🔜 Próximo | Reportes exportables en PDF |

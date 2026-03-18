@@ -1,12 +1,18 @@
-# Seguridad VPS — Tareas pendientes para producción
+# Seguridad VPS — Estado actual de producción
 
-> Estas tareas **NO se pueden aplicar en código** y deben configurarse directamente en el servidor VPS al momento del despliegue.
+> Servidor: `72.61.32.146` | Dominio: `carrot.thnet.com.ar`
+> Última actualización: **2026-03-18**
 
 ---
 
-## 1. Firewall (UFW)
+## 1. Firewall (UFW) ✅ APLICADO
 
 ```bash
+# Estado actual:
+# Status: active
+# 22/tcp  ALLOW  Anywhere
+# 80/tcp  ALLOW  Anywhere
+# 443/tcp ALLOW  Anywhere
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow 22/tcp    # SSH
@@ -15,30 +21,42 @@ sudo ufw allow 443/tcp   # HTTPS
 sudo ufw enable
 ```
 
-## 2. SSH Hardening
+## 2. SSH Hardening ✅ APLICADO (2026-03-18)
 
-Editar `/etc/ssh/sshd_config`:
+Configuración actual en `/etc/ssh/sshd_config`:
 
 ```
 PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
 MaxAuthTries 3
-AllowUsers tu_usuario
+AllowUsers deploy
 ```
 
+- **Usuario**: `deploy` (único autorizado)
+- **Auth**: SSH key ed25519 (sin password)
+- **Root login**: DESACTIVADO
+- **Sudo**: NOPASSWD para deploy
+- **Home**: `/home/deploy`
+- **App dir**: `/var/www/carrot` (owner: deploy)
+
+**Conexión:**
 ```bash
-sudo systemctl restart sshd
+ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
 ```
 
-## 3. Fail2ban
-
+**Para agregar acceso desde otra PC:**
 ```bash
-sudo apt install fail2ban
-sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+# En la otra PC, generar key:
+ssh-keygen -t ed25519 -C "deploy@carrot-pc2"
+# Luego desde una PC con acceso, agregar la nueva key pública:
+ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
+echo "CONTENIDO_DE_id_ed25519.pub" >> ~/.ssh/authorized_keys
 ```
 
-Editar `/etc/fail2ban/jail.local`:
+## 3. Fail2ban ✅ APLICADO (2026-03-18)
+
+Instalado y activo. Config en `/etc/fail2ban/jail.local`:
 
 ```ini
 [sshd]
@@ -51,121 +69,138 @@ findtime = 600
 [nginx-limit-req]
 enabled = true
 port = http,https
+logpath = /var/log/nginx/carrot-error.log
 maxretry = 10
 bantime = 600
 ```
 
+**Desbanear IP:**
 ```bash
-sudo systemctl enable fail2ban
-sudo systemctl start fail2ban
+sudo fail2ban-client set sshd unbanip <IP>
 ```
 
-## 4. Nginx Reverse Proxy + TLS
+## 4. Nginx Reverse Proxy + TLS ✅ APLICADO
+
+Config actual en `/etc/nginx/sites-enabled/carrot`:
 
 ```nginx
-server {
-    listen 80;
-    server_name tu-dominio.com;
-    return 301 https://$host$request_uri;
-}
+limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
 
 server {
-    listen 443 ssl http2;
-    server_name tu-dominio.com;
+    server_name carrot.thnet.com.ar;
 
-    ssl_certificate /etc/letsencrypt/live/tu-dominio.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/tu-dominio.com/privkey.pem;
+    access_log /var/log/nginx/carrot-access.log;
+    error_log /var/log/nginx/carrot-error.log;
 
-    # Seguridad TLS
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml+rss image/svg+xml;
 
-    # Headers de seguridad
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options DENY always;
-
-    # Rate limiting a nivel Nginx (complementa el rate limit del middleware)
-    limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
+    location /uploads/ {
+        deny all;
+        return 403;
+    }
 
     location /api/ {
         limit_req zone=api burst=20 nodelay;
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /_next/static {
+        proxy_pass http://127.0.0.1:3001;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
     }
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
     }
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/carrot.thnet.com.ar/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/carrot.thnet.com.ar/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    if ($host = carrot.thnet.com.ar) {
+        return 301 https://$host$request_uri;
+    }
+    listen 80;
+    server_name carrot.thnet.com.ar;
+    return 404;
 }
 ```
 
-### Certificado TLS (Let's Encrypt)
+### Certificado TLS (Let's Encrypt) ✅
+- Certbot timer activo (renovación automática)
+- Verificar: `sudo certbot renew --dry-run`
+
+## 5. PostgreSQL Hardening ✅ APLICADO (2026-03-18)
+
+```sql
+-- Usuario dedicado con permisos mínimos (sin DDL)
+-- Usuario: carrot_app
+-- Permisos: SELECT, INSERT, UPDATE, DELETE (sin CREATE/DROP/ALTER)
+GRANT CONNECT ON DATABASE carrot_db TO carrot_app;
+GRANT USAGE ON SCHEMA public TO carrot_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO carrot_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO carrot_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO carrot_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO carrot_app;
+```
+
+- `listen_addresses = 'localhost'` (solo conexiones locales)
+- Password segura generada con `openssl rand -base64 32`
+- DATABASE_URL actualizado en `/var/www/carrot/.env`
+
+> **Nota**: Para migraciones de Prisma (ALTER TABLE, CREATE TABLE), usar el usuario `postgres`.
+
+## 6. Rotación de Secretos ✅ APLICADO
+
+- JWT_SECRET: generado con `crypto.randomBytes(48)` — 64 caracteres aleatorios
+- MERAKI_API_KEY: configurado en producción
+- NODE_ENV=production
+
+> Credenciales guardadas en `CREDENCIALES.md` (excluido de git).
+
+## 7. Cloudflare (opcional)
+
+No aplicado aún. Pasos para activar:
+
+1. Crear cuenta en [dash.cloudflare.com](https://dash.cloudflare.com) (plan Free)
+2. Agregar dominio `thnet.com.ar`
+3. Cambiar nameservers en el registrador de dominio
+4. Activar proxy (nube naranja) en registro A de `carrot.thnet.com.ar`
+5. SSL/TLS → Full (Strict)
+6. Opcional: activar "Under Attack Mode" si hay DDoS
+
+## 8. Actualizaciones automáticas de seguridad ✅ APLICADO
 
 ```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d tu-dominio.com
-sudo certbot renew --dry-run  # verificar renovación automática
-```
-
-## 5. PostgreSQL Hardening
-
-```bash
-# Crear usuario dedicado con permisos mínimos
-sudo -u postgres psql
-CREATE USER pmn_app WITH PASSWORD 'contraseña_segura_generada';
-GRANT CONNECT ON DATABASE portal_meraki_naranja TO pmn_app;
-GRANT USAGE ON SCHEMA public TO pmn_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pmn_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO pmn_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pmn_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO pmn_app;
-```
-
-Editar `postgresql.conf`:
-
-```
-listen_addresses = 'localhost'   # solo conexiones locales
-```
-
-Actualizar `DATABASE_URL` en `.env`:
-
-```
-DATABASE_URL="postgresql://pmn_app:contraseña_segura@localhost:5432/portal_meraki_naranja"
-```
-
-## 6. Rotación de Secretos
-
-Al desplegar a producción, **OBLIGATORIO** generar secretos nuevos:
-
-```bash
-# JWT_SECRET — mínimo 32 caracteres aleatorios
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-
-# CRON_SECRET — token para endpoints CRON
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-Actualizar `.env` con los valores generados. **NO reutilizar** los de desarrollo.
-
-## 7. Cloudflare (opcional pero recomendado)
-
-- Activar proxy para ocultar IP real del VPS
-- Activar "Under Attack Mode" si recibe ataques DDoS
-- Configurar reglas WAF básicas
-- Forzar HTTPS en Cloudflare
-
-## 8. Actualizaciones automáticas de seguridad
-
-```bash
+# unattended-upgrades instalado y activo
 sudo apt install unattended-upgrades
 sudo dpkg-reconfigure --priority=low unattended-upgrades
 ```
@@ -174,51 +209,44 @@ sudo dpkg-reconfigure --priority=low unattended-upgrades
 
 ```bash
 # Logs de la aplicación
-pm2 logs portal-meraki --lines 100
+sudo pm2 logs carrot --lines 100
 
 # Logs de Nginx
-tail -f /var/log/nginx/error.log
+sudo tail -f /var/log/nginx/carrot-error.log
+sudo tail -f /var/log/nginx/carrot-access.log
 
 # Intentos de acceso SSH fallidos
-journalctl -u sshd | grep "Failed"
+sudo journalctl -u sshd | grep "Failed"
+
+# IPs baneadas por Fail2ban
+sudo fail2ban-client status sshd
 ```
 
-## 10. Proteger carpeta uploads en Nginx
-
-La carpeta `/uploads` ya está bloqueada por el middleware de Next.js, pero conviene bloquearla también en Nginx como defensa en profundidad:
+## 10. Proteger carpeta uploads en Nginx ✅ APLICADO
 
 ```nginx
-# Dentro del bloque server {}
 location /uploads/ {
     deny all;
     return 403;
 }
 ```
 
-## 11. Backups automáticos de PostgreSQL
+## 11. Backups automáticos de PostgreSQL ✅ APLICADO (2026-03-18)
 
 ```bash
-# Crear script de backup
-cat > /opt/backup-db.sh << 'EOF'
-#!/bin/bash
-FECHA=$(date +%Y%m%d_%H%M)
-pg_dump -U pmn_app portal_meraki_naranja | gzip > /opt/backups/db_$FECHA.sql.gz
-# Eliminar backups de más de 30 días
-find /opt/backups -name "db_*.sql.gz" -mtime +30 -delete
-EOF
-
-chmod +x /opt/backup-db.sh
-mkdir -p /opt/backups
-
-# Programar backup diario a las 3 AM
-echo "0 3 * * * /opt/backup-db.sh" | crontab -
+# Script: /opt/backup-db.sh
+# Cron: diario a las 3 AM
+# Retención: 30 días
+# Destino: /opt/backups/db_YYYYMMDD_HHMM.sql.gz
+# Primer backup creado: 2026-03-18 (20K)
 ```
 
-## 12. Limitar acceso a PM2
+Verificar: `ls -la /opt/backups/`
+
+## 12. PM2 logrotate ✅ APLICADO (2026-03-18)
 
 ```bash
-# No exponer PM2 web dashboard al exterior
-# Si usas pm2-logrotate para rotación de logs:
+# Instalado y configurado:
 pm2 install pm2-logrotate
 pm2 set pm2-logrotate:max_size 50M
 pm2 set pm2-logrotate:retain 7
@@ -229,16 +257,19 @@ pm2 set pm2-logrotate:compress true
 
 ## Checklist pre-despliegue
 
-- [ ] UFW habilitado con puertos 22/80/443
-- [ ] SSH sin root y sin password auth
-- [ ] Fail2ban activo
-- [ ] Nginx con TLS y rate limiting
-- [ ] Nginx bloquea `/uploads/` directamente
-- [ ] PostgreSQL solo en localhost con usuario dedicado
-- [ ] Backup automático de DB configurado
-- [ ] Secretos generados nuevos (JWT_SECRET, CRON_SECRET)
-- [ ] MERAKI_API_KEY configurado
-- [ ] NODE_ENV=production en .env
-- [ ] `npm run build` exitoso en el VPS
-- [ ] Certificado TLS renovación automática verificada
-- [ ] PM2 con logrotate configurado
+- [x] UFW habilitado con puertos 22/80/443
+- [x] SSH sin root y sin password auth (solo deploy con key ed25519)
+- [x] Fail2ban activo (sshd + nginx-limit-req)
+- [x] Nginx con TLS y rate limiting (/api/ 30r/s)
+- [x] HSTS header configurado
+- [x] Nginx bloquea `/uploads/` directamente
+- [x] PostgreSQL solo en localhost con usuario dedicado (carrot_app, solo CRUD)
+- [x] Backup automático de DB configurado (cron 3 AM, 30 días retención)
+- [x] Secretos generados nuevos (JWT_SECRET)
+- [x] MERAKI_API_KEY configurado
+- [x] NODE_ENV=production en .env
+- [x] `npm run build` exitoso en el VPS
+- [x] Certificado TLS renovación automática verificada (certbot timer)
+- [x] PM2 con logrotate configurado (50M, 7 retenciones)
+- [x] Unattended-upgrades para patches de seguridad
+- [ ] Cloudflare proxy (opcional — ocultar IP, WAF, DDoS)
