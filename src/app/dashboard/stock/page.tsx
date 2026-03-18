@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
+import { useSearchContext } from "@/contexts/SearchContext";
 import { TableSkeleton } from "@/components/ui/Skeletons";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -19,10 +20,14 @@ const ESTADO_COLORS: Record<string, string> = {
 
 export default function StockPage() {
   const { isModOrAdmin } = useSession();
+  const { headerSearch } = useSearchContext();
   const [equipos, setEquipos] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [categorias, setCategorias] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+
+  // Sincronizar búsqueda del Header global
+  useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroCat, setFiltroCat] = useState("");
   const [loading, setLoading] = useState(true);

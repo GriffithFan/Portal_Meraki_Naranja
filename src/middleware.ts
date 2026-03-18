@@ -11,7 +11,7 @@ const COOKIE_NAME = "pmn-token";
 
 /* ── Rate Limiting in-memory ──────────────────────────────── */
 const RATE_LIMIT_WINDOW = 60_000; // 1 minuto
-const RATE_LIMIT_MAX = 120;       // máx 120 requests por ventana por IP
+const RATE_LIMIT_MAX = 200;       // máx 200 requests por ventana por IP (predios grandes ~30-40 reqs c/u)
 const LOGIN_RATE_LIMIT_WINDOW = 15 * 60_000; // 15 minutos
 const LOGIN_RATE_LIMIT_MAX = 10;  // máx 10 intentos de login por ventana
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();

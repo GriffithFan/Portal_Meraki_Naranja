@@ -6,6 +6,7 @@ import Header from "@/components/layout/Header";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import { NetworkProvider } from "@/contexts/NetworkContext";
 import { SessionProvider } from "@/contexts/SessionContext";
+import { SearchProvider } from "@/contexts/SearchContext";
 import PushNotificationRegistrar from "@/components/PushNotificationRegistrar";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 
@@ -19,6 +20,7 @@ export default function DashboardLayout({
 
   return (
     <SessionProvider>
+      <SearchProvider>
       <NetworkProvider>
         <PushNotificationRegistrar />
         <div className="flex min-h-screen bg-surface-50">
@@ -32,6 +34,7 @@ export default function DashboardLayout({
           </div>
         </div>
       </NetworkProvider>
+      </SearchProvider>
     </SessionProvider>
   );
 }

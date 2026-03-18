@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
+import { useSearchContext } from "@/contexts/SearchContext";
 import { IconPlus, IconX, IconTrash, IconEdit } from "@/components/ui/Icons";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -19,9 +20,13 @@ interface Hospedaje {
 
 export default function HospedajesPage() {
   const { isModOrAdmin } = useSession();
+  const { headerSearch } = useSearchContext();
   const [hospedajes, setHospedajes] = useState<Hospedaje[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Sincronizar búsqueda del Header global
+  useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
   const [filtroProvincia, setFiltroProvincia] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("");
 

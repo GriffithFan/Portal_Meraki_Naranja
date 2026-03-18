@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNetworkContext } from "@/contexts/NetworkContext";
+import { useSearchContext } from "@/contexts/SearchContext";
 import { useSession } from "@/hooks/useSession";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -18,6 +19,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { selectedNetwork, setSelectedNetwork } = useNetworkContext();
+  const { setHeaderSearch } = useSearchContext();
   const { session } = useSession();
   const isMonitoring = MONITORING_PATHS.some((p) => pathname.startsWith(p));
 
@@ -65,11 +67,21 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   }, []);
 
   useEffect(() => {
-    if (!isMonitoring) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(query), 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, search, isMonitoring]);
+    if (isMonitoring) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => search(query), 300);
+      return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    } else {
+      // Propagar búsqueda a la página activa via contexto
+      setHeaderSearch(query);
+    }
+  }, [query, search, isMonitoring, setHeaderSearch]);
+
+  // Limpiar búsqueda al cambiar de página
+  useEffect(() => {
+    setQuery("");
+    setHeaderSearch("");
+  }, [pathname, setHeaderSearch]);
 
   function handleSelectNetwork(net: any) {
     setSelectedNetwork(net);
@@ -124,7 +136,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           placeholder={
             isMonitoring
               ? selectedNetwork ? `Red: ${selectedNetwork.name}` : "Buscar por predio, serial (XXXX-XXXX-XXXX) o MAC..."
-              : "Buscar predio, equipo, red..."
+              : pathname.startsWith("/dashboard/tareas") ? "Buscar tarea por código, nombre, incidencia..."
+              : pathname.startsWith("/dashboard/hospedajes") ? "Buscar hospedaje por nombre, ubicación..."
+              : pathname.startsWith("/dashboard/stock") ? "Buscar equipo por nombre, serie, modelo..."
+              : "Buscar..."
           }
           className="w-full pl-10 pr-10 py-2 rounded-xl border border-surface-200 bg-surface-50 text-sm
             focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 transition-colors"

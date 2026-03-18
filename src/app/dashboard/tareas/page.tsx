@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
+import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
 
@@ -22,7 +23,8 @@ interface Column {
 }
 
 const DEFAULT_COLUMNS: Column[] = [
-  { id: "predio", label: "Predio", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
+  { id: "codigoPredio", label: "Predio", field: "codigo", width: 100, visible: true, editable: false, type: "text" },
+  { id: "predio", label: "Incidencia", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
   { id: "fechaActualizacion", label: "Fecha", field: "fechaActualizacion", width: 80, visible: true, editable: false, type: "date" },
   { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO"] },
   { id: "cue", label: "CUE", field: "cue", width: 100, visible: true, editable: true, type: "text" },
@@ -43,10 +45,14 @@ const DEFAULT_COLUMNS: Column[] = [
 // ═══════════════════════════════════════════════════════════════
 export default function TareasPage() {
   const { session, isModOrAdmin } = useSession();
+  const { headerSearch } = useSearchContext();
   const [tareas, setTareas] = useState<any[]>([]);
   const [estados, setEstados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Sincronizar búsqueda del Header global
+  useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
@@ -161,6 +167,7 @@ export default function TareasPage() {
       filtered = tareas.filter(t => {
         if (
           t.nombre?.toLowerCase().includes(s) ||
+          t.codigo?.toLowerCase().includes(s) ||
           t.incidencias?.toLowerCase().includes(s) ||
           t.cue?.toLowerCase().includes(s) ||
           t.provincia?.toLowerCase().includes(s) ||
@@ -541,6 +548,10 @@ export default function TareasPage() {
         </span>
       ) : <span className="text-surface-300">&mdash;</span>;
     }
+    // Para la columna "codigoPredio", mostrar codigo numérico del predio
+    if (col.id === "codigoPredio") {
+      return <span className="text-surface-800 font-medium truncate block">{t.codigo || "\u2014"}</span>;
+    }
     // Para la columna "predio", mostrar incidencias o nombre como fallback
     if (col.id === "predio") {
       return <span className="text-surface-700 truncate block">{t[col.field] || t.nombre || "\u2014"}</span>;
@@ -550,7 +561,7 @@ export default function TareasPage() {
   };
 
   // Columnas visibles: ocultar automáticamente columnas del sistema sin datos
-  const ALWAYS_VISIBLE = useMemo(() => new Set(["predio", "fechaActualizacion", "asignados"]), []);
+  const ALWAYS_VISIBLE = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion", "asignados"]), []);
   const visibleColumns = useMemo(() => {
     return columns.filter(c => {
       if (!c.visible) return false;
@@ -578,9 +589,12 @@ export default function TareasPage() {
           onClick={() => openDetail(t)}
           className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors"
         >
-          <p className="text-sm font-medium text-surface-800 truncate">
-            {t.incidencias || t.nombre || "Sin nombre"}
-          </p>
+          <div className="flex items-center gap-2">
+            {t.codigo && <span className="text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
+            <p className="text-sm font-medium text-surface-700 truncate">
+              {t.incidencias || t.nombre || "Sin nombre"}
+            </p>
+          </div>
           {t.nombre && t.incidencias && (
             <p className="text-xs text-surface-400 truncate mt-0.5">{t.nombre}</p>
           )}
