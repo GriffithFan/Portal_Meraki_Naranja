@@ -18,10 +18,10 @@ step() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
 
 # ── Configuración ────────────────────────────────────────────
 REPO="https://github.com/GriffithFan/Portal_Meraki_Naranja.git"
-DEPLOY_DIR="/var/www/portal-meraki"
+DEPLOY_DIR="/var/www/carrot"
 APP_PORT=3001
-DB_NAME="portal_meraki"
-DB_USER="meraki_user"
+DB_NAME="carrot_db"
+DB_USER="carrot_user"
 NODE_MAJOR=20
 
 # ── Verificar root / sudo ───────────────────────────────────
@@ -194,10 +194,10 @@ step "6/8  Configurando PM2"
 cat > ecosystem.config.js <<'PMEOF'
 module.exports = {
   apps: [{
-    name: 'portal-meraki',
+    name: 'carrot',
     script: 'node_modules/.bin/next',
     args: 'start',
-    cwd: '/var/www/portal-meraki',
+    cwd: '/var/www/carrot',
     instances: 1,
     exec_mode: 'fork',
     env: {
@@ -217,7 +217,7 @@ PMEOF
 chown "$REAL_USER":"$REAL_USER" ecosystem.config.js
 
 # Detener instancia anterior si existe
-pm2 delete portal-meraki 2>/dev/null || true
+pm2 delete carrot 2>/dev/null || true
 
 # Iniciar
 sudo -u "$REAL_USER" pm2 start ecosystem.config.js
@@ -233,13 +233,13 @@ ok "PM2 corriendo"
 # ═══════════════════════════════════════════════════════════════
 step "7/8  Configurando Nginx"
 
-NGINX_CONF="/etc/nginx/sites-available/portal-meraki"
+NGINX_CONF="/etc/nginx/sites-available/carrot"
 
 if [[ -f "$NGINX_CONF" ]]; then
   warn "Config Nginx ya existe — no se sobreescribirá"
 else
   cat > "$NGINX_CONF" <<'NGEOF'
-# Portal Meraki — Carrot
+# Carrot — Nginx config
 # Agregá este location block dentro de tu server block principal,
 # o usá este archivo como include.
 
@@ -248,7 +248,7 @@ else
 #     listen 80;
 #     server_name TU_DOMINIO_O_IP;
 
-    # ── Portal Meraki bajo /carrot ──────────────────
+    # ── Carrot bajo /carrot ─────────────────────────
     location /carrot {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
@@ -274,7 +274,7 @@ NGEOF
 
   # Habilitar si sites-enabled existe
   if [[ -d /etc/nginx/sites-enabled ]]; then
-    ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/portal-meraki
+    ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/carrot
   fi
 
   ok "Config Nginx creada en ${NGINX_CONF}"
@@ -328,7 +328,7 @@ echo -e "${GREEN}═════════════════════
 echo ""
 echo -e "  URL local:  http://localhost:${APP_PORT}/carrot"
 echo -e "  Directorio: ${DEPLOY_DIR}"
-echo -e "  PM2:        pm2 status / pm2 logs portal-meraki"
+echo -e "  PM2:        pm2 status / pm2 logs carrot"
 echo ""
 echo -e "${YELLOW}  Próximos pasos:${NC}"
 echo -e "  1. Verificá que .env tenga tu MERAKI_API_KEY"

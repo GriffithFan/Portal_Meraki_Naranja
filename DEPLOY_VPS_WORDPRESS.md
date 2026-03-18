@@ -1,6 +1,8 @@
 # Deploy en VPS Ubuntu + Integración WordPress (thnet.com/carrot)
 
-Guía para desplegar **Portal Meraki Naranja** en un VPS Ubuntu que ya tiene otro proyecto corriendo, e integrarlo con el sitio WordPress en `thnet.com` bajo la ruta `/carrot`.
+Guía para desplegar **Carrot** en un VPS Ubuntu que ya tiene otro proyecto corriendo, e integrarlo con el sitio WordPress en `thnet.com` bajo la ruta `/carrot`.
+
+> **Deploy automático**: Podés usar `scripts/deploy-vps.sh` para automatizar la mayoría de estos pasos. Ver sección 11.
 
 ---
 
@@ -30,7 +32,7 @@ Guía para desplegar **Portal Meraki Naranja** en un VPS Ubuntu que ya tiene otr
 ### 1.1 Requisitos
 
 ```bash
-# Node.js 18+ (recomendado v20 LTS)
+# Node.js 20 LTS
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
@@ -49,17 +51,17 @@ sudo apt-get install -y nginx
 ```bash
 sudo -u postgres psql
 
-CREATE USER meraki_user WITH PASSWORD 'TU_PASSWORD_SEGURO';
-CREATE DATABASE portal_meraki OWNER meraki_user;
-GRANT ALL PRIVILEGES ON DATABASE portal_meraki TO meraki_user;
+CREATE USER carrot_user WITH PASSWORD 'TU_PASSWORD_SEGURO';
+CREATE DATABASE carrot_db OWNER carrot_user;
+GRANT ALL PRIVILEGES ON DATABASE carrot_db TO carrot_user;
 \q
 ```
 
 ### 1.3 Crear directorio del proyecto
 
 ```bash
-sudo mkdir -p /var/www/portal-meraki
-sudo chown $USER:$USER /var/www/portal-meraki
+sudo mkdir -p /var/www/carrot
+sudo chown $USER:$USER /var/www/carrot
 ```
 
 ---
@@ -70,61 +72,45 @@ sudo chown $USER:$USER /var/www/portal-meraki
 
 Opción A — Git (recomendado):
 ```bash
-cd /var/www/portal-meraki
-git clone TU_REPO_URL .
+cd /var/www/carrot
+git clone https://github.com/GriffithFan/Portal_Meraki_Naranja.git .
 ```
 
 Opción B — SCP:
 ```bash
 # Desde tu máquina local (PowerShell)
-scp -r .\portal-meraki-naranja\* usuario@TU_VPS_IP:/var/www/portal-meraki/
+scp -r .\portal-meraki-naranja\* usuario@TU_VPS_IP:/var/www/carrot/
 ```
 
 ### 2.2 Configurar variables de entorno
 
 ```bash
-cd /var/www/portal-meraki
+cd /var/www/carrot
 nano .env
 ```
 
 Contenido del `.env`:
 ```env
-DATABASE_URL="postgresql://meraki_user:TU_PASSWORD_SEGURO@localhost:5432/portal_meraki"
+DATABASE_URL="postgresql://carrot_user:TU_PASSWORD_SEGURO@localhost:5432/carrot_db"
 JWT_SECRET="genera_un_string_aleatorio_largo_aqui"
 NEXTAUTH_URL="https://thnet.com/carrot"
 NEXT_PUBLIC_BASE_PATH="/carrot"
+MERAKI_API_KEY="tu_api_key_de_meraki"
 NODE_ENV="production"
 PORT=3001
 ```
 
 > **Importante**: Usamos puerto **3001** para no chocar con tu otro proyecto. Ajustá si 3001 ya está en uso.
+>
+> **basePath**: Se configura automáticamente via la variable `NEXT_PUBLIC_BASE_PATH`. No es necesario editar `next.config.mjs`.
 
 ### 2.3 Instalar dependencias y buildear
 
 ```bash
-cd /var/www/portal-meraki
-npm install
+cd /var/www/carrot
+npm ci --omit=dev
 npx prisma generate
 npx prisma db push
-npm run build
-```
-
-### 2.4 Configurar BASE_PATH en Next.js
-
-En `next.config.js`, agregá el basePath para que funcione bajo `/carrot`:
-
-```js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  basePath: '/carrot',
-  // ... otras configuraciones existentes
-};
-
-module.exports = nextConfig;
-```
-
-Después de este cambio, rebuild:
-```bash
 npm run build
 ```
 
@@ -132,26 +118,29 @@ npm run build
 
 ## 3. PM2 — Proceso en background
 
-### 3.1 Crear ecosystem file
+### 3.1 Ecosystem file
 
-```bash
-nano ecosystem.config.js
-```
+El proyecto incluye `ecosystem.config.js` preconfigurado. Si necesitás ajustarlo:
 
 ```js
 module.exports = {
   apps: [{
-    name: 'portal-meraki',
-    script: 'npm',
+    name: 'carrot',
+    script: 'node_modules/.bin/next',
     args: 'start',
-    cwd: '/var/www/portal-meraki',
+    cwd: '/var/www/carrot',
+    instances: 1,
+    exec_mode: 'fork',
     env: {
       NODE_ENV: 'production',
       PORT: 3001,
     },
-    instances: 1,
-    autorestart: true,
+    max_restarts: 10,
+    restart_delay: 5000,
     max_memory_restart: '512M',
+    error_file: 'logs/pm2-error.log',
+    out_file: 'logs/pm2-out.log',
+    merge_logs: true,
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
   }],
 };
@@ -160,7 +149,8 @@ module.exports = {
 ### 3.2 Iniciar con PM2
 
 ```bash
-cd /var/www/portal-meraki
+cd /var/www/carrot
+mkdir -p logs
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup  # Sigue las instrucciones que imprime para auto-arranque
@@ -170,7 +160,7 @@ pm2 startup  # Sigue las instrucciones que imprime para auto-arranque
 
 ```bash
 pm2 status
-pm2 logs portal-meraki
+pm2 logs carrot
 curl http://localhost:3001/carrot  # Debería responder
 ```
 
@@ -190,7 +180,7 @@ sudo nano /etc/nginx/sites-available/default
 Agregá dentro del bloque `server` existente:
 
 ```nginx
-# ── Portal Meraki bajo /carrot ──────────────────────
+# ── Carrot bajo /carrot ─────────────────────────────
 location /carrot {
     proxy_pass http://127.0.0.1:3001;
     proxy_http_version 1.1;
@@ -220,12 +210,12 @@ sudo systemctl reload nginx
 
 ### 4.3 Si el VPS tiene su propio dominio
 
-Si querés acceder también directo al VPS (ej: `vps.tudominio.com/carrot`), la config anterior ya lo cubre. Si querés un subdominio dedicado (ej: `meraki.tudominio.com`), creá un nuevo server block:
+Si querés acceder directo al VPS (ej: `vps.tudominio.com/carrot`), la config anterior ya lo cubre. Si querés un subdominio dedicado (ej: `carrot.tudominio.com`), creá un nuevo server block:
 
 ```nginx
 server {
     listen 80;
-    server_name meraki.tudominio.com;
+    server_name carrot.tudominio.com;
 
     location / {
         proxy_pass http://127.0.0.1:3001/carrot;
@@ -256,7 +246,7 @@ sudo nano /etc/nginx/sites-available/thnet.com
 Agregá este location block **ANTES** del bloque `location /` de WordPress:
 
 ```nginx
-# Proxy al Portal Meraki en el VPS
+# Proxy a Carrot en el VPS
 location /carrot {
     proxy_pass http://IP_DE_TU_VPS:3001;
     proxy_http_version 1.1;
@@ -304,7 +294,7 @@ sudo systemctl restart apache2
 Si no tenés acceso al servidor de WordPress, podés usar **Cloudflare Workers** o un subdominio:
 
 1. Crear subdominio `carrot.thnet.com` apuntando al VPS
-2. En ese caso, no necesitás basePath `/carrot` — configurá basePath como `/`
+2. En ese caso, no necesitás `NEXT_PUBLIC_BASE_PATH` — dejá la variable vacía o no la definas
 
 ---
 
@@ -326,7 +316,7 @@ sudo ufw allow 443
 ### Si el VPS tiene su propio dominio:
 ```bash
 sudo apt-get install certbot python3-certbot-nginx
-sudo certbot --nginx -d meraki.tudominio.com
+sudo certbot --nginx -d carrot.tudominio.com
 ```
 
 ### Para thnet.com/carrot:
@@ -334,19 +324,19 @@ El SSL lo maneja el servidor de WordPress. Si thnet.com ya tiene HTTPS (Let's En
 
 ---
 
-## 8. Icono de Login desde WordPress
+## 8. Acceso desde WordPress
 
 Para agregar un botón/icono de acceso desde el sitio WordPress:
 
 ### Opción 1: Widget HTML en WordPress
 
-En el dashboard de WordPress → Apariencia → Widgets, agregá un widget **HTML personalizado** donde quieras el ícono:
+En el dashboard de WordPress → Apariencia → Widgets, agregá un widget **HTML personalizado**:
 
 ```html
 <a href="https://thnet.com/carrot" 
    style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#6366f1;color:white;border-radius:8px;text-decoration:none;font-size:14px;"
-   title="Portal Meraki">
-  🥕 Portal Meraki
+   title="Carrot">
+  🥕 Carrot
 </a>
 ```
 
@@ -355,13 +345,13 @@ En el dashboard de WordPress → Apariencia → Widgets, agregá un widget **HTM
 En WordPress → Apariencia → Menús:
 1. Agregar un **enlace personalizado**
 2. URL: `https://thnet.com/carrot`
-3. Texto del enlace: `Portal Meraki` (o poné un emoji 🥕)
+3. Texto del enlace: `🥕 Carrot`
 
 ### Opción 3: En el header con código PHP
 
 Si usás un tema child, en `header.php`:
 ```php
-<a href="/carrot" class="meraki-login-btn" title="Portal Meraki">
+<a href="/carrot" class="carrot-login-btn" title="Carrot">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/>
   </svg>
@@ -374,19 +364,19 @@ Si usás un tema child, en `header.php`:
 
 ```bash
 # Ver logs
-pm2 logs portal-meraki
+pm2 logs carrot
 
 # Reiniciar
-pm2 restart portal-meraki
+pm2 restart carrot
 
-# Actualizar código
-cd /var/www/portal-meraki
+# Actualizar código (o usar scripts/update.sh)
+cd /var/www/carrot
 git pull
-npm install
+npm ci --omit=dev
 npx prisma generate
 npx prisma db push
 npm run build
-pm2 restart portal-meraki
+pm2 restart carrot
 
 # Monitorear
 pm2 monit
@@ -399,20 +389,40 @@ pm2 status
 
 ## 10. Checklist de Deploy
 
-- [ ] Node.js 18+ instalado
+- [ ] Node.js 20+ instalado
 - [ ] PostgreSQL corriendo con usuario y base creados
-- [ ] Proyecto clonado en `/var/www/portal-meraki`
-- [ ] `.env` configurado con DATABASE_URL, JWT_SECRET, basePath
-- [ ] `next.config.js` tiene `basePath: '/carrot'`
-- [ ] `npm install && npx prisma db push && npm run build` exitoso
+- [ ] Proyecto clonado en `/var/www/carrot`
+- [ ] `.env` configurado con DATABASE_URL, JWT_SECRET, MERAKI_API_KEY, NEXT_PUBLIC_BASE_PATH
+- [ ] `npm ci && npx prisma db push && npm run build` exitoso
 - [ ] PM2 corriendo (`pm2 status` muestra "online")
 - [ ] `curl http://localhost:3001/carrot` responde
 - [ ] Nginx en VPS configurado con `location /carrot`
 - [ ] Nginx en servidor WordPress configurado con proxy a VPS
 - [ ] Firewall permite tráfico entre servidores
 - [ ] SSL funcionando
-- [ ] Icono/enlace agregado en WordPress
-- [ ] Probado desde navegador: `https://thnet.com/carrot` → login del portal
+- [ ] Enlace agregado en WordPress
+- [ ] Probado desde navegador: `https://thnet.com/carrot` → login
+- [ ] Primer usuario admin creado: `npx prisma db seed`
+
+---
+
+## 11. Deploy automático
+
+El proyecto incluye scripts para automatizar el proceso:
+
+### Primera instalación
+```bash
+# En el VPS:
+git clone https://github.com/GriffithFan/Portal_Meraki_Naranja.git /var/www/carrot
+cd /var/www/carrot
+sudo bash scripts/deploy-vps.sh
+```
+
+### Actualizaciones
+```bash
+cd /var/www/carrot
+bash scripts/update.sh
+```
 
 ---
 
@@ -420,8 +430,8 @@ pm2 status
 
 | Problema | Solución |
 |----------|----------|
-| 502 Bad Gateway | Verificar que PM2 está corriendo: `pm2 status`. Revisar logs: `pm2 logs portal-meraki` |
-| 404 en /carrot | Verificar `basePath` en next.config.js. Rebuild: `npm run build` |
+| 502 Bad Gateway | Verificar que PM2 está corriendo: `pm2 status`. Revisar logs: `pm2 logs carrot` |
+| 404 en /carrot | Verificar `NEXT_PUBLIC_BASE_PATH="/carrot"` en `.env`. Rebuild: `npm run build` |
 | Assets no cargan | Verificar location `/carrot/_next/static` en Nginx |
 | CORS errors | Verificar `NEXTAUTH_URL` en .env coincide con la URL real |
 | DB connection refused | Verificar `DATABASE_URL` en .env, y que PostgreSQL acepta conexiones locales |

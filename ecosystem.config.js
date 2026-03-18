@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "portal-meraki",
+      name: "carrot",
       script: "node_modules/.bin/next",
       args: "start",
       cwd: __dirname,

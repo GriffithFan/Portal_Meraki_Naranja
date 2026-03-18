@@ -14,7 +14,7 @@ warn() { echo -e "${YELLOW}⚠${NC} $1"; }
 fail() { echo -e "${RED}✖ $1${NC}"; exit 1; }
 step() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
 
-DEPLOY_DIR="/var/www/portal-meraki"
+DEPLOY_DIR="/var/www/carrot"
 APP_PORT=3001
 
 cd "$DEPLOY_DIR" || fail "No se encontró ${DEPLOY_DIR}"
@@ -59,7 +59,7 @@ ok "Build completado"
 
 # ── PM2 restart ──────────────────────────────────────────────
 step "5/5  Reiniciando servidor"
-pm2 restart portal-meraki
+pm2 restart carrot
 ok "PM2 reiniciado"
 
 # ── Warm-up ──────────────────────────────────────────────────
@@ -81,5 +81,5 @@ done
 
 echo ""
 echo -e "${GREEN}═══ 🥕 Actualización completada (${AFTER:0:7}) ═══${NC}"
-echo -e "  pm2 logs portal-meraki  — para ver logs"
+echo -e "  pm2 logs carrot  — para ver logs"
 echo ""
