@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { verifyCronAuth } from "@/lib/cronAuth";
 import { enviarPushYBandeja } from "@/lib/pushNotifications";
 
 /**
  * POST /api/notificaciones/changelog
  * Envía notificación de nuevas funcionalidades a TODOS los usuarios activos.
- * Solo ADMIN puede ejecutarlo.
+ * Auth: sesión ADMIN o Bearer CRON_SECRET.
  *
  * Body: { version: string, novedades: string[] }
  * Ejemplo: { "version": "v2.5", "novedades": ["Búsqueda global en todas las secciones", "Columna de código de predio en Tareas"] }
  */
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session || session.rol !== "ADMIN") {
-    return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
+  // Intentar auth por Bearer (para scripts/cron)
+  const cronOk = verifyCronAuth(request) === null;
+  if (!cronOk) {
+    // Fallback: auth por sesión ADMIN
+    const session = await getSession();
+    if (!session || session.rol !== "ADMIN") {
+      return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
+    }
   }
 
   let body: { version?: string; novedades?: string[] };
