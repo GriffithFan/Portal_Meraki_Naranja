@@ -51,8 +51,26 @@ export async function GET(request: NextRequest) {
     const problemas: string[] = [];
     const detalles: any = { check: checkNum, timestamp: ahora.toISOString() };
 
-    try {
-      if (networkId) {
+    // Obtener todos los usuarios asignados al predio para notificarlos
+    const asignaciones = await prisma.asignacion.findMany({
+      where: { predioId: mon.predioId },
+      select: { userId: true },
+    });
+    // Incluir al usuario que cambió el estado + los asignados (sin duplicados)
+    const destinatarios = Array.from(new Set([mon.userId, ...asignaciones.map(a => a.userId)]));
+
+    let titulo: string;
+    let mensaje: string;
+    let tipo: string;
+
+    if (!networkId) {
+      // Sin red Meraki vinculada — notificar igualmente
+      tipo = "ALERTA_MONITOREO";
+      titulo = `📡 Monitoreo: ${predioNombre}`;
+      mensaje = `Check ${checkNum}/2 — Predio sin red Meraki vinculada. No se pudieron verificar APs. Estado: ${mon.estadoAnterior} → ${mon.estadoNuevo}`;
+      detalles.sinNetwork = true;
+    } else {
+      try {
         const [apProblemas, crcProblemas] = await Promise.allSettled([
           checkApSpeed(networkId, orgId),
           checkCrcErrors(networkId),
@@ -66,39 +84,32 @@ export async function GET(request: NextRequest) {
           problemas.push(...crcProblemas.value);
           detalles.crcErrors = crcProblemas.value;
         }
+      } catch (err) {
+        console.error(`[Monitoreo] Error consultando Meraki para ${predioNombre}:`, err);
+        detalles.error = err instanceof Error ? err.message : "Error desconocido";
       }
-    } catch (err) {
-      console.error(`[Monitoreo] Error consultando Meraki para ${predioNombre}:`, err);
-      detalles.error = err instanceof Error ? err.message : "Error desconocido";
+
+      if (problemas.length > 0) {
+        tipo = "ALERTA_MONITOREO";
+        titulo = `⚠️ Alerta post-cambio: ${predioNombre}`;
+        mensaje = `Check ${checkNum}/2 — ${problemas.join(". ")}`;
+      } else {
+        tipo = "MONITOREO_OK";
+        titulo = `✅ Sin alertas: ${predioNombre}`;
+        mensaje = `Check ${checkNum}/2 — Velocidad APs y puertos switch sin anomalías. Estado: ${mon.estadoAnterior} → ${mon.estadoNuevo}`;
+      }
     }
 
-    // Enviar notificación si hay problemas
-    if (problemas.length > 0) {
-      const titulo = `⚠️ Alerta post-cambio: ${predioNombre}`;
-      const mensaje = `Check ${checkNum}/2 — ${problemas.join(". ")}`;
-
-      await enviarPushYBandeja(mon.userId, {
-        tipo: "ALERTA_MONITOREO",
+    // Enviar notificación a TODOS los destinatarios (asignados + quien cambió estado)
+    for (const uid of destinatarios) {
+      await enviarPushYBandeja(uid, {
+        tipo,
         titulo,
         mensaje,
         enlace: `/dashboard/tareas`,
         entidad: "PREDIO",
         entidadId: mon.predioId,
-        tag: `monitoreo-${mon.predioId}`,
-      });
-    } else if (networkId) {
-      // Sin problemas pero con network → notificar que todo OK
-      const titulo = `✅ Sin alertas: ${predioNombre}`;
-      const mensaje = `Check ${checkNum}/2 — Velocidad APs y puertos switch sin anomalías. Estado: ${mon.estadoAnterior} → ${mon.estadoNuevo}`;
-
-      await enviarPushYBandeja(mon.userId, {
-        tipo: "MONITOREO_OK",
-        titulo,
-        mensaje,
-        enlace: `/dashboard/tareas`,
-        entidad: "PREDIO",
-        entidadId: mon.predioId,
-        tag: `monitoreo-${mon.predioId}`,
+        tag: `monitoreo-${mon.predioId}-${checkNum}`,
       });
     }
 
