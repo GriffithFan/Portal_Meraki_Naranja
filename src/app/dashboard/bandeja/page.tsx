@@ -12,6 +12,7 @@ const TIPO_COLORS: Record<string, string> = {
   RECORDATORIO: "bg-yellow-500",
   CHANGELOG: "bg-emerald-500",
   ALERTA_MONITOREO: "bg-orange-500",
+  MONITOREO_OK: "bg-emerald-500",
 };
 
 export default function BandejaPage() {

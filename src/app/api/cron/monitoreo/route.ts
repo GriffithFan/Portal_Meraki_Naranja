@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
 
     if (!red) {
       tipo = "ALERTA_MONITOREO";
-      titulo = `📡 Monitoreo: ${predioLabel}`;
+      titulo = `Monitoreo: ${predioLabel}`;
       mensaje = `Check ${checkNum}/2 — No se encontró red Meraki para "${predioLabel}". Verificar configuración.`;
       detalles.sinRed = true;
     } else {
@@ -209,29 +209,28 @@ export async function GET(request: NextRequest) {
 
         // Armar mensaje con detalle de cada AP
         const apLines = aps.map(ap => {
-          const icon = ap.status === "online" ? "✅" : ap.status === "alerting" ? "⚠️" : "⛔";
-          const parts = [`${icon} ${ap.status}`];
+          const parts = [ap.status];
           if (ap.wiredSpeed !== "—") parts.push(ap.wiredSpeed);
-          if (ap.powerMode === "low") parts.push("⚡ Low Power");
-          if (ap.isMeshRepeater) parts.push("🔄 Mesh");
-          return `📶 ${ap.name} (${ap.model}): ${parts.join(", ")}`;
+          if (ap.powerMode === "low") parts.push("Low Power");
+          if (ap.isMeshRepeater) parts.push("Mesh");
+          return `${ap.name} (${ap.model}): ${parts.join(", ")}`;
         });
 
         const apBlock = apLines.length > 0 ? apLines.join("\n") : "Sin APs";
 
         if (problemas.length > 0) {
           tipo = "ALERTA_MONITOREO";
-          titulo = `⚠️ Alerta: ${predioLabel}`;
-          mensaje = `Check ${checkNum}/2 — Red: ${red.networkName}\n${apBlock}\n\n⚠️ ${problemas.length} problema(s)`;
+          titulo = `Alerta: ${predioLabel}`;
+          mensaje = `Check ${checkNum}/2 — Red: ${red.networkName}\n${apBlock}\n\n${problemas.length} problema(s)`;
         } else {
           tipo = "MONITOREO_OK";
-          titulo = `✅ Sin alertas: ${predioLabel}`;
+          titulo = `Sin alertas: ${predioLabel}`;
           mensaje = `Check ${checkNum}/2 — Red: ${red.networkName}\n${apBlock}\n\nTodo OK. ${mon.estadoAnterior} → ${mon.estadoNuevo}`;
         }
       } catch (err) {
         console.error(`[Monitoreo] Error Meraki para ${predioLabel}:`, err);
         tipo = "ALERTA_MONITOREO";
-        titulo = `📡 Monitoreo: ${predioLabel}`;
+        titulo = `Monitoreo: ${predioLabel}`;
         mensaje = `Check ${checkNum}/2 — Error consultando Meraki: ${err instanceof Error ? err.message : "Error desconocido"}`;
         detalles.error = err instanceof Error ? err.message : "Error desconocido";
       }
@@ -243,7 +242,7 @@ export async function GET(request: NextRequest) {
         tipo,
         titulo,
         mensaje,
-        enlace: `/dashboard/tareas`,
+        enlace: `/dashboard/bandeja`,
         entidad: "PREDIO",
         entidadId: mon.predioId,
         tag: `monitoreo-${mon.predioId}-${checkNum}`,
