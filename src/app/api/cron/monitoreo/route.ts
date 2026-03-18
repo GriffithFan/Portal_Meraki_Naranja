@@ -179,12 +179,12 @@ export async function GET(request: NextRequest) {
     const checkNum = mon.checksRealizados + 1;
     const detalles: any = { check: checkNum, timestamp: ahora.toISOString() };
 
-    // Todos los destinatarios: asignados + quien cambió estado
+    // Solo notificar a los técnicos asignados al predio
     const asignaciones = await prisma.asignacion.findMany({
       where: { predioId: mon.predioId },
       select: { userId: true },
     });
-    const destinatarios = Array.from(new Set([mon.userId, ...asignaciones.map(a => a.userId)]));
+    const destinatarios = asignaciones.map(a => a.userId);
 
     let titulo: string;
     let mensaje: string;
