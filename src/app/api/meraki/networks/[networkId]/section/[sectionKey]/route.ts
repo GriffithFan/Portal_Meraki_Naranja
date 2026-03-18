@@ -434,7 +434,7 @@ async function buildAccessPointsSection(
       : Promise.resolve([]),
     getOrFetch("networkById", `wirelessStats:${networkId}`, () => getNetworkWirelessConnectionStats(networkId, { timespan: 3600 }), TTL.FAST),
   ]);
-  let switchPortsRaw: any[] = swPortsResult.status === "fulfilled" ? (swPortsResult.value || []) : [];
+  const switchPortsRaw: any[] = swPortsResult.status === "fulfilled" ? (swPortsResult.value || []) : [];
   const wirelessEthernetStatuses: any[] = ethStatusesResult.status === "fulfilled" ? (ethStatusesResult.value || []) : [];
   const networkWirelessStats: any = netWirelessResult.status === "fulfilled" ? netWirelessResult.value : null;
 

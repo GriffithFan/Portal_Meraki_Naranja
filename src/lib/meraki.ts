@@ -162,6 +162,7 @@ export async function getDeviceLldpCdp(serial: string) {
 /* ── Switches ──────────────────────────────────────────── */
 
 export async function getNetworkSwitchPortsStatuses(networkId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return safeGet(`/networks/${networkId}/switch/ports/statuses`, { perPage: 1000 }, []) as Promise<any[]>;
 }
 
