@@ -25,6 +25,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState<any[]>([]);
+  const [sinLeer, setSinLeer] = useState(0);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -45,6 +47,34 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     document.addEventListener("mousedown", closeMenu);
     return () => document.removeEventListener("mousedown", closeMenu);
   }, [closeMenu]);
+
+  // Cargar notificaciones al montar y cada 60s
+  const fetchNotifs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notificaciones?noLeidas=false", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifs((data.notificaciones || []).slice(0, 5));
+        setSinLeer(data.sinLeer || 0);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifs();
+    const iv = setInterval(fetchNotifs, 60_000);
+    return () => clearInterval(iv);
+  }, [fetchNotifs]);
+
+  async function marcarLeida(id: string) {
+    await fetch("/api/notificaciones", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ ids: [id] }),
+    });
+    fetchNotifs();
+  }
 
   const search = useCallback(async (q: string) => {
     if (q.length < 2) { setResults([]); setIsOpen(false); return; }
@@ -187,35 +217,48 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         {/* Notificaciones — dropdown preview */}
         <div className="relative" ref={notifRef}>
           <button
-            onClick={() => setNotifOpen(!notifOpen)}
+            onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen) fetchNotifs(); }}
             className="relative p-2 rounded-xl hover:bg-surface-100 transition-colors text-surface-500 hover:text-surface-700"
             aria-label="Notificaciones"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
             </svg>
-            <span className="absolute top-1 right-1 w-2 h-2 bg-accent-500 rounded-full" />
+            {sinLeer > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-accent-500 text-white text-[10px] font-bold rounded-full px-1">
+                {sinLeer > 9 ? "9+" : sinLeer}
+              </span>
+            )}
           </button>
 
           {notifOpen && (
             <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-80 bg-white rounded-xl shadow-lg border border-surface-200 py-1 animate-fade-in z-50">
               <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
                 <span className="font-semibold text-sm text-surface-800">Notificaciones</span>
-                <span className="text-[11px] text-surface-400">Hoy</span>
+                {sinLeer > 0 && <span className="text-[11px] text-primary-600 font-medium">{sinLeer} sin leer</span>}
               </div>
               <div className="max-h-72 overflow-y-auto">
-                <div className="px-4 py-3 hover:bg-surface-50 transition-colors border-b border-surface-50 cursor-pointer">
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-0.5 w-2 h-2 rounded-full bg-primary-500 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm text-surface-700 leading-snug">Bienvenido al portal Meraki</p>
-                      <p className="text-xs text-surface-400 mt-0.5">Sistema operativo</p>
+                {notifs.length > 0 ? notifs.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => { if (!n.leida) marcarLeida(n.id); if (n.enlace) { router.push(n.enlace); setNotifOpen(false); } }}
+                    className={`w-full text-left px-4 py-3 hover:bg-surface-50 transition-colors border-b border-surface-50 ${!n.leida ? "bg-primary-50/40" : ""}`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                        !n.leida ? "bg-primary-500" : "bg-surface-300"
+                      }`} />
+                      <div className="min-w-0">
+                        <p className={`text-sm leading-snug truncate ${!n.leida ? "text-surface-800 font-medium" : "text-surface-600"}`}>{n.titulo}</p>
+                        <p className="text-xs text-surface-400 mt-0.5 truncate">{n.mensaje}</p>
+                      </div>
                     </div>
+                  </button>
+                )) : (
+                  <div className="px-4 py-8 text-center text-xs text-surface-400">
+                    No hay notificaciones
                   </div>
-                </div>
-                <div className="px-4 py-8 text-center text-xs text-surface-400">
-                  No hay más notificaciones
-                </div>
+                )}
               </div>
               <div className="border-t border-surface-100">
                 <Link
