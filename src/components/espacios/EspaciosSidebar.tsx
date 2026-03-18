@@ -56,20 +56,29 @@ function CreateSpaceModal({
   const [nombre, setNombre] = useState("");
   const [color, setColor] = useState("#3b82f6");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!nombre.trim()) return;
     setSaving(true);
-    const res = await fetch("/api/espacios", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ nombre: nombre.trim(), color, parentId }),
-    });
-    if (res.ok) {
-      onCreated();
-      onClose();
+    setError("");
+    try {
+      const res = await fetch("/api/espacios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ nombre: nombre.trim(), color, parentId }),
+      });
+      if (res.ok) {
+        onCreated();
+        onClose();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || `Error ${res.status}`);
+      }
+    } catch {
+      setError("Error de conexión");
     }
     setSaving(false);
   }
@@ -109,6 +118,10 @@ function CreateSpaceModal({
             />
           ))}
         </div>
+
+        {error && (
+          <p className="text-xs text-red-500 mb-2">{error}</p>
+        )}
 
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="text-xs text-surface-500 px-3 py-1.5 hover:bg-surface-100 rounded">
