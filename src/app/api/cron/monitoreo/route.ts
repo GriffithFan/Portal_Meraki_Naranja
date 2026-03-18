@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
+  getOrganizations,
+  getNetworks,
   getNetworkDevices,
-  getDeviceSwitchPortsStatuses,
+  getOrganizationDevicesStatuses,
   getOrgWirelessDevicesEthernetStatuses,
 } from "@/lib/meraki";
 import { enviarPushYBandeja } from "@/lib/pushNotifications";
@@ -10,12 +12,22 @@ import { verifyCronAuth } from "@/lib/cronAuth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+type APInfo = {
+  name: string;
+  model: string;
+  serial: string;
+  status: string;
+  wiredSpeed: string;
+  powerMode: string | null;
+  isMeshRepeater: boolean;
+};
+
 /**
  * GET /api/cron/monitoreo
  *
- * Endpoint diseñado para ser invocado periódicamente (cada minuto).
- * Procesa monitoreos pendientes y envía notificaciones push + bandeja
- * cuando detecta caídas de velocidad en APs o errores CRC en switches.
+ * Invocado cada minuto. Busca la red Meraki usando el código del predio
+ * (como haría un técnico), obtiene el estado real de los APs:
+ * status (online/offline/alerting), velocidad, low power mode, mesh repeater.
  *
  * Protegido por CRON_SECRET (Bearer token, timing-safe).
  */
@@ -25,7 +37,6 @@ export async function GET(request: NextRequest) {
 
   const ahora = new Date();
 
-  // Buscar monitoreos pendientes cuyo próximo check ya pasó
   const pendientes = await prisma.monitoreoPostCambio.findMany({
     where: {
       completado: false,
@@ -35,72 +46,198 @@ export async function GET(request: NextRequest) {
       predio: { select: { nombre: true, codigo: true, merakiNetworkId: true, merakiOrgId: true } },
       usuario: { select: { id: true, nombre: true } },
     },
-    take: 20, // procesar máximo 20 por ciclo para no saturar la API
+    take: 10,
   });
 
   if (pendientes.length === 0) {
     return NextResponse.json({ processed: 0, message: "Sin monitoreos pendientes" });
   }
 
-  const procesarMonitoreo = async (mon: typeof pendientes[number]) => {
-    const networkId = mon.networkId || mon.predio.merakiNetworkId;
-    const orgId = mon.orgId || mon.predio.merakiOrgId;
-    const predioNombre = mon.predio.codigo || mon.predio.nombre;
-    const checkNum = mon.checksRealizados + 1;
+  // ─── Cache global para este ciclo (evita repetir llamadas a la API) ───
+  let orgsCache: any[] | null = null;
+  const networksCache = new Map<string, any[]>();
 
+  async function getOrgsOnce(): Promise<any[]> {
+    if (orgsCache) return orgsCache;
+    const envOrgId = process.env.MERAKI_ORG_ID;
+    orgsCache = envOrgId ? [{ id: envOrgId, name: "" }] : ((await getOrganizations()) || []) as any[];
+    return orgsCache;
+  }
+
+  async function getNetworksOnce(orgId: string): Promise<any[]> {
+    const cached = networksCache.get(orgId);
+    if (cached) return cached;
+    const nets = (await getNetworks(orgId)) as any[];
+    networksCache.set(orgId, nets);
+    return nets;
+  }
+
+  // ─── Buscar red Meraki por código de predio ───────────────────────────
+  async function buscarRedPorPredio(
+    predio: { codigo: string | null; nombre: string | null; merakiNetworkId: string | null; merakiOrgId: string | null }
+  ): Promise<{ networkId: string; orgId: string; networkName: string } | null> {
+    // Fast path: predio ya tiene networkId guardado
+    if (predio.merakiNetworkId && predio.merakiOrgId) {
+      return { networkId: predio.merakiNetworkId, orgId: predio.merakiOrgId, networkName: predio.nombre || "" };
+    }
+
+    const codigo = predio.codigo || "";
+    const nombre = predio.nombre || "";
+    if (!codigo && !nombre) return null;
+
+    const allOrgs = await getOrgsOnce();
+    const lower = codigo.toLowerCase();
+
+    // Buscar en todas las orgs una red cuyo nombre contenga el código del predio
+    for (const org of allOrgs) {
+      const nets = await getNetworksOnce(org.id);
+      const match = nets.find((n: any) => (n.name || "").toLowerCase().includes(lower));
+      if (match) return { networkId: match.id, orgId: org.id, networkName: match.name };
+    }
+
+    // Fallback: buscar por nombre del predio si difiere del código
+    if (nombre && nombre !== codigo) {
+      const lowerNombre = nombre.toLowerCase();
+      for (const org of allOrgs) {
+        const nets = await getNetworksOnce(org.id);
+        const match = nets.find((n: any) => (n.name || "").toLowerCase().includes(lowerNombre));
+        if (match) return { networkId: match.id, orgId: org.id, networkName: match.name };
+      }
+    }
+
+    return null;
+  }
+
+  // ─── Obtener estado detallado de APs ──────────────────────────────────
+  async function obtenerEstadoAPs(networkId: string, orgId: string): Promise<{ aps: APInfo[]; problemas: string[] }> {
     const problemas: string[] = [];
+
+    const devices = await getNetworkDevices(networkId);
+    const aps = ((devices || []) as any[]).filter((d: any) => d.model?.startsWith("MR"));
+
+    if (aps.length === 0) return { aps: [], problemas: ["No se encontraron APs en la red"] };
+
+    // Consultar statuses y ethernet en paralelo
+    const [statusesRes, ethRes] = await Promise.allSettled([
+      getOrganizationDevicesStatuses(orgId, { "networkIds[]": networkId }),
+      getOrgWirelessDevicesEthernetStatuses(orgId, { "networkIds[]": networkId }),
+    ]);
+
+    const statuses: any[] = statusesRes.status === "fulfilled" ? ((statusesRes.value || []) as any[]) : [];
+    const ethStatuses: any[] = ethRes.status === "fulfilled" ? ((ethRes.value || []) as any[]) : [];
+
+    const statusMap = new Map(statuses.map((s: any) => [s.serial, s]));
+    const ethMap = new Map(ethStatuses.map((s: any) => [s.serial, s]));
+
+    const apInfos: APInfo[] = aps.map((ap: any) => {
+      const devStatus = statusMap.get(ap.serial);
+      const ethSt = ethMap.get(ap.serial);
+      const ethPort = ethSt?.ports?.[0];
+
+      // Status color (online/offline/alerting/dormant)
+      const status: string = devStatus?.status || ap.status || "unknown";
+
+      // Velocidad Ethernet
+      const speedRaw = ethPort?.linkNegotiation?.speed ?? ethPort?.speed ?? ethSt?.speed;
+      let wiredSpeed = "—";
+      if (speedRaw) {
+        wiredSpeed = typeof speedRaw === "number"
+          ? `${speedRaw} Mbps`
+          : String(speedRaw).includes("Mbps") ? String(speedRaw) : `${speedRaw} Mbps`;
+      }
+
+      // Power mode
+      const powerMode: string | null = ethSt?.power?.mode || null;
+
+      // Mesh repeater (simplificado: si tiene entrada ethernet pero sin velocidad = sin cable)
+      const hasActiveEth = !!speedRaw;
+      const isMeshRepeater = !hasActiveEth && !!ethSt && !speedRaw;
+
+      // Detectar problemas
+      if (status === "offline" || status === "alerting") {
+        problemas.push(`AP "${ap.name || ap.serial}" está ${status === "offline" ? "⛔ offline" : "⚠️ alerting"}`);
+      }
+      if (speedRaw && typeof speedRaw === "number" && speedRaw < 1000) {
+        problemas.push(`AP "${ap.name || ap.serial}" a ${speedRaw} Mbps (esperado: 1000)`);
+      }
+      if (powerMode === "low") {
+        problemas.push(`AP "${ap.name || ap.serial}" en Low Power Mode`);
+      }
+      if (isMeshRepeater) {
+        problemas.push(`AP "${ap.name || ap.serial}" es Mesh Repeater (sin cable)`);
+      }
+
+      return { name: ap.name || ap.serial, model: ap.model, serial: ap.serial, status, wiredSpeed, powerMode, isMeshRepeater };
+    });
+
+    return { aps: apInfos, problemas };
+  }
+
+  // ─── Procesar cada monitoreo ──────────────────────────────────────────
+  const procesarMonitoreo = async (mon: typeof pendientes[number]) => {
+    const predioLabel = mon.predio.codigo || mon.predio.nombre || mon.predioId;
+    const checkNum = mon.checksRealizados + 1;
     const detalles: any = { check: checkNum, timestamp: ahora.toISOString() };
 
-    // Obtener todos los usuarios asignados al predio para notificarlos
+    // Todos los destinatarios: asignados + quien cambió estado
     const asignaciones = await prisma.asignacion.findMany({
       where: { predioId: mon.predioId },
       select: { userId: true },
     });
-    // Incluir al usuario que cambió el estado + los asignados (sin duplicados)
     const destinatarios = Array.from(new Set([mon.userId, ...asignaciones.map(a => a.userId)]));
 
     let titulo: string;
     let mensaje: string;
     let tipo: string;
 
-    if (!networkId) {
-      // Sin red Meraki vinculada — notificar igualmente
+    // 1. Buscar la red por código de predio (como haría un técnico)
+    const red = await buscarRedPorPredio(mon.predio);
+
+    if (!red) {
       tipo = "ALERTA_MONITOREO";
-      titulo = `📡 Monitoreo: ${predioNombre}`;
-      mensaje = `Check ${checkNum}/2 — Predio sin red Meraki vinculada. No se pudieron verificar APs. Estado: ${mon.estadoAnterior} → ${mon.estadoNuevo}`;
-      detalles.sinNetwork = true;
+      titulo = `📡 Monitoreo: ${predioLabel}`;
+      mensaje = `Check ${checkNum}/2 — No se encontró red Meraki para "${predioLabel}". Verificar configuración.`;
+      detalles.sinRed = true;
     } else {
       try {
-        const [apProblemas, crcProblemas] = await Promise.allSettled([
-          checkApSpeed(networkId, orgId),
-          checkCrcErrors(networkId),
-        ]);
+        detalles.networkId = red.networkId;
+        detalles.networkName = red.networkName;
 
-        if (apProblemas.status === "fulfilled" && apProblemas.value.length > 0) {
-          problemas.push(...apProblemas.value);
-          detalles.apSpeed = apProblemas.value;
-        }
-        if (crcProblemas.status === "fulfilled" && crcProblemas.value.length > 0) {
-          problemas.push(...crcProblemas.value);
-          detalles.crcErrors = crcProblemas.value;
+        const { aps, problemas } = await obtenerEstadoAPs(red.networkId, red.orgId);
+        detalles.aps = aps;
+        detalles.problemas = problemas;
+
+        // Armar mensaje con detalle de cada AP
+        const apLines = aps.map(ap => {
+          const icon = ap.status === "online" ? "✅" : ap.status === "alerting" ? "⚠️" : "⛔";
+          const parts = [`${icon} ${ap.status}`];
+          if (ap.wiredSpeed !== "—") parts.push(ap.wiredSpeed);
+          if (ap.powerMode === "low") parts.push("⚡ Low Power");
+          if (ap.isMeshRepeater) parts.push("🔄 Mesh");
+          return `📶 ${ap.name} (${ap.model}): ${parts.join(", ")}`;
+        });
+
+        const apBlock = apLines.length > 0 ? apLines.join("\n") : "Sin APs";
+
+        if (problemas.length > 0) {
+          tipo = "ALERTA_MONITOREO";
+          titulo = `⚠️ Alerta: ${predioLabel}`;
+          mensaje = `Check ${checkNum}/2 — Red: ${red.networkName}\n${apBlock}\n\n⚠️ ${problemas.length} problema(s)`;
+        } else {
+          tipo = "MONITOREO_OK";
+          titulo = `✅ Sin alertas: ${predioLabel}`;
+          mensaje = `Check ${checkNum}/2 — Red: ${red.networkName}\n${apBlock}\n\nTodo OK. ${mon.estadoAnterior} → ${mon.estadoNuevo}`;
         }
       } catch (err) {
-        console.error(`[Monitoreo] Error consultando Meraki para ${predioNombre}:`, err);
-        detalles.error = err instanceof Error ? err.message : "Error desconocido";
-      }
-
-      if (problemas.length > 0) {
+        console.error(`[Monitoreo] Error Meraki para ${predioLabel}:`, err);
         tipo = "ALERTA_MONITOREO";
-        titulo = `⚠️ Alerta post-cambio: ${predioNombre}`;
-        mensaje = `Check ${checkNum}/2 — ${problemas.join(". ")}`;
-      } else {
-        tipo = "MONITOREO_OK";
-        titulo = `✅ Sin alertas: ${predioNombre}`;
-        mensaje = `Check ${checkNum}/2 — Velocidad APs y puertos switch sin anomalías. Estado: ${mon.estadoAnterior} → ${mon.estadoNuevo}`;
+        titulo = `📡 Monitoreo: ${predioLabel}`;
+        mensaje = `Check ${checkNum}/2 — Error consultando Meraki: ${err instanceof Error ? err.message : "Error desconocido"}`;
+        detalles.error = err instanceof Error ? err.message : "Error desconocido";
       }
     }
 
-    // Enviar notificación a TODOS los destinatarios (asignados + quien cambió estado)
+    // Notificar a TODOS
     for (const uid of destinatarios) {
       await enviarPushYBandeja(uid, {
         tipo,
@@ -113,9 +250,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Actualizar monitoreo
-    const nuevoChecks = checkNum;
-    const completado = nuevoChecks >= mon.maxChecks;
+    // Actualizar registro
+    const completado = checkNum >= mon.maxChecks;
     const proximoCheck = completado
       ? ahora
       : new Date(ahora.getTime() + mon.intervaloMin * 60 * 1000);
@@ -123,114 +259,26 @@ export async function GET(request: NextRequest) {
     await prisma.monitoreoPostCambio.update({
       where: { id: mon.id },
       data: {
-        checksRealizados: nuevoChecks,
+        checksRealizados: checkNum,
         completado,
         proximoCheck,
         resultados: detalles,
       },
     });
 
-    return { predioId: mon.predioId, predio: predioNombre, check: checkNum, problemas: problemas.length, completado };
+    return { predioId: mon.predioId, predio: predioLabel, check: checkNum, problemas: detalles.problemas?.length || 0, completado, redEncontrada: !!red };
   };
 
-  const settled = await Promise.allSettled(pendientes.map(procesarMonitoreo));
-  const resultados: any[] = settled
-    .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
-    .map((r) => r.value);
+  // Procesar secuencialmente para respetar rate limits de Meraki
+  const resultados: any[] = [];
+  for (const mon of pendientes) {
+    try {
+      resultados.push(await procesarMonitoreo(mon));
+    } catch (err) {
+      console.error(`[Monitoreo] Error procesando ${mon.id}:`, err);
+      resultados.push({ id: mon.id, error: err instanceof Error ? err.message : "Error" });
+    }
+  }
 
   return NextResponse.json({ processed: resultados.length, resultados });
-}
-
-// ─── Checks Meraki ──────────────────────────────────────
-
-/**
- * Detecta APs con velocidad Ethernet < 1000 Mbps
- */
-async function checkApSpeed(networkId: string, orgId: string | null): Promise<string[]> {
-  const problemas: string[] = [];
-
-  try {
-    // Obtener dispositivos de la red
-    const devices = await getNetworkDevices(networkId);
-    const aps = (devices || []).filter((d: any) => d.model?.startsWith("MR"));
-
-    if (aps.length === 0) return problemas;
-
-    // Intentar usar el endpoint de ethernet statuses de la org
-    if (orgId) {
-      try {
-        const ethStatuses = (await getOrgWirelessDevicesEthernetStatuses(orgId, {
-          networkIds: [networkId],
-        })) as any[] | null;
-
-        for (const entry of ethStatuses || []) {
-          const serial = entry.serial;
-          const ap = aps.find((a: any) => a.serial === serial);
-          const apName = ap?.name || serial;
-
-          for (const port of entry.ports || []) {
-            const speed = port.linkNegotiation?.speed ?? port.speed;
-            if (speed && speed < 1000) {
-              problemas.push(
-                `AP "${apName}" conectado a ${speed} Mbps (esperado: 1000 Mbps)`
-              );
-            }
-          }
-        }
-        return problemas;
-      } catch {
-        // Fallback: sin endpoint de org, seguir con LLDP
-      }
-    }
-
-    // Fallback: no se pudo verificar via API de org
-    // No agregar falsos positivos
-  } catch (err) {
-    console.error("[Monitoreo] Error checkApSpeed:", err);
-  }
-
-  return problemas;
-}
-
-/**
- * Detecta errores CRC en puertos de switches
- */
-async function checkCrcErrors(networkId: string): Promise<string[]> {
-  const problemas: string[] = [];
-
-  try {
-    const devices = await getNetworkDevices(networkId);
-    const switches = (devices || []).filter((d: any) => d.model?.startsWith("MS"));
-
-    for (const sw of switches) {
-      try {
-        const ports = (await getDeviceSwitchPortsStatuses(sw.serial)) as any[] | null;
-        for (const port of ports || []) {
-          // Revisar warnings por CRC
-          const warnings = port.warnings || [];
-          const hasCrc = warnings.some((w: string) => /crc/i.test(w));
-          if (hasCrc) {
-            problemas.push(
-              `Switch "${sw.name || sw.serial}" puerto ${port.portId}: Error CRC detectado`
-            );
-          }
-
-          // También revisar errores explícitos
-          const errors = port.errors || [];
-          const hasCrcError = errors.some((e: string) => /crc/i.test(e));
-          if (hasCrcError && !hasCrc) {
-            problemas.push(
-              `Switch "${sw.name || sw.serial}" puerto ${port.portId}: Error CRC en errores`
-            );
-          }
-        }
-      } catch {
-        // Switch individual falló, continuar con los demás
-      }
-    }
-  } catch (err) {
-    console.error("[Monitoreo] Error checkCrcErrors:", err);
-  }
-
-  return problemas;
 }
