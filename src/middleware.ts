@@ -57,7 +57,7 @@ const MAX_LARGE_BODY_BYTES = 256 * 1024; // 256 KB
 const UPLOAD_PATHS = ["/api/importar"]; // rutas con archivos
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 
-const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron"];
+const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron", "/api/notificaciones/changelog"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
