@@ -175,17 +175,26 @@ async function buildSwitchesSection(networkId: string, orgId: string | undefined
   const lldpSnapshots: Record<string, any> = {};
   const perDevicePortStatuses: Record<string, any[]> = {};
 
-  // Parallelize per-switch API calls
-  await Promise.all(switches.map(async (sw) => {
-    const [portsResult, lldpResult, devicePortStatusResult] = await Promise.allSettled([
-      getDeviceSwitchPorts(sw.serial),
-      getDeviceLldpCdp(sw.serial),
-      getDeviceSwitchPortsStatuses(sw.serial),
-    ]);
-    detailedPortsMap[sw.serial] = portsResult.status === "fulfilled" ? portsResult.value : [];
-    if (lldpResult.status === "fulfilled") lldpSnapshots[sw.serial] = lldpResult.value;
-    if (devicePortStatusResult.status === "fulfilled") perDevicePortStatuses[sw.serial] = devicePortStatusResult.value;
-  }));
+  // Batched per-switch API calls (5 at a time to avoid 429)
+  const SW_BATCH = 5;
+  for (let i = 0; i < switches.length; i += SW_BATCH) {
+    const swBatchStart = Date.now();
+    const batch = switches.slice(i, i + SW_BATCH);
+    await Promise.all(batch.map(async (sw) => {
+      const [portsResult, lldpResult, devicePortStatusResult] = await Promise.allSettled([
+        getDeviceSwitchPorts(sw.serial),
+        getDeviceLldpCdp(sw.serial),
+        getDeviceSwitchPortsStatuses(sw.serial),
+      ]);
+      detailedPortsMap[sw.serial] = portsResult.status === "fulfilled" ? portsResult.value : [];
+      if (lldpResult.status === "fulfilled") lldpSnapshots[sw.serial] = lldpResult.value;
+      if (devicePortStatusResult.status === "fulfilled") perDevicePortStatuses[sw.serial] = devicePortStatusResult.value;
+    }));
+    const swElapsed = Date.now() - swBatchStart;
+    if (i + SW_BATCH < switches.length && swElapsed < 1200) {
+      await new Promise(r => setTimeout(r, 1200 - swElapsed));
+    }
+  }
 
   // Fetch availability change history for all devices in this network (24h)
   const availabilityBySerial = new Map<string, any[]>();
@@ -415,31 +424,61 @@ async function buildAccessPointsSection(
     }
   } catch (e) { console.error(`[Section:aps] topología no disponible (${networkId}):`, e); }
 
-  // --- Datos auxiliares ---
-  let switchPortsRaw: any[] = [];
-  try { switchPortsRaw = await getOrFetch("networkById", `swPortStatuses:${networkId}`, () => getNetworkSwitchPortsStatuses(networkId), TTL.FAST); } catch (e) { console.error(`[Section:aps] getNetworkSwitchPortsStatuses(${networkId}):`, e); }
+  // --- Datos auxiliares (en paralelo para maximizar velocidad) ---
+  const [swPortsResult, ethStatusesResult, netWirelessResult] = await Promise.allSettled([
+    switches.length > 0
+      ? getOrFetch("networkById", `swPortStatuses:${networkId}`, () => getNetworkSwitchPortsStatuses(networkId), TTL.FAST)
+      : Promise.resolve([]),
+    orgId
+      ? getOrFetch("networkById", `ethStatuses:${networkId}`, () => getOrgWirelessDevicesEthernetStatuses(orgId, { "networkIds[]": networkId }), TTL.FAST)
+      : Promise.resolve([]),
+    getOrFetch("networkById", `wirelessStats:${networkId}`, () => getNetworkWirelessConnectionStats(networkId, { timespan: 3600 }), TTL.FAST),
+  ]);
+  let switchPortsRaw: any[] = swPortsResult.status === "fulfilled" ? (swPortsResult.value || []) : [];
+  const wirelessEthernetStatuses: any[] = ethStatusesResult.status === "fulfilled" ? (ethStatusesResult.value || []) : [];
+  const networkWirelessStats: any = netWirelessResult.status === "fulfilled" ? netWirelessResult.value : null;
 
-  let wirelessEthernetStatuses: any[] = [];
-  if (orgId) {
-    try { wirelessEthernetStatuses = (await getOrgWirelessDevicesEthernetStatuses(orgId, { "networkIds[]": networkId })) || []; } catch (e) { console.error(`[Section:aps] getOrgWirelessDevicesEthernetStatuses(${networkId}):`, e); }
+  // Fallback: si el endpoint agregado devolvió vacío/404, obtener por switch individual
+  if (switchPortsRaw.length === 0 && switches.length > 0) {
+    const perSwBatch = 3;
+    for (let i = 0; i < switches.length; i += perSwBatch) {
+      const batch = switches.slice(i, i + perSwBatch);
+      const results = await Promise.allSettled(
+        batch.map((sw: any) =>
+          getOrFetch("switchPorts", `portStatuses:${sw.serial}`, () => getDeviceSwitchPortsStatuses(sw.serial), TTL.FAST)
+        )
+      );
+      for (let j = 0; j < results.length; j++) {
+        if (results[j].status === "fulfilled") {
+          const ports = (results[j] as PromiseFulfilledResult<any[]>).value || [];
+          switchPortsRaw.push(...ports.map((p: any) => ({ ...p, serial: batch[j].serial })));
+        }
+      }
+    }
   }
 
-  let networkWirelessStats: any = null;
-  try { networkWirelessStats = await getNetworkWirelessConnectionStats(networkId, { timespan: 3600 }); } catch (e) { console.error(`[Section:aps] getNetworkWirelessConnectionStats(${networkId}):`, e); }
-
-  const cachedLldpMap = getFromCache<Record<string, any>>("lldpByNetwork", networkId) || {};
   const lldpSnapshots: Record<string, any> = {};
   const wirelessStats: Record<string, any> = {};
 
-  // Parallelize per-AP LLDP + wireless stats calls
-  await Promise.all(accessPoints.map(async (ap) => {
-    const [lldpResult, statsResult] = await Promise.allSettled([
-      cachedLldpMap[ap.serial] ? Promise.resolve(cachedLldpMap[ap.serial]) : getDeviceLldpCdp(ap.serial),
-      getDeviceWirelessConnectionStats(ap.serial, { timespan: 3600 }),
-    ]);
-    if (lldpResult.status === "fulfilled") lldpSnapshots[ap.serial] = lldpResult.value;
-    if (statsResult.status === "fulfilled") wirelessStats[ap.serial] = statsResult.value;
-  }));
+  // Batched per-AP LLDP + wireless stats (5 APs/batch, cache individual por AP)
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < accessPoints.length; i += BATCH_SIZE) {
+    const batchStart = Date.now();
+    const batch = accessPoints.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(async (ap) => {
+      const [lldpResult, statsResult] = await Promise.allSettled([
+        getOrFetch("lldpByNetwork", `lldp:${ap.serial}`, () => getDeviceLldpCdp(ap.serial), TTL.SLOW),
+        getOrFetch("networkById", `apStats:${ap.serial}`, () => getDeviceWirelessConnectionStats(ap.serial, { timespan: 3600 }), TTL.FAST),
+      ]);
+      if (lldpResult.status === "fulfilled" && lldpResult.value) lldpSnapshots[ap.serial] = lldpResult.value;
+      if (statsResult.status === "fulfilled") wirelessStats[ap.serial] = statsResult.value;
+    }));
+    // Esperar al menos 1.2s entre batches para respetar el rate limit de Meraki (10 req/s)
+    const elapsed = Date.now() - batchStart;
+    if (i + BATCH_SIZE < accessPoints.length && elapsed < 1200) {
+      await new Promise(r => setTimeout(r, 1200 - elapsed));
+    }
+  }
 
   // Fetch availability change history for APs (24h)
   const apAvailabilityBySerial = new Map<string, any[]>();
@@ -626,9 +665,9 @@ async function buildAccessPointsSection(
     try {
       const wp = { "networkIds[]": networkId, timespan: DEFAULT_WIRELESS_TIMESPAN };
       const [signalByDevice, signalHistory, failedConnections] = await Promise.allSettled([
-        getOrgWirelessSignalQualityByDevice(orgId, wp),
-        getNetworkWirelessSignalQualityHistory(networkId, { timespan: DEFAULT_WIRELESS_TIMESPAN, resolution: 300 }),
-        getNetworkWirelessFailedConnections(networkId, { timespan: DEFAULT_WIRELESS_TIMESPAN }),
+        getOrFetch("networkById", `signalByDevice:${networkId}`, () => getOrgWirelessSignalQualityByDevice(orgId, wp), TTL.FAST),
+        getOrFetch("networkById", `signalHistory:${networkId}`, () => getNetworkWirelessSignalQualityHistory(networkId, { timespan: DEFAULT_WIRELESS_TIMESPAN, resolution: 300 }), TTL.FAST),
+        getOrFetch("networkById", `failedConns:${networkId}`, () => getNetworkWirelessFailedConnections(networkId, { timespan: DEFAULT_WIRELESS_TIMESPAN }), TTL.FAST),
       ]);
       if (signalByDevice.status === "fulfilled") result.wirelessSignalByDevice = signalByDevice.value;
       if (signalHistory.status === "fulfilled") result.wirelessSignalHistory = signalHistory.value;
@@ -719,37 +758,39 @@ async function buildApplianceSection(
   const switches = devices.filter((d) => /^ms/i.test(d.model));
   const switchLldpMap: Record<string, { name: string; serial: string; uplinkPortOnRemote: string | null }> = {};
 
-  await Promise.all(
-    switches.map(async (sw) => {
-      try {
-        const lldp = await getDeviceLldpCdp(sw.serial);
-        if (lldp?.ports) {
-          for (const portData of Object.values(lldp.ports) as any[]) {
-            const lldpInfo = portData.lldp || portData.cdp;
-            if (!lldpInfo) continue;
-            const remoteName = lldpInfo.deviceId || lldpInfo.systemName || "";
-            const remotePort = lldpInfo.portId || lldpInfo.portDescription || "";
-            // Check if this LLDP peer is an MX appliance in this network
-            const isAppliance = appliances.some(
-              (a) =>
-                remoteName.includes(a.serial) ||
-                remoteName.includes(a.name) ||
-                (a.model && remoteName.includes(a.model))
-            );
-            if (isAppliance) {
-              const portMatch = remotePort.match(/(\d+)/);
-              switchLldpMap[sw.serial] = {
-                name: sw.name || sw.model || sw.serial,
-                serial: sw.serial,
-                uplinkPortOnRemote: portMatch ? portMatch[1] : null,
-              };
-              break;
+  for (let i = 0; i < switches.length; i += 5) {
+    const batch = switches.slice(i, i + 5);
+    await Promise.all(
+      batch.map(async (sw) => {
+        try {
+          const lldp = await getDeviceLldpCdp(sw.serial);
+          if (lldp?.ports) {
+            for (const portData of Object.values(lldp.ports) as any[]) {
+              const lldpInfo = portData.lldp || portData.cdp;
+              if (!lldpInfo) continue;
+              const remoteName = lldpInfo.deviceId || lldpInfo.systemName || "";
+              const remotePort = lldpInfo.portId || lldpInfo.portDescription || "";
+              const isAppliance = appliances.some(
+                (a) =>
+                  remoteName.includes(a.serial) ||
+                  remoteName.includes(a.name) ||
+                  (a.model && remoteName.includes(a.model))
+              );
+              if (isAppliance) {
+                const portMatch = remotePort.match(/(\d+)/);
+                switchLldpMap[sw.serial] = {
+                  name: sw.name || sw.model || sw.serial,
+                  serial: sw.serial,
+                  uplinkPortOnRemote: portMatch ? portMatch[1] : null,
+                };
+                break;
+              }
             }
           }
-        }
-      } catch (e) { console.error(`[Section:appliance] LLDP switch(${sw.serial}):`, e); }
-    })
-  );
+        } catch (e) { console.error(`[Section:appliance] LLDP switch(${sw.serial}):`, e); }
+      })
+    );
+  }
 
   // Get LLDP from the appliance(s) to detect actual port connections
   const applianceLldpMap: Record<string, { deviceName: string; deviceSerial: string; deviceMac: string; deviceType: string; remotePort: string }> = {};

@@ -51,12 +51,21 @@ export default function ImportarPage() {
   const [showNewEspacio, setShowNewEspacio] = useState(false);
   const [nuevoEspacioNombre, setNuevoEspacioNombre] = useState("");
   const [creandoEspacio, setCreandoEspacio] = useState(false);
+  const [updateExisting, setUpdateExisting] = useState(false);
+  // Campos personalizados existentes y nuevos a crear
+  const [customFields, setCustomFields] = useState<{ clave: string; nombre: string }[]>([]);
+  const [newCustomFields, setNewCustomFields] = useState<Record<number, string>>({}); // colIdx → nombre
 
-  // Cargar campos disponibles
+  // Cargar campos disponibles + campos personalizados
   useEffect(() => {
     fetch("/api/importar/ejecutar", { credentials: "include" })
       .then((r) => r.json())
-      .then((data) => setDbFields(tipo === "PREDIO" ? data.predioFields : data.equipoFields));
+      .then((data) => {
+        setDbFields(tipo === "PREDIO" ? data.predioFields : data.equipoFields);
+        if (data.camposPersonalizados) {
+          setCustomFields(data.camposPersonalizados.map((c: any) => ({ clave: c.clave, nombre: c.nombre })));
+        }
+      });
   }, [tipo]);
 
   // Cargar espacios disponibles
@@ -129,9 +138,54 @@ export default function ImportarPage() {
 
     const data = await res.json();
     setParseResult(data);
-    setMappings({});
     setExcludedRows(new Set());
     setExcludedCols(new Set());
+
+    // Auto-mapeo: detectar columnas por nombre del header
+    const autoMappings: Record<number, string> = {};
+    const usedFields = new Set<string>();
+    if (data.headers) {
+      const aliases: Record<string, string[]> = {
+        codigo:    ["predio", "codigo", "código", "cod", "code", "id_predio"],
+        nombre:    ["nombre", "name", "cue_nombre", "establecimiento"],
+        latitud:   ["latitud", "lat", "latitude", "latitud_gps"],
+        longitud:  ["longitud", "lng", "lon", "longitude", "long", "longitud_gps"],
+        direccion: ["direccion", "dirección", "address", "dir"],
+        ciudad:    ["ciudad", "city", "localidad"],
+        provincia: ["provincia", "province", "prov"],
+        incidencias: ["incidencia", "incidencias", "ni", "ni-"],
+        cue:       ["cue"],
+        ambito:    ["ambito", "ámbito"],
+        equipoAsignado: ["equipo", "team", "equipo_asignado", "equipoasignado"],
+        lacR:      ["lac", "lacr", "lac-r", "lac_r"],
+        cuePredio: ["cue_predio", "cuePredio"],
+        gpsPredio: ["gps", "gps_predio", "gpspredio"],
+        fechaDesde: ["desde", "fecha_desde", "inicio", "start"],
+        fechaHasta: ["hasta", "fecha_hasta", "fin", "end"],
+        seccion:   ["seccion", "sección"],
+        tipo:      ["tipo", "type"],
+        notas:     ["notas", "nota", "notes", "observaciones"],
+        prioridad: ["prioridad", "priority"],
+      };
+
+      for (let i = 0; i < data.headers.length; i++) {
+        const h = data.headers[i]?.toString().toLowerCase().trim().replace(/[^a-záéíóúñü0-9_-]/g, "");
+        if (!h) continue;
+        for (const [field, aliasList] of Object.entries(aliases)) {
+          if (usedFields.has(field)) continue;
+          if (aliasList.some(a => h === a || h.startsWith(a) || a.startsWith(h))) {
+            autoMappings[i] = field;
+            usedFields.add(field);
+            break;
+          }
+        }
+      }
+    }
+    setMappings(autoMappings);
+    // Si hay código mapeado, activar "Actualizar existentes" automáticamente
+    if (usedFields.has("codigo") && !usedFields.has("nombre")) {
+      setUpdateExisting(true);
+    }
     setStep("map");
   }
 
@@ -140,9 +194,40 @@ export default function ImportarPage() {
     setImporting(true);
     setError("");
 
-    // Filtrar mapeos de columnas excluidas
-    const mappingArray = Object.entries(mappings)
-      .filter(([col, field]) => field !== "_skip" && !excludedCols.has(parseInt(col)))
+    // 1) Crear campos personalizados nuevos antes de importar
+    const resolvedMappings = { ...mappings };
+    const newCustomEntries = Object.entries(newCustomFields);
+    if (newCustomEntries.length > 0) {
+      try {
+        const camposToCreate = newCustomEntries.map(([, nombre]) => ({ nombre }));
+        const res = await fetch("/api/campos-personalizados", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(camposToCreate),
+        });
+        if (res.ok) {
+          const createdFields = await res.json();
+          const created = Array.isArray(createdFields) ? createdFields : [createdFields];
+          // Mapear cada columna _new_custom a custom:clave
+          for (const [colStr, nombre] of newCustomEntries) {
+            const col = parseInt(colStr);
+            const match = created.find((c: any) => c.nombre === nombre);
+            if (match) {
+              resolvedMappings[col] = `custom:${match.clave}`;
+            }
+          }
+        }
+      } catch {
+        setError("Error al crear campos personalizados");
+        setImporting(false);
+        return;
+      }
+    }
+
+    // 2) Filtrar mapeos de columnas excluidas
+    const mappingArray = Object.entries(resolvedMappings)
+      .filter(([col, field]) => field !== "_skip" && field !== "_new_custom" && !excludedCols.has(parseInt(col)))
       .map(([col, field]) => ({ excelColumn: parseInt(col), dbField: field }));
 
     const res = await fetch("/api/importar/ejecutar", {
@@ -154,6 +239,7 @@ export default function ImportarPage() {
         mappings: mappingArray,
         rows: parseResult.rows.filter((_: string[], i: number) => !excludedRows.has(i)),
         espacioId: espacioId || undefined,
+        updateExisting,
       }),
     });
 
@@ -172,6 +258,7 @@ export default function ImportarPage() {
     setStep("upload");
     setParseResult(null);
     setMappings({});
+    setNewCustomFields({});
     setResult(null);
     setError("");
     setSelectedFile(null);
@@ -180,6 +267,7 @@ export default function ImportarPage() {
     setEspacioId("");
     setShowNewEspacio(false);
     setNuevoEspacioNombre("");
+    setUpdateExisting(false);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -326,6 +414,11 @@ export default function ImportarPage() {
                   {excludedCols.size > 0 && <span className="text-red-500"> ({excludedCols.size} cols excluidas)</span>}
                   {" "}· Hoja: {parseResult.sheetNames[parseResult.currentSheet]}
                 </p>
+                {Object.keys(mappings).length > 0 && (
+                  <p className="text-[11px] text-emerald-600 mt-1">
+                    {Object.values(mappings).filter(v => v !== "_skip").length} columnas detectadas automáticamente
+                  </p>
+                )}
               </div>
               <button onClick={reset} className="text-sm text-surface-500 hover:text-surface-700">Cambiar archivo</button>
             </div>
@@ -333,22 +426,61 @@ export default function ImportarPage() {
             <div className="grid gap-2">
               {parseResult.headers.map((header: string, i: number) => {
                 const isColExcluded = excludedCols.has(i);
+                const isNewCustom = mappings[i] === "_new_custom";
                 return (
-                  <div key={i} className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${isColExcluded ? "bg-red-50 opacity-60" : "bg-surface-50"}`}>
+                  <div key={i} className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${isColExcluded ? "bg-red-50 opacity-60" : isNewCustom ? "bg-violet-50" : "bg-surface-50"}`}>
                     <span className={`text-sm w-48 truncate font-mono ${isColExcluded ? "text-surface-400 line-through" : "text-surface-600"}`}>{header}</span>
                     <span className="text-surface-300">→</span>
                     {isColExcluded ? (
                       <span className="flex-1 px-3 py-1.5 text-sm text-red-500 italic">Columna excluida</span>
+                    ) : isNewCustom ? (
+                      <div className="flex-1 flex items-center gap-2">
+                        <span className="px-2 py-1 bg-violet-100 text-violet-700 rounded text-xs font-medium">
+                          Campo personalizado: &quot;{newCustomFields[i] || header}&quot;
+                        </span>
+                        <button
+                          onClick={() => {
+                            setMappings(prev => ({ ...prev, [i]: "_skip" }));
+                            setNewCustomFields(prev => { const n = { ...prev }; delete n[i]; return n; });
+                          }}
+                          className="text-xs text-surface-500 hover:text-surface-700"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     ) : (
                       <select
                         value={mappings[i] || "_skip"}
-                        onChange={(e) => setMappings((prev) => ({ ...prev, [i]: e.target.value }))}
-                        className="flex-1 px-3 py-1.5 border border-surface-300 rounded-lg text-sm"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "_new_custom") {
+                            setMappings(prev => ({ ...prev, [i]: "_new_custom" }));
+                            setNewCustomFields(prev => ({ ...prev, [i]: header }));
+                          } else {
+                            setMappings(prev => ({ ...prev, [i]: val }));
+                            setNewCustomFields(prev => { const n = { ...prev }; delete n[i]; return n; });
+                          }
+                        }}
+                        className={`flex-1 px-3 py-1.5 border rounded-lg text-sm ${
+                          mappings[i] && mappings[i] !== "_skip" ? "border-emerald-300 bg-emerald-50" : "border-surface-300"
+                        }`}
                       >
                         <option value="_skip">— Omitir —</option>
-                        {Object.entries(dbFields).map(([key, label]) => (
-                          <option key={key} value={key}>{label}</option>
-                        ))}
+                        <optgroup label="Campos del sistema">
+                          {Object.entries(dbFields).map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </optgroup>
+                        {customFields.length > 0 && (
+                          <optgroup label="Campos personalizados">
+                            {customFields.map(cf => (
+                              <option key={`custom:${cf.clave}`} value={`custom:${cf.clave}`}>{cf.nombre}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="Nuevo">
+                          <option value="_new_custom">+ Agregar como campo personalizado</option>
+                        </optgroup>
                       </select>
                     )}
                     <button
@@ -455,9 +587,18 @@ export default function ImportarPage() {
 
           {error && <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">{error}</p>}
 
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button onClick={() => setStep("upload")} className="px-4 py-2 text-xs text-surface-600 border border-surface-200 rounded-md hover:bg-surface-50">← Volver</button>
             <button onClick={reset} className="px-4 py-2 text-xs text-red-500 border border-red-200 rounded-md hover:bg-red-50">Cancelar</button>
+            <label className="flex items-center gap-1.5 text-xs text-surface-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={updateExisting}
+                onChange={(e) => setUpdateExisting(e.target.checked)}
+                className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+              />
+              Actualizar existentes (por código)
+            </label>
             <button onClick={handleImport} disabled={importing || activeRowsCount === 0 || activeColsCount === 0 || Object.values(mappings).filter((v) => v !== "_skip").length === 0} className="flex-1 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 disabled:opacity-50 transition-colors">
               {importing ? "Importando..." : `Importar ${activeRowsCount} filas × ${activeColsCount} columnas`}
             </button>
@@ -472,6 +613,7 @@ export default function ImportarPage() {
           <h2 className="text-base font-semibold text-surface-800 mb-2">Importación completada</h2>
           <div className="flex justify-center gap-8 text-sm mb-4">
             <div><span className="text-2xl font-bold text-green-600">{result.created}</span><p className="text-surface-500">Creados</p></div>
+            {result.updated > 0 && <div><span className="text-2xl font-bold text-blue-600">{result.updated}</span><p className="text-surface-500">Actualizados</p></div>}
             <div><span className="text-2xl font-bold text-yellow-600">{result.skipped}</span><p className="text-surface-500">Omitidos</p></div>
             <div><span className="text-2xl font-bold text-surface-400">{result.total}</span><p className="text-surface-500">Total</p></div>
           </div>

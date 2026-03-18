@@ -17,6 +17,7 @@ interface ImportPayload {
   defaultPrioridad?: string;
   defaultEstadoId?: string;
   espacioId?: string;
+  updateExisting?: boolean;
 }
 
 // Campos del cronograma SF 2026
@@ -62,15 +63,16 @@ export async function GET() {
   if (!session || !isModOrAdmin(session.rol)) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
   }
-  // También devolver estados disponibles
-  const estados = await prisma.estadoConfig.findMany({ 
-    where: { activo: true }, 
-    orderBy: { orden: "asc" } 
-  });
+  // También devolver estados disponibles y campos personalizados
+  const [estados, camposPersonalizados] = await Promise.all([
+    prisma.estadoConfig.findMany({ where: { activo: true }, orderBy: { orden: "asc" } }),
+    prisma.campoPersonalizado.findMany({ where: { activo: true }, orderBy: { orden: "asc" } }),
+  ]);
   return NextResponse.json({ 
     predioFields: PREDIO_FIELDS, 
     equipoFields: EQUIPO_FIELDS,
-    estados 
+    estados,
+    camposPersonalizados,
   });
 }
 
@@ -90,12 +92,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const { tipo, mappings, rows, defaultPrioridad, defaultEstadoId, espacioId } = body;
+  const { tipo, mappings, rows, defaultPrioridad, defaultEstadoId, espacioId, updateExisting } = body;
 
   const fieldMap = new Map<string, number>();
+  const customFieldMap = new Map<string, number>(); // custom:clave → excelColumn
   for (const m of mappings) {
     if (m.dbField && m.dbField !== "_skip") {
-      fieldMap.set(m.dbField, m.excelColumn);
+      if (m.dbField.startsWith("custom:")) {
+        customFieldMap.set(m.dbField.substring(7), m.excelColumn);
+      } else {
+        fieldMap.set(m.dbField, m.excelColumn);
+      }
     }
   }
 
@@ -120,13 +127,15 @@ export async function POST(request: NextRequest) {
   }
 
   let created = 0;
+  let updated = 0;
   let skipped = 0;
   const errors: string[] = [];
 
   try {
     if (tipo === "PREDIO") {
-      if (!fieldMap.has("nombre")) {
-        return NextResponse.json({ error: 'Debes mapear la columna "Nombre / CUE"' }, { status: 400 });
+      // Requiere al menos "nombre" o "codigo" (para updates)
+      if (!fieldMap.has("nombre") && !fieldMap.has("codigo")) {
+        return NextResponse.json({ error: 'Debes mapear al menos "Nombre / CUE" o "Código"' }, { status: 400 });
       }
 
       for (let i = 0; i < rows.length; i++) {
@@ -135,13 +144,17 @@ export async function POST(request: NextRequest) {
 
         try {
           const nombre = safeGet(row, fieldMap.get("nombre"));
-          if (!nombre) { skipped++; continue; }
+          const codigo = safeGet(row, fieldMap.get("codigo"));
+          if (!nombre && !codigo) { skipped++; continue; }
 
           const data: Record<string, unknown> = {
-            nombre,
             prioridad: defaultPrioridad || "MEDIA",
             creadorId: session.userId,
           };
+          if (nombre) data.nombre = nombre;
+          if (codigo) data.codigo = codigo;
+          // Si no hay nombre pero sí código, usar código como nombre (campo requerido en BD)
+          if (!nombre && codigo) data.nombre = codigo;
 
           if (defaultEstadoId) data.estadoId = defaultEstadoId;
           if (espacioId) data.espacioId = espacioId;
@@ -157,8 +170,6 @@ export async function POST(request: NextRequest) {
           if (notas) data.notas = notas;
           const seccion = safeGet(row, fieldMap.get("seccion"));
           if (seccion) data.seccion = seccion;
-          const codigo = safeGet(row, fieldMap.get("codigo"));
-          if (codigo) data.codigo = codigo;
 
           const prioridadVal = safeGet(row, fieldMap.get("prioridad")).toUpperCase();
           if (["BAJA", "MEDIA", "ALTA", "URGENTE"].includes(prioridadVal)) data.prioridad = prioridadVal;
@@ -192,11 +203,47 @@ export async function POST(request: NextRequest) {
           const fechaHasta = parseDate(safeGet(row, fieldMap.get("fechaHasta")));
           if (fechaHasta) data.fechaHasta = fechaHasta;
 
+          // Campos personalizados → camposExtra JSON
+          if (customFieldMap.size > 0) {
+            const extra: Record<string, string> = {};
+            for (const [clave, colIdx] of customFieldMap) {
+              const val = safeGet(row, colIdx);
+              if (val) extra[clave] = val;
+            }
+            if (Object.keys(extra).length > 0) data.camposExtra = extra;
+          }
+
+          // Si tiene código y updateExisting, hacer upsert
+          if (codigo && updateExisting) {
+            const existing = await prisma.predio.findUnique({ where: { codigo } });
+            if (existing) {
+              // Solo actualizar campos que vienen en el Excel (no sobreescribir con vacíos)
+              const updateData: Record<string, unknown> = {};
+              for (const [key, val] of Object.entries(data)) {
+                if (key === "creadorId" || key === "prioridad") continue;
+                if (val !== undefined && val !== null && val !== "") {
+                  // Merge camposExtra en vez de sobreescribir
+                  if (key === "camposExtra" && existing.camposExtra) {
+                    updateData.camposExtra = { ...(existing.camposExtra as Record<string, unknown>), ...(val as Record<string, unknown>) };
+                  } else {
+                    updateData[key] = val;
+                  }
+                }
+              }
+              await prisma.predio.update({ where: { codigo }, data: updateData as any });
+              updated++;
+              continue;
+            }
+          }
           await prisma.predio.create({ data: data as any });
           created++;
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Error desconocido";
-          errors.push(`Fila ${i + 2}: ${msg.includes("Unique constraint") ? "Código duplicado" : msg}`);
+          if (msg.includes("Unique constraint") && !updateExisting) {
+            errors.push(`Fila ${i + 2}: Código duplicado (activá "Actualizar existentes" para actualizar)`);
+          } else {
+            errors.push(`Fila ${i + 2}: ${msg}`);
+          }
           skipped++;
         }
       }
@@ -258,7 +305,7 @@ export async function POST(request: NextRequest) {
       });
     } catch { /* no bloquear por log */ }
 
-    return NextResponse.json({ success: true, created, skipped, total: rows.length, errors: errors.slice(0, 20) });
+    return NextResponse.json({ success: true, created, updated, skipped, total: rows.length, errors: errors.slice(0, 20) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error desconocido";
     console.error("Import error:", msg);

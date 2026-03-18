@@ -1,6 +1,6 @@
 {
-  "name": "Portal Meraki Naranja",
-  "short_name": "Portal Meraki",
+  "name": "Carrot",
+  "short_name": "Carrot",
   "description": "Sistema unificado de monitoreo de red y gestión de predios",
   "start_url": "/dashboard",
   "scope": "/",

@@ -185,6 +185,7 @@ export const tareaUpdateSchema = tareaCreateSchema
     seccion: strOpt(100),
     latitud: z.union([z.number(), z.string(), z.null()]).optional(),
     longitud: z.union([z.number(), z.string(), z.null()]).optional(),
+    camposExtra: z.record(z.string(), z.unknown()).optional(),
   })
   .partial();
 
@@ -199,6 +200,7 @@ export const importarEjecutarSchema = z.object({
   defaultPrioridad: z.enum(PRIORIDADES).optional(),
   defaultEstadoId: cuidOpt(),
   espacioId: cuidOpt(),
+  updateExisting: z.boolean().optional(),
 });
 
 // POST /api/facturacion (body opcional)

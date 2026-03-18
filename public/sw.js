@@ -1,4 +1,4 @@
-// Service Worker for Portal Meraki Naranja push notifications
+// Service Worker for Carrot push notifications
 self.addEventListener('push', function(event) {
   if (!event.data) return;
 

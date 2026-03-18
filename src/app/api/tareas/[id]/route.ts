@@ -54,7 +54,8 @@ const EDITABLE_FIELDS = [
   "nombre", "codigo", "direccion", "ciudad", "tipo", "notas", "prioridad",
   "seccion", "latitud", "longitud", "estadoId", "fechaProgramada",
   "incidencias", "lacR", "cue", "ambito", "equipoAsignado",
-  "provincia", "cuePredio", "gpsPredio", "fechaDesde", "fechaHasta"
+  "provincia", "cuePredio", "gpsPredio", "fechaDesde", "fechaHasta",
+  "camposExtra"
 ];
 
 export async function GET(
@@ -141,6 +142,13 @@ export async function PATCH(
         else if (["latitud", "longitud"].includes(field)) {
           const val = parseFloat(String(bodyAny[field]).replace(",", "."));
           data[field] = isNaN(val) ? null : val;
+        }
+        // Merge camposExtra (no sobreescribir, combinar con existentes)
+        else if (field === "camposExtra") {
+          const prev = (existing.camposExtra && typeof existing.camposExtra === "object")
+            ? existing.camposExtra as Record<string, unknown>
+            : {};
+          data[field] = { ...prev, ...(bodyAny[field] as Record<string, unknown>) };
         }
         // Valores normales
         else {

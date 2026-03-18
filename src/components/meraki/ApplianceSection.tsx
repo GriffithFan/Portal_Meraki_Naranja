@@ -49,7 +49,11 @@ export default function ApplianceSection({ networkId, summaryData, loadedSection
       {/* Dispositivos con detalle */}
       {devices.map((device: any) => {
         const rawPorts = device.ports || [];
-        const deviceUplinks = uplinks.filter((u: any) => u.serial === device.serial);
+        const deviceUplinks = uplinks.filter((u: any) => {
+          if (u.serial !== device.serial) return false;
+          const st = (u.status || "").toLowerCase();
+          return st === "active" || st === "ready" || st === "connected";
+        });
         const ports = enrichPortsWithConnections(rawPorts, device.serial, topology);
         const connectedOverrides = deriveConnectedPortsFromTopology(device.serial, topology);
         const statusN = (device.status || "").toLowerCase();

@@ -131,12 +131,14 @@ function SpaceNode({
   pathname,
   isModOrAdmin,
   onAdd,
+  onDelete,
 }: {
   node: any;
   depth: number;
   pathname: string;
   isModOrAdmin: boolean;
   onAdd: (parentId: string, parentName: string) => void;
+  onDelete: (id: string, nombre: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const hasChildren = node.children?.length > 0;
@@ -182,13 +184,22 @@ function SpaceNode({
 
         {/* Add sub-space button */}
         {isModOrAdmin && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onAdd(node.id, node.nombre); }}
-            className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-surface-200 rounded shrink-0 text-surface-400 hover:text-surface-600 transition-opacity"
-            title="Agregar sub-espacio"
-          >
-            <PlusIcon />
-          </button>
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); onAdd(node.id, node.nombre); }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-surface-200 rounded shrink-0 text-surface-400 hover:text-surface-600 transition-opacity"
+              title="Agregar sub-espacio"
+            >
+              <PlusIcon />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(node.id, node.nombre); }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 rounded shrink-0 text-surface-400 hover:text-red-500 transition-opacity"
+              title="Eliminar espacio"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </>
         )}
       </div>
 
@@ -203,6 +214,7 @@ function SpaceNode({
               pathname={pathname}
               isModOrAdmin={isModOrAdmin}
               onAdd={onAdd}
+              onDelete={onDelete}
             />
           ))}
         </div>
@@ -218,6 +230,16 @@ export default function EspaciosSidebar() {
   const [espacios, setEspacios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [createModal, setCreateModal] = useState<{ parentId: string | null; parentName: string | null } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; nombre: string } | null>(null);
+
+  async function handleDeleteEspacio() {
+    if (!deleteConfirm) return;
+    const res = await fetch(`/api/espacios/${deleteConfirm.id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) {
+      fetchEspacios();
+    }
+    setDeleteConfirm(null);
+  }
 
   const fetchEspacios = useCallback(async () => {
     const res = await fetch("/api/espacios", { credentials: "include" });
@@ -290,6 +312,7 @@ export default function EspaciosSidebar() {
                   pathname={pathname}
                   isModOrAdmin={isModOrAdmin}
                   onAdd={(parentId, parentName) => setCreateModal({ parentId, parentName })}
+                  onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
                 />
               ))}
             </div>
@@ -364,6 +387,7 @@ export default function EspaciosSidebar() {
                 pathname={pathname}
                 isModOrAdmin={isModOrAdmin}
                 onAdd={(parentId, parentName) => setCreateModal({ parentId, parentName })}
+                onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
               />
             ))
           )}
@@ -378,6 +402,32 @@ export default function EspaciosSidebar() {
           onClose={() => setCreateModal(null)}
           onCreated={fetchEspacios}
         />
+      )}
+
+      {/* Modal confirmar eliminación de espacio */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-sm mx-4 animate-fade-in-up">
+            <h3 className="text-sm font-semibold text-surface-800 mb-2">Eliminar espacio</h3>
+            <p className="text-xs text-surface-600 mb-4">
+              ¿Eliminar <strong>{deleteConfirm.nombre}</strong>? Las tareas dentro quedarán sin espacio asignado.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 rounded-md transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteEspacio}
+                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 font-medium transition-colors"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useRef, useMemo, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, ReactNode } from "react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -26,13 +26,15 @@ export function useNetworkContext() {
 }
 
 export function NetworkProvider({ children }: { children: ReactNode }) {
-  const [selectedNetwork, setSelectedNetworkRaw] = useState<any>(() => {
-    if (typeof window === "undefined") return null;
+  const [selectedNetwork, setSelectedNetworkRaw] = useState<any>(null);
+
+  // Restaurar red guardada después del montaje para evitar hydration mismatch
+  useEffect(() => {
     try {
       const saved = sessionStorage.getItem(SESSION_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
+      if (saved) setSelectedNetworkRaw(JSON.parse(saved));
+    } catch { /* storage vacío o corrupto */ }
+  }, []);
   const [summaryData, setSummaryData] = useState<any>(null);
   const [loadedSections, setLoadedSections] = useState<Set<string>>(new Set());
   const [sectionLoading, setSectionLoading] = useState<string | null>(null);

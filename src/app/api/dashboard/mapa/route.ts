@@ -4,7 +4,7 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
-  if (!session || !isModOrAdmin(session.rol))
+  if (!session)
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
   if (equipoAsignado) where.equipoAsignado = equipoAsignado;
   if (provincia) where.provincia = provincia;
   if (estadoId) where.estadoId = estadoId;
+
+  // Usuarios normales (no mod/admin): solo ver predios asignados a ellos
+  if (!isModOrAdmin(session.rol)) {
+    where.asignaciones = { some: { userId: session.userId } };
+  }
 
   const predios = await prisma.predio.findMany({
     where,

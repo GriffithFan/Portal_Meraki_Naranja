@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNetworkContext } from "@/contexts/NetworkContext";
+import { useSession } from "@/hooks/useSession";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -17,6 +18,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { selectedNetwork, setSelectedNetwork } = useNetworkContext();
+  const { session } = useSession();
   const isMonitoring = MONITORING_PATHS.some((p) => pathname.startsWith(p));
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -219,22 +221,46 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-surface-100 transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-sm font-bold">
-              U
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">
+              {(session?.nombre?.[0] || "U").toUpperCase()}
             </div>
           </button>
 
           {userMenuOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-surface-200 py-1 animate-fade-in">
-              <button
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-                </svg>
-                Cerrar sesión
-              </button>
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-surface-200 overflow-hidden animate-fade-in z-50">
+              {/* Perfil header */}
+              <div className="px-4 pt-4 pb-3 bg-gradient-to-br from-primary-50 to-accent-50/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-base font-bold shadow-sm flex-shrink-0">
+                    {(session?.nombre?.[0] || "U").toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-surface-800 truncate">{session?.nombre || "Usuario"}</p>
+                    <p className="text-xs text-surface-500 truncate">{session?.email || ""}</p>
+                  </div>
+                </div>
+                <div className="mt-2.5">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/70 text-primary-700 border border-primary-200/50">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                    {session?.rol || "—"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Acciones */}
+              <div className="py-1">
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                  </svg>
+                  Cerrar sesión
+                </button>
+              </div>
             </div>
           )}
         </div>

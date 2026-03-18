@@ -445,3 +445,39 @@ model PermisoSeccion {
   @@unique([seccion, rol])
   @@index([seccion])
 }
+
+// ─── CAMPOS PERSONALIZADOS ─────────────────────────
+model CampoPersonalizado {
+  id     String @id @default(cuid())
+  clave  String @unique  // clave interna (sanitizada del nombre)
+  nombre String          // Nombre visible (etiqueta)
+  tipo   String @default("text") // text, number, date, select, badge
+  opciones String[] @default([])  // Opciones para select/badge
+  ancho  Int    @default(100)
+  orden  Int    @default(0)
+  activo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([activo, orden])
+}
+
+// ─── HOSPEDAJES ─────────────────────────────────────
+model Hospedaje {
+  id         String  @id @default(cuid())
+  ubicacion  String
+  nombre     String
+  tipo       String?
+  garage     String?
+  telefono   String?
+  provincia  String?
+  notas      String?
+  activo     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([provincia])
+  @@index([ubicacion])
+  @@index([activo])
+}

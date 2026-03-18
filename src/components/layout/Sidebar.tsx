@@ -46,6 +46,7 @@ const sections: NavSection[] = [
       { label: "Mapa GPS", href: "/dashboard/predios", icon: icon("M15 10.5a3 3 0 11-6 0 3 3 0 016 0z M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"), roles: ["ADMIN", "MODERADOR"] },
       { label: "Calendario", href: "/dashboard/calendario", icon: icon("M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5") },
       { label: "Stock", href: "/dashboard/stock", icon: icon("M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z") },
+      { label: "Hospedajes", href: "/dashboard/hospedajes", icon: icon("M2.25 12l8.954-8.955a1.126 1.126 0 011.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25") },
       { label: "Importar", href: "/dashboard/importar", icon: icon("M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"), roles: ["ADMIN", "MODERADOR"] },
     ],
   },
@@ -241,7 +242,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           </svg>
         </button>
         {!collapsed && (
-          <Image src="/images/logo-horizontal.png" alt="Portal Meraki Naranja" width={140} height={68} className="object-contain max-h-[38px] w-auto" priority />
+          <Image src="/images/logo-horizontal.png" alt="Carrot" width={140} height={68} className="object-contain max-h-[38px] w-auto" priority />
         )}
       </div>
 

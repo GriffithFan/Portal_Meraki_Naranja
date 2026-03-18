@@ -102,7 +102,7 @@ async function safeGet<T = unknown>(path: string, params: Record<string, unknown
     return data as T;
   } catch (err) {
     const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-    if (status !== 404) {
+    if (status !== 404 && status !== 400) {
       console.error(`[Meraki] safeGet ${path} failed (${status ?? "unknown"}):`, axios.isAxiosError(err) ? err.message : err);
     }
     return fallback;
@@ -153,20 +153,16 @@ export async function getOrgSwitchPortsTopologyDiscoveryByDevice(orgId: string) 
 /* ── LLDP / CDP ────────────────────────────────────────── */
 
 export async function getDeviceLldpCdp(serial: string) {
-  try {
-    const { data } = await client.get(`/devices/${serial}/lldpCdp`);
-    return data;
-  } catch {
-    const { data } = await client.get(`/devices/${serial}/lldp/cdp`);
-    return data;
-  }
+  // Try primary endpoint; if it 404s, try legacy endpoint
+  const primary = await safeGet(`/devices/${serial}/lldpCdp`);
+  if (primary !== null) return primary;
+  return safeGet(`/devices/${serial}/lldp/cdp`);
 }
 
 /* ── Switches ──────────────────────────────────────────── */
 
 export async function getNetworkSwitchPortsStatuses(networkId: string) {
-  const { data } = await client.get(`/networks/${networkId}/switch/ports/statuses`, { params: { perPage: 1000 } });
-  return data;
+  return safeGet(`/networks/${networkId}/switch/ports/statuses`, { perPage: 1000 }, []) as Promise<any[]>;
 }
 
 export async function getDeviceSwitchPortsStatuses(serial: string) {

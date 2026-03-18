@@ -356,12 +356,12 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
           <thead>
             <tr>
               <SortableHeader label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} align="center" width="5%" />
-              <SortableHeader label="Name" sortKey="name" sortConfig={sortConfig} onSort={handleSort} align="left" width="9%" />
-              <th style={{ textAlign: "left", width: "18%", padding: "10px 10px" }}>Connectivity (UTC-3)</th>
-              <SortableHeader label="Serial number" sortKey="serial" sortConfig={sortConfig} onSort={handleSort} align="left" width="11%" />
+              <SortableHeader label="Name" sortKey="name" sortConfig={sortConfig} onSort={handleSort} align="left" width="14%" />
+              <th style={{ textAlign: "left", width: "16%", padding: "10px 10px" }}>Connectivity (UTC-3)</th>
+              <SortableHeader label="Serial number" sortKey="serial" sortConfig={sortConfig} onSort={handleSort} align="left" width="10%" />
               <SortableHeader label="Ethernet 1" sortKey="wiredSpeed" sortConfig={sortConfig} onSort={handleSort} align="left" width="10%" />
-              <SortableHeader label="Ethernet 1 LLDP" sortKey="connectedTo" sortConfig={sortConfig} onSort={handleSort} align="left" width="14%" />
-              <SortableHeader label="MAC address" sortKey="mac" sortConfig={sortConfig} onSort={handleSort} align="left" width="13%" />
+              <SortableHeader label="Ethernet 1 LLDP" sortKey="connectedTo" sortConfig={sortConfig} onSort={handleSort} align="left" width="13%" />
+              <SortableHeader label="MAC address" sortKey="mac" sortConfig={sortConfig} onSort={handleSort} align="left" width="12%" />
               <th style={{ textAlign: "left", width: "10%", padding: "10px 10px" }}>Local IP</th>
             </tr>
           </thead>

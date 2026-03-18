@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
-import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort } from "@/components/ui/Icons";
+import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash, IconEdit } from "@/components/ui/Icons";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -32,6 +32,8 @@ const DEFAULT_COLUMNS: Column[] = [
   { id: "asignados", label: "Asignados", field: "asignaciones", width: 120, visible: true, editable: false, type: "text" },
   { id: "provincia", label: "Provincia", field: "provincia", width: 100, visible: true, editable: true, type: "text" },
   { id: "cuePredio", label: "CUE_Predio", field: "cuePredio", width: 100, visible: true, editable: true, type: "text" },
+  { id: "latitud", label: "Latitud", field: "latitud", width: 100, visible: true, editable: true, type: "text" },
+  { id: "longitud", label: "Longitud", field: "longitud", width: 100, visible: true, editable: true, type: "text" },
   { id: "gpsPredio", label: "GPS", field: "gpsPredio", width: 120, visible: false, editable: true, type: "text" },
 ];
 
@@ -52,9 +54,19 @@ export default function TareasPage() {
   const [showEstadoModal, setShowEstadoModal] = useState(false);
   const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6" });
 
-  // Drag & drop columnas
+  // Inline new column form
+  const [showNewCol, setShowNewCol] = useState(false);
+  const [newColName, setNewColName] = useState("");
+  const [newColType, setNewColType] = useState<"text" | "badge" | "date" | "select">("text");
+  const [creatingCol, setCreatingCol] = useState(false);
+
+  // Drag & drop columnas (refs para acceso sincrónico en event handlers)
   const [dragColId, setDragColId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
+  const didDragRef = useRef(false);
+
+  // Confirmar eliminación
+  const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: string; label: string } | null>(null);
 
   // Usuarios para asignación
   const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
@@ -99,6 +111,31 @@ export default function TareasPage() {
         ids.push("sin-estado");
         setExpandedSections(new Set(ids));
       });
+    // Cargar campos personalizados y agregar como columnas
+    fetch("/api/campos-personalizados", { credentials: "include" })
+      .then(r => r.ok ? r.json() : { campos: [] })
+      .then(d => {
+        const campos = d.campos || [];
+        if (campos.length > 0) {
+          setColumns(prev => {
+            const existingIds = new Set(prev.map(c => c.id));
+            const newCols = campos
+              .filter((c: any) => !existingIds.has(`custom_${c.clave}`))
+              .map((c: any) => ({
+                id: `custom_${c.clave}`,
+                label: c.nombre,
+                field: `_custom_${c.clave}`,
+                width: c.ancho || 100,
+                visible: true,
+                editable: true,
+                type: (c.tipo || "text") as "text" | "badge" | "date" | "select",
+                options: c.opciones?.length ? c.opciones : undefined,
+              }));
+            return newCols.length > 0 ? [...prev, ...newCols] : prev;
+          });
+        }
+      })
+      .catch(() => {});
     // Cargar usuarios para asignación
     if (isModOrAdmin) {
       fetch("/api/usuarios", { credentials: "include" })
@@ -120,19 +157,35 @@ export default function TareasPage() {
     let filtered = tareas;
     if (search) {
       const s = search.toLowerCase();
-      filtered = tareas.filter(t =>
-        t.nombre?.toLowerCase().includes(s) ||
-        t.incidencias?.toLowerCase().includes(s) ||
-        t.cue?.toLowerCase().includes(s) ||
-        t.provincia?.toLowerCase().includes(s) ||
-        t.equipoAsignado?.toLowerCase().includes(s)
-      );
+      filtered = tareas.filter(t => {
+        if (
+          t.nombre?.toLowerCase().includes(s) ||
+          t.incidencias?.toLowerCase().includes(s) ||
+          t.cue?.toLowerCase().includes(s) ||
+          t.provincia?.toLowerCase().includes(s) ||
+          t.equipoAsignado?.toLowerCase().includes(s)
+        ) return true;
+        // Buscar en campos personalizados
+        if (t.camposExtra) {
+          for (const val of Object.values(t.camposExtra)) {
+            if (String(val).toLowerCase().includes(s)) return true;
+          }
+        }
+        return false;
+      });
     }
 
     if (sortConfig) {
       filtered = [...filtered].sort((a, b) => {
-        const aVal = a[sortConfig.field] ?? "";
-        const bVal = b[sortConfig.field] ?? "";
+        let aVal, bVal;
+        if (sortConfig.field.startsWith("_custom_")) {
+          const clave = sortConfig.field.substring(8);
+          aVal = a.camposExtra?.[clave] ?? "";
+          bVal = b.camposExtra?.[clave] ?? "";
+        } else {
+          aVal = a[sortConfig.field] ?? "";
+          bVal = b[sortConfig.field] ?? "";
+        }
         const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
         return sortConfig.dir === "asc" ? cmp : -cmp;
       });
@@ -238,6 +291,23 @@ export default function TareasPage() {
   async function saveField(field: string, value: any) {
     if (!selectedTarea) return;
 
+    // Campos personalizados se guardan en camposExtra
+    if (field.startsWith("_custom_")) {
+      const clave = field.substring(8);
+      const newExtra = { ...(selectedTarea.camposExtra || {}), [clave]: value };
+      const res = await fetch(`/api/tareas/${selectedTarea.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ camposExtra: newExtra }),
+      });
+      if (res.ok) {
+        setSelectedTarea((prev: any) => ({ ...prev, camposExtra: newExtra }));
+        setTareas(prev => prev.map(t => t.id === selectedTarea.id ? { ...t, camposExtra: newExtra } : t));
+      }
+      return;
+    }
+
     const res = await fetch(`/api/tareas/${selectedTarea.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -296,20 +366,95 @@ export default function TareasPage() {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // ELIMINACIÓN
+  // ═══════════════════════════════════════════════════════════════
+  async function handleConfirmDelete() {
+    if (!confirmDelete) return;
+    const { type, id } = confirmDelete;
+    setConfirmDelete(null);
+
+    if (type === "tarea") {
+      const res = await fetch(`/api/tareas/${id}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) {
+        setTareas(prev => prev.filter(t => t.id !== id));
+        if (selectedTarea?.id === id) setSelectedTarea(null);
+      }
+    } else if (type === "estado") {
+      const res = await fetch(`/api/estados/${id}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) {
+        setEstados(prev => prev.filter(e => e.id !== id));
+        fetchTareas();
+      }
+    } else if (type === "campo") {
+      // id es la clave del campo
+      const res = await fetch(`/api/campos-personalizados?clave=${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) {
+        setColumns(prev => prev.filter(c => c.id !== `custom_${id}`));
+      }
+    }
+  }
+
+  // Crear columna personalizada inline
+  async function handleCreateCol() {
+    const nombre = newColName.trim();
+    if (!nombre || creatingCol) return;
+    setCreatingCol(true);
+    try {
+      const res = await fetch("/api/campos-personalizados", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ nombre, tipo: newColType }),
+      });
+      if (res.ok) {
+        const campo = await res.json();
+        const colId = `custom_${campo.clave}`;
+        setColumns(prev => {
+          if (prev.some(c => c.id === colId)) return prev;
+          return [...prev, {
+            id: colId,
+            label: campo.nombre,
+            field: `_custom_${campo.clave}`,
+            width: campo.ancho || 100,
+            visible: true,
+            editable: true,
+            type: (campo.tipo || "text") as "text" | "badge" | "date" | "select",
+            options: campo.opciones?.length ? campo.opciones : undefined,
+          }];
+        });
+        setNewColName("");
+        setNewColType("text");
+        setShowNewCol(false);
+      }
+    } catch { /* ignore */ }
+    setCreatingCol(false);
+  }
+
   // Drag & drop columnas
-  function handleColDragStart(colId: string) {
+
+  function handleColDragStart(e: React.DragEvent, colId: string) {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/x-col-id", colId);
+    didDragRef.current = false;
     setDragColId(colId);
   }
 
   function handleColDragOver(e: React.DragEvent, colId: string) {
     e.preventDefault();
-    if (dragColId && dragColId !== colId) {
-      setDragOverColId(colId);
-    }
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    didDragRef.current = true;
+    setDragOverColId(colId);
   }
 
-  function handleColDrop(colId: string) {
-    if (!dragColId || dragColId === colId) {
+  function handleColDrop(e: React.DragEvent, colId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceColId = e.dataTransfer.getData("text/x-col-id");
+    didDragRef.current = true;
+
+    if (!sourceColId || sourceColId === colId) {
       setDragColId(null);
       setDragOverColId(null);
       return;
@@ -317,7 +462,7 @@ export default function TareasPage() {
 
     setColumns(prev => {
       const newCols = [...prev];
-      const fromIdx = newCols.findIndex(c => c.id === dragColId);
+      const fromIdx = newCols.findIndex(c => c.id === sourceColId);
       const toIdx = newCols.findIndex(c => c.id === colId);
       if (fromIdx === -1 || toIdx === -1) return prev;
       const [moved] = newCols.splice(fromIdx, 1);
@@ -332,6 +477,8 @@ export default function TareasPage() {
   function handleColDragEnd() {
     setDragColId(null);
     setDragOverColId(null);
+    // Resetear didDrag después de un tick para que onClick lo lea antes del reset
+    setTimeout(() => { didDragRef.current = false; }, 0);
   }
 
   // Helpers
@@ -365,6 +512,13 @@ export default function TareasPage() {
 
   // Render de celda en tabla
   const renderCell = (t: any, col: Column) => {
+    // Campos personalizados: leer desde camposExtra JSON
+    if (col.field.startsWith("_custom_")) {
+      const clave = col.field.substring(8);
+      const val = t.camposExtra?.[clave];
+      if (!val) return <span className="text-surface-300">&mdash;</span>;
+      return <span className="text-surface-700 truncate block">{val}</span>;
+    }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
       if (asigns.length === 0) return <span className="text-surface-300">&mdash;</span>;
@@ -386,10 +540,30 @@ export default function TareasPage() {
         </span>
       ) : <span className="text-surface-300">&mdash;</span>;
     }
-    return <span className="text-surface-700 truncate block">{t[col.field] || t.nombre || "\u2014"}</span>;
+    // Para la columna "predio", mostrar incidencias o nombre como fallback
+    if (col.id === "predio") {
+      return <span className="text-surface-700 truncate block">{t[col.field] || t.nombre || "\u2014"}</span>;
+    }
+    const val = t[col.field];
+    return <span className="text-surface-700 truncate block">{val != null && val !== "" ? String(val) : "\u2014"}</span>;
   };
 
-  const visibleColumns = columns.filter(c => c.visible);
+  // Columnas visibles: ocultar automáticamente columnas del sistema sin datos
+  const ALWAYS_VISIBLE = useMemo(() => new Set(["predio", "fechaActualizacion", "asignados"]), []);
+  const visibleColumns = useMemo(() => {
+    return columns.filter(c => {
+      if (!c.visible) return false;
+      // Columnas esenciales siempre visibles
+      if (ALWAYS_VISIBLE.has(c.id)) return true;
+      // Campos personalizados: respetar toggle del usuario
+      if (c.id.startsWith("custom_")) return true;
+      // Columnas del sistema: solo mostrar si al menos una tarea tiene dato
+      return tareas.some((t: any) => {
+        const v = t[c.field];
+        return v != null && v !== "";
+      });
+    });
+  }, [columns, tareas, ALWAYS_VISIBLE]);
 
   // Suprimir warning de session no usada
   void session;
@@ -480,10 +654,55 @@ export default function TareasPage() {
       {showColumnConfig && (
         <div className="mb-4 p-3 bg-white border border-surface-200 rounded-lg space-y-3">
           <div>
-            <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-2">Columnas</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider">Columnas</p>
+              {isModOrAdmin && (
+                <button
+                  onClick={() => setShowNewCol(!showNewCol)}
+                  className="text-[11px] text-surface-500 hover:text-surface-700 font-medium"
+                >
+                  + Columna
+                </button>
+              )}
+            </div>
+            {showNewCol && isModOrAdmin && (
+              <div className="flex items-center gap-2 mb-2 p-2 bg-surface-50 rounded border border-surface-200">
+                <input
+                  value={newColName}
+                  onChange={e => setNewColName(e.target.value)}
+                  placeholder="Nombre de la columna"
+                  className="flex-1 min-w-0 px-2 py-1 text-xs border border-surface-300 rounded focus:outline-none focus:border-surface-500"
+                  onKeyDown={e => e.key === "Enter" && handleCreateCol()}
+                  autoFocus
+                />
+                <select
+                  value={newColType}
+                  onChange={e => setNewColType(e.target.value as any)}
+                  className="px-2 py-1 text-xs border border-surface-300 rounded bg-white focus:outline-none focus:border-surface-500"
+                >
+                  <option value="text">Texto</option>
+                  <option value="badge">Badge (SI/NO)</option>
+                  <option value="date">Fecha</option>
+                  <option value="select">Selector</option>
+                </select>
+                <button
+                  onClick={handleCreateCol}
+                  disabled={!newColName.trim() || creatingCol}
+                  className="px-2 py-1 text-xs bg-surface-800 text-white rounded hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                >
+                  {creatingCol ? "..." : "Crear"}
+                </button>
+                <button
+                  onClick={() => { setShowNewCol(false); setNewColName(""); }}
+                  className="text-surface-400 hover:text-surface-600"
+                >
+                  <IconX className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {columns.map(col => (
-                <label key={col.id} className={`flex items-center gap-1.5 text-[11px] cursor-pointer px-2 py-1 rounded border transition-colors ${
+                <label key={col.id} className={`flex items-center gap-1.5 text-[11px] cursor-pointer px-2 py-1 rounded border transition-colors group ${
                   col.visible ? "bg-surface-100 border-surface-300 text-surface-700" : "bg-white border-surface-200 text-surface-400"
                 }`}>
                   <input
@@ -493,6 +712,20 @@ export default function TareasPage() {
                     className="sr-only"
                   />
                   {col.label}
+                  {col.id.startsWith("custom_") && isModOrAdmin && (
+                    <button
+                      onClick={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        const clave = col.id.replace("custom_", "");
+                        setConfirmDelete({ type: "campo", id: clave, label: col.label });
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"
+                      title="Eliminar columna"
+                    >
+                      <IconX className="w-3 h-3" />
+                    </button>
+                  )}
                 </label>
               ))}
             </div>
@@ -516,10 +749,20 @@ export default function TareasPage() {
                   {estados.map(e => (
                     <span
                       key={e.id}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group"
                       style={{ borderColor: `${e.color}40`, color: e.color }}
                     >
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: e.color }} />
+                      {e.nombre}
+                      {session?.rol === "ADMIN" && (
+                        <button
+                          onClick={() => setConfirmDelete({ type: "estado", id: e.id, label: e.nombre })}
+                          className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"
+                          title="Eliminar estado"
+                        >
+                          <IconX className="w-3 h-3" />
+                        </button>
+                      )}
                       {e.nombre}
                     </span>
                   ))}
@@ -570,22 +813,22 @@ export default function TareasPage() {
                     ) : (
                       <div className="overflow-x-auto">
                         <MobileTaskList items={items} />
-                        <table className="w-full text-[11px] hidden md:table">
+                        <table className="w-full min-w-max text-[11px] hidden md:table">
                           <thead>
                             <tr className="border-b border-surface-100">
                               {visibleColumns.map((col) => (
                                 <th
                                   key={col.id}
                                   draggable
-                                  onDragStart={() => handleColDragStart(col.id)}
+                                  onDragStart={(e) => handleColDragStart(e, col.id)}
                                   onDragOver={(e) => handleColDragOver(e, col.id)}
-                                  onDrop={() => handleColDrop(col.id)}
+                                  onDrop={(e) => handleColDrop(e, col.id)}
                                   onDragEnd={handleColDragEnd}
                                   style={{ width: col.width, minWidth: col.width }}
                                   className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
                                     dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                                   } ${dragColId === col.id ? "opacity-40" : ""}`}
-                                  onClick={() => toggleSort(col.field)}
+                                  onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
                                 >
                                   <span className="inline-flex items-center gap-0.5">
                                     {col.label}
@@ -638,22 +881,22 @@ export default function TareasPage() {
               {expandedSections.has("sin-estado") && (
                 <div className="border-t border-surface-100 overflow-x-auto">
                   <MobileTaskList items={groupedTareas["sin-estado"]} />
-                  <table className="w-full text-[11px] hidden md:table">
+                  <table className="w-full min-w-max text-[11px] hidden md:table">
                     <thead>
                       <tr className="border-b border-surface-100">
                         {visibleColumns.map((col) => (
                           <th
                             key={col.id}
                             draggable
-                            onDragStart={() => handleColDragStart(col.id)}
+                            onDragStart={(e) => handleColDragStart(e, col.id)}
                             onDragOver={(e) => handleColDragOver(e, col.id)}
-                            onDrop={() => handleColDrop(col.id)}
+                            onDrop={(e) => handleColDrop(e, col.id)}
                             onDragEnd={handleColDragEnd}
                             style={{ width: col.width, minWidth: col.width }}
                             className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
                               dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                             } ${dragColId === col.id ? "opacity-40" : ""}`}
-                            onClick={() => toggleSort(col.field)}
+                            onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
                           >
                             <span className="inline-flex items-center gap-0.5">
                               {col.label}
@@ -697,22 +940,22 @@ export default function TareasPage() {
               </div>
               <div className="overflow-x-auto">
                 <MobileTaskList items={tareas} />
-                <table className="w-full text-[11px] hidden md:table">
+                <table className="w-full min-w-max text-[11px] hidden md:table">
                   <thead>
                     <tr className="border-b border-surface-100">
                       {visibleColumns.map((col) => (
                         <th
                           key={col.id}
                           draggable
-                          onDragStart={() => handleColDragStart(col.id)}
+                          onDragStart={(e) => handleColDragStart(e, col.id)}
                           onDragOver={(e) => handleColDragOver(e, col.id)}
-                          onDrop={() => handleColDrop(col.id)}
+                          onDrop={(e) => handleColDrop(e, col.id)}
                           onDragEnd={handleColDragEnd}
                           style={{ width: col.width, minWidth: col.width }}
                           className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
                             dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                           } ${dragColId === col.id ? "opacity-40" : ""}`}
-                          onClick={() => toggleSort(col.field)}
+                          onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
                         >
                           <span className="inline-flex items-center gap-0.5">
                             {col.label}
@@ -777,6 +1020,15 @@ export default function TareasPage() {
                     <IconX className="w-4 h-4 text-surface-400" />
                   </button>
                 </div>
+                {session?.rol === "ADMIN" && (
+                  <button
+                    onClick={() => setConfirmDelete({ type: "tarea", id: selectedTarea.id, label: selectedTarea.incidencias || selectedTarea.nombre || "esta tarea" })}
+                    className="mt-2 flex items-center gap-1 text-[11px] text-red-400 hover:text-red-600 transition-colors"
+                  >
+                    <IconTrash className="w-3.5 h-3.5" />
+                    Eliminar tarea
+                  </button>
+                )}
               </div>
 
               {detailLoading ? (
@@ -1153,6 +1405,42 @@ export default function TareasPage() {
               <button type="submit" className="px-3 py-1.5 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium transition-colors">Crear</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal confirmar eliminación */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-sm mx-4 animate-fade-in-up">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                <IconTrash className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-surface-800">Confirmar eliminación</h3>
+                <p className="text-xs text-surface-500 mt-0.5">Esta acción no se puede deshacer</p>
+              </div>
+            </div>
+            <p className="text-xs text-surface-600 mb-4">
+              ¿Eliminar <strong>{confirmDelete.label}</strong>?
+              {confirmDelete.type === "estado" && " Las tareas en este estado quedarán sin estado."}
+              {confirmDelete.type === "campo" && " La columna se ocultará de la tabla."}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 rounded-md transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 font-medium transition-colors"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

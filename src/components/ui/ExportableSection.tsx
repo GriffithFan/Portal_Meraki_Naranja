@@ -22,8 +22,7 @@ export default function ExportableSection({ sectionName, children }: ExportableS
   const captureSection = async () => {
     if (!contentRef.current) return null;
     const html2canvas = (await import("html2canvas")).default;
-    await new Promise<void>((r) => setTimeout(r, 100));
-    return html2canvas(contentRef.current, {
+    const raw = await html2canvas(contentRef.current, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
@@ -31,17 +30,29 @@ export default function ExportableSection({ sectionName, children }: ExportableS
       logging: false,
       removeContainer: true,
       imageTimeout: 0,
-      onclone: (clonedDoc) => {
+      scrollX: 0,
+      scrollY: 0,
+      onclone: (clonedDoc: Document, clonedEl: HTMLElement) => {
+        // Forzar posición fija para evitar offset por scroll
+        clonedEl.style.position = "fixed";
+        clonedEl.style.top = "0";
+        clonedEl.style.left = "0";
+        clonedEl.style.margin = "0";
         clonedDoc.querySelectorAll("svg").forEach((svg) => {
           svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-          try {
-            const bbox = (svg as SVGSVGElement).getBBox();
-            if (!svg.hasAttribute("width")) svg.setAttribute("width", String(bbox.width));
-            if (!svg.hasAttribute("height")) svg.setAttribute("height", String(bbox.height));
-          } catch { /* ignore */ }
         });
       },
     });
+    // Crear canvas con márgenes blancos alrededor
+    const pad = 48;
+    const padded = document.createElement("canvas");
+    padded.width = raw.width + pad * 2;
+    padded.height = raw.height + pad * 2;
+    const ctx = padded.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, padded.width, padded.height);
+    ctx.drawImage(raw, pad, pad);
+    return padded;
   };
 
   const downloadJPG = async () => {
@@ -72,12 +83,15 @@ export default function ExportableSection({ sectionName, children }: ExportableS
       if (!canvas) return;
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const { jsPDF } = await import("jspdf");
+      const margin = 40;
+      const pdfW = canvas.width + margin * 2;
+      const pdfH = canvas.height + margin * 2;
       const pdf = new jsPDF({
-        orientation: canvas.width > canvas.height ? "landscape" : "portrait",
+        orientation: pdfW > pdfH ? "landscape" : "portrait",
         unit: "px",
-        format: [canvas.width, canvas.height],
+        format: [pdfW, pdfH],
       });
-      pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
+      pdf.addImage(imgData, "JPEG", margin, margin, canvas.width, canvas.height);
       pdf.save(getFileName("pdf"));
     } catch (e) {
       console.error("Error generando PDF:", e);

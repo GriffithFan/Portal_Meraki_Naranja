@@ -12,13 +12,19 @@ const COOKIE_NAME = "pmn-token";
 /* ── Rate Limiting in-memory ──────────────────────────────── */
 const RATE_LIMIT_WINDOW = 60_000; // 1 minuto
 const RATE_LIMIT_MAX = 120;       // máx 120 requests por ventana por IP
+const LOGIN_RATE_LIMIT_WINDOW = 15 * 60_000; // 15 minutos
+const LOGIN_RATE_LIMIT_MAX = 10;  // máx 10 intentos de login por ventana
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const loginRateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 // Limpieza periódica para evitar memory leak
 setInterval(() => {
   const now = Date.now();
   rateLimitMap.forEach((entry, key) => {
     if (entry.resetAt < now) rateLimitMap.delete(key);
+  });
+  loginRateLimitMap.forEach((entry, key) => {
+    if (entry.resetAt < now) loginRateLimitMap.delete(key);
   });
 }, 60_000);
 
@@ -33,10 +39,23 @@ function checkRateLimit(ip: string): boolean {
   return entry.count <= RATE_LIMIT_MAX;
 }
 
+function checkLoginRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginRateLimitMap.get(ip);
+  if (!entry || entry.resetAt < now) {
+    loginRateLimitMap.set(ip, { count: 1, resetAt: now + LOGIN_RATE_LIMIT_WINDOW });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= LOGIN_RATE_LIMIT_MAX;
+}
+
 /* ── Body size limit (16 KB para la mayoría de rutas API) ── */
 const MAX_BODY_BYTES = 16 * 1024; // 16 KB
 const LARGE_BODY_PATHS = ["/api/tareas", "/api/stock", "/api/calendario"]; // rutas con payloads más grandes
 const MAX_LARGE_BODY_BYTES = 256 * 1024; // 256 KB
+const UPLOAD_PATHS = ["/api/importar"]; // rutas con archivos
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron"];
 
@@ -52,10 +71,22 @@ export async function middleware(request: NextRequest) {
     );
   }
 
+  // ── Rate limit estricto para login ──
+  if (pathname === "/api/auth/login" && request.method === "POST") {
+    if (!checkLoginRateLimit(ip)) {
+      return NextResponse.json(
+        { error: "Demasiados intentos de inicio de sesión. Intenta en 15 minutos." },
+        { status: 429, headers: { "Retry-After": "900" } }
+      );
+    }
+  }
+
   // ── Body size limit (solo POST/PUT/PATCH) ──
   if (["POST", "PUT", "PATCH"].includes(request.method) && pathname.startsWith("/api")) {
     const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
-    const maxBytes = LARGE_BODY_PATHS.some(p => pathname.startsWith(p))
+    const maxBytes = UPLOAD_PATHS.some(p => pathname.startsWith(p))
+      ? MAX_UPLOAD_BYTES
+      : LARGE_BODY_PATHS.some(p => pathname.startsWith(p))
       ? MAX_LARGE_BODY_BYTES
       : MAX_BODY_BYTES;
     if (contentLength > maxBytes) {
@@ -94,9 +125,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Proteger rutas /dashboard y /api (excepto /api/auth)
+  // Proteger rutas /dashboard y /api (excepto rutas auth públicas explícitas)
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/api")) {
-    if (pathname.startsWith("/api/auth")) {
+    const publicAuthRoutes = ["/api/auth/login", "/api/auth/logout", "/api/auth/me"];
+    if (publicAuthRoutes.includes(pathname)) {
       return NextResponse.next();
     }
 

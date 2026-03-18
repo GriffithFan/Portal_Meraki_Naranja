@@ -43,3 +43,9 @@
     background: transparent;
   }
 }
+
+/* ─── Leaflet z-index containment ──────────────────── */
+.leaflet-container {
+  z-index: 0;
+  isolation: isolate;
+}

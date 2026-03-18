@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Portal Meraki Naranja",
+  title: "Carrot",
   description: "Sistema unificado de monitoreo de red y gestión de predios",
   manifest: "/manifest.json",
 };

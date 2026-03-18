@@ -19,34 +19,74 @@ interface PredioMapa {
   estado: { id: string; nombre: string; color: string } | null;
 }
 
-function createMarkerIcon(color: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="24" height="36">
-    <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
-    <circle cx="12" cy="12" r="5" fill="#fff" opacity="0.9"/>
+// Colores por provincia — cada una tiene un color distinguible
+const PROVINCIA_COLORS: Record<string, string> = {
+  "Buenos Aires":       "#3b82f6", // azul
+  "Santa Fe":           "#f59e0b", // amarillo/ámbar
+  "Entre Ríos":         "#10b981", // verde
+  "Córdoba":            "#8b5cf6", // violeta
+  "Mendoza":            "#ef4444", // rojo
+  "Tucumán":            "#06b6d4", // cyan
+  "Salta":              "#f97316", // naranja
+  "Misiones":           "#84cc16", // lima
+  "Chaco":              "#ec4899", // pink
+  "Corrientes":         "#14b8a6", // teal
+  "Santiago del Estero": "#a855f7", // púrpura
+  "San Juan":           "#64748b", // gris azulado
+  "Jujuy":              "#d946ef", // fucsia
+  "Río Negro":          "#0ea5e9", // sky
+  "Neuquén":            "#22c55e", // green
+  "Formosa":            "#eab308", // yellow
+  "Chubut":             "#6366f1", // indigo
+  "San Luis":           "#f43f5e", // rose
+  "Catamarca":          "#2dd4bf", // teal claro
+  "La Rioja":           "#fb923c", // orange claro
+  "La Pampa":           "#a3e635", // lime
+  "Santa Cruz":         "#38bdf8", // celeste
+  "Tierra del Fuego":   "#c084fc", // violet claro
+  "CABA":               "#818cf8", // indigo claro
+  "Demo":               "#94a3b8", // slate
+};
+
+const DEFAULT_PROVINCIA_COLOR = "#94a3b8";
+
+function getProvinciaColor(provincia: string | null): string {
+  if (!provincia) return DEFAULT_PROVINCIA_COLOR;
+  return PROVINCIA_COLORS[provincia] || DEFAULT_PROVINCIA_COLOR;
+}
+
+function createMarkerIcon(color: string, label?: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 40" width="28" height="40">
+    <path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 26 14 26s14-15.5 14-26C28 6.3 21.7 0 14 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="14" cy="13" r="6" fill="#fff" opacity="0.9"/>
+    ${label ? `<text x="14" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="${color}" font-family="system-ui">${label}</text>` : ""}
   </svg>`;
   return L.divIcon({
     html: svg,
     className: "",
-    iconSize: [24, 36],
-    iconAnchor: [12, 36],
-    popupAnchor: [0, -36],
+    iconSize: [28, 40],
+    iconAnchor: [14, 40],
+    popupAnchor: [0, -40],
   });
 }
 
-export default function MapView({ predios }: { predios: PredioMapa[] }) {
+interface MapViewProps {
+  predios: PredioMapa[];
+  colorBy: "provincia" | "estado";
+}
+
+export default function MapView({ predios, colorBy }: MapViewProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
 
-  // Calculate center from predios
   const center = useMemo(() => {
-    if (predios.length === 0) return { lat: -34.6, lng: -58.4 }; // Buenos Aires default
+    if (predios.length === 0) return { lat: -34.6, lng: -58.4 };
     const sumLat = predios.reduce((s, p) => s + p.latitud, 0);
     const sumLng = predios.reduce((s, p) => s + p.longitud, 0);
     return { lat: sumLat / predios.length, lng: sumLng / predios.length };
   }, [predios]);
 
-  // Initialize map
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -64,7 +104,6 @@ export default function MapView({ predios }: { predios: PredioMapa[] }) {
     markersRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
-    // Cleanup
     return () => {
       map.remove();
       mapRef.current = null;
@@ -73,7 +112,6 @@ export default function MapView({ predios }: { predios: PredioMapa[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update markers when predios change
   useEffect(() => {
     const map = mapRef.current;
     const markerGroup = markersRef.current;
@@ -86,23 +124,31 @@ export default function MapView({ predios }: { predios: PredioMapa[] }) {
     const bounds = L.latLngBounds([]);
 
     for (const p of predios) {
-      const color = p.estado?.color || "#64748b";
+      const color = colorBy === "provincia"
+        ? getProvinciaColor(p.provincia)
+        : (p.estado?.color || DEFAULT_PROVINCIA_COLOR);
+
+      // Inicial de la provincia como label dentro del marcador
+      const label = p.provincia ? p.provincia[0].toUpperCase() : "";
+
       const marker = L.marker([p.latitud, p.longitud], {
-        icon: createMarkerIcon(color),
+        icon: createMarkerIcon(color, label),
       });
 
       const estadoLabel = p.estado
         ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.estado.color};margin-right:4px"></span>${p.estado.nombre}`
         : "Sin estado";
 
+      const provColor = getProvinciaColor(p.provincia);
+
       marker.bindPopup(
         `<div style="font-family:system-ui;font-size:12px;min-width:180px">
-          <div style="font-weight:600;font-size:13px;margin-bottom:6px">${escapeHtml(p.nombre)}</div>
-          <div style="color:#64748b;margin-bottom:8px">${escapeHtml(p.codigo)}</div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:2px">${escapeHtml(p.nombre)}</div>
+          <div style="color:#64748b;margin-bottom:6px;font-size:11px">${escapeHtml(p.codigo)}</div>
+          ${p.provincia ? `<div style="display:inline-flex;align-items:center;gap:4px;background:${provColor}15;border:1px solid ${provColor}40;color:${provColor};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;margin-bottom:8px"><span style="width:6px;height:6px;border-radius:50%;background:${provColor}"></span>${escapeHtml(p.provincia)}</div>` : ""}
           <table style="width:100%;border-collapse:collapse">
             <tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Estado</td><td>${estadoLabel}</td></tr>
             ${p.equipoAsignado ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Equipo</td><td>${escapeHtml(p.equipoAsignado)}</td></tr>` : ""}
-            ${p.provincia ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Provincia</td><td>${escapeHtml(p.provincia)}</td></tr>` : ""}
             ${p.ciudad ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Ciudad</td><td>${escapeHtml(p.ciudad)}</td></tr>` : ""}
             ${p.direccion ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Dirección</td><td>${escapeHtml(p.direccion)}</td></tr>` : ""}
             ${p.ambito ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Ámbito</td><td>${escapeHtml(p.ambito)}</td></tr>` : ""}
@@ -119,9 +165,9 @@ export default function MapView({ predios }: { predios: PredioMapa[] }) {
     }
 
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-  }, [predios]);
+  }, [predios, colorBy]);
 
-  return <div ref={containerRef} className="w-full h-full" style={{ minHeight: 500 }} />;
+  return <div ref={containerRef} className="w-full h-full rounded-lg" />;
 }
 
 function escapeHtml(text: string): string {
