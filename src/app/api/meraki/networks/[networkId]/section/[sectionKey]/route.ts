@@ -797,7 +797,7 @@ async function buildApplianceSection(
   await Promise.all(
     appliances.map(async (dev) => {
       try {
-        const lldp = await getDeviceLldpCdp(dev.serial);
+        const lldp: any = await getDeviceLldpCdp(dev.serial);
         if (lldp?.ports) {
           for (const [portKey, portData] of Object.entries(lldp.ports) as [string, any][]) {
             const lldpInfo = portData.lldp || portData.cdp;
