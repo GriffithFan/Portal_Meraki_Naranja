@@ -21,9 +21,9 @@ async function iniciarMonitoreoSiCambioEstado(
     prisma.predio.findUnique({ where: { id: predioId }, select: { merakiNetworkId: true, merakiOrgId: true } }),
   ]);
 
-  // No monitorear transiciones a CONFORME/NO CONFORME (son estados finales de facturación)
-  const clavesFinales = ["conforme", "no_conforme"];
-  if (estadoNuevo && clavesFinales.includes(estadoNuevo.clave)) {
+  // Solo monitorear cuando se mueve a "instalado" o "auditar"
+  const clavesMonitoreo = ["instalado", "auditar"];
+  if (!estadoNuevo || !clavesMonitoreo.includes(estadoNuevo.clave)) {
     return;
   }
 
