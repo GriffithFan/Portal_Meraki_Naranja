@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
           // Campos personalizados → camposExtra JSON
           if (customFieldMap.size > 0) {
             const extra: Record<string, string> = {};
-            for (const [clave, colIdx] of customFieldMap) {
+            for (const [clave, colIdx] of Array.from(customFieldMap.entries())) {
               const val = safeGet(row, colIdx);
               if (val) extra[clave] = val;
             }
