@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
+import StatusIcon from "@/components/StatusIcon";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -752,7 +753,7 @@ export default function TareasPage() {
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group"
                       style={{ borderColor: `${e.color}40`, color: e.color }}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: e.color }} />
+                      <StatusIcon clave={e.clave} color={e.color} size={12} />
                       {e.nombre}
                       {session?.rol === "ADMIN" && (
                         <button
@@ -791,7 +792,7 @@ export default function TareasPage() {
                   className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
                 >
                   <IconChevron expanded={isExpanded} className="w-3.5 h-3.5 text-surface-400" />
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: estado.color }} />
+                  <StatusIcon clave={estado.clave} color={estado.color} size={16} />
                   <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
                   <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
                   {isModOrAdmin && (
@@ -1049,7 +1050,7 @@ export default function TareasPage() {
                           color: selectedTarea.estado?.color || "#64748b"
                         }}
                       >
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: selectedTarea.estado?.color || "#94a3b8" }} />
+                        <StatusIcon clave={selectedTarea.estado?.clave} color={selectedTarea.estado?.color || "#94a3b8"} size={12} />
                         {selectedTarea.estado?.nombre || "Sin estado"}
                         <IconChevron className="w-2.5 h-2.5" />
                       </button>
@@ -1063,7 +1064,7 @@ export default function TareasPage() {
                                 onClick={() => changeEstado(selectedTarea.id, e.id)}
                                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 transition-colors text-left"
                               >
-                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                                <StatusIcon clave={e.clave} color={e.color} size={14} />
                                 <span className="text-surface-700">{e.nombre}</span>
                                 {selectedTarea.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
                               </button>
@@ -1395,7 +1396,7 @@ export default function TareasPage() {
                     color: nuevoEstado.color
                   }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: nuevoEstado.color }} />
+                  <StatusIcon clave={""} color={nuevoEstado.color} size={12} />
                   {nuevoEstado.nombre || "Nombre del estado"}
                 </span>
               </div>

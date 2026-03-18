@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
 import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
+import StatusIcon from "@/components/StatusIcon";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -182,7 +183,7 @@ export default function EspacioTareasPage() {
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-50 transition-colors"
               >
                 <ChevronIcon expanded={isExpanded} />
-                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                <StatusIcon clave={estado?.clave} color={color} size={16} />
                 <span className="text-xs font-medium text-surface-700">{label}</span>
                 <span className="text-[10px] text-surface-400 ml-1">{items.length}</span>
               </button>
