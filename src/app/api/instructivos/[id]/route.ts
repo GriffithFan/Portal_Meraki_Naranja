@@ -144,6 +144,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Instructivo no encontrado" }, { status: 404 });
   }
 
+  // Guardar en papelera antes de eliminar
+  const { registrarEnPapelera } = await import("@/lib/papelera");
+  await registrarEnPapelera("INSTRUCTIVO", existing.titulo, existing as unknown as Record<string, unknown>, session.userId);
+
   // Eliminar video del filesystem
   if (existing.videoRuta) {
     await deleteVideoFile(existing.videoRuta);

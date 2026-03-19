@@ -48,6 +48,7 @@ model User {
   delegacionesDadas   Delegacion[] @relation("DelegadorUser")
   delegacionesRecibidas Delegacion[] @relation("DelegadoUser")
   facturas             ReporteFacturacion[] @relation("GeneradorReporte")
+  papeleraItems        PapeleraItem[] @relation("EliminadorPapelera")
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -502,4 +503,20 @@ model Hospedaje {
   @@index([provincia])
   @@index([ubicacion])
   @@index([activo])
+}
+
+// ─── PAPELERA (elementos eliminados) ────────────────
+model PapeleraItem {
+  id          String   @id @default(cuid())
+  tipo        String   // PREDIO, EQUIPO, ACTA, CALENDARIO, INSTRUCTIVO, HOSPEDAJE, etc.
+  nombre      String   // Nombre/título del elemento eliminado
+  datos       Json     // Snapshot completo del registro antes de eliminar
+  eliminadoPorId String
+  eliminadoPor   User  @relation("EliminadorPapelera", fields: [eliminadoPorId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@index([tipo])
+  @@index([eliminadoPorId])
+  @@index([createdAt])
 }

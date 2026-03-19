@@ -109,6 +109,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Equipo no encontrado" }, { status: 404 });
     }
 
+    // Guardar en papelera antes de eliminar
+    const { registrarEnPapelera } = await import("@/lib/papelera");
+    await registrarEnPapelera("EQUIPO", equipo.nombre, equipo as unknown as Record<string, unknown>, session.userId);
+
     await prisma.equipo.delete({ where: { id } });
 
     await prisma.actividad.create({

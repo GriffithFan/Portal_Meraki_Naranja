@@ -336,6 +336,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Tarea no encontrada" }, { status: 404 });
     }
 
+    // Guardar en papelera antes de eliminar
+    const { registrarEnPapelera } = await import("@/lib/papelera");
+    await registrarEnPapelera("PREDIO", predio.nombre || predio.codigo || "Sin nombre", predio as unknown as Record<string, unknown>, session.userId);
+
     await prisma.predio.delete({ where: { id } });
 
     await prisma.actividad.create({

@@ -75,6 +75,10 @@ export async function DELETE(
     }
   }
 
+  // Guardar en papelera antes de eliminar
+  const { registrarEnPapelera } = await import("@/lib/papelera");
+  await registrarEnPapelera("FACTURACION", `Reporte semana ${reporte.semana}`, reporte as unknown as Record<string, unknown>, session.userId);
+
   await prisma.reporteFacturacion.delete({ where: { id } });
 
   await prisma.actividad.create({

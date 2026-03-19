@@ -35,6 +35,13 @@ export async function DELETE(
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
   const { id } = await params;
+
+  const hospedaje = await prisma.hospedaje.findUnique({ where: { id } });
+  if (hospedaje) {
+    const { registrarEnPapelera } = await import("@/lib/papelera");
+    await registrarEnPapelera("HOSPEDAJE", hospedaje.nombre, hospedaje as unknown as Record<string, unknown>, session.userId);
+  }
+
   await prisma.hospedaje.update({ where: { id }, data: { activo: false } });
   return NextResponse.json({ ok: true });
 }

@@ -127,6 +127,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Sin permisos para eliminar" }, { status: 403 });
     }
 
+    // Guardar en papelera antes de eliminar
+    const { registrarEnPapelera } = await import("@/lib/papelera");
+    await registrarEnPapelera("CALENDARIO", tarea.titulo, tarea as unknown as Record<string, unknown>, session.userId);
+
     await prisma.tareaCalendario.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch {
