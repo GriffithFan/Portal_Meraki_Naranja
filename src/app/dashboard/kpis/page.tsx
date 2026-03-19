@@ -297,27 +297,65 @@ export default function KPIsPage() {
         {/* Distribución por estado - Donut */}
         <ChartCard title="Distribución por Estado" subtitle={`${predios.byEstado.length} estados configurados`}>
           {predios.byEstado.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={predios.byEstado}
-                  dataKey="count" nameKey="nombre"
-                  cx="50%" cy="50%"
-                  outerRadius={105} innerRadius={60}
-                  paddingAngle={2}
-                  label={({ nombre, count, percent }: any) => `${nombre} (${count} · ${(percent * 100).toFixed(0)}%)`}
-                  labelLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
-                >
-                  {predios.byEstado.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} stroke="#fff" strokeWidth={2} />
+            <>
+              {/* Desktop: donut con labels externas */}
+              <div className="hidden sm:block">
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={predios.byEstado}
+                      dataKey="count" nameKey="nombre"
+                      cx="50%" cy="50%"
+                      outerRadius={100} innerRadius={55}
+                      paddingAngle={2}
+                      label={({ nombre, count, percent }: any) => `${nombre} (${count} · ${(percent * 100).toFixed(0)}%)`}
+                      labelLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
+                      style={{ fontSize: "11px", fontFamily: "inherit" }}
+                    >
+                      {predios.byEstado.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} stroke="#fff" strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: any, name: any) => [`${value} predios`, name]}
+                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Mobile: donut compacto + leyenda debajo */}
+              <div className="sm:hidden">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={predios.byEstado}
+                      dataKey="count" nameKey="nombre"
+                      cx="50%" cy="50%"
+                      outerRadius={75} innerRadius={40}
+                      paddingAngle={2}
+                      label={false}
+                    >
+                      {predios.byEstado.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} stroke="#fff" strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: any, name: any) => [`${value} predios`, name]}
+                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 px-1">
+                  {predios.byEstado.map((e, i) => (
+                    <div key={i} className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: e.color }} />
+                      <span className="text-[11px] text-surface-600 truncate">{e.nombre}</span>
+                      <span className="text-[10px] text-surface-400 shrink-0 ml-auto tabular-nums">{e.count}</span>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value: any, name: any) => [`${value} predios`, name]}
-                  contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+                </div>
+              </div>
+            </>
           ) : <EmptyState text="Sin datos de estado" />}
         </ChartCard>
 

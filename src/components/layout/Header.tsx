@@ -274,7 +274,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm bg-white rounded-xl shadow-lg border border-surface-200 animate-fade-in z-50 overflow-hidden">
+            <div className="fixed sm:absolute inset-x-3 sm:inset-x-auto sm:right-0 top-16 sm:top-auto sm:mt-2 w-auto sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-lg border border-surface-200 animate-fade-in z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
                 <span className="font-semibold text-sm text-surface-800">Notificaciones</span>
                 {sinLeer > 0 && <span className="text-[11px] text-primary-600 font-medium">{sinLeer} sin leer</span>}
