@@ -8,6 +8,21 @@ import Tooltip from "./Tooltip";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+const STATUS_LABELS: Record<string, string> = {
+  connected: "Conectado",
+  warning: "Advertencia",
+  disconnected: "Desconectado",
+  disabled: "Deshabilitado",
+};
+
+const getStatusLabel = (rawStatus: string): string => {
+  const normalized = normalizeReachability(rawStatus);
+  const label = STATUS_LABELS[normalized] || normalized;
+  const raw = (rawStatus || "").trim().toLowerCase();
+  if (raw && raw !== normalized) return `${label} (${rawStatus})`;
+  return label;
+};
+
 interface SwitchesSectionProps {
   switchesDetailed: any[];
   sortData: (data: any[], key?: string | null, direction?: "asc" | "desc") => any[];
@@ -178,7 +193,7 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
                 onClick={() => setExpandedSwitch(isExpanded ? null : sw.serial)}
               >
                 {/* Status dot */}
-                <span className={`mt-0.5 shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-full ${statusN === "connected" ? "bg-green-100" : statusN === "warning" ? "bg-amber-100" : statusN === "disconnected" ? "bg-red-100" : "bg-surface-100"}`}>
+                <span title={getStatusLabel(sw.status)} className={`mt-0.5 shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-full ${statusN === "connected" ? "bg-green-100" : statusN === "warning" ? "bg-amber-100" : statusN === "disconnected" ? "bg-red-100" : "bg-surface-100"}`}>
                   <span className="w-[9px] h-[9px] rounded-full" style={{ background: statusColor }} />
                 </span>
 
@@ -262,9 +277,11 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
                       >
                         <td className="text-center px-1.5 py-2.5">
                           <div className="inline-flex flex-col items-center gap-[3px]">
-                            <span className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-full ${statusN === "connected" ? "bg-green-100" : statusN === "warning" ? "bg-amber-100" : statusN === "disconnected" ? "bg-red-100" : "bg-surface-100"}`}>
-                              <span className="w-[9px] h-[9px] rounded-full" style={{ background: statusColor }} />
-                            </span>
+                            <Tooltip content={<span>{getStatusLabel(sw.status)}</span>} position="auto">
+                              <span className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-full cursor-help ${statusN === "connected" ? "bg-green-100" : statusN === "warning" ? "bg-amber-100" : statusN === "disconnected" ? "bg-red-100" : "bg-surface-100"}`}>
+                                <span className="w-[9px] h-[9px] rounded-full" style={{ background: statusColor }} />
+                              </span>
+                            </Tooltip>
                             {swCrcCount > 0 && (
                               <Tooltip content={
                                 <div>
