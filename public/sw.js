@@ -9,27 +9,33 @@ self.addEventListener('push', function(event) {
     data = {
       title: 'Portal Meraki',
       body: event.data.text(),
-      icon: '/images/icon-192.png',
     };
   }
 
-  const options = {
-    body: data.body || data.mensaje || '',
-    icon: data.icon || '/images/icon-192.png',
-    badge: '/images/icon-192.png',
+  // Separate title prefix (tipo label) and body for cleaner display
+  var body = data.body || data.mensaje || '';
+  // Replace \n with line breaks for multi-line support
+  body = body.replace(/\\n/g, '\n');
+
+  var options = {
+    body: body,
+    icon: '/images/icon-192.png',
+    badge: '/images/badge-72.png',
     tag: data.tag || 'pmn-notification',
+    renotify: true,
     data: {
       url: data.url || data.enlace || '/dashboard/bandeja',
     },
-    vibrate: [200, 100, 200],
+    vibrate: [100, 50, 100],
     actions: [
       { action: 'open', title: 'Ver' },
       { action: 'dismiss', title: 'Cerrar' },
     ],
+    timestamp: Date.now(),
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Portal Meraki', options)
+    self.registration.showNotification(data.title || 'Carrot', options)
   );
 });
 

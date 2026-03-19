@@ -25,6 +25,16 @@ const TIPO_ICON_COLORS: Record<string, string> = {
   MONITOREO_OK: "text-emerald-500",
 };
 
+const TIPO_BG_COLORS: Record<string, string> = {
+  TAREA: "bg-blue-50",
+  GENERAL: "bg-surface-50",
+  ALERTA: "bg-red-50",
+  RECORDATORIO: "bg-yellow-50",
+  CHANGELOG: "bg-emerald-50",
+  ALERTA_MONITOREO: "bg-orange-50",
+  MONITOREO_OK: "bg-emerald-50",
+};
+
 export default function BandejaPage() {
   const [notificaciones, setNotificaciones] = useState<any[]>([]);
   const [sinLeer, setSinLeer] = useState(0);
@@ -66,6 +76,28 @@ export default function BandejaPage() {
     fetchNotificaciones();
   }
 
+  function getTimeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Ahora";
+    if (mins < 60) return `Hace ${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `Hace ${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `Hace ${days}d`;
+    return new Date(dateStr).toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
+  }
+
+  const TIPO_LABELS: Record<string, string> = {
+    TAREA: "Tarea",
+    GENERAL: "General",
+    ALERTA: "Alerta",
+    RECORDATORIO: "Recordatorio",
+    CHANGELOG: "Actualización",
+    ALERTA_MONITOREO: "Monitoreo",
+    MONITOREO_OK: "Monitoreo OK",
+  };
+
   return (
     <div className="animate-fade-in-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
@@ -93,12 +125,12 @@ export default function BandejaPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-surface-200">
+      <div className="bg-white rounded-xl border border-surface-200 overflow-hidden">
         {loading ? (
           <ListSkeleton items={6} />
         ) : notificaciones.length === 0 ? (
           <div className="text-center py-16 text-surface-400">
-            <svg className="w-10 h-10 mx-auto mb-3 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 9v.906a2.25 2.25 0 01-1.183 1.981l-6.478 3.488M2.25 9v.906a2.25 2.25 0 001.183 1.981l6.478 3.488m8.839 2.51l-4.66-2.51m0 0l-1.023-.55a2.25 2.25 0 00-2.134 0l-1.022.55m0 0l-4.661 2.51m16.5 1.615a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V8.844a2.25 2.25 0 011.183-1.981l7.5-4.039a2.25 2.25 0 012.134 0l7.5 4.039a2.25 2.25 0 011.183 1.98V19.5z" /></svg>
+            <svg className="w-10 h-10 mx-auto mb-3 text-surface-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 9v.906a2.25 2.25 0 01-1.183 1.981l-6.478 3.488M2.25 9v.906a2.25 2.25 0 001.183 1.981l6.478 3.488m8.839 2.51l-4.66-2.51m0 0l-1.023-.55a2.25 2.25 0 00-2.134 0l-1.022.55m0 0l-4.661 2.51m16.5 1.615a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V8.844a2.25 2.25 0 011.183-1.981l7.5-4.039a2.25 2.25 0 012.134 0l7.5 4.039a2.25 2.25 0 011.183 1.98V19.5z" /></svg>
             <p className="text-sm font-medium mb-1">Sin notificaciones</p>
             <p className="text-xs">Tu bandeja está vacía</p>
           </div>
@@ -107,21 +139,29 @@ export default function BandejaPage() {
             {notificaciones.map((n) => (
               <div
                 key={n.id}
-                className={`flex items-start gap-3 px-5 py-4 transition-colors cursor-pointer ${n.leida ? "bg-white hover:bg-surface-50" : "bg-primary-50/30 hover:bg-primary-50/50"}`}
+                className={`flex items-start gap-3 sm:gap-4 px-4 sm:px-5 py-4 transition-colors cursor-pointer ${n.leida ? "bg-white hover:bg-surface-50" : "bg-primary-50/20 hover:bg-primary-50/40"}`}
                 onClick={() => !n.leida && marcarLeida(n.id)}
               >
-                <svg className={`w-5 h-5 mt-0.5 shrink-0 ${TIPO_ICON_COLORS[n.tipo] || "text-surface-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d={TIPO_ICON_PATHS[n.tipo] || TIPO_ICON_PATHS.GENERAL} />
-                </svg>
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"}`}>
+                  <svg className={`w-[18px] h-[18px] ${TIPO_ICON_COLORS[n.tipo] || "text-surface-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d={TIPO_ICON_PATHS[n.tipo] || TIPO_ICON_PATHS.GENERAL} />
+                  </svg>
+                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className={`text-sm ${n.leida ? "text-surface-700" : "text-surface-900 font-semibold"}`}>{n.titulo}</p>
-                    {!n.leida && <span className="w-2 h-2 rounded-full bg-accent-500 shrink-0" />}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className={`text-sm truncate ${n.leida ? "text-surface-700" : "text-surface-900 font-semibold"}`}>{n.titulo}</p>
+                      {!n.leida && <span className="w-2 h-2 rounded-full bg-accent-500 shrink-0" />}
+                    </div>
+                    <span className="text-[10px] text-surface-300 shrink-0 hidden sm:block">{getTimeAgo(n.createdAt)}</span>
                   </div>
-                  <p className="text-xs text-surface-500 mt-0.5">{n.mensaje}</p>
-                  <span className="text-xs text-surface-400 mt-1 block">
-                    {new Date(n.createdAt).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                  </span>
+                  <p className="text-xs text-surface-500 mt-1 whitespace-pre-line line-clamp-3">{n.mensaje}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"} ${TIPO_ICON_COLORS[n.tipo] || "text-surface-500"}`}>
+                      {TIPO_LABELS[n.tipo] || n.tipo}
+                    </span>
+                    <span className="text-[10px] text-surface-300 sm:hidden">{getTimeAgo(n.createdAt)}</span>
+                  </div>
                 </div>
               </div>
             ))}

@@ -58,7 +58,7 @@ export async function enviarPushYBandeja(
     title: opts.titulo,
     body: opts.mensaje,
     icon: "/images/icon-192.png",
-    badge: "/images/icon-192.png",
+    badge: "/images/badge-72.png",
     tag: opts.tag || opts.tipo,
     url: opts.enlace || "/dashboard/bandeja",
   };

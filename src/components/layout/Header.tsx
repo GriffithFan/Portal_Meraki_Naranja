@@ -31,6 +31,28 @@ const NOTIF_ICON_COLORS: Record<string, string> = {
   MONITOREO_OK: "text-emerald-500",
 };
 
+const NOTIF_BG_COLORS: Record<string, string> = {
+  TAREA: "bg-blue-50",
+  GENERAL: "bg-surface-50",
+  ALERTA: "bg-red-50",
+  RECORDATORIO: "bg-yellow-50",
+  CHANGELOG: "bg-emerald-50",
+  ALERTA_MONITOREO: "bg-orange-50",
+  MONITOREO_OK: "bg-emerald-50",
+};
+
+function getTimeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Ahora";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(dateStr).toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
+}
+
 interface HeaderProps {
   onMenuToggle?: () => void;
 }
@@ -252,31 +274,43 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-80 bg-white rounded-xl shadow-lg border border-surface-200 py-1 animate-fade-in z-50">
+            <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm bg-white rounded-xl shadow-lg border border-surface-200 animate-fade-in z-50 overflow-hidden">
               <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
                 <span className="font-semibold text-sm text-surface-800">Notificaciones</span>
                 {sinLeer > 0 && <span className="text-[11px] text-primary-600 font-medium">{sinLeer} sin leer</span>}
               </div>
-              <div className="max-h-72 overflow-y-auto">
-                {notifs.length > 0 ? notifs.map((n) => (
+              <div className="max-h-80 overflow-y-auto divide-y divide-surface-100">
+                {notifs.length > 0 ? notifs.map((n) => {
+                  const timeAgo = getTimeAgo(n.createdAt);
+                  return (
                   <button
                     key={n.id}
                     onClick={() => { if (!n.leida) marcarLeida(n.id); if (n.enlace) { router.push(n.enlace); setNotifOpen(false); } }}
-                    className={`w-full text-left px-4 py-3 hover:bg-surface-50 transition-colors border-b border-surface-50 ${!n.leida ? "bg-primary-50/40" : ""}`}
+                    className={`w-full text-left px-4 py-3 hover:bg-surface-50 transition-colors ${!n.leida ? "bg-primary-50/30" : ""}`}
                   >
-                    <div className="flex items-start gap-2.5">
-                      <svg className={`w-4 h-4 mt-0.5 flex-shrink-0 ${NOTIF_ICON_COLORS[n.tipo] || "text-surface-400"} ${n.leida ? "opacity-50" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d={NOTIF_ICON_PATHS[n.tipo] || NOTIF_ICON_PATHS.GENERAL} />
-                      </svg>
-                      <div className="min-w-0">
-                        <p className={`text-sm leading-snug truncate ${!n.leida ? "text-surface-800 font-medium" : "text-surface-600"}`}>{n.titulo}</p>
-                        <p className="text-xs text-surface-400 mt-0.5 truncate">{n.mensaje}</p>
+                    <div className="flex items-start gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${NOTIF_BG_COLORS[n.tipo] || "bg-surface-100"}`}>
+                        <svg className={`w-4 h-4 ${NOTIF_ICON_COLORS[n.tipo] || "text-surface-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d={NOTIF_ICON_PATHS[n.tipo] || NOTIF_ICON_PATHS.GENERAL} />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-sm leading-snug truncate ${!n.leida ? "text-surface-800 font-medium" : "text-surface-600"}`}>{n.titulo}</p>
+                          {!n.leida && <span className="w-1.5 h-1.5 rounded-full bg-accent-500 shrink-0" />}
+                        </div>
+                        <p className="text-xs text-surface-400 mt-0.5 line-clamp-2">{n.mensaje}</p>
+                        <span className="text-[10px] text-surface-300 mt-1 block">{timeAgo}</span>
                       </div>
                     </div>
                   </button>
-                )) : (
-                  <div className="px-4 py-8 text-center text-xs text-surface-400">
-                    No hay notificaciones
+                  );
+                }) : (
+                  <div className="px-4 py-10 text-center text-xs text-surface-400">
+                    <svg className="w-8 h-8 mx-auto mb-2 text-surface-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                    </svg>
+                    Sin notificaciones
                   </div>
                 )}
               </div>
@@ -284,9 +318,9 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                 <Link
                   href="/dashboard/bandeja"
                   onClick={() => setNotifOpen(false)}
-                  className="block w-full text-center px-4 py-2.5 text-sm font-medium text-primary-600 hover:bg-surface-50 transition-colors"
+                  className="block w-full text-center px-4 py-2.5 text-xs font-medium text-primary-600 hover:bg-surface-50 transition-colors"
                 >
-                  Ver todas las notificaciones
+                  Ver todas
                 </Link>
               </div>
             </div>
