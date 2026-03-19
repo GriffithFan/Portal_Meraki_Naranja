@@ -28,22 +28,15 @@ async function searchInOrg(org: { id: string; name: string }, lower: string): Pr
       NETWORKS_CACHE_TTL,
     );
 
-    console.log(`[Search] Org ${org.id} (${org.name}): ${(nets as any[]).length} networks fetched`);
-
-    const matched = (nets as any[])
+    return (nets as any[])
       .filter((n) =>
         `${n.name} ${n.id} ${n.productTypes?.join(" ")} ${n.tags?.join(" ")}`
           .toLowerCase()
           .includes(lower)
       )
       .map((n) => ({ ...n, orgId: org.id, orgName: org.name }));
-
-    if (matched.length > 0) {
-      console.log(`[Search] ✓ Org ${org.id}: ${matched.length} matches for "${lower}"`);
-    }
-    return matched;
   } catch (err) {
-    console.error(`[Search] ✗ Org ${org.id} (${org.name}) FAILED:`, err instanceof Error ? err.message : err);
+    console.error(`[Search] Org ${org.id} FAILED:`, err instanceof Error ? err.message : err);
     return [];
   }
 }
