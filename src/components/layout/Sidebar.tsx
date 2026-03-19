@@ -215,8 +215,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         className={clsx(
           "h-screen flex flex-col bg-surface-900 text-surface-300 border-r border-surface-800 transition-all duration-300 overflow-hidden",
           // Desktop: sticky sidebar
-          "hidden md:sticky md:top-0 md:flex",
-          collapsed ? "md:w-[68px]" : "md:w-64",
+          "hidden lg:sticky lg:top-0 lg:flex",
+          collapsed ? "lg:w-[68px]" : "lg:w-64",
           // Móvil: drawer fijo
           mobileOpen && "!fixed inset-y-0 left-0 z-50 !flex w-64"
         )}

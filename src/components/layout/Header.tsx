@@ -196,7 +196,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       {/* Botón hamburguesa (solo móvil) */}
       <button
         onClick={onMenuToggle}
-        className="md:hidden p-2 -ml-1 rounded-lg hover:bg-surface-100 transition-colors text-surface-500 shrink-0"
+        className="lg:hidden p-2 -ml-1 rounded-lg hover:bg-surface-100 transition-colors text-surface-500 shrink-0"
         aria-label="Abrir menú"
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
