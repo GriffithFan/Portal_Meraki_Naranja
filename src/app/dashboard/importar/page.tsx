@@ -79,7 +79,8 @@ export default function ImportarPage() {
         function flatten(nodes: any[], depth: number) {
           for (const n of nodes) {
             flat.push({ ...n, _depth: depth });
-            if (n.hijos?.length) flatten(n.hijos, depth + 1);
+            if (n.children?.length) flatten(n.children, depth + 1);
+            else if (n.hijos?.length) flatten(n.hijos, depth + 1);
           }
         }
         flatten(data.espacios || [], 0);
@@ -92,15 +93,38 @@ export default function ImportarPage() {
     if (!nuevoEspacioNombre.trim()) return;
     setCreandoEspacio(true);
     try {
+      const body: any = { nombre: nuevoEspacioNombre.trim(), color: "#3b82f6" };
+      // Si hay un espacio seleccionado, crear como subcarpeta dentro de él
+      if (espacioId) {
+        body.parentId = espacioId;
+      }
       const res = await fetch("/api/espacios", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ nombre: nuevoEspacioNombre.trim(), color: "#3b82f6" }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const created = await res.json();
-        setEspacios((prev) => [...prev, { ...created, _depth: 0 }]);
+        // Recalcular la profundidad: si tiene padre, es padre._depth + 1, sino 0
+        const parentDepth = espacioId ? (espacios.find(e => e.id === espacioId)?._depth || 0) : -1;
+        const newDepth = parentDepth + 1;
+        // Insertar después del padre en la lista plana
+        if (espacioId) {
+          const parentIdx = espacios.findIndex(e => e.id === espacioId);
+          let insertAt = parentIdx + 1;
+          // Saltar todos los hijos existentes del padre
+          while (insertAt < espacios.length && espacios[insertAt]._depth > parentDepth) {
+            insertAt++;
+          }
+          setEspacios((prev) => {
+            const copy = [...prev];
+            copy.splice(insertAt, 0, { ...created, _depth: newDepth });
+            return copy;
+          });
+        } else {
+          setEspacios((prev) => [...prev, { ...created, _depth: 0 }]);
+        }
         setEspacioId(created.id);
         setShowNewEspacio(false);
         setNuevoEspacioNombre("");
@@ -349,7 +373,7 @@ export default function ImportarPage() {
                       onClick={() => setShowNewEspacio(true)}
                       className="px-3 py-2 border border-dashed border-surface-300 rounded-md text-xs text-surface-500 hover:border-primary-400 hover:text-primary-600 transition-colors whitespace-nowrap"
                     >
-                      + Nuevo
+                      {espacioId ? "+ Subcarpeta" : "+ Nuevo"}
                     </button>
                   </div>
                 ) : (
@@ -358,7 +382,7 @@ export default function ImportarPage() {
                       value={nuevoEspacioNombre}
                       onChange={(e) => setNuevoEspacioNombre(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && crearNuevoEspacio()}
-                      placeholder="Nombre del espacio..."
+                      placeholder={espacioId ? "Nombre de la subcarpeta..." : "Nombre del espacio..."}
                       className="flex-1 px-3 py-2.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-primary-400"
                       autoFocus
                     />
@@ -377,7 +401,11 @@ export default function ImportarPage() {
                     </button>
                   </div>
                 )}
-                <p className="text-[10px] text-surface-400 mt-1.5">Selecciona un espacio para organizar las tareas importadas</p>
+                <p className="text-[10px] text-surface-400 mt-1.5">
+                  {espacioId
+                    ? "Espacio seleccionado. Usa \"+ Subcarpeta\" para crear una carpeta dentro de él."
+                    : "Selecciona un espacio para organizar las tareas importadas"}
+                </p>
               </div>
             )}
 

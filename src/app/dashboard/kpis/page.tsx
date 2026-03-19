@@ -6,6 +6,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Legend, AreaChart, Area, CartesianGrid,
 } from "recharts";
+import SectionSettings from "@/components/ui/SectionSettings";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -50,6 +51,27 @@ export default function KPIsPage() {
   const [data, setData] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Secciones visibles (persistencia en localStorage)
+  const KPI_SECTIONS_KEY = "pmn-kpi-sections";
+  const defaultSections = { progreso: true, predios: true, operacion: true, recursos: true, graficos1: true, graficos2: true, actividad: true };
+  const [sections, setSections] = useState(defaultSections);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(KPI_SECTIONS_KEY);
+      if (saved) setSections({ ...defaultSections, ...JSON.parse(saved) });
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function toggleSection(key: string) {
+    setSections(prev => {
+      const next = { ...prev, [key]: !prev[key as keyof typeof prev] };
+      localStorage.setItem(KPI_SECTIONS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
 
   const fetchData = useCallback(async () => {
     try {
@@ -134,19 +156,42 @@ export default function KPIsPage() {
           <h1 className="text-2xl font-bold text-surface-800">Dashboard Ejecutivo</h1>
           <p className="text-xs text-surface-400 mt-1">Métricas y KPIs del proyecto en tiempo real</p>
         </div>
-        <button
-          onClick={fetchData}
-          className="p-2 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-surface-600 transition-colors"
-          title="Actualizar datos"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <SectionSettings seccion="kpis">
+            {[
+              { key: "progreso", label: "Progreso general" },
+              { key: "predios", label: "KPIs Predios" },
+              { key: "operacion", label: "KPIs Operación" },
+              { key: "recursos", label: "KPIs Recursos" },
+              { key: "graficos1", label: "Gráficos (estado + equipo)" },
+              { key: "graficos2", label: "Gráficos (provincia + ámbito)" },
+              { key: "actividad", label: "Resumen de actividad" },
+            ].map(s => (
+              <label key={s.key} className="flex items-center gap-2 text-xs text-surface-600 cursor-pointer hover:bg-surface-50 rounded px-1 py-0.5">
+                <input
+                  type="checkbox"
+                  checked={sections[s.key as keyof typeof sections]}
+                  onChange={() => toggleSection(s.key)}
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5"
+                />
+                {s.label}
+              </label>
+            ))}
+          </SectionSettings>
+          <button
+            onClick={fetchData}
+            className="p-2 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-surface-600 transition-colors"
+            title="Actualizar datos"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* ── Progreso general + Tendencia ─────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {sections.progreso && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white rounded-xl border border-surface-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -204,10 +249,10 @@ export default function KPIsPage() {
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── KPI Cards: Predios ───────────────────────── */}
-      <div>
+      {sections.predios && <div>
         <SectionTitle title="Predios" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
@@ -236,10 +281,10 @@ export default function KPIsPage() {
             progress={predios.progreso}
           />
         </div>
-      </div>
+      </div>}
 
       {/* ── KPI Cards: Operación ─────────────────────── */}
-      <div>
+      {sections.operacion && <div>
         <SectionTitle title="Operación" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
@@ -262,10 +307,10 @@ export default function KPIsPage() {
             subtitle={tareas.pendientes > 10 ? "⚠ Requiere atención" : undefined}
           />
         </div>
-      </div>
+      </div>}
 
       {/* ── KPI Cards: Recursos ──────────────────────── */}
-      <div>
+      {sections.recursos && <div>
         <SectionTitle title="Recursos" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
@@ -290,27 +335,31 @@ export default function KPIsPage() {
             color="primary"
           />
         </div>
-      </div>
+      </div>}
 
-      {/* ── Gráficos fila 1 ──────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* ── Gráficos fila 1 ────────────────────────── */}
+      {sections.graficos1 && <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Distribución por estado - Donut */}
         <ChartCard title="Distribución por Estado" subtitle={`${predios.byEstado.length} estados configurados`}>
           {predios.byEstado.length > 0 ? (
             <>
               {/* Desktop: donut con labels externas */}
               <div className="hidden sm:block">
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={340}>
                   <PieChart>
                     <Pie
                       data={predios.byEstado}
                       dataKey="count" nameKey="nombre"
                       cx="50%" cy="50%"
-                      outerRadius={100} innerRadius={55}
-                      paddingAngle={2}
-                      label={({ nombre, count, percent }: any) => `${nombre} (${count} · ${(percent * 100).toFixed(0)}%)`}
-                      labelLine={{ stroke: "#cbd5e1", strokeWidth: 1 }}
-                      style={{ fontSize: "11px", fontFamily: "inherit" }}
+                      outerRadius={110} innerRadius={60}
+                      paddingAngle={3}
+                      minAngle={8}
+                      label={({ nombre, count, percent }: any) => {
+                        const pct = (percent * 100).toFixed(0);
+                        return count > 0 ? `${nombre} (${count} · ${pct}%)` : "";
+                      }}
+                      labelLine={{ stroke: "#94a3b8", strokeWidth: 1 }}
+                      style={{ fontSize: "12.5px", fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", fontWeight: 500 }}
                     >
                       {predios.byEstado.map((entry, i) => (
                         <Cell key={i} fill={entry.color} stroke="#fff" strokeWidth={2} />
@@ -318,7 +367,7 @@ export default function KPIsPage() {
                     </Pie>
                     <Tooltip
                       formatter={(value: any, name: any) => [`${value} predios`, name]}
-                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px", fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -380,10 +429,10 @@ export default function KPIsPage() {
             </ResponsiveContainer>
           ) : <EmptyState text="Sin equipos asignados" />}
         </ChartCard>
-      </div>
+      </div>}
 
-      {/* ── Gráficos fila 2 ──────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* ── Gráficos fila 2 ────────────────────────── */}
+      {sections.graficos2 && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Predios por Provincia - Bar */}
         <div className="lg:col-span-2">
           <ChartCard title="Predios por Provincia" subtitle="Distribución geográfica">
@@ -461,10 +510,10 @@ export default function KPIsPage() {
             ) : <EmptyState text="Sin equipos" />}
           </ChartCard>
         </div>
-      </div>
+      </div>}
 
       {/* ── Resumen actividad + Quick links ───────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {sections.actividad && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Activity summary */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-surface-200 p-5">
           <h3 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-4">Resumen de actividad</h3>
@@ -489,7 +538,7 @@ export default function KPIsPage() {
             <QuickLink href="/dashboard/hospedajes" label="Hospedajes" icon="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12" />
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "@/hooks/useSession";
+import SectionSettings from "@/components/ui/SectionSettings";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -301,7 +302,10 @@ export default function CalendarioPage() {
               : "Sin pendientes hoy"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <SectionSettings seccion="calendario">
+            <p className="text-[10px] text-surface-400 italic">Próximamente: preferencias de vista y categorías</p>
+          </SectionSettings>
           <button onClick={() => openCreate()} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors">
             + Nuevo evento
           </button>

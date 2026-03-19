@@ -77,7 +77,8 @@ model EstadoConfig {
   entidad String  @default("PREDIO")
   activo  Boolean @default(true)
 
-  predios Predio[]
+  predios  Predio[]
+  permisos PermisoEstado[]
 }
 
 // ─── ESPACIOS DE TRABAJO ────────────────────────────
@@ -444,6 +445,20 @@ model PermisoSeccion {
 
   @@unique([seccion, rol])
   @@index([seccion])
+}
+
+// ─── VISIBILIDAD DE ESTADOS POR ROL ────────────────
+model PermisoEstado {
+  id        String @id @default(cuid())
+  estadoId  String
+  rol       Role
+  visible   Boolean @default(true)
+
+  estado    EstadoConfig @relation(fields: [estadoId], references: [id], onDelete: Cascade)
+
+  @@unique([estadoId, rol])
+  @@index([estadoId])
+  @@index([rol])
 }
 
 // ─── CAMPOS PERSONALIZADOS ─────────────────────────

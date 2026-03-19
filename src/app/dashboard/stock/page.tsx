@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { TableSkeleton } from "@/components/ui/Skeletons";
+import SectionSettings from "@/components/ui/SectionSettings";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -87,12 +88,17 @@ export default function StockPage() {
           <h1 className="text-xl font-semibold text-surface-800">Stock</h1>
           <p className="text-xs text-surface-400">Inventario de equipos · {total} registros</p>
         </div>
-        {isModOrAdmin && (
-          <button onClick={() => setShowModal(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-            Agregar equipo
-          </button>
-        )}
+        <div className="flex items-center gap-1.5">
+          <SectionSettings seccion="stock">
+            <p className="text-[10px] text-surface-400 italic">Próximamente: opciones de vista y columnas visibles</p>
+          </SectionSettings>
+          {isModOrAdmin && (
+            <button onClick={() => setShowModal(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              Agregar equipo
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filtros */}

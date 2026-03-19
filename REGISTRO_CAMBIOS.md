@@ -778,6 +778,81 @@ El Tooltip usaba `position: absolute`, lo que causaba que se cortara (clipping) 
 
 ---
 
+## Fase 9: Sprint de Mejoras UX/UI
+
+### 1. Perfil de usuario mejorado
+- **Header dropdown** — Posicionamiento `fixed sm:absolute` para mobile. Ancho ampliado a `w-72`. Enlace "Mi perfil" a `/dashboard/perfil`. Enlace "Bandeja" con badge de no leídas. Avatar agrandado (`w-11 h-11`). Badge de rol inline con nombre/email.
+- **Página de perfil** (`/dashboard/perfil`) — Nueva página con header gradiente, avatar con inicial, campos editables (nombre, teléfono), badge de rol, fecha miembro, tarjetas de estadísticas (asignaciones, predios creados, comentarios).
+- **API de perfil** (`/api/auth/profile`) — GET retorna usuario con conteos. PATCH permite actualizar nombre (2-100 chars) y teléfono (max 30 chars).
+
+### 2. KPIs — Donut chart mejorado
+- Altura 300→340, outerRadius 100→110, innerRadius 55→60.
+- `paddingAngle` 2→3, `minAngle={8}` para evitar slices minúsculos.
+- Tipografía: 12.5px, `'Inter', 'Segoe UI', system-ui, sans-serif`, `fontWeight: 500`.
+- Labels vacíos retornan `""` para hide. Tooltip: 13px con misma tipografía.
+
+### 3. Subcarpetas en importar
+- `crearNuevoEspacio()` ahora envía `parentId: espacioId` al crear dentro de un workspace.
+- Calcula `_depth` correcto para la subcarpeta e inserta en posición correcta post-children.
+- Botón dinámico: "+ Subcarpeta" o "+ Nuevo" según contexto.
+- Función flatten maneja tanto `children` como `hijos` (compatibilidad API/legacy).
+
+### 4. Ocultar estados vacíos en cronograma
+- Estado `showEmptyStates` (default false) con botón toggle.
+- Estados con 0 tareas ocultos por defecto, toggle para mostrar con conteo de vacíos.
+
+### 5. Control de visibilidad de estados por rol
+- **Modelo nuevo** `PermisoEstado` en schema.prisma: `estadoId`, `rol`, `visible`, unique `[estadoId, rol]`.
+- **API** (`/api/permisos/estados`) — GET retorna permisos con detalles del estado. PUT upsert (solo admin, roles MODERADOR/TECNICO).
+- **UI en permisos** — Sección "Visibilidad de estados" con tabla desktop y cards mobile, mostrando matriz estado×rol con checkboxes.
+- **Filtrado en tareas** — Estado `hiddenEstadoIds` poblado desde API para usuarios no-admin. Estados restringidos por permisos de rol quedan ocultos.
+
+### 6. Persistencia de columnas
+- Orden y visibilidad de columnas guardados en `localStorage` (`pmn-col-config`).
+- Carga en mount, actualización en cada cambio. Ref `colConfigLoaded` previene saves prematuros.
+- Fix: bug duplicado `{e.nombre}` en sección de estados config.
+
+### 7. Permisos en UI (verificado)
+- Sidebar usa `usePermisos()` con `puedeVer()`. Tareas: `isModOrAdmin` para acciones. Delete estado: solo ADMIN. EspaciosSidebar: `isModOrAdmin` para add/delete.
+
+### 8. Engranaje de configuración por sección
+- **Componente** `SectionSettings.tsx` — Reutilizable, solo visible para admin/moderador, click-outside-to-close, acepta children.
+- **KPIs** — Engranaje con 7 toggles para secciones (progreso, predios, operación, recursos, gráficos fila 1/2, actividad). Persistencia en `localStorage` (`pmn-kpi-sections`).
+- **Stock** — Engranaje placeholder (próximamente: vista y columnas).
+- **Calendario** — Engranaje placeholder (próximamente: preferencias de vista).
+- **Tareas** — Ya tenía engranaje inline (config de columnas + estados).
+
+### 9. Personalización de perfil
+- **Paleta de avatar** — 8 gradientes seleccionables (Índigo/Violeta, Océano, Atardecer, Bosque, Berry, Pizarra, Ámbar, Menta).
+- **Preferencia "vista compacta"** — Toggle para futuras tablas compactas.
+- **Persistencia** — `localStorage` (`pmn-perfil-prefs`), sincronizado con Header (avatar en dropdown usa el gradiente seleccionado).
+
+### Archivos nuevos
+| Archivo | Propósito |
+|---------|-----------|
+| `src/app/api/auth/profile/route.ts` | GET/PATCH perfil del usuario |
+| `src/app/dashboard/perfil/page.tsx` | Página de perfil completa |
+| `src/app/api/permisos/estados/route.ts` | CRUD visibilidad de estados por rol |
+| `src/components/ui/SectionSettings.tsx` | Componente engranaje de configuración |
+
+### Archivos modificados
+| Archivo | Cambios principales |
+|---------|---------------------|
+| `Header.tsx` | Dropdown mejorado, avatar dinámico con gradiente personalizable |
+| `kpis/page.tsx` | Donut mejorado, SectionSettings con toggles por sección |
+| `importar/page.tsx` | Soporte subcarpetas con `parentId` |
+| `tareas/page.tsx` | Ocultar vacíos, filtro por permisos de estado, localStorage columnas |
+| `permisos/page.tsx` | Sección visibilidad de estados con matriz rol×estado |
+| `stock/page.tsx` | SectionSettings en header |
+| `calendario/page.tsx` | SectionSettings en header |
+| `perfil/page.tsx` | Personalización: paleta de avatar, vista compacta |
+| `schema.prisma` | Modelo PermisoEstado + relación en EstadoConfig |
+
+### Nota de deploy
+- Ejecutar `npx prisma db push` o crear migración para el nuevo modelo `PermisoEstado`.
+
+---
+
 ## Roadmap de Mejoras Futuras
 
 ### 🟠 Funcionales (post-deploy, por demanda)

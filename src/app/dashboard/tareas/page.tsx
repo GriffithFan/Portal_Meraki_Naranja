@@ -72,8 +72,45 @@ export default function TareasPage() {
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const didDragRef = useRef(false);
 
+  // Persistir config de columnas en localStorage
+  const colConfigLoaded = useRef(false);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("pmn-col-config");
+      if (saved) {
+        const config: { id: string; visible: boolean; order: number }[] = JSON.parse(saved);
+        setColumns(prev => {
+          const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i }]));
+          return [...prev]
+            .map(col => {
+              const cfg = orderMap.get(col.id);
+              return cfg ? { ...col, visible: cfg.visible } : col;
+            })
+            .sort((a, b) => {
+              const oa = orderMap.get(a.id)?.order ?? 999;
+              const ob = orderMap.get(b.id)?.order ?? 999;
+              return oa - ob;
+            });
+        });
+      }
+    } catch { /* ignore */ }
+    colConfigLoaded.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!colConfigLoaded.current) return;
+    const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i }));
+    localStorage.setItem("pmn-col-config", JSON.stringify(config));
+  }, [columns]);
+
   // Confirmar eliminación
   const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: string; label: string } | null>(null);
+
+  // Mostrar/ocultar estados vacíos
+  const [showEmptyStates, setShowEmptyStates] = useState(false);
+
+  // Estados ocultos por permisos de rol
+  const [hiddenEstadoIds, setHiddenEstadoIds] = useState<Set<string>>(new Set());
 
   // Usuarios para asignación
   const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
@@ -118,6 +155,22 @@ export default function TareasPage() {
         ids.push("sin-estado");
         setExpandedSections(new Set(ids));
       });
+    // Cargar permisos de visibilidad de estados
+    if (session?.rol && session.rol !== "ADMIN") {
+      fetch("/api/permisos/estados", { credentials: "include" })
+        .then(r => r.ok ? r.json() : { permisos: [] })
+        .then(d => {
+          const perms = d.permisos || [];
+          const hidden = new Set<string>();
+          for (const p of perms) {
+            if (p.rol === session.rol && !p.visible) {
+              hidden.add(p.estadoId);
+            }
+          }
+          setHiddenEstadoIds(hidden);
+        })
+        .catch(() => {});
+    }
     // Cargar campos personalizados y agregar como columnas
     fetch("/api/campos-personalizados", { credentials: "include" })
       .then(r => r.ok ? r.json() : { campos: [] })
@@ -778,7 +831,6 @@ export default function TareasPage() {
                           <IconX className="w-3 h-3" />
                         </button>
                       )}
-                      {e.nombre}
                     </span>
                   ))}
                 </div>
@@ -795,9 +847,26 @@ export default function TareasPage() {
         </div>
       ) : (
         <div className="space-y-2">
+          {/* Toggle para mostrar estados vacíos */}
+          {estados.some(e => (groupedTareas[e.id] || []).length === 0) && (
+            <div className="flex justify-end mb-1">
+              <button
+                onClick={() => setShowEmptyStates(!showEmptyStates)}
+                className="text-[11px] text-surface-400 hover:text-surface-600 transition-colors"
+              >
+                {showEmptyStates ? "Ocultar vacíos" : `Mostrar todos (${estados.filter(e => (groupedTareas[e.id] || []).length === 0).length} vacíos)`}
+              </button>
+            </div>
+          )}
           {estados.map((estado) => {
             const items = groupedTareas[estado.id] || [];
             const isExpanded = expandedSections.has(estado.id);
+
+            // Ocultar estados sin tareas si no se activó el toggle
+            if (items.length === 0 && !showEmptyStates) return null;
+
+            // Ocultar estados restringidos por permisos de rol
+            if (hiddenEstadoIds.has(estado.id)) return null;
 
             return (
               <div key={estado.id} className="bg-white border border-surface-200 rounded-lg overflow-hidden">

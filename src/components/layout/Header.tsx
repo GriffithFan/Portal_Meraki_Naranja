@@ -79,6 +79,30 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  // Avatar gradient from user preferences
+  const AVATAR_GRADIENTS: Record<string, { from: string; to: string }> = {
+    default: { from: "from-primary-500", to: "to-accent-500" },
+    ocean: { from: "from-cyan-500", to: "to-blue-600" },
+    sunset: { from: "from-orange-400", to: "to-rose-500" },
+    forest: { from: "from-emerald-500", to: "to-teal-600" },
+    berry: { from: "from-fuchsia-500", to: "to-pink-600" },
+    slate: { from: "from-slate-500", to: "to-slate-700" },
+    amber: { from: "from-amber-400", to: "to-orange-600" },
+    mint: { from: "from-green-400", to: "to-emerald-600" },
+  };
+  const [avatarGrad, setAvatarGrad] = useState({ from: "from-primary-500", to: "to-accent-500" });
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("pmn-perfil-prefs");
+      if (saved) {
+        const p = JSON.parse(saved);
+        const g = AVATAR_GRADIENTS[p.avatarGradient];
+        if (g) setAvatarGrad(g);
+      }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const closeMenu = useCallback((e: MouseEvent) => {
     if (menuRef.current && !menuRef.current.contains(e.target as Node)) setUserMenuOpen(false);
     if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
@@ -333,39 +357,62 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-surface-100 transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-sm font-bold shadow-sm">
+            <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGrad.from} ${avatarGrad.to} flex items-center justify-center text-white text-sm font-bold shadow-sm`}>
               {(session?.nombre?.[0] || "U").toUpperCase()}
             </div>
           </button>
 
           {userMenuOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-surface-200 overflow-hidden animate-fade-in z-50">
+            <div className="fixed sm:absolute inset-x-3 sm:inset-x-auto sm:right-0 top-16 sm:top-auto sm:mt-2 w-auto sm:w-72 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-lg border border-surface-200 overflow-hidden animate-fade-in z-50">
               {/* Perfil header */}
               <div className="px-4 pt-4 pb-3 bg-gradient-to-br from-primary-50 to-accent-50/30">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-base font-bold shadow-sm flex-shrink-0">
+                  <div className={`w-11 h-11 rounded-full bg-gradient-to-br ${avatarGrad.from} ${avatarGrad.to} flex items-center justify-center text-white text-lg font-bold shadow-sm flex-shrink-0`}>
                     {(session?.nombre?.[0] || "U").toUpperCase()}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-surface-800 truncate">{session?.nombre || "Usuario"}</p>
                     <p className="text-xs text-surface-500 truncate">{session?.email || ""}</p>
+                    <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/70 text-primary-700 border border-primary-200/50">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                      </svg>
+                      {session?.rol || "—"}
+                    </span>
                   </div>
-                </div>
-                <div className="mt-2.5">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/70 text-primary-700 border border-primary-200/50">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                    </svg>
-                    {session?.rol || "—"}
-                  </span>
                 </div>
               </div>
 
-              {/* Acciones */}
+              {/* Enlaces rápidos */}
+              <div className="py-1 border-b border-surface-100">
+                <Link
+                  href="/dashboard/perfil"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="w-full text-left px-4 py-2 text-sm text-surface-700 hover:bg-surface-50 transition-colors flex items-center gap-2.5"
+                >
+                  <svg className="w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                  </svg>
+                  Mi perfil
+                </Link>
+                <Link
+                  href="/dashboard/bandeja"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="w-full text-left px-4 py-2 text-sm text-surface-700 hover:bg-surface-50 transition-colors flex items-center gap-2.5"
+                >
+                  <svg className="w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                  </svg>
+                  Bandeja
+                  {sinLeer > 0 && <span className="ml-auto text-[10px] font-bold text-accent-500">{sinLeer}</span>}
+                </Link>
+              </div>
+
+              {/* Cerrar sesión */}
               <div className="py-1">
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2.5"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
