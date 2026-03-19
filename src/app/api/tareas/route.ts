@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
 import { parseBody, isErrorResponse, tareaCreateSchema } from "@/lib/validation";
+import { registrarEnPapelera } from "@/lib/papelera";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -174,5 +175,54 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error creando tarea:", error);
     return NextResponse.json({ error: "Error al crear tarea" }, { status: 500 });
+  }
+}
+
+// DELETE /api/tareas?ids=id1,id2,... — Eliminación masiva (ADMIN)
+export async function DELETE(request: NextRequest) {
+  const session = await getSession();
+  if (!session || session.rol !== "ADMIN") {
+    return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const idsRaw = searchParams.get("ids");
+  if (!idsRaw) {
+    return NextResponse.json({ error: "IDs requeridos" }, { status: 400 });
+  }
+
+  const ids = idsRaw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 500);
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "IDs requeridos" }, { status: 400 });
+  }
+
+  try {
+    const predios = await prisma.predio.findMany({
+      where: { id: { in: ids } },
+    });
+
+    // Registrar en papelera
+    for (const p of predios) {
+      await registrarEnPapelera("PREDIO", p.nombre || p.codigo || "Sin nombre", p as unknown as Record<string, unknown>, session.userId);
+    }
+
+    const result = await prisma.predio.deleteMany({
+      where: { id: { in: ids } },
+    });
+
+    await prisma.actividad.create({
+      data: {
+        accion: "ELIMINAR",
+        descripcion: `Eliminación masiva: ${result.count} tareas eliminadas`,
+        entidad: "PREDIO",
+        entidadId: "bulk",
+        userId: session.userId,
+      },
+    });
+
+    return NextResponse.json({ success: true, count: result.count });
+  } catch (error) {
+    console.error("Error en eliminación masiva:", error);
+    return NextResponse.json({ error: "Error al eliminar" }, { status: 500 });
   }
 }

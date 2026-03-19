@@ -113,6 +113,10 @@ export default function TareasPage() {
   // Confirmar eliminación
   const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: string; label: string } | null>(null);
 
+  // Eliminación masiva
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteGroup, setBulkDeleteGroup] = useState<string | null>(null);
+
   // Mostrar/ocultar estados vacíos
   const [showEmptyStates, setShowEmptyStates] = useState(false);
 
@@ -482,6 +486,22 @@ export default function TareasPage() {
         setColumns(prev => prev.filter(c => c.id !== `custom_${id}`));
       }
     }
+  }
+
+  // Eliminación masiva de grupo
+  async function handleBulkDelete(groupId: string) {
+    const items = groupedTareas[groupId] || [];
+    if (items.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      const ids = items.map((t: any) => t.id).join(",");
+      const res = await fetch(`/api/tareas?ids=${encodeURIComponent(ids)}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) {
+        setTareas(prev => prev.filter(t => !items.some((i: any) => i.id === t.id)));
+      }
+    } catch { /* ignore */ }
+    setBulkDeleting(false);
+    setBulkDeleteGroup(null);
   }
 
   // Crear columna personalizada inline
@@ -916,23 +936,55 @@ export default function TareasPage() {
 
             return (
               <div key={estado.id} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => toggleSection(estado.id)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
-                >
-                  <IconChevron expanded={isExpanded} className="w-3.5 h-3.5 text-surface-400" />
-                  <StatusIcon clave={estado.clave} color={estado.color} size={16} />
-                  <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
-                  <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
-                  {isModOrAdmin && (
-                    <span
-                      onClick={(e) => { e.stopPropagation(); setForm(f => ({ ...f, estadoId: estado.id })); setShowModal(true); }}
-                      className="ml-auto text-[11px] text-surface-400 hover:text-surface-600 font-medium"
-                    >
-                      + Añadir
-                    </span>
-                  )}
-                </button>
+                <div className="flex items-center">
+                  <button
+                    onClick={() => toggleSection(estado.id)}
+                    className="flex-1 flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
+                  >
+                    <IconChevron expanded={isExpanded} className="w-3.5 h-3.5 text-surface-400" />
+                    <StatusIcon clave={estado.clave} color={estado.color} size={16} />
+                    <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
+                    <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
+                  </button>
+                  <div className="pr-3 flex items-center gap-1.5">
+                    {session?.rol === "ADMIN" && items.length > 1 && (
+                      bulkDeleteGroup === estado.id ? (
+                        <>
+                          <span className="text-[11px] text-red-500 font-medium">¿Eliminar {items.length}?</span>
+                          <button
+                            onClick={() => handleBulkDelete(estado.id)}
+                            disabled={bulkDeleting}
+                            className="px-2 py-0.5 bg-red-500 text-white text-[11px] rounded hover:bg-red-600 disabled:opacity-50 transition-colors"
+                          >
+                            {bulkDeleting ? "..." : "Sí"}
+                          </button>
+                          <button
+                            onClick={() => setBulkDeleteGroup(null)}
+                            className="px-2 py-0.5 text-surface-500 text-[11px] rounded hover:bg-surface-100 transition-colors"
+                          >
+                            No
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setBulkDeleteGroup(estado.id)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Eliminar todas"
+                        >
+                          <IconTrash className="w-3.5 h-3.5" />
+                        </button>
+                      )
+                    )}
+                    {isModOrAdmin && (
+                      <span
+                        onClick={() => { setForm(f => ({ ...f, estadoId: estado.id })); setShowModal(true); }}
+                        className="text-[11px] text-surface-400 hover:text-surface-600 font-medium cursor-pointer"
+                      >
+                        + Añadir
+                      </span>
+                    )}
+                  </div>
+                </div>
 
                 {isExpanded && (
                   <div className="border-t border-surface-100">
@@ -999,15 +1051,48 @@ export default function TareasPage() {
           {/* Sin estado */}
           {groupedTareas["sin-estado"]?.length > 0 && (
             <div className="bg-white border border-surface-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleSection("sin-estado")}
-                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
-              >
-                <IconChevron expanded={expandedSections.has("sin-estado")} className="w-3.5 h-3.5 text-surface-400" />
-                <span className="w-2 h-2 rounded-full bg-surface-300 flex-shrink-0" />
-                <span className="text-sm font-medium text-surface-500">Sin estado</span>
-                <span className="text-[11px] text-surface-400 tabular-nums">{groupedTareas["sin-estado"].length}</span>
-              </button>
+              <div className="flex items-center">
+                <button
+                  onClick={() => toggleSection("sin-estado")}
+                  className="flex-1 flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
+                >
+                  <IconChevron expanded={expandedSections.has("sin-estado")} className="w-3.5 h-3.5 text-surface-400" />
+                  <span className="w-2 h-2 rounded-full bg-surface-300 flex-shrink-0" />
+                  <span className="text-sm font-medium text-surface-500">Sin estado</span>
+                  <span className="text-[11px] text-surface-400 tabular-nums">{groupedTareas["sin-estado"].length}</span>
+                </button>
+                {session?.rol === "ADMIN" && groupedTareas["sin-estado"].length > 0 && (
+                  <div className="pr-3 flex items-center gap-1.5">
+                    {bulkDeleteGroup === "sin-estado" ? (
+                      <>
+                        <span className="text-[11px] text-red-500 font-medium">¿Eliminar {groupedTareas["sin-estado"].length}?</span>
+                        <button
+                          onClick={() => handleBulkDelete("sin-estado")}
+                          disabled={bulkDeleting}
+                          className="px-2 py-0.5 bg-red-500 text-white text-[11px] rounded hover:bg-red-600 disabled:opacity-50 transition-colors"
+                        >
+                          {bulkDeleting ? "..." : "Sí"}
+                        </button>
+                        <button
+                          onClick={() => setBulkDeleteGroup(null)}
+                          className="px-2 py-0.5 text-surface-500 text-[11px] rounded hover:bg-surface-100 transition-colors"
+                        >
+                          No
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setBulkDeleteGroup("sin-estado")}
+                        className="flex items-center gap-1 text-[11px] text-red-400 hover:text-red-600 transition-colors"
+                        title="Eliminar todas las tareas sin estado"
+                      >
+                        <IconTrash className="w-3.5 h-3.5" />
+                        Eliminar todas
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               {expandedSections.has("sin-estado") && (
                 <div className="border-t border-surface-100 overflow-x-auto">
                   <MobileTaskList items={groupedTareas["sin-estado"]} />

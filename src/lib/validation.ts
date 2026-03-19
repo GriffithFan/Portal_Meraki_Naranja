@@ -33,7 +33,7 @@ export function isErrorResponse(value: unknown): value is NextResponse {
 const str = (max = 500) => z.string().max(max).trim();
 const strOpt = (max = 500) => str(max).optional();
 const cuid = () => z.string().min(1).max(30);
-const cuidOpt = () => cuid().optional().or(z.literal(""));
+const cuidOpt = () => cuid().optional().nullable().or(z.literal(""));
 const dateStr = () => z.string().regex(/^\d{4}-\d{2}-\d{2}/, "Formato de fecha inválido");
 const dateStrOpt = () => dateStr().optional().or(z.literal(""));
 const timeStr = () => z.string().regex(/^\d{2}:\d{2}/, "Formato de hora inválido");
