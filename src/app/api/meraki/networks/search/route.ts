@@ -6,7 +6,7 @@ import {
   getDevice,
   getOrganizationDevices,
 } from "@/lib/meraki";
-import { getFromCache, setInCache } from "@/lib/merakiCache";
+import { getFromCache, setInCache, getOrFetch } from "@/lib/merakiCache";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 
@@ -16,12 +16,17 @@ const SERIAL_REGEX = /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i;
 const MAC_COLON_REGEX = /^([0-9a-f]{2}[:\-]){5}[0-9a-f]{2}$/i;
 const MAC_RAW_REGEX = /^[0-9a-f]{12}$/i;
 
-/** Busca redes en una organización (con cache) */
+const NETWORKS_CACHE_TTL = 10 * 60 * 1000; // 10 min — network list changes rarely
+
+/** Busca redes en una organización (con cache + dedup) */
 async function searchInOrg(org: { id: string; name: string }, lower: string): Promise<any[]> {
   try {
-    const cached = getFromCache<unknown[]>("networksByOrg", org.id);
-    const nets = cached ?? (await getNetworks(org.id));
-    if (!cached) setInCache("networksByOrg", org.id, nets);
+    const nets = await getOrFetch<unknown[]>(
+      "networksByOrg",
+      org.id,
+      () => getNetworks(org.id),
+      NETWORKS_CACHE_TTL,
+    );
 
     return (nets as any[])
       .filter((n) =>
@@ -177,11 +182,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Buscar en TODAS las organizaciones en paralelo (no secuencial)
-    const allResults = await Promise.all(
-      orgs.map((org) => searchInOrg(org, lower))
-    );
-    const results = allResults.flat();
+    // Buscar en organizaciones — lotes de 5 para no saturar rate limit (10 req/s)
+    const BATCH_SIZE = 5;
+    const results: any[] = [];
+    for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
+      const batch = orgs.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((org) => searchInOrg(org, lower))
+      );
+      results.push(...batchResults.flat());
+      // Si ya tenemos suficientes resultados, no seguir buscando
+      if (results.length >= 20) break;
+      // Pequeña pausa entre lotes si no hay cache (evitar 429)
+      if (i + BATCH_SIZE < orgs.length && results.length === 0) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    }
 
     return NextResponse.json(results.slice(0, 20));
   } catch (error) {
