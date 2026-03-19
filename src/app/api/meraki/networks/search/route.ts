@@ -177,6 +177,47 @@ export async function GET(request: NextRequest) {
     }
 
     const orgId = process.env.MERAKI_ORG_ID;
+
+    // Estrategia: usar el viejo backend (port 3000) que tiene networks cacheadas
+    // para buscar predios sin consumir rate limit de Meraki API
+    const OLD_BACKEND = process.env.OLD_BACKEND_URL || "http://localhost:3000";
+    try {
+      const backendRes = await fetch(
+        `${OLD_BACKEND}/api/predios/search?q=${encodeURIComponent(q)}`,
+        { signal: AbortSignal.timeout(8000) },
+      );
+      if (backendRes.ok) {
+        const data = await backendRes.json();
+        const predios = data?.predios || [];
+        if (predios.length > 0) {
+          // Obtener nombres de orgs para el display
+          let orgCache = getFromCache<any[]>("organizations", "all");
+          if (!orgCache) {
+            try {
+              orgCache = await getOrganizations();
+              setInCache("organizations", "all", orgCache, 600_000);
+            } catch { orgCache = []; }
+          }
+          const orgMap = new Map((orgCache || []).map((o: any) => [o.id, o.name]));
+
+          const mapped = predios.map((p: any) => ({
+            id: p.network_id,
+            name: p.predio_name || p.predio_code || q,
+            organizationId: p.organization_id,
+            orgId: p.organization_id,
+            orgName: orgMap.get(p.organization_id) || "",
+            predioCode: p.predio_code,
+            source: "legacy-backend",
+          }));
+          console.log(`[Search] ✓ "${q}" found ${mapped.length} via legacy backend`);
+          return NextResponse.json(mapped.slice(0, 20));
+        }
+      }
+    } catch (e) {
+      console.error("[Search] Legacy backend failed:", e instanceof Error ? e.message : e);
+    }
+
+    // Fallback: búsqueda directa en Meraki API (lotes de 3)
     let orgs: any[] = [];
     if (orgId) {
       orgs = [{ id: orgId, name: "" }];
@@ -186,30 +227,26 @@ export async function GET(request: NextRequest) {
         orgs = cachedOrgs;
       } else {
         orgs = await getOrganizations();
-        setInCache("organizations", "all", orgs, 600_000); // 10 min cache
+        setInCache("organizations", "all", orgs, 600_000);
       }
     }
 
-    console.log(`[Search] Searching "${q}" across ${orgs.length} orgs (MERAKI_ORG_ID=${orgId || "NOT SET"})`);
+    console.log(`[Search] Fallback: "${q}" across ${orgs.length} orgs`);
 
-    // Buscar en organizaciones — lotes de 3 para no saturar rate limit (10 req/s)
     const BATCH_SIZE = 3;
     const results: any[] = [];
     for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
       const batch = orgs.slice(i, i + BATCH_SIZE);
-      console.log(`[Search] Batch ${Math.floor(i / BATCH_SIZE) + 1}: orgs ${batch.map((o: any) => o.id).join(", ")}`);
       const batchResults = await Promise.all(
         batch.map((org) => searchInOrg(org, lower))
       );
       results.push(...batchResults.flat());
-      // Si ya tenemos suficientes resultados, no seguir buscando
       if (results.length >= 20) break;
-      // Pausa entre lotes para evitar 429
       if (i + BATCH_SIZE < orgs.length) {
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
-    console.log(`[Search] Total results for "${q}": ${results.length}`);
+    console.log(`[Search] Fallback results for "${q}": ${results.length}`);
 
     return NextResponse.json(results.slice(0, 20));
   } catch (error) {
