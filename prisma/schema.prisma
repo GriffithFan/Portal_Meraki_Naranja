@@ -134,6 +134,13 @@ model Predio {
   provincia         String?   // Santa Fe, Buenos Aires, etc.
   cuePredio         String?   // CUE del predio
   gpsPredio         String?   // Coordenadas GPS
+  tipoRed           String?   // Tipo de red
+  codigoPostal      String?   // Código postal
+  caracteristicaTelefonica String? // Característica telefónica
+  telefono          String?   // Teléfono
+  lab               String?   // LAB
+  nombreInstitucion String?   // Nombre de la institución
+  correo            String?   // Correo electrónico
   fechaActualizacion DateTime? // Última actualización del registro
   camposExtra       Json?     // Campos dinámicos adicionales
 

@@ -43,6 +43,13 @@ const PREDIO_FIELDS: Record<string, string> = {
   provincia: "Provincia",
   cuePredio: "CUE_Predio",
   gpsPredio: "GPS_Predio",
+  tipoRed: "Tipo de Red",
+  codigoPostal: "Código Postal",
+  caracteristicaTelefonica: "Característica Telefónica",
+  telefono: "Teléfono",
+  lab: "LAB",
+  nombreInstitucion: "Nombre de la Institución",
+  correo: "Correo",
 };
 
 const EQUIPO_FIELDS: Record<string, string> = {
@@ -196,6 +203,22 @@ export async function POST(request: NextRequest) {
           if (cuePredio) data.cuePredio = cuePredio;
           const gpsPredio = safeGet(row, fieldMap.get("gpsPredio"));
           if (gpsPredio) data.gpsPredio = gpsPredio;
+
+          // Campos adicionales
+          const tipoRed = safeGet(row, fieldMap.get("tipoRed"));
+          if (tipoRed) data.tipoRed = tipoRed;
+          const codigoPostal = safeGet(row, fieldMap.get("codigoPostal"));
+          if (codigoPostal) data.codigoPostal = codigoPostal;
+          const caracteristicaTelefonica = safeGet(row, fieldMap.get("caracteristicaTelefonica"));
+          if (caracteristicaTelefonica) data.caracteristicaTelefonica = caracteristicaTelefonica;
+          const telefonoVal = safeGet(row, fieldMap.get("telefono"));
+          if (telefonoVal) data.telefono = telefonoVal;
+          const labVal = safeGet(row, fieldMap.get("lab"));
+          if (labVal) data.lab = labVal;
+          const nombreInstitucion = safeGet(row, fieldMap.get("nombreInstitucion"));
+          if (nombreInstitucion) data.nombreInstitucion = nombreInstitucion;
+          const correoVal = safeGet(row, fieldMap.get("correo"));
+          if (correoVal) data.correo = correoVal;
 
           // Fechas
           const fechaDesde = parseDate(safeGet(row, fieldMap.get("fechaDesde")));

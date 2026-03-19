@@ -55,7 +55,8 @@ const EDITABLE_FIELDS = [
   "seccion", "latitud", "longitud", "estadoId", "fechaProgramada",
   "incidencias", "lacR", "cue", "ambito", "equipoAsignado",
   "provincia", "cuePredio", "gpsPredio", "fechaDesde", "fechaHasta",
-  "camposExtra"
+  "tipoRed", "codigoPostal", "caracteristicaTelefonica", "telefono",
+  "lab", "nombreInstitucion", "correo", "camposExtra"
 ];
 
 export async function GET(

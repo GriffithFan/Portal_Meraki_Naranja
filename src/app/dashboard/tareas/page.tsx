@@ -38,6 +38,13 @@ const DEFAULT_COLUMNS: Column[] = [
   { id: "latitud", label: "Latitud", field: "latitud", width: 100, visible: true, editable: true, type: "text" },
   { id: "longitud", label: "Longitud", field: "longitud", width: 100, visible: true, editable: true, type: "text" },
   { id: "gpsPredio", label: "GPS", field: "gpsPredio", width: 120, visible: false, editable: true, type: "text" },
+  { id: "tipoRed", label: "Tipo de Red", field: "tipoRed", width: 100, visible: false, editable: true, type: "text" },
+  { id: "codigoPostal", label: "Cód. Postal", field: "codigoPostal", width: 90, visible: false, editable: true, type: "text" },
+  { id: "caracteristicaTelefonica", label: "Car. Tel.", field: "caracteristicaTelefonica", width: 80, visible: false, editable: true, type: "text" },
+  { id: "telefono", label: "Teléfono", field: "telefono", width: 100, visible: false, editable: true, type: "text" },
+  { id: "lab", label: "LAB", field: "lab", width: 70, visible: false, editable: true, type: "text" },
+  { id: "nombreInstitucion", label: "Institución", field: "nombreInstitucion", width: 140, visible: false, editable: true, type: "text" },
+  { id: "correo", label: "Correo", field: "correo", width: 140, visible: false, editable: true, type: "text" },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -108,6 +115,27 @@ export default function TareasPage() {
 
   // Mostrar/ocultar estados vacíos
   const [showEmptyStates, setShowEmptyStates] = useState(false);
+
+  // Estados individuales ocultos por el usuario
+  const [userHiddenEstados, setUserHiddenEstados] = useState<Set<string>>(new Set());
+
+  // Persistir showEmptyStates y estados ocultos por el usuario
+  useEffect(() => {
+    try {
+      const savedEmpty = localStorage.getItem("pmn-show-empty-states");
+      if (savedEmpty !== null) setShowEmptyStates(savedEmpty === "true");
+      const savedHidden = localStorage.getItem("pmn-user-hidden-estados");
+      if (savedHidden) setUserHiddenEstados(new Set(JSON.parse(savedHidden)));
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("pmn-show-empty-states", String(showEmptyStates));
+  }, [showEmptyStates]);
+
+  useEffect(() => {
+    localStorage.setItem("pmn-user-hidden-estados", JSON.stringify(Array.from(userHiddenEstados)));
+  }, [userHiddenEstados]);
 
   // Estados ocultos por permisos de rol
   const [hiddenEstadoIds, setHiddenEstadoIds] = useState<Set<string>>(new Set());
@@ -802,7 +830,7 @@ export default function TareasPage() {
           {isModOrAdmin && (
             <div className="pt-2 border-t border-surface-100">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider">Estados</p>
+                <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider">Estados (visibilidad)</p>
                 <button
                   onClick={() => setShowEstadoModal(true)}
                   className="text-[11px] text-surface-500 hover:text-surface-700 font-medium"
@@ -814,25 +842,40 @@ export default function TareasPage() {
                 <p className="text-[11px] text-surface-400">Sin estados. Crea uno para agrupar tareas.</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
-                  {estados.map(e => (
-                    <span
+                  {estados.map(e => {
+                    const isHidden = userHiddenEstados.has(e.id);
+                    return (
+                    <label
                       key={e.id}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group"
-                      style={{ borderColor: `${e.color}40`, color: e.color }}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${
+                        isHidden ? "opacity-40 bg-surface-50" : ""
+                      }`}
+                      style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}
                     >
+                      <input
+                        type="checkbox"
+                        checked={!isHidden}
+                        onChange={() => setUserHiddenEstados(prev => {
+                          const next = new Set(prev);
+                          if (next.has(e.id)) next.delete(e.id); else next.add(e.id);
+                          return next;
+                        })}
+                        className="sr-only"
+                      />
                       <StatusIcon clave={e.clave} color={e.color} size={12} />
                       {e.nombre}
                       {session?.rol === "ADMIN" && (
                         <button
-                          onClick={() => setConfirmDelete({ type: "estado", id: e.id, label: e.nombre })}
+                          onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
                           className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"
                           title="Eliminar estado"
                         >
                           <IconX className="w-3 h-3" />
                         </button>
                       )}
-                    </span>
-                  ))}
+                    </label>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -867,6 +910,9 @@ export default function TareasPage() {
 
             // Ocultar estados restringidos por permisos de rol
             if (hiddenEstadoIds.has(estado.id)) return null;
+
+            // Ocultar estados que el usuario eligió no ver
+            if (userHiddenEstados.has(estado.id)) return null;
 
             return (
               <div key={estado.id} className="bg-white border border-surface-200 rounded-lg overflow-hidden">

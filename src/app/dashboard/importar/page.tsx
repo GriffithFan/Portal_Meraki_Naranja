@@ -55,6 +55,8 @@ export default function ImportarPage() {
   // Campos personalizados existentes y nuevos a crear
   const [customFields, setCustomFields] = useState<{ clave: string; nombre: string }[]>([]);
   const [newCustomFields, setNewCustomFields] = useState<Record<number, string>>({}); // colIdx → nombre
+  // Columna seleccionada para preview dinámico
+  const [selectedPreviewCol, setSelectedPreviewCol] = useState<number | null>(null);
 
   // Cargar campos disponibles + campos personalizados
   useEffect(() => {
@@ -190,6 +192,13 @@ export default function ImportarPage() {
         tipo:      ["tipo", "type"],
         notas:     ["notas", "nota", "notes", "observaciones"],
         prioridad: ["prioridad", "priority"],
+        tipoRed: ["tipo_red", "tipo de red", "tipored", "tipo_de_red", "red"],
+        codigoPostal: ["codigo_postal", "cp", "cod_postal", "codigopostal", "código_postal"],
+        caracteristicaTelefonica: ["caracteristica", "car_tel", "caracteristica_telefonica", "caracteristicatelefonica", "car"],
+        telefono: ["telefono", "tel", "phone", "teléfono", "nro_tel"],
+        lab: ["lab"],
+        nombreInstitucion: ["institucion", "institución", "nombre_institucion", "nombreinstitucion", "escuela"],
+        correo: ["correo", "email", "mail", "e-mail", "correo_electronico"],
       };
 
       for (let i = 0; i < data.headers.length; i++) {
@@ -283,6 +292,7 @@ export default function ImportarPage() {
     setParseResult(null);
     setMappings({});
     setNewCustomFields({});
+    setSelectedPreviewCol(null);
     setResult(null);
     setError("");
     setSelectedFile(null);
@@ -432,7 +442,9 @@ export default function ImportarPage() {
       {/* Paso 2: Mapear columnas */}
       {step === "map" && parseResult && (
         <div className="space-y-4">
-          <div className="bg-white rounded-lg border border-surface-200 p-5">
+          <div className="flex gap-4">
+          {/* Panel izquierdo: Mapeo */}
+          <div className="flex-1 min-w-0 bg-white rounded-lg border border-surface-200 p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="font-semibold text-surface-800">Mapeo de columnas</h2>
@@ -455,8 +467,18 @@ export default function ImportarPage() {
               {parseResult.headers.map((header: string, i: number) => {
                 const isColExcluded = excludedCols.has(i);
                 const isNewCustom = mappings[i] === "_new_custom";
+                const isSelected = selectedPreviewCol === i;
                 return (
-                  <div key={i} className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${isColExcluded ? "bg-red-50 opacity-60" : isNewCustom ? "bg-violet-50" : "bg-surface-50"}`}>
+                  <div
+                    key={i}
+                    className={`flex items-center gap-3 p-2 rounded-lg transition-colors cursor-pointer ${
+                      isColExcluded ? "bg-red-50 opacity-60" :
+                      isNewCustom ? "bg-violet-50" :
+                      isSelected ? "bg-primary-50 ring-1 ring-primary-300" :
+                      "bg-surface-50 hover:bg-surface-100"
+                    }`}
+                    onClick={() => setSelectedPreviewCol(isSelected ? null : i)}
+                  >
                     <span className={`text-sm w-48 truncate font-mono ${isColExcluded ? "text-surface-400 line-through" : "text-surface-600"}`}>{header}</span>
                     <span className="text-surface-300">→</span>
                     {isColExcluded ? (
@@ -467,7 +489,8 @@ export default function ImportarPage() {
                           Campo personalizado: &quot;{newCustomFields[i] || header}&quot;
                         </span>
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setMappings(prev => ({ ...prev, [i]: "_skip" }));
                             setNewCustomFields(prev => { const n = { ...prev }; delete n[i]; return n; });
                           }}
@@ -479,6 +502,7 @@ export default function ImportarPage() {
                     ) : (
                       <select
                         value={mappings[i] || "_skip"}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val === "_new_custom") {
@@ -512,7 +536,7 @@ export default function ImportarPage() {
                       </select>
                     )}
                     <button
-                      onClick={() => toggleColExclusion(i)}
+                      onClick={(e) => { e.stopPropagation(); toggleColExclusion(i); }}
                       className={`p-1.5 rounded-lg transition-colors ${isColExcluded ? "text-green-600 hover:bg-green-100" : "text-red-500 hover:bg-red-100"}`}
                       title={isColExcluded ? "Restaurar columna" : "Excluir columna"}
                     >
@@ -522,6 +546,51 @@ export default function ImportarPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Panel derecho: Preview dinámico de columna seleccionada */}
+          {selectedPreviewCol !== null && (
+            <div className="w-72 flex-shrink-0 bg-white rounded-lg border border-surface-200 p-4 hidden lg:block max-h-[600px] overflow-y-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-surface-800 text-sm truncate">
+                  {parseResult.headers[selectedPreviewCol]}
+                </h3>
+                <button
+                  onClick={() => setSelectedPreviewCol(null)}
+                  className="text-surface-400 hover:text-surface-600"
+                >
+                  <IconX />
+                </button>
+              </div>
+              {mappings[selectedPreviewCol] && mappings[selectedPreviewCol] !== "_skip" && (
+                <p className="text-[10px] text-emerald-600 mb-2 font-medium">
+                  → {dbFields[mappings[selectedPreviewCol]] || mappings[selectedPreviewCol]}
+                </p>
+              )}
+              <div className="space-y-1">
+                {parseResult.rows.slice(0, 50).map((row: string[], ri: number) => {
+                  const val = row[selectedPreviewCol] ?? "";
+                  const isRowExcluded = excludedRows.has(ri);
+                  return (
+                    <div
+                      key={ri}
+                      className={`flex items-center gap-2 px-2 py-1 rounded text-xs ${
+                        isRowExcluded ? "text-surface-300 line-through bg-red-50/50" : "text-surface-700 bg-surface-50"
+                      }`}
+                    >
+                      <span className="text-[10px] text-surface-400 w-5 text-right font-mono flex-shrink-0">{ri + 1}</span>
+                      <span className="truncate">{val || <span className="text-surface-300 italic">vacío</span>}</span>
+                    </div>
+                  );
+                })}
+                {parseResult.rows.length > 50 && (
+                  <p className="text-[10px] text-surface-400 text-center pt-1">
+                    ... y {parseResult.rows.length - 50} filas más
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
           </div>
 
           {/* Preview con opción de eliminar filas */}
