@@ -28,14 +28,22 @@ async function searchInOrg(org: { id: string; name: string }, lower: string): Pr
       NETWORKS_CACHE_TTL,
     );
 
-    return (nets as any[])
+    console.log(`[Search] Org ${org.id} (${org.name}): ${(nets as any[]).length} networks fetched`);
+
+    const matched = (nets as any[])
       .filter((n) =>
         `${n.name} ${n.id} ${n.productTypes?.join(" ")} ${n.tags?.join(" ")}`
           .toLowerCase()
           .includes(lower)
       )
       .map((n) => ({ ...n, orgId: org.id, orgName: org.name }));
-  } catch {
+
+    if (matched.length > 0) {
+      console.log(`[Search] ✓ Org ${org.id}: ${matched.length} matches for "${lower}"`);
+    }
+    return matched;
+  } catch (err) {
+    console.error(`[Search] ✗ Org ${org.id} (${org.name}) FAILED:`, err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -182,22 +190,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Buscar en organizaciones — lotes de 5 para no saturar rate limit (10 req/s)
-    const BATCH_SIZE = 5;
+    console.log(`[Search] Searching "${q}" across ${orgs.length} orgs (MERAKI_ORG_ID=${orgId || "NOT SET"})`);
+
+    // Buscar en organizaciones — lotes de 3 para no saturar rate limit (10 req/s)
+    const BATCH_SIZE = 3;
     const results: any[] = [];
     for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
       const batch = orgs.slice(i, i + BATCH_SIZE);
+      console.log(`[Search] Batch ${Math.floor(i / BATCH_SIZE) + 1}: orgs ${batch.map((o: any) => o.id).join(", ")}`);
       const batchResults = await Promise.all(
         batch.map((org) => searchInOrg(org, lower))
       );
       results.push(...batchResults.flat());
       // Si ya tenemos suficientes resultados, no seguir buscando
       if (results.length >= 20) break;
-      // Pequeña pausa entre lotes si no hay cache (evitar 429)
-      if (i + BATCH_SIZE < orgs.length && results.length === 0) {
-        await new Promise((r) => setTimeout(r, 200));
+      // Pausa entre lotes para evitar 429
+      if (i + BATCH_SIZE < orgs.length) {
+        await new Promise((r) => setTimeout(r, 1000));
       }
     }
+    console.log(`[Search] Total results for "${q}": ${results.length}`);
 
     return NextResponse.json(results.slice(0, 20));
   } catch (error) {
