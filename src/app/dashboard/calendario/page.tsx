@@ -101,6 +101,17 @@ function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+/** Parsea una fecha ISO del servidor como fecha local (evita desfase de timezone) */
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("T")[0].split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Formatea una fecha local como string YYYY-MM-DD sin pasar por UTC */
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function formatDateShort(d: Date) {
   return d.toLocaleDateString("es-AR", { weekday: "short", day: "numeric" }).replace(".", "");
 }
@@ -128,12 +139,13 @@ export default function CalendarioPage() {
   const load = useCallback(() => {
     let desde: string, hasta: string;
     if (view === "mes") {
-      desde = new Date(year, month, 1).toISOString();
-      hasta = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+      desde = `${year}-${String(month + 1).padStart(2, "0")}-01T00:00:00.000Z`;
+      const lastDate = new Date(year, month + 1, 0).getDate();
+      hasta = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDate).padStart(2, "0")}T23:59:59.999Z`;
     } else {
       const week = getWeekDates(selectedDay);
-      desde = week[0].toISOString();
-      hasta = new Date(week[6].getFullYear(), week[6].getMonth(), week[6].getDate(), 23, 59, 59).toISOString();
+      desde = toLocalDateStr(week[0]) + "T00:00:00.000Z";
+      hasta = toLocalDateStr(week[6]) + "T23:59:59.999Z";
     }
     const catParam = filterCat ? `&categoria=${filterCat}` : "";
     fetch(`/api/calendario?desde=${desde}&hasta=${hasta}${catParam}`, { credentials: "include" })
@@ -184,9 +196,9 @@ export default function CalendarioPage() {
 
   function tasksForDate(d: Date) {
     return tasks.filter((t) => {
-      const start = new Date(t.fecha);
+      const start = parseLocalDate(t.fecha);
       if (t.fechaFin) {
-        const end = new Date(t.fechaFin);
+        const end = parseLocalDate(t.fechaFin);
         return d >= new Date(start.getFullYear(), start.getMonth(), start.getDate()) &&
                d <= new Date(end.getFullYear(), end.getMonth(), end.getDate());
       }
@@ -212,7 +224,7 @@ export default function CalendarioPage() {
   function openCreate(date?: Date) {
     const d = date || selectedDay;
     setEditingId(null);
-    setForm({ ...EMPTY_FORM, fecha: d.toISOString().split("T")[0] });
+    setForm({ ...EMPTY_FORM, fecha: toLocalDateStr(d) });
     setShowModal(true);
   }
 
