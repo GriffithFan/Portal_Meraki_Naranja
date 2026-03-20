@@ -81,3 +81,27 @@
   .NodePort { width: 22px !important; height: 18px !important; }
   .NodePortTable td { font-size: 10px; padding: 2px 4px; }
 }
+
+/* ═════════════ Dark mode ═════════════ */
+.dark .PortMatrixWrapper { background: #131c2e; border-color: #2a3a4e; }
+.dark .NodePortTable { background-color: #1e293b; }
+.dark .NodePortTable td { color: #e2e8f0; }
+.dark .NodePortTable td.label-cell { color: #94a3b8; }
+.dark .NodePort { background: #334155; border-color: #475569; }
+.dark .NodePort.disabled { background: #475569; border-color: #64748b; }
+.dark .NodePort polygon { fill: #94a3b8; }
+.dark .NodePort.disabled polygon { fill: #64748b; }
+.dark .NodePort.passthrough { background: #475569; border-color: #64748b; }
+.dark .NodePort.passthrough polygon { fill: #64748b; }
+.dark .NodePortTable .port-number { color: #cbd5e1; }
+.dark .ManagementNumbers { color: #cbd5e1; }
+.dark .NodePortTable td.Mx400Module { border-left-color: #475569; }
+.dark .PoEInline.inactive { color: #64748b; }
+.dark .SwitchBadge { background: #1e293b; color: #cbd5e1; border-color: #2a3a4e; }
+.dark .SwitchBadge.active { background: rgba(16,185,129,.15); border-color: rgba(52,211,153,.3); color: #34d399; }
+.dark .modern-card { background: #1a2332; border-color: #2a3a4e; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.dark .modern-card-title { color: #f1f5f9; }
+.dark .modern-card-subtitle { color: #94a3b8; }
+.dark .mobile-device-item { background: #1a2332; border-color: #2a3a4e; }
+.dark .mobile-device-subline { color: #94a3b8; }
+.dark .mobile-device-icon { color: #60a5fa; }

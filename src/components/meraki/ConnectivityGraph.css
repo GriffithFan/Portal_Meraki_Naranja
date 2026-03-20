@@ -156,3 +156,20 @@
 .outages-grid::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 3px; }
 .outages-grid::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 .outages-grid::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ═════════════ Dark mode ═════════════ */
+.dark .connectivity-graph-container { background: #131c2e; border-color: #2a3a4e; }
+.dark .filter-btn { background: #1a2332; color: #cbd5e1; border-color: #2a3a4e; }
+.dark .filter-btn:hover { background: rgba(59,130,246,.1); border-color: #3b82f6; color: #60a5fa; }
+.dark .filter-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.dark .connectivity-timeline { border-color: #2a3a4e; }
+.dark .connectivity-stats { background: #1a2332; border-color: #2a3a4e; }
+.dark .stat-label { color: #64748b; }
+.dark .stat-value { color: #f1f5f9; }
+.dark .micro-outages-list h4 { color: #94a3b8; }
+.dark .outage-item { background: #1a2332; border-color: rgba(239,68,68,.2); border-left-color: #ef4444; }
+.dark .outage-time { color: #94a3b8; }
+.dark .outage-interface { color: #64748b; }
+.dark .outages-grid::-webkit-scrollbar-track { background: #1e293b; }
+.dark .outages-grid::-webkit-scrollbar-thumb { background: #475569; }
+.dark .outages-grid::-webkit-scrollbar-thumb:hover { background: #64748b; }

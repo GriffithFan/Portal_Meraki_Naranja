@@ -1,6 +1,7 @@
 "use client";
 import { normalizeReachability, getStatusColor } from "@/utils/networkUtils";
 import { formatDuration } from "@/utils/formatters";
+import { useTheme } from "@/contexts/ThemeContext";
 import Tooltip from "./Tooltip";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -9,6 +10,9 @@ import Tooltip from "./Tooltip";
  * Timeline de conectividad (UNTOUCHABLE)
  */
 export const ConnectivityTimeline = ({ series }: { series: any }) => {
+  const { theme } = useTheme();
+  const dk = theme === "dark";
+  const borderColor = dk ? "#2a3a4e" : "#cbd5e1";
   const points: any[] = Array.isArray(series?.points) ? series.points : [];
   if (points.length < 2) return null;
 
@@ -35,7 +39,7 @@ export const ConnectivityTimeline = ({ series }: { series: any }) => {
   const sc = (s: string) => s === "connected" ? "#22c55e" : s === "disabled" ? "#94a3b8" : "#f97316";
 
   return (
-    <div style={{ display: "flex", borderRadius: 999, overflow: "hidden", border: "1px solid #cbd5e1", height: 12, width: "100%" }}>
+    <div style={{ display: "flex", borderRadius: 999, overflow: "hidden", border: `1px solid ${borderColor}`, height: 12, width: "100%" }}>
       {segments.map((seg, i) => <div key={`${seg.status}-${i}`} style={{ flex: seg.duration, background: sc(seg.status) }} />)}
     </div>
   );
@@ -45,6 +49,8 @@ export const ConnectivityTimeline = ({ series }: { series: any }) => {
  * Sparkline de calidad de señal (UNTOUCHABLE)
  */
 export const SignalQualitySparkline = ({ samples = [], threshold = 25 }: { samples: any[]; threshold?: number }) => {
+  const { theme } = useTheme();
+  const dk = theme === "dark";
   const pts = samples.filter((s) => s?.signalQuality != null);
   if (pts.length < 2) return null;
 
@@ -76,7 +82,7 @@ export const SignalQualitySparkline = ({ samples = [], threshold = 25 }: { sampl
       <path d={`${line} L ${W} ${H} L 0 ${H} Z`} fill="url(#signalGradient)" opacity="0.35" />
       <path d={line} fill="none" stroke="#22c55e" strokeWidth="2" />
       <line x1="0" x2={W} y1={thY} y2={thY} stroke="#f97316" strokeDasharray="6 4" strokeWidth="1" />
-      <circle cx={W} cy={lastY} r={3} fill="#0f172a" stroke="#fff" strokeWidth="1" />
+      <circle cx={W} cy={lastY} r={3} fill={dk ? "#f1f5f9" : "#0f172a"} stroke={dk ? "#1a2332" : "#fff"} strokeWidth="1" />
     </svg>
   );
 };
@@ -84,7 +90,24 @@ export const SignalQualitySparkline = ({ samples = [], threshold = 25 }: { sampl
 /**
  * Barra de conectividad tipo Meraki Dashboard (UNTOUCHABLE)
  */
+const useDarkPalette = () => {
+  const { theme } = useTheme();
+  const dk = theme === "dark";
+  return {
+    dk,
+    border: dk ? "#2a3a4e" : "#cbd5e1",
+    cardBg: dk ? "#1a2332" : "#f1f5f9",
+    label: dk ? "#94a3b8" : "#64748b",
+    text: dk ? "#e2e8f0" : "#1e293b",
+    heading: dk ? "#cbd5e1" : "#475569",
+    badgeBg: (status: string) => dk
+      ? (status === "connected" ? "rgba(16,185,129,.15)" : status === "warning" ? "rgba(245,158,11,.15)" : "rgba(239,68,68,.15)")
+      : (status === "connected" ? "#d1fae5" : status === "warning" ? "#fef9c3" : "#fee2e2"),
+  };
+};
+
 export const ConnectivityBar = ({ ap, device }: { ap?: any; device?: any }) => {
+  const palette = useDarkPalette();
   const target = device || ap;
   const wireless = target?.wireless || {};
   const history: any[] = Array.isArray(wireless.history) ? wireless.history : [];
@@ -111,7 +134,7 @@ export const ConnectivityBar = ({ ap, device }: { ap?: any; device?: any }) => {
     const c = statusNormalized === "connected" ? "#45991f" : statusNormalized === "warning" ? "#f59e0b" : "#cbd5e1";
     const t = statusNormalized === "connected" ? "Conectado" : statusNormalized === "warning" ? "Conectado con advertencias" : `Sin datos recientes${lastReportedAt ? "\nÚltima conexión: " + formatLastSeen(lastReportedAt) : ""}`;
     return (
-      <div style={{ display: "flex", height: "10px", borderRadius: "3px", overflow: "hidden", border: "1px solid #cbd5e1" }}>
+      <div style={{ display: "flex", height: "10px", borderRadius: "3px", overflow: "hidden", border: `1px solid ${palette.border}` }}>
         <div style={{ width: "100%", background: c, transition: "all .3s ease", cursor: "help" }} title={t} />
       </div>
     );
@@ -133,7 +156,7 @@ export const ConnectivityBar = ({ ap, device }: { ap?: any; device?: any }) => {
   });
 
   return (
-    <div style={{ display: "flex", height: "10px", borderRadius: "3px", overflow: "hidden", border: "1px solid #cbd5e1" }}>
+    <div style={{ display: "flex", height: "10px", borderRadius: "3px", overflow: "hidden", border: `1px solid ${palette.border}` }}>
       {segs.map((s, i) => <div key={i} style={{ flex: 1, background: s.color, transition: "all .3s ease", cursor: "help" }} title={s.label} />)}
     </div>
   );
@@ -143,6 +166,7 @@ export const ConnectivityBar = ({ ap, device }: { ap?: any; device?: any }) => {
  * Tarjeta de Access Point con métricas wireless (UNTOUCHABLE)
  */
 export const AccessPointCard = ({ ap, signalThreshold = 25 }: { ap: any; signalThreshold?: number }) => {
+  const palette = useDarkPalette();
   const statusNormalized = normalizeReachability(ap.status);
   const statusColor = getStatusColor(ap.status);
   const wireless = ap.wireless || {};
@@ -173,31 +197,31 @@ export const AccessPointCard = ({ ap, signalThreshold = 25 }: { ap: any; signalT
           <p className="modern-card-subtitle">{ap.model} · {ap.serial}</p>
           {ap.lanIp && <p className="modern-card-subtitle" style={{ marginTop: "2px" }}>IP: {ap.lanIp}</p>}
         </div>
-        <span className={`status-badge ${statusNormalized}`} style={{ background: statusNormalized === "connected" ? "#d1fae5" : statusNormalized === "warning" ? "#fef9c3" : "#fee2e2", color: statusColor }}>
+        <span className={`status-badge ${statusNormalized}`} style={{ background: palette.badgeBg(statusNormalized), color: statusColor }}>
           <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusColor }} />
           {statusNormalized === "warning" ? "warning" : ap.status}
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px", marginBottom: "18px", padding: "14px", background: "#f1f5f9", borderRadius: "10px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px", marginBottom: "18px", padding: "14px", background: palette.cardBg, borderRadius: "10px" }}>
         <div>
-          <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.5px" }}>Microcortes</div>
+          <div style={{ fontSize: "11px", color: palette.label, fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.5px" }}>Microcortes</div>
           <div style={{ fontSize: "20px", fontWeight: "700", color: microDrops > 0 ? "#ef4444" : "#22c55e", marginTop: "2px" }}>{microDrops}</div>
         </div>
         <div>
-          <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.5px" }}>Duración</div>
-          <div style={{ fontSize: "20px", fontWeight: "700", color: "#1e293b", marginTop: "2px" }}>{formatDuration(microDuration)}</div>
+          <div style={{ fontSize: "11px", color: palette.label, fontWeight: "500", textTransform: "uppercase", letterSpacing: "0.5px" }}>Duración</div>
+          <div style={{ fontSize: "20px", fontWeight: "700", color: palette.text, marginTop: "2px" }}>{formatDuration(microDuration)}</div>
         </div>
       </div>
 
       <div style={{ marginBottom: "18px" }}>
-        <div style={{ fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Conectividad 24h</div>
+        <div style={{ fontSize: "12px", fontWeight: "600", color: palette.heading, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Conectividad 24h</div>
         <ConnectivityBar ap={ap} />
       </div>
 
       {history.length > 1 && (
         <div>
-          <div style={{ fontSize: "12px", fontWeight: "600", color: "#475569", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Calidad de Señal</div>
+          <div style={{ fontSize: "12px", fontWeight: "600", color: palette.heading, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Calidad de Señal</div>
           <SignalQualitySparkline samples={history} threshold={signalThreshold} />
         </div>
       )}

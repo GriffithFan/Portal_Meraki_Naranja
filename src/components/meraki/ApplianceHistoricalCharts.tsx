@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -15,6 +16,27 @@ interface ApplianceHistoricalChartsProps {
 }
 
 export default function ApplianceHistoricalCharts({ networkId }: ApplianceHistoricalChartsProps) {
+  const { theme } = useTheme();
+  const dk = theme === "dark";
+  const c = {
+    bg: dk ? "#1a2332" : "white",
+    border: dk ? "#2a3a4e" : "#e5e7eb",
+    title: dk ? "#f1f5f9" : "#111827",
+    subtitle: dk ? "#94a3b8" : "#4b5563",
+    label: dk ? "#64748b" : "#6b7280",
+    labelMuted: dk ? "#475569" : "#9ca3af",
+    text: dk ? "#e2e8f0" : "#374151",
+    emptyBar: dk ? "#334155" : "#e5e7eb",
+    grid: dk ? "#1e293b" : "#e5e7eb",
+    btnBg: dk ? "#1a2332" : "white",
+    btnBorder: dk ? "#2a3a4e" : "#d1d5db",
+    btnHover: dk ? "#263549" : "#f3f4f6",
+    tipBg: dk ? "rgba(120,53,15,.35)" : "#fffbeb",
+    tipBorder: dk ? "rgba(251,191,36,.35)" : "#fbbf24",
+    tipText: dk ? "#fcd34d" : "#78350f",
+    noData: dk ? "#94a3b8" : "#94a3b8",
+    shadow: dk ? "0 4px 6px -1px rgba(0,0,0,0.3)" : "0 4px 6px -1px rgba(0,0,0,0.1)",
+  };
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>({ connectivity: [], uplinkUsage: [] });
   const [timespan, setTimespan] = useState(86400);
@@ -65,8 +87,8 @@ export default function ApplianceHistoricalCharts({ networkId }: ApplianceHistor
     if (!data.connectivity || data.connectivity.length === 0) {
       return (
         <div style={{ position: "relative", marginTop: "4px" }}>
-          <svg width="100%" height="8" style={{ display: "block" }}><rect x={0} y={0} width="100%" height="8" fill="#e5e7eb" rx="1" /></svg>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#9ca3af", marginTop: "6px", paddingLeft: "2px", paddingRight: "2px" }}>
+          <svg width="100%" height="8" style={{ display: "block" }}><rect x={0} y={0} width="100%" height="8" fill={c.emptyBar} rx="1" /></svg>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: c.labelMuted, marginTop: "6px", paddingLeft: "2px", paddingRight: "2px" }}>
             {Array.from({ length: 6 }, (_, i) => <span key={i} style={{ textAlign: i === 0 ? "left" : i === 5 ? "right" : "center" }}>--</span>)}
           </div>
         </div>
@@ -118,8 +140,8 @@ export default function ApplianceHistoricalCharts({ networkId }: ApplianceHistor
             return <rect key={idx} x={`${xPercent}%`} y={0} width={`${widthPercent}%`} height="100%" fill={fillColor} shapeRendering="crispEdges" />;
           })}
         </svg>
-        {tooltip.visible && <div style={{ position: "fixed", left: tooltip.x, top: tooltip.y, transform: "translateX(-50%)", background: "#fffbeb", border: "1px solid #fbbf24", borderRadius: "4px", padding: "6px 10px", fontSize: "12px", color: "#78350f", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999, boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>{tooltip.content}</div>}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#6b7280", marginTop: "6px", paddingLeft: "2px", paddingRight: "2px" }}>
+        {tooltip.visible && <div style={{ position: "fixed", left: tooltip.x, top: tooltip.y, transform: "translateX(-50%)", background: c.tipBg, border: `1px solid ${c.tipBorder}`, borderRadius: "4px", padding: "6px 10px", fontSize: "12px", color: c.tipText, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 9999, boxShadow: c.shadow }}>{tooltip.content}</div>}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: c.label, marginTop: "6px", paddingLeft: "2px", paddingRight: "2px" }}>
           {Array.from({ length: 6 }, (_, i) => { const idx = Math.floor((points.length - 1) * (i * 20) / 100); const point = points[idx]; if (!point) return <span key={i}>--</span>; return <span key={i} style={{ textAlign: i === 0 ? "left" : i === 5 ? "right" : "center" }}>{formatTimestamp(point.ts) || "--"}</span>; })}
         </div>
       </div>
@@ -127,7 +149,7 @@ export default function ApplianceHistoricalCharts({ networkId }: ApplianceHistor
   };
 
   const renderUplinkUsageChart = () => {
-    if (!data.uplinkUsage || data.uplinkUsage.length === 0) return <div style={{ padding: "40px 20px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>Sin datos de uso de uplinks disponibles</div>;
+    if (!data.uplinkUsage || data.uplinkUsage.length === 0) return <div style={{ padding: "40px 20px", textAlign: "center", color: c.noData, fontSize: "14px" }}>Sin datos de uso de uplinks disponibles</div>;
 
     const chartHeight = 180;
     const chartMarginTop = 10;
@@ -162,24 +184,24 @@ export default function ApplianceHistoricalCharts({ networkId }: ApplianceHistor
           {Object.keys(wanInterfaces).map((iface) => (
             <div key={iface} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <div style={{ width: "12px", height: "12px", background: colors[iface.toLowerCase()] || "#64748b", borderRadius: "2px" }} />
-              <span style={{ color: "#374151", fontWeight: "500", fontSize: "12px" }}>{iface.toUpperCase().replace("WAN", "WAN ")}</span>
+              <span style={{ color: c.text, fontWeight: "500", fontSize: "12px" }}>{iface.toUpperCase().replace("WAN", "WAN ")}</span>
             </div>
           ))}
         </div>
         <div style={{ position: "relative", marginLeft: "50px" }}>
-          <div style={{ position: "absolute", left: "-50px", top: chartMarginTop, height: actualChartHeight, display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: "11px", color: "#6b7280", textAlign: "right", width: "45px" }}>
+          <div style={{ position: "absolute", left: "-50px", top: chartMarginTop, height: actualChartHeight, display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: "11px", color: c.label, textAlign: "right", width: "45px" }}>
             {Array.from({ length: gridLines + 1 }).map((_, i) => <span key={i} style={{ transform: "translateY(-50%)" }}>{formatMbps(maxScale - i * gridStep)}</span>)}
           </div>
           <svg width="100%" height={chartHeight} viewBox={`0 0 100 ${chartHeight}`} preserveAspectRatio="none" style={{ display: "block" }}>
             <defs>{Object.keys(wanInterfaces).map((iface) => <linearGradient key={iface} id={`gradient-${iface}`} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={colors[iface.toLowerCase()] || "#64748b"} stopOpacity="0.5" /><stop offset="100%" stopColor={colors[iface.toLowerCase()] || "#64748b"} stopOpacity="0.1" /></linearGradient>)}</defs>
-            {Array.from({ length: gridLines + 1 }).map((_, i) => { const y = chartMarginTop + (i * actualChartHeight) / gridLines; return <line key={i} x1="0" y1={y} x2="100" y2={y} stroke="#e5e7eb" strokeWidth="0.3" vectorEffect="non-scaling-stroke" />; })}
+            {Array.from({ length: gridLines + 1 }).map((_, i) => { const y = chartMarginTop + (i * actualChartHeight) / gridLines; return <line key={i} x1="0" y1={y} x2="100" y2={y} stroke={c.grid} strokeWidth="0.3" vectorEffect="non-scaling-stroke" />; })}
             {Object.entries(wanInterfaces).map(([iface, ifacePoints]) => {
               const pathData = ifacePoints.map((point, idx) => { const x = (idx / Math.max(ifacePoints.length - 1, 1)) * 100; const yValue = chartMarginTop + actualChartHeight - (point.received / maxScale) * actualChartHeight; return `${idx === 0 ? "M" : "L"} ${x} ${Math.max(chartMarginTop, Math.min(yValue, chartHeight - chartMarginBottom))}`; }).join(" ");
               const fillPath = `${pathData} L 100 ${chartHeight - chartMarginBottom} L 0 ${chartHeight - chartMarginBottom} Z`;
               return <g key={iface}><path d={fillPath} fill={`url(#gradient-${iface})`} /><path d={pathData} fill="none" stroke={colors[iface.toLowerCase()] || "#64748b"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></g>;
             })}
           </svg>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#6b7280", marginTop: "6px", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: c.label, marginTop: "6px", overflow: "hidden" }}>
             {(() => { const numLabels = timespan <= 86400 ? 7 : timespan <= 604800 ? 14 : 10; return Array.from({ length: numLabels }, (_, i) => { const idx = Math.floor((points.length - 1) * (i / (numLabels - 1)) * 100 / 100); const point = points[idx]; return <span key={i} style={{ flex: 1, textAlign: "center", whiteSpace: "nowrap" }}>{point ? formatAxisTime(point.ts) : ""}</span>; }); })()}
           </div>
         </div>
@@ -187,32 +209,32 @@ export default function ApplianceHistoricalCharts({ networkId }: ApplianceHistor
     );
   };
 
-  if (loading) return <div style={{ padding: "40px", textAlign: "center" }}><div className="spinner" /><div style={{ marginTop: "12px", color: "#64748b" }}>Cargando datos historicos...</div></div>;
+  if (loading) return <div style={{ padding: "40px", textAlign: "center" }}><div className="spinner" /><div style={{ marginTop: "12px", color: c.label }}>Cargando datos historicos...</div></div>;
 
   return (
     <div style={{ marginTop: "24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "400", color: "#111827", letterSpacing: "-0.01em" }}>Historical device data</h3>
+        <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "400", color: c.title, letterSpacing: "-0.01em" }}>Historical device data</h3>
         <div style={{ position: "relative" }}>
-          <button onClick={() => setDropdownOpen(!dropdownOpen)} style={{ padding: "6px 32px 6px 12px", borderRadius: "4px", border: "1px solid #d1d5db", fontSize: "13px", color: "#374151", background: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: "4px", position: "relative" }}>
-            {getTimespanLabel()}<span style={{ position: "absolute", right: "10px", fontSize: "10px", color: "#6b7280" }}>▼</span>
+          <button onClick={() => setDropdownOpen(!dropdownOpen)} style={{ padding: "6px 32px 6px 12px", borderRadius: "4px", border: `1px solid ${c.btnBorder}`, fontSize: "13px", color: c.text, background: c.btnBg, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: "4px", position: "relative" }}>
+            {getTimespanLabel()}<span style={{ position: "absolute", right: "10px", fontSize: "10px", color: c.label }}>▼</span>
           </button>
           {dropdownOpen && (
             <>
               <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} onClick={() => setDropdownOpen(false)} />
-              <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "white", border: "1px solid #d1d5db", borderRadius: "4px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)", minWidth: "180px", zIndex: 1000, overflow: "hidden" }}>
-                {timespanOptions.map((option) => <div key={option.value} onClick={() => { setTimespan(option.value); setDropdownOpen(false); }} style={{ padding: "8px 12px", fontSize: "13px", color: "#374151", cursor: "pointer", background: timespan === option.value ? "#f3f4f6" : "white", fontWeight: timespan === option.value ? "500" : "400" }}>{option.label}</div>)}
+              <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: c.bg, border: `1px solid ${c.btnBorder}`, borderRadius: "4px", boxShadow: c.shadow, minWidth: "180px", zIndex: 1000, overflow: "hidden" }}>
+                {timespanOptions.map((option) => <div key={option.value} onClick={() => { setTimespan(option.value); setDropdownOpen(false); }} style={{ padding: "8px 12px", fontSize: "13px", color: c.text, cursor: "pointer", background: timespan === option.value ? c.btnHover : c.bg, fontWeight: timespan === option.value ? "500" : "400" }}>{option.label}</div>)}
               </div>
             </>
           )}
         </div>
       </div>
-      <div style={{ background: "white", borderRadius: "6px", padding: "16px 20px", marginBottom: "16px", border: "1px solid #e5e7eb" }}>
-        <h4 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "600", color: "#4b5563" }}>Connectivity</h4>
+      <div style={{ background: c.bg, borderRadius: "6px", padding: "16px 20px", marginBottom: "16px", border: `1px solid ${c.border}` }}>
+        <h4 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "600", color: c.subtitle }}>Connectivity</h4>
         {renderConnectivityChart()}
       </div>
-      <div style={{ background: "white", borderRadius: "6px", padding: "16px 20px 16px 60px", border: "1px solid #e5e7eb" }}>
-        <h4 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "600", color: "#4b5563", marginLeft: "-40px" }}>Client usage</h4>
+      <div style={{ background: c.bg, borderRadius: "6px", padding: "16px 20px 16px 60px", border: `1px solid ${c.border}` }}>
+        <h4 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: "600", color: c.subtitle, marginLeft: "-40px" }}>Client usage</h4>
         {renderUplinkUsageChart()}
       </div>
     </div>
