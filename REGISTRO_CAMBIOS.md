@@ -881,3 +881,58 @@ El Tooltip usaba `position: absolute`, lo que causaba que se cortara (clipping) 
 ---
 
 *Proyecto listo para deploy en VPS*
+
+---
+
+## Fase 10: shadcn/ui + Librerías Utilitarias + Bug Fix + Dark Mode v3
+
+### Fecha: 20 de marzo de 2026
+
+### Bug Fix — Eliminación masiva "SIN ASIGNAR"
+**Archivos:**
+- `src/app/api/tareas/route.ts` — DELETE ahora soporta `?estadoId=xxx` (incluyendo `estadoId=sin-estado`) para eliminar TODOS los registros de un grupo de estado directamente en BD, sin depender del batch visible de 100.
+- `src/app/dashboard/tareas/page.tsx` — `handleBulkDelete(groupId)` usa `?estadoId=` en vez de enviar IDs visibles. Ejecuta `fetchTareas()` post-eliminación para refrescar datos desde BD.
+
+**Causa raíz:** `handleBulkDelete` solo eliminaba IDs del batch visible (límite 100), actualizaba estado local sin re-fetch. Al recargar, la BD retornaba más registros del grupo que estaban fuera del batch.
+
+### shadcn/ui v4.1.0 adaptado a Tailwind CSS 3
+**Archivos creados:**
+| Archivo | Propósito |
+|---------|-----------|
+| `components.json` | Configuración shadcn/ui |
+| `src/lib/utils.ts` | Función `cn()` (clsx + tailwind-merge) |
+| `.npmrc` | `legacy-peer-deps=true` (react-leaflet@5 requiere React 19) |
+
+**Adaptaciones TW4 → TW3:**
+- Removidos imports TW4 de `globals.css`: `@import "shadcn/tailwind.css"`, `@import "tw-animate-css"`, `@apply outline-ring/50`
+- Removido fuente Geist de `layout.tsx` (restaurada Inter)
+- Instalado `tailwindcss-animate` (plugin TW3 reemplaza `tw-animate-css`)
+- CSS variables oklch en `:root` y `.dark` personalizadas para Cerulean Blue + Grenadier
+- `tailwind.config.ts`: colores CSS-variable (`background`, `foreground`, `card`, `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `chart.1-5`, `sidebar.*`), `borderRadius` con CSS var, plugin `tailwindcss-animate`
+
+**19 componentes shadcn instalados:**
+avatar, badge, button, calendar, card, chart, command, dialog, dropdown-menu, input, label, popover, select, separator, sheet, skeleton, table, tabs, tooltip
+
+### Librerías utilitarias instaladas
+| Librería | Propósito |
+|----------|-----------|
+| `framer-motion` | Animaciones declarativas |
+| `sonner` | Toasts/notificaciones |
+| `cmdk` | Command palette (⌘K) |
+| `@tanstack/react-table` | Tablas headless |
+| `@tanstack/react-query` | Data fetching/cache |
+| `nuqs` | Estado en query params |
+| `vaul` | Drawers móviles |
+| `date-fns` | Utilidades de fechas |
+| `react-virtuoso` | Listas virtualizadas |
+| `next-themes` | Soporte de temas |
+
+### Dark Mode v3 (completado en sesión previa)
+- Cobertura completa de AccessPointComponents, ApplianceHistoricalCharts, archivos CSS legacy.
+- Paleta Cerulean Blue (#006CB7) + Grenadier (#D34600) + superficie blue-tinted.
+- Jerarquía tonal dark: page `#0f172a` → container `#131c2e` → card `#1a2332` → elevated `#1e293b` → active `#263549`.
+- CSS variables oklch para shadcn matching el tema.
+
+### Git
+- **Tag:** `backup-pre-libs` en commit `2cc72f1` (antes de instalación de librerías)
+- **Build verificado** ✅ — `npm run build` exitoso con todas las dependencias

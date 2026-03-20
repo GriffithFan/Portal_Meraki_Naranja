@@ -2,6 +2,42 @@
 
 ---
 
+## [2026-03-20] — shadcn/ui + Librerías utilitarias + Bug fix bulk-delete
+
+### Bug fix
+- **Eliminación masiva "SIN ASIGNAR"**: Corregido bug por el cual al borrar un grupo de tareas solo se eliminaban los IDs del batch visible (100). Ahora el endpoint DELETE `/api/tareas?estadoId=xxx` borra TODOS los registros del estado directamente en BD y re-fetch después de la operación.
+
+### shadcn/ui (adaptado a Tailwind CSS 3)
+- Inicializado shadcn@4.1.0 con adaptaciones para TW3 (removidos imports TW4: `shadcn/tailwind.css`, `tw-animate-css`, `outline-ring/50`).
+- Instalado `tailwindcss-animate` como plugin TW3.
+- CSS variables oklch personalizadas para paleta Cerulean Blue + Grenadier.
+- Componentes instalados: avatar, badge, button, calendar, card, chart, command, dialog, dropdown-menu, input, label, popover, select, separator, sheet, skeleton, table, tabs, tooltip.
+
+### Librerías utilitarias
+- `framer-motion` — animaciones declarativas
+- `sonner` — toasts/notificaciones
+- `cmdk` — command palette (⌘K)
+- `@tanstack/react-table` — tablas headless
+- `@tanstack/react-query` — data fetching/cache
+- `nuqs` — estado en query params
+- `vaul` — drawers móviles
+- `date-fns` — utilidades de fechas
+- `react-virtuoso` — listas virtualizadas
+- `next-themes` — soporte de temas
+
+### Configuración
+- `.npmrc` con `legacy-peer-deps=true` (react-leaflet@5 requiere React 19, proyecto usa React 18).
+- `components.json` — configuración shadcn/ui.
+- `src/lib/utils.ts` — función `cn()` (clsx + tailwind-merge).
+- `tailwind.config.ts` — colores CSS-variable para shadcn, borderRadius, plugin tailwindcss-animate.
+
+### Dark mode v3 (sesión previa)
+- Cobertura completa: AccessPointComponents, ApplianceHistoricalCharts, archivos CSS legacy.
+- Paleta Cerulean Blue (#006CB7) + Grenadier (#D34600) + superficie blue-tinted.
+- Jerarquía tonal dark: page `#0f172a` → container `#131c2e` → card `#1a2332` → elevated `#1e293b` → active `#263549`.
+
+---
+
 ## [2026-03-18] — Deploy a producción + Hardening de seguridad
 
 ### Deploy VPS

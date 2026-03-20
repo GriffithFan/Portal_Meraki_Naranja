@@ -7,10 +7,15 @@ Panel de monitoreo y gestión para redes Cisco Meraki. Construido con Next.js 14
 
 ## Stack
 
-- **Frontend**: Next.js 14 (App Router), React, Tailwind CSS
+- **Frontend**: Next.js 14 (App Router), React 18, Tailwind CSS 3, shadcn/ui
 - **Backend**: API Routes (Next.js), Prisma ORM
 - **Base de datos**: PostgreSQL 16
-- **Autenticación**: JWT con cookies httpOnly
+- **Autenticación**: JWT con cookies httpOnly (jose + bcryptjs)
+- **UI Components**: shadcn/ui (Radix primitives), Recharts, Leaflet, @dnd-kit
+- **Animaciones**: Framer Motion, tailwindcss-animate
+- **Data**: @tanstack/react-query, @tanstack/react-table, react-virtuoso
+- **UX**: sonner (toasts), cmdk (command palette), vaul (drawers), nuqs (URL state)
+- **Utilidades**: date-fns, zod, clsx, xlsx, jspdf, html2canvas, qrcode, web-push
 - **Producción**: PM2, Nginx, Let's Encrypt, Fail2ban
 
 ## Inicio rápido
@@ -40,8 +45,10 @@ src/
 │   ├── api/          # Endpoints REST
 │   ├── dashboard/    # Páginas del panel
 │   └── login/        # Autenticación
-├── components/       # Componentes reutilizables
-├── contexts/         # Providers (Session, Network)
+├── components/
+│   ├── ui/           # shadcn/ui (button, card, chart, table, dialog, badge, etc.)
+│   └── ...           # Componentes custom (TopBar, Sidebar, KPI, Meraki, etc.)
+├── contexts/         # Providers (Session, Network, Theme)
 ├── hooks/            # Custom hooks
 ├── lib/              # Utilidades del servidor (Meraki, auth, cache)
 ├── types/            # Definiciones TypeScript
