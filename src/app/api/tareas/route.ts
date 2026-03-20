@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/tareas?ids=id1,id2,... — Eliminación masiva (ADMIN)
+// DELETE /api/tareas?ids=id1,id2,...  OR  ?estadoId=xxx — Eliminación masiva (ADMIN)
 export async function DELETE(request: NextRequest) {
   const session = await getSession();
   if (!session || session.rol !== "ADMIN") {
@@ -187,28 +187,30 @@ export async function DELETE(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const idsRaw = searchParams.get("ids");
-  if (!idsRaw) {
-    return NextResponse.json({ error: "IDs requeridos" }, { status: 400 });
-  }
+  const estadoId = searchParams.get("estadoId");
 
-  const ids = idsRaw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 500);
-  if (ids.length === 0) {
-    return NextResponse.json({ error: "IDs requeridos" }, { status: 400 });
+  // Construir where: por IDs explícitos o por estadoId (borra TODOS del grupo)
+  let where: any;
+  if (estadoId) {
+    // "sin-estado" = predios sin estado asignado
+    where = estadoId === "sin-estado" ? { estadoId: null } : { estadoId };
+  } else if (idsRaw) {
+    const ids = idsRaw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 500);
+    if (ids.length === 0) return NextResponse.json({ error: "IDs requeridos" }, { status: 400 });
+    where = { id: { in: ids } };
+  } else {
+    return NextResponse.json({ error: "IDs o estadoId requeridos" }, { status: 400 });
   }
 
   try {
-    const predios = await prisma.predio.findMany({
-      where: { id: { in: ids } },
-    });
+    const predios = await prisma.predio.findMany({ where });
 
     // Registrar en papelera
     for (const p of predios) {
       await registrarEnPapelera("PREDIO", p.nombre || p.codigo || "Sin nombre", p as unknown as Record<string, unknown>, session.userId);
     }
 
-    const result = await prisma.predio.deleteMany({
-      where: { id: { in: ids } },
-    });
+    const result = await prisma.predio.deleteMany({ where });
 
     await prisma.actividad.create({
       data: {

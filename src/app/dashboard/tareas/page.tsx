@@ -488,16 +488,15 @@ export default function TareasPage() {
     }
   }
 
-  // Eliminación masiva de grupo
+  // Eliminación masiva de grupo (elimina TODOS los del estado, no solo los visibles)
   async function handleBulkDelete(groupId: string) {
     const items = groupedTareas[groupId] || [];
     if (items.length === 0) return;
     setBulkDeleting(true);
     try {
-      const ids = items.map((t: any) => t.id).join(",");
-      const res = await fetch(`/api/tareas?ids=${encodeURIComponent(ids)}`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(`/api/tareas?estadoId=${encodeURIComponent(groupId)}`, { method: "DELETE", credentials: "include" });
       if (res.ok) {
-        setTareas(prev => prev.filter(t => !items.some((i: any) => i.id === t.id)));
+        await fetchTareas();
       }
     } catch { /* ignore */ }
     setBulkDeleting(false);
