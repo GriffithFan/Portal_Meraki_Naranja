@@ -1,16 +1,17 @@
 "use client";
 import { useMemo } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 import { buildLayout, buildLinkPath, statusColorOf, computeNodeLabels } from "./SimpleGraphUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function NodeShape({ node, fill, scaleFactor = 1.0 }: { node: any; fill: string; scaleFactor?: number }) {
-  const baseStroke = "#ecf0f1";
+function NodeShape({ node, fill, scaleFactor = 1.0, isDark = false }: { node: any; fill: string; scaleFactor?: number; isDark?: boolean }) {
+  const baseStroke = isDark ? "#475569" : "#ecf0f1";
   const scale = (size: number) => Math.round(size * scaleFactor);
 
   if (node.kind === "external") {
     const size = scale(20); const half = size / 2;
-    return <rect x={-half} y={-half} width={size} height={size} transform="rotate(45)" fill="#fff" stroke={fill} strokeWidth={2.5} rx={2} ry={2} />;
+    return <rect x={-half} y={-half} width={size} height={size} transform="rotate(45)" fill={isDark ? "#1e293b" : "#fff"} stroke={fill} strokeWidth={2.5} rx={2} ry={2} />;
   }
   if (node.kind === "appliance" || node.kind === "gateway") return <rect x={-scale(20)} y={-scale(12)} width={scale(40)} height={scale(24)} rx={4} ry={4} fill={fill} stroke={baseStroke} strokeWidth={1.5} />;
   if (node.kind === "switch" || node.kind === "bridge") return <rect x={-scale(24)} y={-scale(14)} width={scale(48)} height={scale(28)} rx={5} ry={5} fill={fill} stroke={baseStroke} strokeWidth={1.5} />;
@@ -20,6 +21,12 @@ function NodeShape({ node, fill, scaleFactor = 1.0 }: { node: any; fill: string;
 }
 
 export default function SimpleGraph({ graph, devices = [] }: { graph: any; devices?: any[] }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const textPrimary = isDark ? "#f1f5f9" : "#1e293b";
+  const textSecondary = isDark ? "#cbd5e1" : "#475569";
+  const textTertiary = isDark ? "#94a3b8" : "#64748b";
+  const linkStroke = isDark ? "#475569" : "#cfd8dc";
   const deviceMap = useMemo(() => {
     const map = new Map<string, any>();
     devices.forEach((d) => { if (!d?.serial) return; const s = d.serial.toString(); map.set(s, d); map.set(s.toUpperCase(), d); });
@@ -53,7 +60,7 @@ export default function SimpleGraph({ graph, devices = [] }: { graph: any; devic
 
   return (
     <svg width="100%" height="auto" viewBox={viewBox} preserveAspectRatio="xMidYMin meet" style={{ display: "block", maxHeight: `${layout.height}px` }}>
-      <g fill="none" stroke="#cfd8dc" strokeWidth="2" strokeLinecap="round">
+      <g fill="none" stroke={linkStroke} strokeWidth="2" strokeLinecap="round">
         {layout.links.map(({ source, target }: any) => <path key={`${source.id}-${target.id}`} d={buildLinkPath(source, target)} />)}
       </g>
       {layout.nodes.map((node: any) => {
@@ -77,10 +84,10 @@ export default function SimpleGraph({ graph, devices = [] }: { graph: any; devic
 
         return (
           <g key={node.id} transform={`translate(${node.x},${node.y})`}>
-            <NodeShape node={node} fill={color} scaleFactor={iconScale} />
-            {showPrimary && <text x={labelX} y={primaryY} fontSize={primaryFontSize} fontWeight="500" fill="#1e293b" textAnchor={textAnchor}>{primary}</text>}
-            {showSecondary && <text x={labelX} y={secondaryY} fontSize={secondaryFontSize} fontWeight="400" fill="#475569" textAnchor={textAnchor}>{secondary}</text>}
-            {showTertiary && <text x={labelX} y={tertiaryY} fontSize={tertiaryFontSize} fontWeight="400" fill="#64748b" textAnchor={textAnchor}>{tertiary}</text>}
+            <NodeShape node={node} fill={color} scaleFactor={iconScale} isDark={isDark} />
+            {showPrimary && <text x={labelX} y={primaryY} fontSize={primaryFontSize} fontWeight="500" fill={textPrimary} textAnchor={textAnchor}>{primary}</text>}
+            {showSecondary && <text x={labelX} y={secondaryY} fontSize={secondaryFontSize} fontWeight="400" fill={textSecondary} textAnchor={textAnchor}>{secondary}</text>}
+            {showTertiary && <text x={labelX} y={tertiaryY} fontSize={tertiaryFontSize} fontWeight="400" fill={textTertiary} textAnchor={textAnchor}>{tertiary}</text>}
             <title>{titleParts.length ? titleParts.join("\n") : node.status || "unknown"}</title>
           </g>
         );

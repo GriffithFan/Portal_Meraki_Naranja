@@ -218,7 +218,7 @@ function APConnectivityBar({ ap }: { ap: any }) {
   }, [ap]);
 
   return (
-    <div style={{ display: "flex", height: "8px", overflow: "hidden", background: "#d1d5db" }}>
+    <div className="connectivity-bar" style={{ display: "flex", height: "8px", overflow: "hidden" }}>
       {segments.map((seg, i) => (
         <div key={i} style={{ flex: 1, background: seg.color, cursor: "help" }} title={seg.tooltip} />
       ))}
@@ -240,9 +240,9 @@ function APTooltipContent({ ap }: { ap: any }) {
       {ti.clients != null && <div className="tooltip-row"><span className="tooltip-label">Clientes</span><span className="tooltip-value">{ti.clients}</span></div>}
       {ti.microDrops > 0 && <div className="tooltip-row"><span className="tooltip-label">Microcortes</span><span className="tooltip-badge error">{ti.microDrops}</span></div>}
       {ap.isMeshRepeater && (
-        <div className="tooltip-row" style={{ background: "#fef3c7", borderRadius: 4, padding: "2px 6px", marginBottom: 4 }}>
-          <span className="tooltip-label" style={{ color: "#92400e" }}>Modo</span>
-          <span className="tooltip-value" style={{ color: "#b45309", fontWeight: 600 }}>Mesh Repeater</span>
+        <div className="tooltip-row mesh-repeater-badge">
+          <span className="tooltip-label mesh-repeater-label">Modo</span>
+          <span className="tooltip-value mesh-repeater-value">Mesh Repeater</span>
         </div>
       )}
       {ap.meshParentName && <div className="tooltip-row"><span className="tooltip-label">Conectado a</span><span className="tooltip-value">{ap.meshParentName} (Wireless)</span></div>}
@@ -269,7 +269,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
   const accessPoints: any[] = summaryData?.accessPoints || [];
 
   if (accessPoints.length === 0) {
-    return <div style={{ padding: "60px 20px", textAlign: "center", color: "#94a3b8", fontSize: "14px" }}>No hay puntos de acceso disponibles para esta red.</div>;
+    return <div className="empty-section-message">No hay puntos de acceso disponibles para esta red.</div>;
   }
 
   const online = accessPoints.filter((ap) => normalizeReachability(ap.status) === "connected").length;
@@ -279,9 +279,9 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, overflow: "visible" }}>
-      <h2 style={{ margin: "0 0 12px 0", color: "#1e293b", fontSize: "20px", fontWeight: "600", borderBottom: "2px solid #cbd5e1", paddingBottom: "12px" }}>Access Points</h2>
+      <h2 className="section-title">Access Points</h2>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginBottom: "20px", padding: "14px", background: "#f1f5f9", borderRadius: "10px" }}>
+      <div className="summary-chips-container">
         <SummaryChip label="Total APs" value={accessPoints.length} accent="#1f2937" />
         <SummaryChip label="Online" value={online} accent="#22c55e" />
         <SummaryChip label="Advertencia" value={alerting} accent="#f59e0b" />
@@ -290,13 +290,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
       </div>
 
       {sectionLoading === "access_points" && loadedSections.has("access_points") && (
-        <div style={{
-          display: "inline-flex", alignItems: "center", gap: 8,
-          padding: "8px 16px",
-          background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8,
-          fontSize: 13, fontWeight: 600, color: "#1e40af",
-          marginBottom: 12,
-        }}>
+        <div className="lldp-updating-badge">
           Actualizando velocidades LLDP...
         </div>
       )}
@@ -351,7 +345,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
       </div>
 
       {/* ── Desktop table (≥ md) ── */}
-      <div className="hidden md:block" style={{ overflowX: "auto", borderRadius: "12px", border: "1px solid #cbd5e1" }}>
+      <div className="hidden md:block table-container">
         <table className="modern-table" style={{ tableLayout: "fixed", width: "100%", minWidth: "960px" }}>
           <thead>
             <tr>

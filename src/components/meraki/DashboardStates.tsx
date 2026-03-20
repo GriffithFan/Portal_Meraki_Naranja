@@ -22,8 +22,8 @@ export const LoadingSpinner = ({ section }: { section: string }) => {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", gap: "16px" }}>
-      <div style={{ width: "48px", height: "48px", border: "4px solid #e5e7eb", borderTop: "4px solid #2563eb", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <div style={{ fontSize: "14px", color: "#64748b", fontWeight: "500" }}>Cargando {sectionNames[section] || section}...</div>
+      <div className="loading-spinner" />
+      <div className="loading-spinner-text">Cargando {sectionNames[section] || section}...</div>
     </div>
   );
 };

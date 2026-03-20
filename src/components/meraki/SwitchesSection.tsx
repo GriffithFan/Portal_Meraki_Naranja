@@ -106,7 +106,7 @@ function SwitchConnectivityBar({ status, availabilityHistory }: { status: string
     });
   }, [statusN, availabilityHistory]);
   return (
-    <div className="flex h-2.5 rounded overflow-hidden border border-surface-300 bg-red-500">
+    <div className="connectivity-bar flex h-2.5 rounded overflow-hidden border border-surface-300">
       {segments.map((seg, i) => (
         <div key={i} className="flex-1 min-w-px cursor-help" style={{ background: seg.color }} title={seg.tooltip} />
       ))}
