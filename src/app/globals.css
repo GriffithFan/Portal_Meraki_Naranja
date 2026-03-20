@@ -49,3 +49,105 @@
   z-index: 0;
   isolation: isolate;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DARK MODE
+   ═══════════════════════════════════════════════════════════ */
+.dark {
+  color-scheme: dark;
+  --tw-ring-offset-color: #0f172a;
+}
+
+/* ── Body base ─────────────────────────────────────── */
+@layer base {
+  .dark body {
+    background-color: #0f172a;
+    color: #e2e8f0;
+  }
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  .dark textarea,
+  .dark select {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
+  }
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #64748b;
+  }
+}
+
+/* ── Backgrounds ───────────────────────────────────── */
+.dark .bg-white          { background-color: #1e293b; }
+.dark .bg-white\/80      { background-color: rgba(30,41,59,.8); }
+.dark .bg-white\/60      { background-color: rgba(30,41,59,.6); }
+.dark .bg-surface-50     { background-color: #0f172a; }
+.dark .bg-surface-50\/40 { background-color: rgba(15,23,42,.4); }
+.dark .bg-surface-100    { background-color: #1e293b; }
+.dark .bg-surface-200    { background-color: #334155; }
+
+/* ── Hover / active backgrounds ────────────────────── */
+.dark .hover\:bg-white:hover          { background-color: #334155; }
+.dark .hover\:bg-surface-50:hover     { background-color: #334155; }
+.dark .hover\:bg-surface-100:hover    { background-color: #334155; }
+.dark .hover\:bg-surface-200:hover    { background-color: #475569; }
+.dark .active\:bg-surface-100:active  { background-color: #334155; }
+
+/* ── Text ──────────────────────────────────────────── */
+.dark .text-surface-900 { color: #f8fafc; }
+.dark .text-surface-800 { color: #f1f5f9; }
+.dark .text-surface-700 { color: #e2e8f0; }
+.dark .text-surface-600 { color: #cbd5e1; }
+.dark .text-surface-500 { color: #94a3b8; }
+
+/* ── Borders ───────────────────────────────────────── */
+.dark .border-surface-100 { border-color: #1e293b; }
+.dark .border-surface-200 { border-color: #334155; }
+.dark .border-surface-300 { border-color: #475569; }
+
+/* ── Dividers ──────────────────────────────────────── */
+.dark .divide-surface-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1e293b; }
+.dark .divide-surface-200 > :not([hidden]) ~ :not([hidden]) { border-color: #334155; }
+
+/* ── Colored badges (dark adaptations) ─────────────── */
+.dark .bg-emerald-50   { background-color: rgba(6,78,59,.3); }
+.dark .bg-green-50     { background-color: rgba(6,78,59,.3); }
+.dark .bg-red-50       { background-color: rgba(127,29,29,.3); }
+.dark .bg-violet-50    { background-color: rgba(76,29,149,.3); }
+.dark .bg-purple-50    { background-color: rgba(88,28,135,.3); }
+.dark .bg-blue-50      { background-color: rgba(30,58,138,.3); }
+.dark .bg-indigo-50    { background-color: rgba(49,46,129,.3); }
+.dark .bg-amber-50     { background-color: rgba(120,53,15,.3); }
+.dark .bg-yellow-50    { background-color: rgba(120,53,15,.3); }
+.dark .bg-orange-50    { background-color: rgba(124,45,18,.3); }
+.dark .bg-pink-50      { background-color: rgba(131,24,67,.3); }
+.dark .bg-teal-50      { background-color: rgba(19,78,74,.3); }
+.dark .bg-cyan-50      { background-color: rgba(22,78,99,.3); }
+.dark .bg-primary-50   { background-color: rgba(30,64,175,.2); }
+.dark .bg-gray-50,
+.dark .bg-gray-100     { background-color: rgba(51,65,85,.5); }
+
+.dark .border-emerald-200 { border-color: rgba(16,185,129,.3); }
+.dark .border-red-200     { border-color: rgba(248,113,113,.3); }
+.dark .border-violet-200  { border-color: rgba(167,139,250,.3); }
+.dark .border-blue-200    { border-color: rgba(96,165,250,.3); }
+.dark .border-orange-200  { border-color: rgba(251,146,60,.3); }
+.dark .border-yellow-200  { border-color: rgba(250,204,21,.3); }
+.dark .border-gray-200    { border-color: #334155; }
+
+.dark .text-emerald-600,
+.dark .text-emerald-700 { color: #34d399; }
+.dark .text-red-500,
+.dark .text-red-600     { color: #f87171; }
+.dark .text-violet-700  { color: #a78bfa; }
+.dark .text-gray-600    { color: #94a3b8; }
+.dark .text-blue-700    { color: #93c5fd; }
+.dark .text-orange-700  { color: #fdba74; }
+
+/* ── Scrollbar dark ────────────────────────────────── */
+.dark .scrollbar-thin { scrollbar-color: #475569 transparent; }
+.dark .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; }
+
+/* ── Shadows on dark ───────────────────────────────── */
+.dark .shadow-soft     { box-shadow: 0 2px 8px -2px rgba(0,0,0,.4), 0 1px 3px -1px rgba(0,0,0,.3); }
+.dark .shadow-soft-lg  { box-shadow: 0 4px 16px -4px rgba(0,0,0,.5), 0 2px 6px -2px rgba(0,0,0,.3); }
