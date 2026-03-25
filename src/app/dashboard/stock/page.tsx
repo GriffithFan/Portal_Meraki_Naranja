@@ -5,6 +5,10 @@ import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { TableSkeleton } from "@/components/ui/Skeletons";
 import SectionSettings from "@/components/ui/SectionSettings";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { motion, AnimatePresence } from "framer-motion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -66,24 +70,34 @@ export default function StockPage() {
     if (res.ok) {
       setShowModal(false);
       setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", marca: "", cantidad: "1", estado: "DISPONIBLE", categoria: "", ubicacion: "", notas: "" });
+      toast.success("Equipo creado exitosamente");
       fetchEquipos();
+    } else {
+      toast.error("Error al crear equipo");
     }
   }
 
   async function cambiarEstado(id: string, nuevoEstado: string) {
-    if (!confirm(`¿Cambiar estado a ${nuevoEstado.replace(/_/g, " ")}?`)) return;
-    await fetch(`/api/stock/${id}`, {
+    const prev = equipos.find(e => e.id === id)?.estado;
+    // Optimistic update
+    setEquipos(es => es.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
+    const res = await fetch(`/api/stock/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ estado: nuevoEstado }),
     });
-    fetchEquipos();
+    if (res.ok) {
+      toast.success(`Estado cambiado a ${nuevoEstado.replace(/_/g, " ")}`);
+    } else {
+      setEquipos(es => es.map(e => e.id === id ? { ...e, estado: prev } : e));
+      toast.error("Error al cambiar estado");
+    }
   }
 
   return (
-    <div className="animate-fade-in-up">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Stock</h1>
           <p className="text-xs text-surface-400">Inventario de equipos · {total} registros</p>
@@ -102,22 +116,25 @@ export default function StockPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar equipo..." className="flex-1 min-w-0 px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
-        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4">
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar equipo..." className="flex-1 min-w-0 px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400" />
+        <div className="flex gap-2">
+        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400">
           <option value="">Todos los estados</option>
           {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
         </select>
         {categorias.length > 0 && (
-          <select value={filtroCat} onChange={(e) => setFiltroCat(e.target.value)} className="px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+          <select value={filtroCat} onChange={(e) => setFiltroCat(e.target.value)} className="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400">
             <option value="">Todas las categorías</option>
             {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
+        </div>
       </div>
 
       {/* Tabla */}
-      <div className="bg-white rounded-lg border border-surface-200 overflow-x-auto">
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <TableSkeleton rows={6} cols={6} />
         ) : equipos.length === 0 ? (
@@ -127,30 +144,32 @@ export default function StockPage() {
             <p className="text-xs">{search || filtroEstado ? "No se encontraron resultados" : "Agrega tu primer equipo al inventario"}</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm mobile-card-table">
             <thead className="border-b border-surface-200">
               <tr>
                 <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Equipo</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Modelo / Marca</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">N/S</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Cant.</th>
+                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden sm:table-cell">Modelo / Marca</th>
+                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden md:table-cell">N/S</th>
+                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden sm:table-cell">Cant.</th>
                 <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Estado</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Ubicación</th>
+                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden lg:table-cell">Ubicación</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
               {equipos.map((eq) => (
-                <tr key={eq.id} className="hover:bg-surface-50 transition-colors">
-                  <td className="px-2.5 py-1.5">
-                    <div className="font-medium text-surface-800 text-[11px]">{eq.nombre}</div>
+                <tr key={eq.id} className="hover:bg-surface-50 transition-colors row-animate">
+                  <td className="px-2.5 py-2 sm:py-1.5">
+                    <div className="font-medium text-surface-800 text-xs sm:text-[11px]">{eq.nombre}</div>
                     {eq.categoria && <span className="text-[10px] text-surface-400">{eq.categoria}</span>}
+                    {/* Mobile: show model inline */}
+                    <div className="sm:hidden text-[10px] text-surface-500 mt-0.5">{eq.modelo || "—"} {eq.marca && `(${eq.marca})`}</div>
                   </td>
-                  <td className="px-2.5 py-1.5 text-surface-600 text-[11px]">
+                  <td className="px-2.5 py-1.5 text-surface-600 text-[11px] hidden sm:table-cell">
                     {eq.modelo || "—"}
                     {eq.marca && <span className="text-[10px] text-surface-400 ml-1">({eq.marca})</span>}
                   </td>
-                  <td className="px-2.5 py-1.5 text-surface-500 font-mono text-[10px]">{eq.numeroSerie || "—"}</td>
-                  <td className="px-2.5 py-1.5 text-surface-600 text-[11px]">{eq.cantidad}</td>
+                  <td className="px-2.5 py-1.5 text-surface-500 font-mono text-[10px] hidden md:table-cell">{eq.numeroSerie || "—"}</td>
+                  <td className="px-2.5 py-1.5 text-surface-600 text-[11px] hidden sm:table-cell">{eq.cantidad}</td>
                   <td className="px-2.5 py-1.5">
                     {isModOrAdmin ? (
                       <select
@@ -161,23 +180,38 @@ export default function StockPage() {
                         {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
                       </select>
                     ) : (
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_COLORS[eq.estado] || "bg-gray-100 text-gray-600"}`}>
+                      <Badge variant="secondary" className={`${ESTADO_COLORS[eq.estado] || "bg-gray-100 text-gray-600"}`}>
                         {eq.estado.replace(/_/g, " ")}
-                      </span>
+                      </Badge>
                     )}
                   </td>
-                  <td className="px-2.5 py-1.5 text-surface-500 text-[11px]">{eq.ubicacion || eq.predio?.nombre || "—"}</td>
+                  <td className="px-2.5 py-1.5 text-surface-500 text-[11px] hidden lg:table-cell">{eq.ubicacion || eq.predio?.nombre || "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </div>
+      </CardContent>
+      </Card>
 
       {/* Modal crear equipo */}
+      <AnimatePresence>
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <form onSubmit={handleCreate} className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4 animate-fade-in-up max-h-[90vh] overflow-y-auto">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
+        >
+          <motion.form
+            initial={{ opacity: 0, y: 40, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 40, scale: 0.97 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            onSubmit={handleCreate}
+            className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl p-5 sm:p-6 w-full sm:max-w-lg sm:mx-4 max-h-[90vh] overflow-y-auto"
+          >
             <h2 className="text-base font-semibold text-surface-800 mb-4">Agregar Equipo</h2>
             <div className="space-y-3">
               <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre *" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
@@ -197,12 +231,13 @@ export default function StockPage() {
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
             </div>
             <div className="flex justify-end gap-2 mt-5">
-              <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
-              <button type="submit" className="px-4 py-2 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium">Crear</button>
+              <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
+              <button type="submit" className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium">Crear</button>
             </div>
-          </form>
-        </div>
+          </motion.form>
+        </motion.div>
       )}
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 }

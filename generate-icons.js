@@ -15,13 +15,13 @@ async function generateIcons() {
   for (const size of SIZES) {
     const srcPath = path.join(IMAGES_DIR, `icon-${size}.png`);
     if (!fs.existsSync(srcPath)) {
-      console.log(`⚠️  No existe ${srcPath}, saltando...`);
+      console.log(`[WARN] No existe ${srcPath}, saltando...`);
       continue;
     }
 
     const original = sharp(srcPath);
     const meta = await original.metadata();
-    console.log(`📐 icon-${size}.png: ${meta.width}x${meta.height}, channels=${meta.channels}`);
+    console.log(`icon-${size}.png: ${meta.width}x${meta.height}, channels=${meta.channels}`);
 
     // ─── Icon "any": contorno blanco circular ───────────────────
     // Reducimos el icono un poco para dejar espacio al contorno
@@ -50,7 +50,7 @@ async function generateIcons() {
       .png()
       .toFile(path.join(IMAGES_DIR, `icon-${size}.png`));
 
-    console.log(`✅ icon-${size}.png (any) — con contorno blanco`);
+    console.log(`[OK] icon-${size}.png (any) - con contorno blanco`);
 
     // ─── Icon "maskable": fondo naranja sólido + safe zone ──────
     // Maskable icons necesitan 10% safe zone en cada lado = 80% del espacio para el icono
@@ -76,10 +76,10 @@ async function generateIcons() {
       .png()
       .toFile(path.join(IMAGES_DIR, `icon-${size}-maskable.png`));
 
-    console.log(`✅ icon-${size}-maskable.png — fondo naranja con safe zone`);
+    console.log(`[OK] icon-${size}-maskable.png - fondo naranja con safe zone`);
   }
 
-  console.log('\n🎉 Iconos generados. Recuerda actualizar manifest.json');
+  console.log('\nIconos generados. Recuerda actualizar manifest.json');
 }
 
 generateIcons().catch(console.error);

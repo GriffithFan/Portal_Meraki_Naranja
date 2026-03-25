@@ -204,21 +204,23 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   return (
     <>
       {/* Backdrop móvil */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={onMobileClose}
-        />
-      )}
+      <div
+        className={clsx(
+          "fixed inset-0 z-40 bg-black/50 md:hidden transition-opacity duration-300",
+          mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        )}
+        onClick={onMobileClose}
+      />
 
       <aside
         className={clsx(
-          "h-screen flex flex-col bg-surface-900 text-surface-300 border-r border-surface-800 transition-all duration-300 overflow-hidden",
+          "h-screen flex flex-col bg-surface-900 text-surface-300 border-r border-surface-800 overflow-hidden",
           // Desktop: sticky sidebar
-          "hidden lg:sticky lg:top-0 lg:flex",
+          "hidden lg:sticky lg:top-0 lg:flex transition-[width] duration-300",
           collapsed ? "lg:w-[68px]" : "lg:w-64",
-          // Móvil: drawer fijo
-          mobileOpen && "!fixed inset-y-0 left-0 z-50 !flex w-64"
+          // Móvil: drawer fijo con slide
+          "max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:w-64 max-lg:transition-transform max-lg:duration-300 max-lg:ease-out max-lg:shadow-2xl",
+          mobileOpen ? "max-lg:!flex max-lg:translate-x-0" : "max-lg:!flex max-lg:-translate-x-full max-lg:pointer-events-none"
         )}
       >
       {/* Header */}
@@ -284,7 +286,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                           "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
                           active
                             ? "bg-primary-600/20 text-primary-400 shadow-sm"
-                            : "text-surface-400 hover:bg-surface-800 hover:text-white"
+                            : "text-surface-400 hover:bg-surface-800 hover:text-white hover:translate-x-0.5"
                         )}
                       >
                         <span className={clsx("shrink-0", active && "text-accent-400")}>{item.icon}</span>

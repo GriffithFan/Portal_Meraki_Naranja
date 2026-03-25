@@ -260,9 +260,14 @@ export default function Header({ onMenuToggle }: HeaderProps) {
               : pathname.startsWith("/dashboard/stock") ? "Buscar equipo por nombre, serie, modelo..."
               : "Buscar..."
           }
-          className="w-full pl-10 pr-10 py-2 rounded-xl border border-surface-200 bg-surface-50 text-sm
+          className="w-full pl-10 pr-20 py-2 rounded-xl border border-surface-200 bg-surface-50 text-sm
             focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 transition-colors"
         />
+        {!loading && !query && (
+          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-surface-400 bg-surface-100 rounded border border-surface-200">
+            ⌘K
+          </kbd>
+        )}
         {loading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-surface-300 border-t-primary-500 rounded-full animate-spin" />
         )}

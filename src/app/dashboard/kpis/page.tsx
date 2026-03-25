@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Legend, AreaChart, Area, CartesianGrid,
 } from "recharts";
 import SectionSettings from "@/components/ui/SectionSettings";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -94,16 +96,16 @@ export default function KPIsPage() {
 
   if (loading) {
     return (
-      <div className="animate-fade-in-up space-y-6 p-1">
-        <div className="h-7 w-56 bg-surface-200 rounded animate-pulse" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="space-y-6 p-1">
+        <div className="h-7 w-56 bg-surface-200 rounded skeleton-shimmer" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-surface-200 h-28 animate-pulse" />
+            <div key={i} className="bg-white rounded-xl border border-surface-200 h-28 skeleton-shimmer" style={{ animationDelay: `${i * 100}ms` }} />
           ))}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="bg-white rounded-xl border border-surface-200 h-80 animate-pulse" />
-          <div className="bg-white rounded-xl border border-surface-200 h-80 animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
+          <div className="bg-white rounded-xl border border-surface-200 h-80 skeleton-shimmer" />
+          <div className="bg-white rounded-xl border border-surface-200 h-80 skeleton-shimmer" style={{ animationDelay: '150ms' }} />
         </div>
       </div>
     );
@@ -148,10 +150,15 @@ export default function KPIsPage() {
     { d: "D", v: predios.progreso },
   ];
 
+  const sectionVariants = {
+    hidden: { opacity: 0, y: 18 },
+    visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.4, ease: "easeOut" as const } }),
+  };
+
   return (
-    <div className="animate-fade-in-up space-y-6 p-1">
+    <div className="space-y-5 sm:space-y-6 p-1">
       {/* ── Header ──────────────────────────────────── */}
-      <div className="flex items-end justify-between">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-surface-800">Dashboard Ejecutivo</h1>
           <p className="text-xs text-surface-400 mt-1">Métricas y KPIs del proyecto en tiempo real</p>
@@ -188,11 +195,13 @@ export default function KPIsPage() {
             </svg>
           </button>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Progreso general + Tendencia ─────────────── */}
-      {sections.progreso && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-surface-200 p-6">
+      <AnimatePresence>
+      {sections.progreso && <motion.div custom={0} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+        <Card className="lg:col-span-2">
+          <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Progreso del cronograma</h3>
@@ -227,10 +236,12 @@ export default function KPIsPage() {
             <span>75%</span>
             <span>100%</span>
           </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Mini trend sparkline */}
-        <div className="bg-white rounded-xl border border-surface-200 p-5 flex flex-col">
+        <Card className="flex flex-col">
+          <CardContent className="p-5 flex-1 flex flex-col">
           <h3 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Tendencia semanal</h3>
           <div className="flex-1 min-h-0">
             <ResponsiveContainer width="100%" height="100%">
@@ -248,13 +259,16 @@ export default function KPIsPage() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      </div>}
+          </CardContent>
+        </Card>
+      </motion.div>}
+      </AnimatePresence>
 
       {/* ── KPI Cards: Predios ───────────────────────── */}
-      {sections.predios && <div>
+      <AnimatePresence>
+      {sections.predios && <motion.div custom={1} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Predios" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
             label="Total Predios" value={predios.total}
             icon="M2.25 21h19.5M3.75 3v18m16.5-18v18" color="primary"
@@ -281,12 +295,14 @@ export default function KPIsPage() {
             progress={predios.progreso}
           />
         </div>
-      </div>}
+      </motion.div>}
+      </AnimatePresence>
 
       {/* ── KPI Cards: Operación ─────────────────────── */}
-      {sections.operacion && <div>
+      <AnimatePresence>
+      {sections.operacion && <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Operación" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
             label="Tareas para Hoy" value={tareas.hoy}
             icon="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25"
@@ -307,12 +323,14 @@ export default function KPIsPage() {
             subtitle={tareas.pendientes > 10 ? "⚠ Requiere atención" : undefined}
           />
         </div>
-      </div>}
+      </motion.div>}
+      </AnimatePresence>
 
       {/* ── KPI Cards: Recursos ──────────────────────── */}
-      {sections.recursos && <div>
+      <AnimatePresence>
+      {sections.recursos && <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Recursos" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
             label="Equipos Disponibles" value={equipos.disponibles}
             icon="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
@@ -335,10 +353,12 @@ export default function KPIsPage() {
             color="primary"
           />
         </div>
-      </div>}
+      </motion.div>}
+      </AnimatePresence>
 
       {/* ── Gráficos fila 1 ────────────────────────── */}
-      {sections.graficos1 && <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <AnimatePresence>
+      {sections.graficos1 && <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
         {/* Distribución por estado - Donut */}
         <ChartCard title="Distribución por Estado" subtitle={`${predios.byEstado.length} estados configurados`}>
           {predios.byEstado.length > 0 ? (
@@ -429,10 +449,12 @@ export default function KPIsPage() {
             </ResponsiveContainer>
           ) : <EmptyState text="Sin equipos asignados" />}
         </ChartCard>
-      </div>}
+      </motion.div>}
+      </AnimatePresence>
 
       {/* ── Gráficos fila 2 ────────────────────────── */}
-      {sections.graficos2 && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <AnimatePresence>
+      {sections.graficos2 && <motion.div custom={5} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Predios por Provincia - Bar */}
         <div className="lg:col-span-2">
           <ChartCard title="Predios por Provincia" subtitle="Distribución geográfica">
@@ -510,25 +532,32 @@ export default function KPIsPage() {
             ) : <EmptyState text="Sin equipos" />}
           </ChartCard>
         </div>
-      </div>}
+      </motion.div>}
+      </AnimatePresence>
 
       {/* ── Resumen actividad + Quick links ───────────── */}
-      {sections.actividad && <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <AnimatePresence>
+      {sections.actividad && <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Activity summary */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-surface-200 p-5">
-          <h3 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-4">Resumen de actividad</h3>
-          <div className="grid grid-cols-3 gap-4">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Resumen de actividad</CardTitle>
+          </CardHeader>
+          <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <ActivityStat label="Actividades esta semana" value={operacion.actividadSemana} icon="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" color="#6366f1" />
             <ActivityStat label="Notificaciones pendientes" value={operacion.notificacionesPendientes} icon="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" color="#f59e0b" highlight={operacion.notificacionesPendientes > 0} />
             <ActivityStat label="Usuarios activos" value={operacion.usuariosActivos} icon="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" color="#22c55e" />
           </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Quick links */}
-        <div className="bg-white rounded-xl border border-surface-200 p-5">
-          <h3 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">
-            Acceso rápido
-          </h3>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Acceso rápido</CardTitle>
+          </CardHeader>
+          <CardContent>
           <div className="flex flex-col gap-2">
             <QuickLink href="/dashboard/predios" label="Mapa de predios" icon="M15 10.5a3 3 0 11-6 0" />
             <QuickLink href="/dashboard/tareas" label="Tareas" icon="M9 12.75L11.25 15 15 9.75" />
@@ -537,8 +566,10 @@ export default function KPIsPage() {
             <QuickLink href="/dashboard/stock" label="Stock" icon="M20.25 7.5l-.625 10.632" />
             <QuickLink href="/dashboard/hospedajes" label="Hospedajes" icon="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12" />
           </div>
-        </div>
-      </div>}
+          </CardContent>
+        </Card>
+      </motion.div>}
+      </AnimatePresence>
     </div>
   );
 }
@@ -576,40 +607,45 @@ function KPICard({
   };
   const c = colorMap[color] || colorMap.primary;
   return (
-    <div className={`bg-white rounded-xl border p-4 transition-shadow hover:shadow-md ${highlight ? "border-amber-300 ring-1 ring-amber-200 bg-amber-50/20" : "border-surface-200"}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${c.bg}`}>
-          <svg className={`w-4 h-4 ${c.text}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
-            <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
-          </svg>
+    <Card className={`card-hover transition-shadow hover:shadow-md ${highlight ? "border-amber-300 ring-1 ring-amber-200 bg-amber-50/20" : ""}`}>
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${c.bg}`}>
+            <svg className={`w-4 h-4 ${c.text}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+              <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
+            </svg>
+          </div>
+          {highlight && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          )}
         </div>
-        {highlight && (
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+        <p className="text-xl sm:text-2xl font-bold text-surface-800 tabular-nums animate-count-up">{value.toLocaleString()}</p>
+        <p className="text-[10px] sm:text-[11px] text-surface-500 mt-0.5 leading-tight">{label}</p>
+        {subtitle && <p className="text-[10px] text-surface-400 mt-1">{subtitle}</p>}
+        {progress !== undefined && (
+          <div className="w-full bg-surface-100 rounded-full h-1.5 mt-2 overflow-hidden">
+            <div
+              className="h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(progress, 100)}%`, backgroundColor: c.accent }}
+            />
+          </div>
         )}
-      </div>
-      <p className="text-2xl font-bold text-surface-800 tabular-nums">{value.toLocaleString()}</p>
-      <p className="text-[11px] text-surface-500 mt-0.5 leading-tight">{label}</p>
-      {subtitle && <p className="text-[10px] text-surface-400 mt-1">{subtitle}</p>}
-      {progress !== undefined && (
-        <div className="w-full bg-surface-100 rounded-full h-1.5 mt-2 overflow-hidden">
-          <div
-            className="h-1.5 rounded-full transition-all duration-500"
-            style={{ width: `${Math.min(progress, 100)}%`, backgroundColor: c.accent }}
-          />
-        </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function ChartCard({ title, subtitle, children, compact }: { title: string; subtitle?: string; children: React.ReactNode; compact?: boolean }) {
   return (
-    <div className={`bg-white rounded-xl border border-surface-200 ${compact ? "p-4" : "p-5"}`}>
-      <h3 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1">{title}</h3>
-      {subtitle && <p className="text-[10px] text-surface-400 mb-3">{subtitle}</p>}
-      {!subtitle && <div className="mb-3" />}
-      {children}
-    </div>
+    <Card>
+      <CardHeader className={compact ? "pb-0" : ""}>
+        <CardTitle className="text-xs font-semibold text-surface-500 uppercase tracking-wider">{title}</CardTitle>
+        {subtitle && <p className="text-[10px] text-surface-400">{subtitle}</p>}
+      </CardHeader>
+      <CardContent className={compact ? "px-4 pb-4" : ""}>
+        {children}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -636,7 +672,7 @@ function QuickLink({ href, label, icon }: { href: string; label: string; icon: s
   return (
     <Link
       href={href}
-      className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-surface-50 border border-transparent hover:border-surface-200 transition-all group"
+      className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-surface-50 border border-transparent hover:border-surface-200 transition-all group hover:translate-x-0.5"
     >
       <svg className="w-4 h-4 text-surface-400 group-hover:text-primary-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d={icon} />

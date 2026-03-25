@@ -42,8 +42,6 @@
 
 ---
 
-*Próximo: Fase 2 — Migración del módulo de monitoreo Meraki*
-
 ## Fase 2: Migración del Módulo de Monitoreo Meraki
 
 ### Backend — Librería Meraki
@@ -96,8 +94,6 @@
 - `src/app/dashboard/appliance/page.tsx` — NetworkSelector + ApplianceSection.
 
 ---
-
-*Próximo: Fase 3 — Migración THNET (predios, calendario, stock)*
 
 ## Fase 2.1: Correcciones de Fidelidad Visual — Iteración 1
 
@@ -197,8 +193,6 @@
 
 ---
 
-*Próximo: Fase 2.3 — Funciones Meraki faltantes + datos históricos reales*
-
 ## Fase 3: Gestión de Predios — ClickUp Integration
 
 ### Importación masiva desde ClickUp
@@ -260,8 +254,6 @@ Todos los ítems de `SEGURIDAD_VPS.md` aplicados:
 
 ---
 
-*Próximo: Fase 5 — Funciones Meraki faltantes + ConnectivityBar con datos reales + Cloudflare (opcional)*
-
 ## Fase 3: Secciones de Gestión
 
 ### Sidebar
@@ -305,18 +297,18 @@ Todos los ítems de `SEGURIDAD_VPS.md` aplicados:
 
 #### Tareas (`/dashboard/tareas/page.tsx`) — NUEVA
 - Tabla con columnas: título, estado, prioridad, asignados, fecha.
-- Búsqueda por texto libre. Badges de prioridad con color (🔴 Alta, 🟡 Media, 🔵 Baja).
+- Búsqueda por texto libre. Badges de prioridad con indicadores de color (Alta, Media, Baja).
 - Avatares de asignados. Click para ver detalle en lista.
 - Modal de creación (mod/admin): título, descripción, estado, prioridad, fecha, selección múltiple de usuarios con checkboxes.
 
 #### Actas (`/dashboard/actas/page.tsx`) — REESCRITA
-- Lista de documentos con iconos por tipo (📄 PDF, 📝 DOCX, 📎 otros).
+- Lista de documentos con iconos por tipo (PDF, DOCX, otros).
 - Búsqueda por nombre. Tamaño de archivo formateado (KB/MB).
 - Modal de upload (mod/admin): nombre, descripción, selector de archivo.
 - Botones de descarga por documento.
 
 #### Actividad (`/dashboard/actividad/page.tsx`) — REESCRITA
-- Timeline de actividades con iconos por acción (🟢 CREAR, 🔵 ACTUALIZAR, 🔴 ELIMINAR, 🟡 otros).
+- Timeline de actividades con iconos por acción (CREAR, ACTUALIZAR, ELIMINAR, otros).
 - Dropdown de filtro por entidad. Subtítulo dinámico según rol.
 - Muestra usuario, entidad, entidadId, detalles y fecha relativa.
 
@@ -353,8 +345,6 @@ Todos los ítems de `SEGURIDAD_VPS.md` aplicados:
 - Upload de archivos validado: solo PDF/DOCX, máximo 10MB.
 
 ---
-
-*Próximo: Fase 3.1 — Header contextual search + Instructivo*
 
 ## Fase 4: Fixes de Seguridad Críticos + UI Login
 
@@ -450,19 +440,19 @@ keyframes: {
 
 ## Análisis de Proyecto — Mejoras Pendientes
 
-### 🔴 Críticos restantes (a implementar cuando funcionalidades completas)
+### Críticos restantes (a implementar cuando funcionalidades completas)
 1. Auth explícita en cada endpoint API (actualmente solo depende de middleware)
 2. Validación Zod para `as any` castings en importación
 3. Sanitización de inputs en búsquedas (longitud + regex)
 
-### 🟠 Importantes (postergar para refactor final)
+### Importantes (postergar para refactor final)
 4. Reemplazar 50+ usos de `any` con interfaces TypeScript
 5. Dividir componentes grandes (AppliancePortsMatrix ~500 líneas, SimpleGraph ~450 líneas)
 6. Optimizar NetworkContext para evitar rerenders innecesarios
 7. Implementar cache con TTL (actualmente sin expiración)
 8. Agregar `import "server-only"` en `meraki.ts` para proteger MERAKI_API_KEY
 
-### 🟢 Positivos identificados
+### Positivos identificados
 - Middleware auth bien estructurado
 - useCallback con dependencias correctas en hooks
 - Prisma select/include eficiente
@@ -605,27 +595,27 @@ El Tooltip usaba `position: absolute`, lo que causaba que se cortara (clipping) 
 
 ## Auditoría de Producción — Hallazgos
 
-### 🔴 BLOQUEANTES (6 items — ✅ APLICADOS)
+### BLOQUEANTES (6 items — APLICADOS)
 
-1. **✅ Cron endpoint auth fix** — `src/app/api/cron/monitoreo/route.ts`: ahora rechaza con 503 si CRON_SECRET no está definido. Siempre requiere secret válido.
+1. **Cron endpoint auth fix** — `src/app/api/cron/monitoreo/route.ts`: ahora rechaza con 503 si CRON_SECRET no está definido. Siempre requiere secret válido.
 
-2. **✅ Login rate limiting** — `src/app/api/auth/login/route.ts`: rate limiter en memoria por IP (5 intentos / 15 min). Retorna 429 al exceder. Se limpia al login exitoso.
+2. **Login rate limiting** — `src/app/api/auth/login/route.ts`: rate limiter en memoria por IP (5 intentos / 15 min). Retorna 429 al exceder. Se limpia al login exitoso.
 
-3. **✅ `.env.example` completo** — Agregadas: CRON_SECRET, NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL, MERAKI_BASE_URL, NODE_ENV.
+3. **`.env.example` completo** — Agregadas: CRON_SECRET, NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL, MERAKI_BASE_URL, NODE_ENV.
 
-4. **✅ PM2 ecosystem.config.js** — Creado con `next start`, logs en `logs/`, max_restarts=10, restart_delay=5000.
+4. **PM2 ecosystem.config.js** — Creado con `next start`, logs en `logs/`, max_restarts=10, restart_delay=5000.
 
-5. **✅ Path traversal fix en actas** — `src/app/api/actas/[id]/route.ts`: `path.resolve()` + validación que la ruta resuelva dentro de `uploads/`. Retorna 403 si intenta salir.
+5. **Path traversal fix en actas** — `src/app/api/actas/[id]/route.ts`: `path.resolve()` + validación que la ruta resuelva dentro de `uploads/`. Retorna 403 si intenta salir.
 
-6. **✅ Security headers en next.config.mjs** — `poweredByHeader: false`, headers globales: HSTS, X-Content-Type-Options (nosniff), X-Frame-Options (DENY), Referrer-Policy, Permissions-Policy.
+6. **Security headers en next.config.mjs** — `poweredByHeader: false`, headers globales: HSTS, X-Content-Type-Options (nosniff), X-Frame-Options (DENY), Referrer-Policy, Permissions-Policy.
 
-### 🟡 MEDIO/BAJO (6 items — ✅ APLICADOS)
-7. **✅ Índices Prisma** — Agregados índices a: Notificacion (`userId+leida`, `createdAt`), Comentario (`predioId`, `equipoId`), Actividad (`userId`, `entidad`, `createdAt`), TareaCalendario (`fecha`, `asignadoId`, `creadorId`), Asignacion (`userId`, `predioId`).
-8. **✅ Calendario RBAC** — PUT y DELETE en `/api/calendario/[id]/route.ts` ahora requieren `isModOrAdmin()`. Retorna 403 sin permisos.
-9. **✅ `uploads/` en .gitignore** — Agregado al final del archivo.
-10. **✅ Notificaciones PUT try/catch** — PUT en `/api/notificaciones/route.ts` envuelto en try/catch con log de error.
-11. **✅ PWA manifest scope** — Agregado `"scope": "/"` en `public/manifest.json`.
-12. Cache-Control headers en respuestas API — ✅ Implementado en Fase 7.
+### MEDIO/BAJO (6 items — APLICADOS)
+7. **Índices Prisma** — Agregados índices a: Notificacion (`userId+leida`, `createdAt`), Comentario (`predioId`, `equipoId`), Actividad (`userId`, `entidad`, `createdAt`), TareaCalendario (`fecha`, `asignadoId`, `creadorId`), Asignacion (`userId`, `predioId`).
+8. **Calendario RBAC** — PUT y DELETE en `/api/calendario/[id]/route.ts` ahora requieren `isModOrAdmin()`. Retorna 403 sin permisos.
+9. **`uploads/` en .gitignore** — Agregado al final del archivo.
+10. **Notificaciones PUT try/catch** — PUT en `/api/notificaciones/route.ts` envuelto en try/catch con log de error.
+11. **PWA manifest scope** — Agregado `"scope": "/"` en `public/manifest.json`.
+12. Cache-Control headers en respuestas API — Implementado en Fase 7.
 
 ---
 
@@ -666,7 +656,7 @@ El Tooltip usaba `position: absolute`, lo que causaba que se cortara (clipping) 
 **Cambio:** Reemplazada validación básica por validación exhaustiva del payload: verifica que sea objeto, que `tipo` sea "PREDIO"|"EQUIPO", que `mappings` sea array no vacío con objetos `{excelColumn: number, dbField: string}`, y que `rows` sea array no vacío. Errores descriptivos por campo.
 
 ### Exportación JPG/PDF
-**Estado:** ✅ Ya implementado en Fase 2.2 — Componente `ExportableSection` con `html2canvas` + `jsPDF`. Usado en Switches, APs, Appliance y Topología.
+**Estado:** Ya implementado en Fase 2.2 — Componente `ExportableSection` con `html2canvas` + `jsPDF`. Usado en Switches, APs, Appliance y Topología.
 
 ---
 
@@ -855,20 +845,20 @@ El Tooltip usaba `position: absolute`, lo que causaba que se cortara (clipping) 
 
 ## Roadmap de Mejoras Futuras
 
-### 🟠 Funcionales (post-deploy, por demanda)
+### Funcionales (post-deploy, por demanda)
 1. **ConnectivityBar con datos históricos reales** — Barras de switches y APs muestran datos sintéticos. Integrar endpoints de historial de conectividad.
 2. **Exportación PDF/JPG desde secciones** — html2canvas + jsPDF instalados y componente ExportableSection existe, falta integrarlo en todas las vistas.
 3. **Push Notifications UI** — Infraestructura VAPID configurada, falta botón de suscripción visible en la UI del usuario.
 4. **SSE streaming para predios** — Sincronización en tiempo real de datos CSV no implementada.
 5. **Cobertura API Meraki ampliada** — 93 funciones implementadas de ~130 disponibles. Faltan: Wireless avanzado (radio settings, RF profiles), Cable Test ejecución, SDWAN policies.
 
-### 🟡 Técnicos (refactor, no afectan funcionalidad)
+### Técnicos (refactor, no afectan funcionalidad)
 6. **Tipado estricto restante** — ~50 usos de `any` en componentes de gestión (actas, tareas, espacios, calendario). Crear interfaces para cada modelo Prisma.
 7. **Logging centralizado** — Reemplazar ~40 `console.error` por logger estructurado (Pino o Winston) con niveles y rotación.
 8. **Cache cleanup automático** — `merakiCache.ts` tiene TTL pero sin GC. Agregar intervalo de limpieza o LRU con límite de entradas.
 9. **CRON_SECRET como header** — Actualmente se pasa por query parameter (queda en logs de servidor). Migrar a header `Authorization: Bearer {secret}`.
 
-### 🟢 Pre-deploy checklist
+### Pre-deploy checklist
 - [ ] Rotar JWT_SECRET (generar valor aleatorio largo)
 - [ ] Rotar CRON_SECRET (generar valor aleatorio)
 - [ ] Configurar DATABASE_URL con PostgreSQL de producción
@@ -881,7 +871,6 @@ El Tooltip usaba `position: absolute`, lo que causaba que se cortara (clipping) 
 ---
 
 *Proyecto listo para deploy en VPS*
-
 ---
 
 ## Fase 10: shadcn/ui + Librerías Utilitarias + Bug Fix + Dark Mode v3
@@ -935,4 +924,45 @@ avatar, badge, button, calendar, card, chart, command, dialog, dropdown-menu, in
 
 ### Git
 - **Tag:** `backup-pre-libs` en commit `2cc72f1` (antes de instalación de librerías)
-- **Build verificado** ✅ — `npm run build` exitoso con todas las dependencias
+- **Build verificado** — `npm run build` exitoso con todas las dependencias
+
+---
+
+## Fase 11: Animaciones, Responsive y Fix Prisma
+
+### Fecha: 20 de marzo de 2026
+
+### Animaciones globales (Tailwind + CSS)
+**Archivos:**
+- `tailwind.config.ts` — Nuevas animaciones keyframe: `slideInLeft`, `slideUp`, `shimmer`, `countUp`, `cardEnter`. Fix lint: `require("tailwindcss-animate")` → `import tailwindcssAnimate from "tailwindcss-animate"` (ESM).
+- `src/app/globals.css` — 5 utilidades CSS nuevas:
+  - `.skeleton-shimmer` — gradiente animado para placeholders de carga
+  - `.card-hover` — scale + sombra en hover con transición
+  - `.stagger-children` — animación escalonada de hijos (card-enter con delay)
+  - `.row-animate` — slide-in-left para filas de lista
+  - `.mobile-card-table` — tabla → cards en mobile (`display: block`, cada celda con `::before` label)
+
+### Páginas mejoradas (animaciones + responsive)
+**Archivos modificados:**
+- `src/app/dashboard/kpis/page.tsx` — AnimatePresence, stagger-children en grids, card-hover en stat cards, count-up animado en números, grids responsive (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`), skeleton shimmer en loading.
+- `src/app/dashboard/stock/page.tsx` — mobile-card-table, modal AnimatePresence con slide-up, filtros responsive (`flex-col sm:flex-row`), columnas secundarias ocultas en mobile (`hidden sm:table-cell`).
+- `src/app/dashboard/actividad/page.tsx` — stagger-children en lista, row-animate en items, header/filtros/lista responsive.
+- `src/app/dashboard/bandeja/page.tsx` — stagger-children, tamaños responsive, `active:scale-[0.97]` press effect en botones.
+- `src/app/dashboard/calendario/page.tsx` — AnimatePresence, botones touch-friendly (`px-4 py-2 sm:px-3 sm:py-1.5`, `active:scale-[0.97]`), filtro `w-full sm:w-auto`, semana scroll horizontal (`overflow-x-auto`, `min-w-[560px]`), día con `stagger-children` + `row-animate`, modal slide-up desde bottom en mobile (`items-end sm:items-center`, `rounded-t-2xl sm:rounded-xl`), categorías `grid-cols-2 sm:grid-cols-4`.
+- `src/components/layout/Sidebar.tsx` — Backdrop con `transition-opacity duration-300` (sin flash), drawer slide `translate-x-0 / -translate-x-full` con `duration-300 ease-out shadow-2xl`, nav links con `hover:translate-x-0.5` en items inactivos.
+
+### Fix crítico: /api/tareas retornaba 500
+**Síntoma:** `PrismaClientKnownRequestError: The column 'existe' does not exist in the current database`
+**Causa real:** 7 columnas del modelo `Predio` en `schema.prisma` no existían en la base de datos PostgreSQL:
+- `tipoRed`, `codigoPostal`, `caracteristicaTelefonica`, `telefono`, `lab`, `nombreInstitucion`, `correo`
+- El mensaje `'existe'` era un **bug de Prisma 5.x** que reporta el nombre de columna incorrecto.
+- Las columnas fueron agregadas al schema sin ejecutar migración ni `db push`.
+
+**Fix aplicado:**
+- `npx prisma db push --accept-data-loss` — Sincronizó schema → DB, agregó las 7 columnas faltantes.
+- Migración `20260311000000_sync_instructivo_and_indexes/migration.sql` — Removido BOM UTF-8 (bytes EF BB BF) que causaba error de sintaxis en shadow database.
+
+**Verificación:** Query completa de `prisma.predio.findMany()` con includes ejecutada exitosamente (5 registros).
+
+### Build
+- **Build verificado** — `npx next build` compilado exitosamente, 62 páginas generadas, solo 3 warnings pre-existentes (react-hooks/exhaustive-deps).

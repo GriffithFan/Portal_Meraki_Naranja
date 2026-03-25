@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Seeding database...");
+  console.log("Seeding database...");
 
   // Limpiar datos existentes (orden por dependencias)
   await prisma.actividad.deleteMany();
@@ -123,29 +123,29 @@ async function main() {
     },
   });
 
-  console.log("✅ Seed completado");
+  console.log("Seed completado");
   console.log("");
-  console.log("   👤 ADMIN:");
-  console.log("   - griffith@thnet.com / Betoben5.");
+  console.log("  ADMIN:");
+  console.log("  - griffith@thnet.com");
   console.log("");
-  console.log("   👥 MODERADORES:");
-  console.log("   - leonel@thnet.com / leonelthnet");
-  console.log("   - enzo@thnet.com / enzothnet");
-  console.log("   - fernando@thnet.com / fernandothnet");
-  console.log("   - luis@thnet.com / luisthnet");
+  console.log("  MODERADORES:");
+  console.log("  - leonel@thnet.com");
+  console.log("  - enzo@thnet.com");
+  console.log("  - fernando@thnet.com");
+  console.log("  - luis@thnet.com");
   console.log("");
-  console.log("   🔧 TÉCNICOS:");
+  console.log("  TECNICOS:");
   for (let i = 1; i <= 10; i++) {
     const num = String(i).padStart(2, "0");
-    console.log(`   - th${num}@thnet.com / thnet${num}`);
+    console.log(`  - th${num}@thnet.com`);
   }
   console.log("");
-  console.log("   📋 ESTADOS: CONFORME, NO CONFORME, INSTALADO, RELEVADO, PENDIENTE, EN PROCESO, CANCELADO");
+  console.log("  ESTADOS: CONFORME, NO CONFORME, INSTALADO, RELEVADO, PENDIENTE, EN PROCESO, CANCELADO");
 }
 
 main()
   .catch((e) => {
-    console.error("❌ Error en seed:", e);
+    console.error("Error en seed:", e);
     process.exit(1);
   })
   .finally(async () => {

@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 const config: Config = {
   darkMode: "class",
@@ -115,10 +116,15 @@ const config: Config = {
         "fade-in-up": "fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1)",
         "scale-in": "scaleIn 0.2s ease-out",
         "slide-in-right": "slideInRight 0.3s ease-out",
+        "slide-in-left": "slideInLeft 0.3s ease-out",
+        "slide-up": "slideUp 0.4s cubic-bezier(0.16,1,0.3,1)",
         "shake": "shake 0.5s ease-in-out",
         "spin-slow": "spin 2s linear infinite",
         "float-slow": "floatSlow 8s ease-in-out infinite",
         "float-slow-reverse": "floatSlowReverse 10s ease-in-out infinite",
+        "shimmer": "shimmer 2s linear infinite",
+        "count-up": "countUp 0.6s cubic-bezier(0.16,1,0.3,1)",
+        "card-enter": "cardEnter 0.5s cubic-bezier(0.16,1,0.3,1) both",
       },
       keyframes: {
         fadeIn: {
@@ -137,6 +143,14 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateX(-16px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
         },
+        slideInLeft: {
+          "0%": { opacity: "0", transform: "translateX(16px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        slideUp: {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
         shake: {
           "0%, 100%": { transform: "translateX(0)" },
           "25%": { transform: "translateX(-4px)" },
@@ -150,9 +164,21 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0) scale(1)" },
           "50%": { transform: "translateY(20px) scale(0.95)" },
         },
+        shimmer: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
+        countUp: {
+          "0%": { opacity: "0", transform: "translateY(10px) scale(0.95)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        cardEnter: {
+          "0%": { opacity: "0", transform: "translateY(12px) scale(0.97)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 };
 export default config;

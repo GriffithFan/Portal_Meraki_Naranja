@@ -121,6 +121,100 @@
   }
 }
 
+/* ─── Skeleton shimmer ─────────────────────────────── */
+@layer utilities {
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .dark .skeleton-shimmer::after {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  }
+}
+
+/* ─── Card hover lift ──────────────────────────────── */
+@layer utilities {
+  .card-hover {
+    transition: transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s cubic-bezier(0.16,1,0.3,1);
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -5px rgba(0,0,0,0.08), 0 4px 10px -3px rgba(0,0,0,0.04);
+  }
+  .dark .card-hover:hover {
+    box-shadow: 0 8px 25px -5px rgba(0,0,0,0.3), 0 4px 10px -3px rgba(0,0,0,0.2);
+  }
+}
+
+/* ─── Stagger children animation ───────────────────── */
+@layer utilities {
+  .stagger-children > * {
+    animation: cardEnter 0.5s cubic-bezier(0.16,1,0.3,1) both;
+  }
+  .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 240ms; }
+  .stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+  .stagger-children > *:nth-child(7) { animation-delay: 360ms; }
+  .stagger-children > *:nth-child(8) { animation-delay: 420ms; }
+  @keyframes cardEnter {
+    0% { opacity: 0; transform: translateY(12px) scale(0.97); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+}
+
+/* ─── Row hover highlight ──────────────────────────── */
+@layer utilities {
+  .row-animate {
+    transition: background-color 0.15s ease, transform 0.15s ease;
+  }
+  .row-animate:hover {
+    background-color: rgba(0,0,0,0.02);
+  }
+  .dark .row-animate:hover {
+    background-color: rgba(255,255,255,0.03);
+  }
+}
+
+/* ─── Mobile card view for tables ──────────────────── */
+@layer utilities {
+  @media (max-width: 639px) {
+    .mobile-card-table thead { display: none; }
+    .mobile-card-table tbody { display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+    .mobile-card-table tr {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      background: white;
+    }
+    .mobile-card-table tr td { padding: 2px 0; border: none; }
+    .mobile-card-table tr td:first-child { grid-column: 1 / -1; font-weight: 600; }
+  }
+  @media (max-width: 639px) {
+    .dark .mobile-card-table tr {
+      border-color: #2a3a4e;
+      background: #1a2332;
+    }
+  }
+}
+
 /* ─── Leaflet z-index containment ──────────────────── */
 .leaflet-container {
   z-index: 0;

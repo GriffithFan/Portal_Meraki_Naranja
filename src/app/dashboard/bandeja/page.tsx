@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ListSkeleton } from "@/components/ui/Skeletons";
+import { formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { motion } from "framer-motion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -77,15 +82,7 @@ export default function BandejaPage() {
   }
 
   function getTimeAgo(dateStr: string) {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "Ahora";
-    if (mins < 60) return `Hace ${mins}m`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `Hace ${hrs}h`;
-    const days = Math.floor(hrs / 24);
-    if (days < 7) return `Hace ${days}d`;
-    return new Date(dateStr).toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
+    return formatDistanceToNow(new Date(dateStr), { addSuffix: true, locale: es });
   }
 
   const TIPO_LABELS: Record<string, string> = {
@@ -99,13 +96,13 @@ export default function BandejaPage() {
   };
 
   return (
-    <div className="animate-fade-in-up">
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Bandeja</h1>
           <p className="text-xs text-surface-400">
             Mensajes y notificaciones
-            {sinLeer > 0 && <span className="ml-2 px-1.5 py-0.5 bg-red-500 text-white rounded text-[10px] font-bold">{sinLeer}</span>}
+            {sinLeer > 0 && <Badge variant="destructive" className="ml-2 text-[10px]">{sinLeer}</Badge>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -125,7 +122,8 @@ export default function BandejaPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-surface-200 overflow-hidden">
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
         {loading ? (
           <ListSkeleton items={6} />
         ) : notificaciones.length === 0 ? (
@@ -135,31 +133,31 @@ export default function BandejaPage() {
             <p className="text-xs">Tu bandeja está vacía</p>
           </div>
         ) : (
-          <div className="divide-y divide-surface-100">
+          <div className="divide-y divide-surface-100 stagger-children">
             {notificaciones.map((n) => (
               <div
                 key={n.id}
-                className={`flex items-start gap-3 sm:gap-4 px-4 sm:px-5 py-4 transition-colors cursor-pointer ${n.leida ? "bg-white hover:bg-surface-50" : "bg-primary-50/20 hover:bg-primary-50/40"}`}
+                className={`flex items-start gap-3 px-3 sm:px-5 py-3 sm:py-4 transition-all cursor-pointer row-animate active:scale-[0.995] ${n.leida ? "bg-white hover:bg-surface-50" : "bg-primary-50/20 hover:bg-primary-50/40"}`}
                 onClick={() => !n.leida && marcarLeida(n.id)}
               >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"}`}>
-                  <svg className={`w-[18px] h-[18px] ${TIPO_ICON_COLORS[n.tipo] || "text-surface-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+                <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center shrink-0 ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"}`}>
+                  <svg className={`w-4 h-4 sm:w-[18px] sm:h-[18px] ${TIPO_ICON_COLORS[n.tipo] || "text-surface-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
                     <path strokeLinecap="round" strokeLinejoin="round" d={TIPO_ICON_PATHS[n.tipo] || TIPO_ICON_PATHS.GENERAL} />
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <p className={`text-sm truncate ${n.leida ? "text-surface-700" : "text-surface-900 font-semibold"}`}>{n.titulo}</p>
+                      <p className={`text-[13px] sm:text-sm truncate ${n.leida ? "text-surface-700" : "text-surface-900 font-semibold"}`}>{n.titulo}</p>
                       {!n.leida && <span className="w-2 h-2 rounded-full bg-accent-500 shrink-0" />}
                     </div>
                     <span className="text-[10px] text-surface-300 shrink-0 hidden sm:block">{getTimeAgo(n.createdAt)}</span>
                   </div>
-                  <p className="text-xs text-surface-500 mt-1 whitespace-pre-line line-clamp-3">{n.mensaje}</p>
+                  <p className="text-xs text-surface-500 mt-1 whitespace-pre-line line-clamp-2 sm:line-clamp-3">{n.mensaje}</p>
                   <div className="flex items-center gap-2 mt-1.5">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"} ${TIPO_ICON_COLORS[n.tipo] || "text-surface-500"}`}>
+                    <Badge variant="secondary" className={`text-[10px] ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"} ${TIPO_ICON_COLORS[n.tipo] || "text-surface-500"}`}>
                       {TIPO_LABELS[n.tipo] || n.tipo}
-                    </span>
+                    </Badge>
                     <span className="text-[10px] text-surface-300 sm:hidden">{getTimeAgo(n.createdAt)}</span>
                   </div>
                 </div>
@@ -167,7 +165,8 @@ export default function BandejaPage() {
             ))}
           </div>
         )}
-      </div>
-    </div>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

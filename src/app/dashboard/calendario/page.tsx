@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "@/hooks/useSession";
 import SectionSettings from "@/components/ui/SectionSettings";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { motion, AnimatePresence } from "framer-motion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -113,7 +118,7 @@ function toLocalDateStr(d: Date): string {
 }
 
 function formatDateShort(d: Date) {
-  return d.toLocaleDateString("es-AR", { weekday: "short", day: "numeric" }).replace(".", "");
+  return format(d, "EEE d", { locale: es });
 }
 
 const EMPTY_FORM = {
@@ -289,21 +294,28 @@ export default function CalendarioPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("¿Eliminar este evento?")) return;
-    await fetch(`/api/calendario/${id}`, { method: "DELETE", credentials: "include" });
-    load();
+    toast("¿Eliminar este evento?", {
+      action: {
+        label: "Eliminar",
+        onClick: async () => {
+          await fetch(`/api/calendario/${id}`, { method: "DELETE", credentials: "include" });
+          toast.success("Evento eliminado");
+          load();
+        },
+      },
+    });
   }
 
   const weekDates = useMemo(() => getWeekDates(selectedDay), [selectedDay]);
   const grid = getMonthGrid(year, month);
-  const monthName = new Date(year, month).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
-  const selectedDayStr = selectedDay.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
+  const monthName = format(new Date(year, month), "MMMM yyyy", { locale: es });
+  const selectedDayStr = format(selectedDay, "EEEE d 'de' MMMM", { locale: es });
 
   const catInfo = (cat: string) => CATEGORIAS[cat] || CATEGORIAS.GENERAL;
 
   // ─── Render ────────────────────────────────────────────
   return (
-    <div className="animate-fade-in-up">
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
         <div>
@@ -318,7 +330,7 @@ export default function CalendarioPage() {
           <SectionSettings seccion="calendario">
             <p className="text-[10px] text-surface-400 italic">Próximamente: preferencias de vista y categorías</p>
           </SectionSettings>
-          <button onClick={() => openCreate()} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors">
+          <button onClick={() => openCreate()} className="px-4 py-2 sm:px-3 sm:py-1.5 bg-surface-800 text-white rounded-lg sm:rounded-md text-sm sm:text-xs font-medium hover:bg-surface-700 active:scale-[0.97] transition-all">
             + Nuevo evento
           </button>
         </div>
@@ -336,7 +348,7 @@ export default function CalendarioPage() {
           <button onClick={next} className="px-2 py-1 text-xs border border-surface-200 rounded-md hover:bg-surface-50">→</button>
           <span className="text-sm font-semibold text-surface-700 capitalize ml-1">{view === "mes" ? monthName : `${formatDateShort(weekDates[0])} – ${formatDateShort(weekDates[6])}, ${weekDates[0].getFullYear()}`}</span>
         </div>
-        <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="ml-auto px-2 py-1 text-xs border border-surface-200 rounded-md bg-white focus:outline-none">
+        <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="w-full sm:w-auto sm:ml-auto px-3 py-2 sm:px-2 sm:py-1 text-sm sm:text-xs border border-surface-200 rounded-lg sm:rounded-md bg-white focus:outline-none">
           <option value="">Todas las categorías</option>
           {Object.entries(CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
@@ -392,8 +404,8 @@ export default function CalendarioPage() {
               </div>
             ) : (
               /* ── Vista Semana ── */
-              <div>
-                <div className="grid grid-cols-7 gap-px bg-surface-200">
+              <div className="overflow-x-auto -mx-1 px-1">
+                <div className="grid grid-cols-7 gap-px bg-surface-200 min-w-[560px]">
                   {weekDates.map((d, i) => {
                     const isToday2 = isSameDay(d, today);
                     const isSelected2 = isSameDay(d, selectedDay);
@@ -408,11 +420,11 @@ export default function CalendarioPage() {
                     );
                   })}
                 </div>
-                <div className="grid grid-cols-7 gap-px bg-surface-200">
+                <div className="grid grid-cols-7 gap-px bg-surface-200 min-w-[560px]">
                   {weekDates.map((d, i) => {
                     const dt = tasksForDate(d);
                     return (
-                      <div key={i} className="bg-white min-h-[200px] p-1.5 space-y-1">
+                      <div key={i} className="bg-white min-h-[140px] sm:min-h-[200px] p-1 sm:p-1.5 space-y-1">
                         {dt.map((t) => (
                           <div key={t.id} onClick={() => { setSelectedDay(d); openEdit(t); }}
                             className={`p-1.5 rounded text-[10px] cursor-pointer border-l-2 transition-colors hover:shadow-sm ${t.completada ? "opacity-40" : ""}`}
@@ -450,13 +462,13 @@ export default function CalendarioPage() {
 
         {/* Panel lateral - Agenda del día */}
         <div className="lg:w-80 flex-shrink-0">
-          <div className="bg-white rounded-lg border border-surface-200 p-4 sticky top-20">
+          <div className="bg-white rounded-lg border border-surface-200 p-3 sm:p-4 sticky top-20">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="font-semibold text-surface-800 text-sm capitalize">{selectedDayStr}</h3>
                 <p className="text-[10px] text-surface-400">{dayTasks.length} evento{dayTasks.length !== 1 ? "s" : ""}</p>
               </div>
-              <button onClick={() => openCreate(selectedDay)} className="text-xs text-surface-500 hover:text-surface-800 border border-surface-200 rounded-md px-2 py-1 hover:bg-surface-50">+ Agregar</button>
+              <button onClick={() => openCreate(selectedDay)} className="text-sm sm:text-xs text-surface-500 hover:text-surface-800 border border-surface-200 rounded-lg sm:rounded-md px-3 py-1.5 sm:px-2 sm:py-1 hover:bg-surface-50 active:scale-[0.97] transition-all">+ Agregar</button>
             </div>
 
             {dayTasks.length === 0 ? (
@@ -466,7 +478,7 @@ export default function CalendarioPage() {
                 <button onClick={() => openCreate(selectedDay)} className="text-xs text-surface-500 hover:text-surface-700 mt-2">Crear uno</button>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto stagger-children">
                 {dayTasks.map((t) => {
                   const cat = catInfo(t.categoria);
                   const esPropia = t.creador?.id === session?.userId;
@@ -474,7 +486,7 @@ export default function CalendarioPage() {
                   const puedeBorrar = isModOrAdmin || (esPropia && !t.esAsignada);
 
                   return (
-                    <div key={t.id} className={`p-3 rounded-lg border-l-3 transition-all ${t.completada ? "opacity-50 bg-surface-50" : "bg-white border border-surface-100 hover:shadow-sm"}`}
+                    <div key={t.id} className={`p-3 rounded-lg border-l-3 transition-all row-animate ${t.completada ? "opacity-50 bg-surface-50" : "bg-white border border-surface-100 hover:shadow-sm"}`}
                       style={{ borderLeftColor: cat.color, borderLeftWidth: "3px" }}>
                       <div className="flex items-start gap-2">
                         <button onClick={() => toggleComplete(t.id, t.completada)}
@@ -499,8 +511,8 @@ export default function CalendarioPage() {
                           </div>
                           {t.descripcion && <p className="text-[10px] text-surface-400 mt-1 line-clamp-2">{t.descripcion}</p>}
                           <div className="flex items-center gap-1.5 mt-1.5">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium text-white ${PRIORIDAD_COLOR[t.prioridad]}`}>{t.prioridad}</span>
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-medium text-white" style={{ backgroundColor: cat.color }}>{cat.label}</span>
+                            <Badge className={`text-[9px] text-white ${PRIORIDAD_COLOR[t.prioridad]}`}>{t.prioridad}</Badge>
+                            <Badge className="text-[9px] text-white" style={{ backgroundColor: cat.color }}>{cat.label}</Badge>
                             {t.esAsignada && !isModOrAdmin && <span className="text-[10px]" title="Asignada">{svgIcon(ICON.lock, "w-3 h-3")}</span>}
                             {t.notificarPush && <span className="text-[10px]" title="Push activado">{svgIcon(ICON.bell, "w-3 h-3")}</span>}
                           </div>
@@ -524,9 +536,10 @@ export default function CalendarioPage() {
       </div>
 
       {/* Modal crear/editar */}
+      <AnimatePresence>
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <motion.div initial={{ opacity: 0, y: 40, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 40, scale: 0.97 }} transition={{ type: "spring", damping: 25, stiffness: 350 }} className="bg-white rounded-t-2xl sm:rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="p-5 border-b border-surface-100">
               <h2 className="text-base font-semibold text-surface-800">{editingId ? "Editar evento" : "Nuevo evento"}</h2>
             </div>
@@ -539,7 +552,7 @@ export default function CalendarioPage() {
 
               <div>
                 <label className="block text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-1">Categoría</label>
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                   {Object.entries(CATEGORIAS).map(([k, v]) => (
                     <button key={k} type="button" onClick={() => setForm({ ...form, categoria: k })}
                       className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] border transition-all
@@ -634,15 +647,16 @@ export default function CalendarioPage() {
             </div>
 
             <div className="flex gap-3 p-5 border-t border-surface-100">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-2 text-xs border border-surface-200 rounded-lg hover:bg-surface-50">Cancelar</button>
+              <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 sm:py-2 text-sm sm:text-xs border border-surface-200 rounded-lg hover:bg-surface-50 active:scale-[0.97] transition-all">Cancelar</button>
               <button onClick={handleSave} disabled={!form.titulo || !form.fecha}
-                className="flex-1 py-2 bg-surface-800 text-white rounded-lg text-xs font-medium hover:bg-surface-700 disabled:opacity-50 transition-colors">
+                className="flex-1 py-2.5 sm:py-2 bg-surface-800 text-white rounded-lg text-sm sm:text-xs font-medium hover:bg-surface-700 disabled:opacity-50 active:scale-[0.97] transition-all">
                 {editingId ? "Guardar cambios" : "Crear evento"}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 }

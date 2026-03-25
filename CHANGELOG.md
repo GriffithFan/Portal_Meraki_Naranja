@@ -2,6 +2,28 @@
 
 ---
 
+## [2026-03-20] — Animaciones, Responsive, Prisma fix, Lint fix
+
+### Animaciones y Responsive (global)
+- `tailwind.config.ts` — Nuevas animaciones: slide-in-left, slide-up, shimmer, count-up, card-enter. Fix: `require("tailwindcss-animate")` → ESM import (eliminó error de lint).
+- `globals.css` — Nuevas utilidades CSS: `.skeleton-shimmer`, `.card-hover`, `.stagger-children`, `.row-animate`, `.mobile-card-table`.
+
+### Páginas mejoradas (animaciones + responsive)
+- **KPIs** — AnimatePresence, stagger-children, card-hover, count-up animado, grids responsive.
+- **Stock** — mobile-card-table, AnimatePresence modal slide-up, filtros responsive, columnas ocultas en mobile.
+- **Actividad** — stagger-children, row-animate, header/filtros/lista responsive.
+- **Bandeja** — stagger-children, tamaños responsive, active:scale press effect.
+- **Calendario** — AnimatePresence, botones touch-friendly (`px-4 py-2 sm:px-3`), filtro `w-full sm:w-auto`, semana con scroll horizontal (`min-w-[560px]`), modal slide-up desde bottom en mobile (`items-end sm:items-center`, `rounded-t-2xl sm:rounded-xl`), categorías `grid-cols-2 sm:grid-cols-4`.
+- **Sidebar** — Backdrop con transición opacity (sin flash), drawer con slide `translate-x` + `duration-300 ease-out`, nav links con `hover:translate-x-0.5`.
+
+### Fix crítico: /api/tareas 500
+- **Problema**: `PrismaClientKnownRequestError: column 'existe' does not exist` — error engañoso de Prisma 5.x.
+- **Causa real**: 7 columnas en `schema.prisma` (modelo Predio) no existían en la DB: `tipoRed`, `codigoPostal`, `caracteristicaTelefonica`, `telefono`, `lab`, `nombreInstitucion`, `correo`.
+- **Fix**: `prisma db push` sincronizó schema → DB, agregando las 7 columnas faltantes.
+- **Fix secundario**: BOM UTF-8 (bytes EF BB BF) removido de migración `20260311000000_sync_instructivo_and_indexes/migration.sql`.
+
+---
+
 ## [2026-03-20] — shadcn/ui + Librerías utilitarias + Bug fix bulk-delete
 
 ### Bug fix
@@ -67,25 +89,6 @@
 3. **StatusIcon component** — Iconos SVG por clave de estado con colores dinámicos.
 4. **Espacios de trabajo** — Jerarquía de carpetas con estadísticas agregadas.
 5. **Fix workspace creation** — Corrección de bug en cascade de permisos.
-
----
-
-## [Próximas mejoras pendientes]
-
-### Rendimiento
-- **usePermisos → PermisosProvider**: Centralizar la carga de permisos en un Provider (actualmente solo 1 consumidor: Sidebar).
-- **ISR en rutas estáticas**: Configurar `revalidate` en las rutas de API que cambian poco (configuración de firewall, VLANs, etc.).
-- **Bundle splitting avanzado**: Evaluar `next/dynamic` para páginas pesadas como Topología y Switches.
-
-### Calidad de código
-- **Tipado Meraki**: Crear interfaces TypeScript para los responses de la API de Meraki (Device, Network, Organization) y eliminar los `any`.
-- **Tests unitarios**: Agregar tests para `meraki.ts`, `merakiCache.ts`, y middleware de auth.
-- **Storybook**: Documentar componentes UI reutilizables (Sidebar, TopBar, ErrorBoundary).
-
-### Infraestructura
-- **Health check endpoint**: Crear `/api/health` que verifique conexión a DB y API de Meraki.
-- **Logs estructurados (JSON)**: Migrar a logging JSON para facilitar integración con servicios de monitoreo.
-- **Docker Compose**: Archivo para desarrollo local con PostgreSQL + app.
 
 ---
 

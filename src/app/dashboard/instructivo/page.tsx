@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { toast } from "sonner";
 
 interface Instructivo {
   id: string;
@@ -59,12 +60,21 @@ export default function InstructivoPage() {
   const canEdit = userRol === "ADMIN" || userRol === "MODERADOR";
 
   const handleDelete = async (id: string) => {
-    if (!confirm("¿Eliminar este instructivo?")) return;
-    const res = await fetch(`/api/instructivos/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      setInstructivos(prev => prev.filter(i => i.id !== id));
-      if (selected?.id === id) setSelected(null);
-    }
+    toast("¿Eliminar este instructivo?", {
+      action: {
+        label: "Eliminar",
+        onClick: async () => {
+          const res = await fetch(`/api/instructivos/${id}`, { method: "DELETE" });
+          if (res.ok) {
+            setInstructivos(prev => prev.filter(i => i.id !== id));
+            if (selected?.id === id) setSelected(null);
+            toast.success("Instructivo eliminado");
+          } else {
+            toast.error("Error al eliminar");
+          }
+        },
+      },
+    });
   };
 
   const handleEdit = (inst: Instructivo) => {

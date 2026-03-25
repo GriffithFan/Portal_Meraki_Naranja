@@ -1,4 +1,4 @@
-﻿-- Sync migration: DB was updated via db push, this migration records the changes
+-- Sync migration: DB was updated via db push, this migration records the changes
 -- for migration history consistency.
 
 -- AlterTable Instructivo: add video upload fields and text content

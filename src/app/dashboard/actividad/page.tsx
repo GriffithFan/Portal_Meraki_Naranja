@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
 import { ListSkeleton } from "@/components/ui/Skeletons";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { motion } from "framer-motion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -42,8 +47,8 @@ export default function ActividadPage() {
   useEffect(() => { fetchActividad(); }, [fetchActividad]);
 
   return (
-    <div className="animate-fade-in-up">
-      <div className="flex items-center justify-between mb-6">
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Actividad</h1>
           <p className="text-xs text-surface-400">
@@ -53,7 +58,7 @@ export default function ActividadPage() {
         <select
           value={filtroEntidad}
           onChange={(e) => setFiltroEntidad(e.target.value)}
-          className="px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400"
+          className="px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400"
         >
           <option value="">Todas las entidades</option>
           <option value="PREDIO">Tareas</option>
@@ -63,7 +68,8 @@ export default function ActividadPage() {
         </select>
       </div>
 
-      <div className="bg-white rounded-lg border border-surface-200">
+      <Card>
+        <CardContent className="p-0">
         {loading ? (
           <ListSkeleton items={8} />
         ) : actividades.length === 0 ? (
@@ -72,16 +78,16 @@ export default function ActividadPage() {
             <p className="text-sm font-medium">Sin actividad registrada</p>
           </div>
         ) : (
-          <div className="divide-y divide-surface-100">
+          <div className="divide-y divide-surface-100 stagger-children">
             {actividades.map((a) => (
-              <div key={a.id} className="flex items-start gap-3 px-5 py-4 hover:bg-surface-50 transition-colors">
+              <div key={a.id} className="flex items-start gap-3 px-4 sm:px-5 py-3 sm:py-4 hover:bg-surface-50 transition-colors row-animate">
                 <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${ACCION_COLORS[a.accion] || "bg-surface-300"}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-surface-800">{a.descripcion || `${a.accion} en ${a.entidad}`}</p>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-surface-400">
+                  <p className="text-sm text-surface-800 leading-snug">{a.descripcion || `${a.accion} en ${a.entidad}`}</p>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1.5 sm:mt-1 text-xs text-surface-400">
                     <span className="font-medium text-surface-600">{a.usuario?.nombre}</span>
-                    <span className="px-1.5 py-0.5 bg-surface-100 rounded text-surface-500">{a.entidad}</span>
-                    <span>{new Date(a.createdAt).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                    <Badge variant="secondary" className="text-[10px]">{a.entidad}</Badge>
+                    <span className="text-[10px] sm:text-xs">{format(new Date(a.createdAt), "dd MMM, HH:mm", { locale: es })}</span>
                   </div>
                 </div>
               </div>
@@ -99,7 +105,8 @@ export default function ActividadPage() {
             )}
           </div>
         )}
-      </div>
-    </div>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

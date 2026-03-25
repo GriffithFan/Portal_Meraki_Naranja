@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "@/hooks/useSession";
+import { toast } from "sonner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -42,7 +43,6 @@ export default function FacturacionPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   const fetchReportes = async () => {
     setLoading(true);
@@ -66,13 +66,12 @@ export default function FacturacionPage() {
     });
     const data = await res.json();
     if (res.ok) {
-      setToast(`Reporte generado: ${data.totalTareas} tareas CONFORME`);
+      toast.success(`Reporte generado: ${data.totalTareas} tareas CONFORME`);
       fetchReportes();
     } else {
-      setToast(data.error || "Error al generar");
+      toast.error(data.error || "Error al generar");
     }
     setGenerating(false);
-    setTimeout(() => setToast(null), 4000);
   };
 
   const descargarCSV = (id: string) => {
@@ -80,13 +79,18 @@ export default function FacturacionPage() {
   };
 
   const eliminar = async (id: string) => {
-    if (!confirm("¿Eliminar este reporte permanentemente?")) return;
-    const res = await fetch(`/api/facturacion/${id}`, { method: "DELETE", credentials: "include" });
-    if (res.ok) {
-      setReportes((prev) => prev.filter((r) => r.id !== id));
-      setToast("Reporte eliminado");
-      setTimeout(() => setToast(null), 3000);
-    }
+    toast("¿Eliminar este reporte permanentemente?", {
+      action: {
+        label: "Eliminar",
+        onClick: async () => {
+          const res = await fetch(`/api/facturacion/${id}`, { method: "DELETE", credentials: "include" });
+          if (res.ok) {
+            setReportes((prev) => prev.filter((r) => r.id !== id));
+            toast.success("Reporte eliminado");
+          }
+        },
+      },
+    });
   };
 
   if (!isAdmin) {
@@ -99,13 +103,6 @@ export default function FacturacionPage() {
 
   return (
     <div className="animate-fade-in-up">
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-surface-800 text-white text-xs px-4 py-2.5 rounded-lg shadow-lg animate-fade-in-up">
-          {toast}
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
         <div>

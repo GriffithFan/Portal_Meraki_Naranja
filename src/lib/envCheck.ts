@@ -18,7 +18,7 @@ function validateEnv() {
 
   if (!result.success) {
     const missing = result.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`);
-    console.error(`\n❌ Variables de entorno faltantes:\n${missing.join("\n")}\n`);
+    console.error(`\n[ERROR] Variables de entorno faltantes:\n${missing.join("\n")}\n`);
     if (isProd) process.exit(1);
   }
 
@@ -43,7 +43,7 @@ function validateEnv() {
     }
 
     if (warnings.length > 0) {
-      console.warn(`\n⚠️  ADVERTENCIAS DE SEGURIDAD:\n${warnings.map((w) => `  - ${w}`).join("\n")}\n`);
+      console.warn(`\n[WARNING] ADVERTENCIAS DE SEGURIDAD:\n${warnings.map((w) => `  - ${w}`).join("\n")}\n`);
     }
   }
 }

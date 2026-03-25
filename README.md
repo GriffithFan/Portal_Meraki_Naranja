@@ -1,4 +1,4 @@
-# Portal Meraki Naranja 🥕
+# Portal Meraki Naranja
 
 Panel de monitoreo y gestión para redes Cisco Meraki. Construido con Next.js 14, Prisma, PostgreSQL y Tailwind CSS.
 

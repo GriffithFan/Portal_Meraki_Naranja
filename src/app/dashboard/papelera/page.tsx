@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "@/hooks/useSession";
+import { toast } from "sonner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -62,13 +63,20 @@ export default function PapeleraPage() {
   };
 
   const handleDeletePermanently = async (id: string) => {
-    if (!confirm("¿Eliminar permanentemente? Esta acción no se puede deshacer.")) return;
-    setActionLoading(id);
-    const res = await fetch(`/api/papelera?id=${id}`, { method: "DELETE", credentials: "include" });
-    if (res.ok) {
-      setItems(prev => prev.filter(i => i.id !== id));
-    }
-    setActionLoading(null);
+    toast("¿Eliminar permanentemente? Esta acción no se puede deshacer.", {
+      action: {
+        label: "Eliminar",
+        onClick: async () => {
+          setActionLoading(id);
+          const res = await fetch(`/api/papelera?id=${id}`, { method: "DELETE", credentials: "include" });
+          if (res.ok) {
+            setItems(prev => prev.filter(i => i.id !== id));
+            toast.success("Eliminado permanentemente");
+          }
+          setActionLoading(null);
+        },
+      },
+    });
   };
 
   const handleVaciar = async () => {
