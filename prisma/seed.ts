@@ -30,7 +30,7 @@ async function main() {
     data: {
       nombre: "Griffith",
       email: "griffith@thnet.com",
-      password: await bcrypt.hash("Betoben5.", 12),
+      password: await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || "Admin.Dev.2026!", 12),
       rol: "ADMIN",
     },
   });
@@ -41,7 +41,7 @@ async function main() {
       data: {
         nombre: "Leonel",
         email: "leonel@thnet.com",
-        password: await bcrypt.hash("leonelthnet", 12),
+        password: await bcrypt.hash(process.env.SEED_MOD_PASSWORD || "Mod.Dev.2026!", 12),
         rol: "MODERADOR",
       },
     }),
@@ -49,7 +49,7 @@ async function main() {
       data: {
         nombre: "Enzo",
         email: "enzo@thnet.com",
-        password: await bcrypt.hash("enzothnet", 12),
+        password: await bcrypt.hash(process.env.SEED_MOD_PASSWORD || "Mod.Dev.2026!", 12),
         rol: "MODERADOR",
       },
     }),
@@ -57,7 +57,7 @@ async function main() {
       data: {
         nombre: "Fernando",
         email: "fernando@thnet.com",
-        password: await bcrypt.hash("fernandothnet", 12),
+        password: await bcrypt.hash(process.env.SEED_MOD_PASSWORD || "Mod.Dev.2026!", 12),
         rol: "MODERADOR",
       },
     }),
@@ -65,7 +65,7 @@ async function main() {
       data: {
         nombre: "Luis",
         email: "luis@thnet.com",
-        password: await bcrypt.hash("luisthnet", 12),
+        password: await bcrypt.hash(process.env.SEED_MOD_PASSWORD || "Mod.Dev.2026!", 12),
         rol: "MODERADOR",
       },
     }),
@@ -79,7 +79,7 @@ async function main() {
         data: {
           nombre: `TH${num}`,
           email: `th${num}@thnet.com`,
-          password: bcrypt.hashSync(`thnet${num}`, 12),
+          password: bcrypt.hashSync(process.env.SEED_TECH_PASSWORD || `Tech.Dev.${num}!`, 12),
           rol: "TECNICO",
         },
       });

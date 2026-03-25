@@ -215,8 +215,8 @@
 ## Fase 4: Deploy a Producción + Hardening de Seguridad
 
 ### Deploy VPS (2026-03-18)
-- **Servidor**: Ubuntu 24.04, VPS en 72.61.32.146
-- **Dominio**: `carrot.thnet.com.ar` (registro A, Let's Encrypt TLS)
+- **Servidor**: Ubuntu 24.04, VPS con subdominio dedicado
+- **TLS**: Let's Encrypt con renovacion automatica
 - **Stack**: Node.js v20.19.5, PM2 6.0.13, Nginx 1.24.0, PostgreSQL 16.13
 - **Build**: `npm run build` exitoso, PM2 "carrot" corriendo en puerto 3001
 - **Seed**: 48 predios importados, 12 estados, usuario admin creado

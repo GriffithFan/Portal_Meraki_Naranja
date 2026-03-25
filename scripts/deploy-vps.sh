@@ -17,11 +17,11 @@ fail() { echo -e "${RED}✖ $1${NC}"; exit 1; }
 step() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
 
 # ── Configuración ────────────────────────────────────────────
-REPO="https://github.com/GriffithFan/Portal_Meraki_Naranja.git"
-DEPLOY_DIR="/var/www/carrot"
-APP_PORT=3001
-DB_NAME="carrot_db"
-DB_USER="carrot_user"
+REPO="${REPO_URL:?Error: Definí REPO_URL antes de ejecutar este script}"
+DEPLOY_DIR="${DEPLOY_DIR:-/var/www/app}"
+APP_PORT="${APP_PORT:-3001}"
+DB_NAME="${DB_NAME:-app_db}"
+DB_USER="${DB_USER:-app_user}"
 NODE_MAJOR=20
 
 # ── Verificar root / sudo ───────────────────────────────────

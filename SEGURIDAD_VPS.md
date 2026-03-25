@@ -1,13 +1,13 @@
 # Seguridad VPS — Informe de Configuracion de Produccion
 
-> Servidor: `72.61.32.146` | Dominio: `carrot.thnet.com.ar`  
-> Ultima revision: **2026-03-20**
+> Los valores reales de host, dominio y credenciales se documentan de forma privada y no se incluyen en este archivo.
+> Ultima revision: **2026-03-25**
 
 ---
 
 ## Resumen Ejecutivo
 
-La infraestructura de produccion del Portal Meraki Naranja esta protegida mediante un modelo de defensa en profundidad que abarca las siguientes capas:
+La infraestructura de produccion esta protegida mediante un modelo de defensa en profundidad que abarca las siguientes capas:
 
 | Capa | Medida | Estado |
 |------|--------|--------|
@@ -55,31 +55,29 @@ PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
 MaxAuthTries 3
-AllowUsers deploy
+AllowUsers <DEPLOY_USER>
 ```
 
 | Parametro | Valor |
 |-----------|-------|
-| Usuario autorizado | `deploy` (unico) |
+| Usuario autorizado | Dedicado (unico) |
 | Metodo de autenticacion | Clave SSH ed25519 |
 | Login root | Deshabilitado |
 | Autenticacion por password | Deshabilitada |
-| Directorio de la aplicacion | `/var/www/carrot` (propietario: deploy) |
 
 **Conexion:**
 
 ```bash
-ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
+ssh -i <RUTA_CLAVE_SSH> <DEPLOY_USER>@<IP_SERVIDOR>
 ```
 
 **Agregar acceso desde otra maquina:**
 
 ```bash
 # En la maquina nueva, generar clave:
-ssh-keygen -t ed25519 -C "deploy@carrot-nueva-pc"
+ssh-keygen -t ed25519 -C "<IDENTIFICADOR>"
 
-# Desde una maquina con acceso existente:
-ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
+# Desde una maquina con acceso existente, agregar la clave publica:
 echo "CONTENIDO_DE_id_ed25519.pub" >> ~/.ssh/authorized_keys
 ```
 
@@ -100,7 +98,7 @@ findtime = 600
 [nginx-limit-req]
 enabled = true
 port = http,https
-logpath = /var/log/nginx/carrot-error.log
+logpath = /var/log/nginx/<APP_NAME>-error.log
 maxretry = 10
 bantime = 600
 ```
@@ -119,16 +117,16 @@ sudo fail2ban-client set sshd unbanip <IP>
 
 ## 4. Nginx — Reverse Proxy y TLS
 
-Configuracion activa en `/etc/nginx/sites-enabled/carrot`:
+Ejemplo de configuracion en `/etc/nginx/sites-enabled/<APP_NAME>`:
 
 ```nginx
 limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
 
 server {
-    server_name carrot.thnet.com.ar;
+    server_name <DOMINIO>;
 
-    access_log /var/log/nginx/carrot-access.log;
-    error_log /var/log/nginx/carrot-error.log;
+    access_log /var/log/nginx/<APP_NAME>-access.log;
+    error_log /var/log/nginx/<APP_NAME>-error.log;
 
     # Compresion
     gzip on;
@@ -185,18 +183,18 @@ server {
 
     # TLS (gestionado por Certbot)
     listen 443 ssl;
-    ssl_certificate /etc/letsencrypt/live/carrot.thnet.com.ar/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/carrot.thnet.com.ar/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/<DOMINIO>/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/<DOMINIO>/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 }
 
 server {
-    if ($host = carrot.thnet.com.ar) {
+    if ($host = <DOMINIO>) {
         return 301 https://$host$request_uri;
     }
     listen 80;
-    server_name carrot.thnet.com.ar;
+    server_name <DOMINIO>;
     return 404;
 }
 ```
@@ -213,17 +211,17 @@ El timer de Certbot renueva el certificado automaticamente antes de su vencimien
 
 ## 5. PostgreSQL Hardening
 
-Usuario dedicado `carrot_app` con permisos estrictamente limitados a operaciones CRUD (sin DDL):
+Usuario dedicado con permisos estrictamente limitados a operaciones CRUD (sin DDL):
 
 ```sql
-GRANT CONNECT ON DATABASE carrot_db TO carrot_app;
-GRANT USAGE ON SCHEMA public TO carrot_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO carrot_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO carrot_app;
+GRANT CONNECT ON DATABASE <DB_NAME> TO <DB_USER>;
+GRANT USAGE ON SCHEMA public TO <DB_USER>;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO <DB_USER>;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO <DB_USER>;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO carrot_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO <DB_USER>;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT USAGE, SELECT ON SEQUENCES TO carrot_app;
+    GRANT USAGE, SELECT ON SEQUENCES TO <DB_USER>;
 ```
 
 | Parametro | Valor |
@@ -232,7 +230,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 | Password | Generada con `openssl rand -base64 32` |
 | Acceso DDL | Solo usuario `postgres` (para migraciones de Prisma) |
 
-> **Nota**: Las migraciones de schema (`ALTER TABLE`, `CREATE TABLE`) deben ejecutarse con el usuario `postgres`, no con `carrot_app`.
+> **Nota**: Las migraciones de schema (`ALTER TABLE`, `CREATE TABLE`) deben ejecutarse con el usuario `postgres`, no con el usuario de la aplicacion.
 
 ---
 
@@ -253,9 +251,9 @@ Las credenciales de produccion se encuentran documentadas en `CREDENCIALES.md`, 
 Pasos para activar proteccion CDN/WAF:
 
 1. Crear cuenta en [dash.cloudflare.com](https://dash.cloudflare.com) (plan Free).
-2. Agregar dominio `thnet.com.ar`.
+2. Agregar dominio en Cloudflare.
 3. Cambiar nameservers en el registrador de dominio.
-4. Activar proxy (nube naranja) en registro A de `carrot.thnet.com.ar`.
+4. Activar proxy (nube naranja) en el registro A del subdominio.
 5. Configurar SSL/TLS en modo Full (Strict).
 6. Opcional: activar "Under Attack Mode" ante ataques DDoS.
 
@@ -276,11 +274,11 @@ El sistema aplica automaticamente parches de seguridad del sistema operativo.
 
 ```bash
 # Logs de la aplicacion (PM2)
-sudo pm2 logs carrot --lines 100
+pm2 logs <APP_NAME> --lines 100
 
 # Logs de Nginx
-sudo tail -f /var/log/nginx/carrot-error.log
-sudo tail -f /var/log/nginx/carrot-access.log
+sudo tail -f /var/log/nginx/<APP_NAME>-error.log
+sudo tail -f /var/log/nginx/<APP_NAME>-access.log
 
 # Intentos de acceso SSH fallidos
 sudo journalctl -u sshd | grep "Failed"
@@ -295,47 +293,14 @@ sudo fail2ban-client status sshd
 
 | Parametro | Valor |
 |-----------|-------|
-| Script | `/opt/backup-db.sh` |
 | Programacion | Diaria a las 03:00 (cron) |
 | Retencion | 30 dias |
-| Destino | `/opt/backups/db_YYYYMMDD_HHMM.sql.gz` |
-
-Verificacion:
+| Formato | pg_dump comprimido (gzip) |
 
 ```bash
-ls -la /opt/backups/
+# Crontab entry
+0 3 * * * pg_dump <DB_NAME> | gzip > /opt/backups/db_$(date +\%Y\%m\%d).sql.gz
+
+# Limpieza de backups antiguos (>30 días)
+find /opt/backups -name "db_*.sql.gz" -mtime +30 -delete
 ```
-
----
-
-## 11. PM2 Logrotate
-
-```bash
-pm2 install pm2-logrotate
-pm2 set pm2-logrotate:max_size 50M
-pm2 set pm2-logrotate:retain 7
-pm2 set pm2-logrotate:compress true
-```
-
----
-
-## Checklist de Seguridad
-
-| Control | Estado |
-|---------|--------|
-| UFW habilitado (puertos 22/80/443) | Aplicado |
-| SSH sin root, sin password (solo deploy con ed25519) | Aplicado |
-| Fail2ban activo (sshd + nginx-limit-req) | Aplicado |
-| Nginx con TLS y rate limiting (/api/ 30r/s) | Aplicado |
-| HSTS configurado (max-age 1 ano, includeSubDomains) | Aplicado |
-| Nginx bloquea `/uploads/` directamente | Aplicado |
-| PostgreSQL solo en localhost, usuario dedicado (carrot_app, solo CRUD) | Aplicado |
-| Backup automatico de DB (cron 03:00, 30 dias retencion) | Aplicado |
-| Secretos rotados (JWT_SECRET, CRON_SECRET) | Aplicado |
-| MERAKI_API_KEY configurado | Aplicado |
-| NODE_ENV=production en .env | Aplicado |
-| Build de produccion verificado | Aplicado |
-| Certificado TLS con renovacion automatica (certbot timer) | Aplicado |
-| PM2 logrotate (50 MB, 7 retenciones, compresion) | Aplicado |
-| Unattended-upgrades para parches de seguridad | Aplicado |
-| Cloudflare proxy (ocultar IP, WAF, DDoS) | Pendiente |

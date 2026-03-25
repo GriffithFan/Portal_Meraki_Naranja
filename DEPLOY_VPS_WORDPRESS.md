@@ -1,33 +1,30 @@
-# Deploy en VPS Ubuntu — carrot.thnet.com.ar
+# Deploy en VPS Ubuntu
 
-Guía de despliegue de **Carrot** en un VPS Ubuntu 24.04 con subdominio dedicado.
+Guía de despliegue del proyecto en un VPS Ubuntu 24.04 con subdominio dedicado.
 
-> **Estado actual**: Desplegado y corriendo en producción.
-> **URL**: https://carrot.thnet.com.ar
-> **VPS**: 72.61.32.146
+> Los valores reales de host, dominio y credenciales se documentan de forma privada en `CREDENCIALES.md` (excluido del repositorio).
 
 ---
 
-## Arquitectura actual
+## Arquitectura
 
 ```
                     ┌──────────────────────────┐
-  Usuario ──────▶   │  carrot.thnet.com.ar     │
-                    │  (A record → 72.61.32.146)│
+  Usuario ──────▶   │  <DOMINIO>               │
+                    │  (A record → <IP>)       │
                     └──────────┬───────────────┘
                                │ HTTPS :443
                                ▼
                     ┌──────────────────────────┐
                     │  VPS Ubuntu 24.04        │
-                    │  Nginx :443 (TLS)        │──▶ Next.js :3001 (PM2 "carrot")
-                    │                          │──▶ Portal Meraki :XXXX
-                    │                          │──▶ PostgreSQL :5432 (carrot_db)
+                    │  Nginx :443 (TLS)        │──▶ Next.js :3001 (PM2)
+                    │                          │──▶ PostgreSQL :5432
                     └──────────────────────────┘
 ```
 
-- **Sin basePath** — El subdominio apunta directo a la app (no `/carrot`)
-- **SSH**: solo usuario `deploy` con clave ed25519
-- **DB**: usuario app `carrot_app` (solo CRUD, sin DDL)
+- **Sin basePath** — El subdominio apunta directo a la app
+- **SSH**: solo usuario dedicado con clave ed25519
+- **DB**: usuario app con permisos CRUD-only (sin DDL)
 
 ---
 
@@ -58,16 +55,15 @@ sudo apt-get install -y certbot python3-certbot-nginx
 ```bash
 sudo -u postgres psql
 
-CREATE DATABASE carrot_db;
--- Usuario app (solo CRUD, sin DDL)
-CREATE USER carrot_app WITH PASSWORD 'PASSWORD_GENERADA_CON_OPENSSL';
-GRANT CONNECT ON DATABASE carrot_db TO carrot_app;
-\c carrot_db
-GRANT USAGE ON SCHEMA public TO carrot_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO carrot_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO carrot_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO carrot_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO carrot_app;
+CREATE DATABASE <DB_NAME>;
+CREATE USER <DB_USER> WITH PASSWORD '<PASSWORD_GENERADA>';
+GRANT CONNECT ON DATABASE <DB_NAME> TO <DB_USER>;
+\c <DB_NAME>
+GRANT USAGE ON SCHEMA public TO <DB_USER>;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO <DB_USER>;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO <DB_USER>;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO <DB_USER>;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO <DB_USER>;
 \q
 ```
 
@@ -76,11 +72,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ca
 ### 1.3 Crear usuario deploy y directorio
 
 ```bash
-sudo adduser --disabled-password --gecos "" deploy
-sudo usermod -aG sudo deploy
-echo "deploy ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/deploy
-sudo mkdir -p /var/www/carrot
-sudo chown deploy:deploy /var/www/carrot
+sudo adduser --disabled-password --gecos "" <DEPLOY_USER>
+sudo usermod -aG sudo <DEPLOY_USER>
+echo "<DEPLOY_USER> ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/<DEPLOY_USER>
+sudo mkdir -p /var/www/<APP_DIR>
+sudo chown <DEPLOY_USER>:<DEPLOY_USER> /var/www/<APP_DIR>
 ```
 
 ---
@@ -90,33 +86,33 @@ sudo chown deploy:deploy /var/www/carrot
 ### 2.1 Subir archivos
 
 ```bash
-# Desde tu máquina local (PowerShell) — con SSH key
-scp -i ~/.ssh/id_ed25519 -r .\portal-meraki-naranja\* deploy@72.61.32.146:/var/www/carrot/
+# Desde la máquina local — con SSH key
+scp -i <RUTA_CLAVE_SSH> -r ./* <DEPLOY_USER>@<IP>:/var/www/<APP_DIR>/
 ```
 
 O con Git:
 ```bash
-ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
-cd /var/www/carrot
-git clone https://github.com/GriffithFan/Portal_Meraki_Naranja.git .
+ssh -i <RUTA_CLAVE_SSH> <DEPLOY_USER>@<IP>
+cd /var/www/<APP_DIR>
+git clone <REPO_URL> .
 ```
 
 ### 2.2 Configurar variables de entorno
 
 ```bash
-cd /var/www/carrot
+cd /var/www/<APP_DIR>
 nano .env
 ```
 
 Contenido del `.env`:
 ```env
-DATABASE_URL="postgresql://carrot_app:TU_PASSWORD@localhost:5432/carrot_db"
-JWT_SECRET="genera_con_crypto_randomBytes_48"
-MERAKI_API_KEY="tu_api_key"
+DATABASE_URL="postgresql://<DB_USER>:<PASSWORD>@localhost:5432/<DB_NAME>"
+JWT_SECRET="<GENERAR_CON_OPENSSL_RAND>"
+MERAKI_API_KEY="<TU_API_KEY>"
 NODE_ENV="production"
 PORT=3001
-NEXT_PUBLIC_VAPID_KEY="tu_vapid_public_key"
-VAPID_PRIVATE_KEY="tu_vapid_private_key"
+NEXT_PUBLIC_VAPID_KEY="<VAPID_PUBLIC>"
+VAPID_PRIVATE_KEY="<VAPID_PRIVATE>"
 ```
 
 > **Puerto 3001** para no chocar con otros proyectos en el VPS.
@@ -125,8 +121,8 @@ VAPID_PRIVATE_KEY="tu_vapid_private_key"
 ### 2.3 Instalar dependencias y buildear
 
 ```bash
-cd /var/www/carrot
-npm ci --omit=dev
+cd /var/www/<APP_DIR>
+npm ci
 npx prisma generate
 npx prisma db push    # usar usuario postgres para migraciones
 npm run build
@@ -143,10 +139,10 @@ El proyecto incluye `ecosystem.config.js` preconfigurado:
 ```js
 module.exports = {
   apps: [{
-    name: 'carrot',
+    name: '<APP_NAME>',
     script: 'node_modules/.bin/next',
     args: 'start',
-    cwd: '/var/www/carrot',
+    cwd: '/var/www/<APP_DIR>',
     instances: 1,
     exec_mode: 'fork',
     env: {
@@ -167,7 +163,7 @@ module.exports = {
 ### 3.2 Iniciar con PM2
 
 ```bash
-cd /var/www/carrot
+cd /var/www/<APP_DIR>
 mkdir -p logs
 pm2 start ecosystem.config.js
 pm2 save
@@ -178,7 +174,7 @@ pm2 startup  # Auto-arranque al reiniciar VPS
 
 ```bash
 pm2 status
-pm2 logs carrot
+pm2 logs <APP_NAME>
 curl http://localhost:3001  # Debería responder HTML
 ```
 
@@ -186,23 +182,25 @@ curl http://localhost:3001  # Debería responder HTML
 
 ## 4. Nginx — Reverse Proxy con TLS
 
-Config actual en `/etc/nginx/sites-available/carrot`:
+Ejemplo de configuración en `/etc/nginx/sites-available/<APP_NAME>`:
 
 ```nginx
 limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
 
 server {
-    server_name carrot.thnet.com.ar;
+    server_name <DOMINIO>;
 
-    access_log /var/log/nginx/carrot-access.log;
-    error_log /var/log/nginx/carrot-error.log;
+    access_log /var/log/nginx/<APP_NAME>-access.log;
+    error_log /var/log/nginx/<APP_NAME>-error.log;
 
     gzip on;
     gzip_vary on;
     gzip_proxied any;
     gzip_comp_level 6;
     gzip_min_length 1024;
-    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml+rss image/svg+xml;
+    gzip_types text/plain text/css text/xml text/javascript
+               application/javascript application/json
+               application/xml+rss image/svg+xml;
 
     location /uploads/ {
         deny all;
@@ -242,19 +240,20 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
 
+    # TLS (gestionado por Certbot)
     listen 443 ssl;
-    ssl_certificate /etc/letsencrypt/live/carrot.thnet.com.ar/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/carrot.thnet.com.ar/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/<DOMINIO>/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/<DOMINIO>/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 }
 
 server {
-    if ($host = carrot.thnet.com.ar) {
+    if ($host = <DOMINIO>) {
         return 301 https://$host$request_uri;
     }
     listen 80;
-    server_name carrot.thnet.com.ar;
+    server_name <DOMINIO>;
     return 404;
 }
 ```
@@ -262,7 +261,7 @@ server {
 ### 4.1 Habilitar y testear
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/carrot /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/<APP_NAME> /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -271,20 +270,20 @@ sudo systemctl reload nginx
 
 ## 5. DNS — Configuración del subdominio
 
-En el panel DNS del dominio `thnet.com.ar`:
+En el panel DNS del dominio:
 
 | Tipo | Nombre | Valor | TTL |
 |------|--------|-------|-----|
-| A | carrot | 72.61.32.146 | 3600 |
+| A | `<SUBDOMINIO>` | `<IP>` | 3600 |
 
-> Si se usa Cloudflare: activar proxy (nube naranja) y SSL/TLS → Full (Strict).
+> Si se usa Cloudflare: activar proxy (nube naranja) y SSL/TLS en modo Full (Strict).
 
 ---
 
 ## 6. SSL / HTTPS
 
 ```bash
-sudo certbot --nginx -d carrot.thnet.com.ar
+sudo certbot --nginx -d <DOMINIO>
 sudo certbot renew --dry-run  # verificar renovación automática
 ```
 
@@ -301,7 +300,7 @@ sudo ufw allow 443/tcp  # HTTPS
 sudo ufw enable
 ```
 
-> El puerto 3001 NO se expone — Nginx actúa como proxy.
+> El puerto de la app NO se expone directamente — Nginx actúa como proxy.
 
 ---
 
@@ -309,22 +308,21 @@ sudo ufw enable
 
 ```bash
 # Conexión SSH
-ssh -i ~/.ssh/id_ed25519 deploy@72.61.32.146
+ssh -i <RUTA_CLAVE_SSH> <DEPLOY_USER>@<IP>
 
 # Ver logs
-pm2 logs carrot --lines 100
+pm2 logs <APP_NAME> --lines 100
 
 # Reiniciar app
-pm2 restart carrot
+pm2 restart <APP_NAME>
 
 # Actualizar código
-cd /var/www/carrot
+cd /var/www/<APP_DIR>
 git pull
-npm ci --omit=dev
+npm ci
 npx prisma generate
-npx prisma db push
 npm run build
-pm2 restart carrot
+pm2 restart <APP_NAME>
 
 # Monitorear
 pm2 monit
@@ -333,30 +331,30 @@ pm2 monit
 pm2 status
 
 # Backup manual de DB
-sudo -u postgres pg_dump carrot_db | gzip > /opt/backups/db_manual_$(date +%Y%m%d).sql.gz
+sudo -u postgres pg_dump <DB_NAME> | gzip > /opt/backups/db_manual_$(date +%Y%m%d).sql.gz
 ```
 
 ---
 
 ## 9. Checklist de Deploy
 
-- [x] Node.js 20+ instalado
-- [x] PostgreSQL corriendo con usuario `carrot_app` (solo CRUD)
-- [x] Proyecto clonado en `/var/www/carrot`
-- [x] `.env` configurado (DATABASE_URL, JWT_SECRET, MERAKI_API_KEY)
-- [x] `npm ci && npx prisma db push && npm run build` exitoso
-- [x] PM2 corriendo (`pm2 status` muestra "online")
-- [x] `curl http://localhost:3001` responde
-- [x] Nginx configurado con server block para `carrot.thnet.com.ar`
-- [x] DNS registro A apuntando al VPS
-- [x] SSL/TLS con Let's Encrypt (certbot)
-- [x] Firewall UFW habilitado (22/80/443)
-- [x] SSH hardening (solo deploy con key, sin root, sin password)
-- [x] Fail2ban activo (sshd + nginx-limit-req)
-- [x] PM2 logrotate configurado
-- [x] Backup automático de DB (cron 3 AM)
-- [x] Primer usuario admin creado: `npx prisma db seed`
-- [x] Probado desde navegador: `https://carrot.thnet.com.ar`
+- [ ] Node.js 20+ instalado
+- [ ] PostgreSQL corriendo con usuario CRUD-only
+- [ ] Proyecto clonado en el directorio de deploy
+- [ ] `.env` configurado con todas las variables requeridas
+- [ ] `npm ci && npx prisma db push && npm run build` exitoso
+- [ ] PM2 corriendo (`pm2 status` muestra "online")
+- [ ] `curl http://localhost:3001` responde
+- [ ] Nginx configurado con server block para el dominio
+- [ ] DNS registro A apuntando al VPS
+- [ ] SSL/TLS con Let's Encrypt (certbot)
+- [ ] Firewall UFW habilitado (22/80/443)
+- [ ] SSH hardening (solo key auth, sin root, sin password)
+- [ ] Fail2ban activo (sshd + nginx-limit-req)
+- [ ] PM2 logrotate configurado
+- [ ] Backup automático de DB configurado
+- [ ] Primer usuario admin creado: `npx prisma db seed`
+- [ ] Probado desde navegador
 - [ ] Cloudflare proxy (opcional)
 
 ---
@@ -368,14 +366,14 @@ El proyecto incluye scripts para automatizar el proceso:
 ### Primera instalación
 ```bash
 # En el VPS:
-git clone https://github.com/GriffithFan/Portal_Meraki_Naranja.git /var/www/carrot
-cd /var/www/carrot
+git clone <REPO_URL> /var/www/<APP_DIR>
+cd /var/www/<APP_DIR>
 sudo bash scripts/deploy-vps.sh
 ```
 
 ### Actualizaciones
 ```bash
-cd /var/www/carrot
+cd /var/www/<APP_DIR>
 bash scripts/update.sh
 ```
 
@@ -385,9 +383,8 @@ bash scripts/update.sh
 
 | Problema | Solución |
 |----------|----------|
-| 502 Bad Gateway | Verificar que PM2 está corriendo: `pm2 status`. Revisar logs: `pm2 logs carrot` |
-| 404 en /carrot | Verificar `NEXT_PUBLIC_BASE_PATH="/carrot"` en `.env`. Rebuild: `npm run build` |
-| Assets no cargan | Verificar location `/carrot/_next/static` en Nginx |
-| CORS errors | Verificar `NEXTAUTH_URL` en .env coincide con la URL real |
+| 502 Bad Gateway | Verificar que PM2 está corriendo: `pm2 status`. Revisar logs: `pm2 logs <APP_NAME>` |
+| Assets no cargan | Verificar location `/_next/static` en Nginx |
+| CORS errors | Verificar que la URL en .env coincide con la URL real |
 | DB connection refused | Verificar `DATABASE_URL` en .env, y que PostgreSQL acepta conexiones locales |
 | Conflicto de puertos | Cambiar PORT en .env y ecosystem.config.js a otro puerto libre |

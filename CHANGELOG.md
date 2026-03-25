@@ -63,13 +63,13 @@
 ## [2026-03-18] — Deploy a producción + Hardening de seguridad
 
 ### Deploy VPS
-- App desplegada en `carrot.thnet.com.ar` (VPS Ubuntu 24.04, 72.61.32.146).
-- PM2 "carrot" en puerto 3001, Nginx reverse proxy con TLS.
+- App desplegada en VPS Ubuntu 24.04 con subdominio dedicado.
+- PM2 con Nginx reverse proxy y TLS.
 - PostgreSQL 16.13 con 48 predios importados.
 
 ### Seguridad aplicada
 1. **Fail2ban** — sshd (3 intentos/ban 1h) + nginx-limit-req (10 intentos/ban 10min).
-2. **SSH hardening** — Usuario `deploy` con key ed25519, root login desactivado, password auth desactivado.
+2. **SSH hardening** — Usuario dedicado con key ed25519, root login desactivado, password auth desactivado.
 3. **PostgreSQL hardening** — Usuario `carrot_app` con permisos CRUD-only (sin DDL).
 4. **Nginx rate limiting** — `/api/` limitado a 30r/s burst=20.
 5. **Nginx HSTS** — max-age=31536000; includeSubDomains.
