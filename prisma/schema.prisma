@@ -28,6 +28,7 @@ model User {
   email     String   @unique
   password  String
   rol       Role     @default(TECNICO)
+  esMesa    Boolean  @default(false) // Rol secundario: puede atender consultas en Mesa de Ayuda
   activo    Boolean  @default(true)
   telefono  String?
   createdAt DateTime @default(now())
@@ -49,6 +50,9 @@ model User {
   delegacionesRecibidas Delegacion[] @relation("DelegadoUser")
   facturas             ReporteFacturacion[] @relation("GeneradorReporte")
   papeleraItems        PapeleraItem[] @relation("EliminadorPapelera")
+  chatsCreados         ChatConversacion[] @relation("CreadorChat")
+  chatsAtendidos       ChatConversacion[] @relation("AgenteChat")
+  mensajesChat         ChatMensaje[]
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -519,4 +523,39 @@ model PapeleraItem {
   @@index([tipo])
   @@index([eliminadoPorId])
   @@index([createdAt])
+}
+
+// ─── CHAT MESA DE AYUDA ─────────────────────────────
+model ChatConversacion {
+  id          String    @id @default(cuid())
+  asunto      String    // Asunto breve del técnico
+  estado      String    @default("ABIERTA") // ABIERTA (esperando), EN_CURSO, CERRADA
+  creadorId   String    // El técnico que inicia
+  agenteId    String?   // El usuario Mesa que toma la conversación
+  creador     User      @relation("CreadorChat", fields: [creadorId], references: [id], onDelete: Cascade)
+  agente      User?     @relation("AgenteChat", fields: [agenteId], references: [id], onDelete: SetNull)
+  mensajes    ChatMensaje[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cerradoAt   DateTime?
+
+  @@index([creadorId])
+  @@index([agenteId])
+  @@index([estado])
+  @@index([createdAt])
+}
+
+model ChatMensaje {
+  id              String   @id @default(cuid())
+  contenido       String   @db.Text
+  conversacionId  String
+  autorId         String
+  conversacion    ChatConversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  autor           User @relation(fields: [autorId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@index([conversacionId, createdAt])
+  @@index([autorId])
 }

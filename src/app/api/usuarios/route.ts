@@ -10,7 +10,7 @@ export async function GET() {
 
   const usuarios = await prisma.user.findMany({
     where: { activo: true },
-    select: { id: true, nombre: true, email: true, rol: true },
+    select: { id: true, nombre: true, email: true, rol: true, esMesa: true },
     orderBy: { nombre: "asc" },
   });
 
@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest) {
   const updated = await prisma.user.update({
     where: { id: userId },
     data: { rol },
-    select: { id: true, nombre: true, email: true, rol: true },
+    select: { id: true, nombre: true, email: true, rol: true, esMesa: true },
   });
 
   return NextResponse.json(updated);

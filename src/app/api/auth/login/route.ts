@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       rol: user.rol,
       nombre: user.nombre,
+      esMesa: user.esMesa,
     });
 
     await setTokenCookie(token);
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
         nombre: user.nombre,
         email: user.email,
         rol: user.rol,
+        esMesa: user.esMesa,
       },
     });
   } catch {

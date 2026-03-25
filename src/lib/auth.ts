@@ -14,6 +14,7 @@ export interface TokenPayload {
   email: string;
   rol: string;
   nombre: string;
+  esMesa?: boolean;
 }
 
 export async function createToken(payload: TokenPayload): Promise<string> {

@@ -11,6 +11,7 @@ import { SessionProvider } from "@/contexts/SessionContext";
 import { SearchProvider } from "@/contexts/SearchContext";
 import PushNotificationRegistrar from "@/components/PushNotificationRegistrar";
 import CommandPalette from "@/components/CommandPalette";
+import ChatFloatingWidget from "@/components/ChatFloatingWidget";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 
 export default function DashboardLayout({
@@ -37,6 +38,7 @@ export default function DashboardLayout({
               <Breadcrumbs />
               {children}
             </main>
+            <ChatFloatingWidget />
           </div>
         </div>
       </NetworkProvider>

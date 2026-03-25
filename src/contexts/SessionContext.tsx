@@ -6,6 +6,7 @@ interface Session {
   email: string;
   rol: string;
   nombre: string;
+  esMesa?: boolean;
 }
 
 interface SessionContextType {
@@ -13,6 +14,7 @@ interface SessionContextType {
   loading: boolean;
   isModOrAdmin: boolean;
   isAdmin: boolean;
+  isMesa: boolean;
 }
 
 const SessionContext = createContext<SessionContextType | null>(null);
@@ -40,7 +42,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => {
     const isModOrAdmin = session?.rol === "ADMIN" || session?.rol === "MODERADOR";
     const isAdmin = session?.rol === "ADMIN";
-    return { session, loading, isModOrAdmin, isAdmin };
+    const isMesa = session?.esMesa === true;
+    return { session, loading, isModOrAdmin, isAdmin, isMesa };
   }, [session, loading]);
 
   return (
