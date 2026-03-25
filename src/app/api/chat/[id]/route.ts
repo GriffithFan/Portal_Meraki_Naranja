@@ -40,11 +40,11 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
   }
 
-  // Verificar acceso: creador o agente Mesa
+  // Verificar acceso: creador, agente, o cualquier usuario Mesa
   const esCreador = conversacion.creadorId === session.userId;
   const esAgente = conversacion.agenteId === session.userId;
   const esMesa = user?.esMesa === true;
-  const puedeVer = esCreador || esAgente || (esMesa && conversacion.estado === "ABIERTA");
+  const puedeVer = esCreador || esAgente || esMesa;
 
   if (!puedeVer) {
     return NextResponse.json({ error: "Sin acceso" }, { status: 403 });

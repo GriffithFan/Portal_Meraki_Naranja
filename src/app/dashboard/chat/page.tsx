@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -22,9 +21,6 @@ export default function ChatPage() {
   const [seleccionada, setSeleccionada] = useState<any>(null);
   const [mensajes, setMensajes] = useState<any[]>([]);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
-  const [nuevoAsunto, setNuevoAsunto] = useState("");
-  const [nuevaConsulta, setNuevaConsulta] = useState("");
-  const [creando, setCreando] = useState(false);
   const [loading, setLoading] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [vistaMovil, setVistaMovil] = useState<"lista" | "chat">("lista");
@@ -80,7 +76,16 @@ export default function ChatPage() {
 
   const enviarMensaje = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nuevoMensaje.trim() || !seleccionada || enviando) return;
+    if (!nuevoMensaje.trim() || enviando) return;
+
+    // Si no hay conversación seleccionada y no es Mesa, crear nueva
+    if (!seleccionada && !isMesa) {
+      await crearConsulta(nuevoMensaje);
+      setNuevoMensaje("");
+      return;
+    }
+
+    if (!seleccionada) return;
     setEnviando(true);
     try {
       const res = await fetch(`/api/chat/${seleccionada.id}`, {
@@ -97,22 +102,18 @@ export default function ChatPage() {
     setEnviando(false);
   };
 
-  const crearConsulta = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nuevoAsunto.trim() || !nuevaConsulta.trim() || enviando) return;
+  const crearConsulta = async (primerMensaje: string) => {
+    if (!primerMensaje.trim() || enviando) return;
     setEnviando(true);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ asunto: nuevoAsunto.trim(), mensaje: nuevaConsulta.trim() }),
+        body: JSON.stringify({ mensaje: primerMensaje.trim() }),
       });
       if (res.ok) {
         const data = await res.json();
-        setNuevoAsunto("");
-        setNuevaConsulta("");
-        setCreando(false);
         await cargarConversaciones();
         seleccionarConv(data);
       } else {
@@ -182,56 +183,7 @@ export default function ChatPage() {
               : "Enviá tus consultas a Mesa de Ayuda"}
           </p>
         </div>
-        {!isMesa && !tieneActiva && (
-          <button
-            onClick={() => setCreando(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
-          >
-            Nueva consulta
-          </button>
-        )}
       </div>
-
-      {/* Form nueva consulta (técnico) */}
-      {creando && (
-        <Card className="p-4 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700">
-          <form onSubmit={crearConsulta} className="space-y-3">
-            <h3 className="font-semibold text-surface-800 dark:text-surface-100">Nueva consulta</h3>
-            <input
-              type="text"
-              placeholder="Asunto breve..."
-              value={nuevoAsunto}
-              onChange={(e) => setNuevoAsunto(e.target.value)}
-              maxLength={200}
-              className="w-full px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-            <textarea
-              placeholder="Describí tu consulta..."
-              value={nuevaConsulta}
-              onChange={(e) => setNuevaConsulta(e.target.value)}
-              maxLength={2000}
-              rows={3}
-              className="w-full px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => { setCreando(false); setNuevoAsunto(""); setNuevaConsulta(""); }}
-                className="px-3 py-1.5 text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={enviando || !nuevoAsunto.trim() || !nuevaConsulta.trim()}
-                className="px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition text-sm font-medium"
-              >
-                {enviando ? "Enviando..." : "Enviar consulta"}
-              </button>
-            </div>
-          </form>
-        </Card>
-      )}
 
       {/* Layout principal: lista + chat */}
       <div className="flex gap-4 h-[calc(100vh-220px)] min-h-[400px]">
@@ -268,10 +220,9 @@ export default function ChatPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-surface-800 dark:text-surface-100 truncate">
-                        {conv.asunto}
+                        {isMesa ? conv.creador?.nombre : "Mesa de Ayuda"}
                       </p>
                       <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
-                        {isMesa ? conv.creador?.nombre : "Mesa de Ayuda"} ·{" "}
                         {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: es })}
                       </p>
                       {conv.mensajes?.[0] && (
@@ -296,11 +247,38 @@ export default function ChatPage() {
           vistaMovil === "lista" && "hidden md:flex"
         )}>
           {!seleccionada ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-surface-400 dark:text-surface-500">
-              <svg className="w-16 h-16 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-              </svg>
-              <p className="text-sm">Seleccioná una conversación</p>
+            <div className="flex-1 flex flex-col">
+              <div className="flex-1 flex flex-col items-center justify-center text-surface-400 dark:text-surface-500">
+                <svg className="w-16 h-16 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
+                </svg>
+                <p className="text-sm">
+                  {isMesa ? "Seleccioná una conversación" : !tieneActiva ? "Escribí tu primer mensaje para iniciar" : "Seleccioná tu conversación"}
+                </p>
+              </div>
+              {!isMesa && !tieneActiva && (
+                <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Escribí tu consulta..."
+                      value={nuevoMensaje}
+                      onChange={(e) => setNuevoMensaje(e.target.value)}
+                      maxLength={2000}
+                      className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!nuevoMensaje.trim() || enviando}
+                      className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                      </svg>
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           ) : (
             <>
@@ -317,11 +295,9 @@ export default function ChatPage() {
                   </button>
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-100 truncate">
-                      {seleccionada.asunto}
+                      {isMesa ? seleccionada.creador?.nombre : "Mesa de Ayuda"}
                     </h3>
                     <p className="text-xs text-surface-500 dark:text-surface-400">
-                      {isMesa ? seleccionada.creador?.nombre : "Mesa de Ayuda"}
-                      {" · "}
                       <span className={clsx(
                         seleccionada.estado === "EN_CURSO" && "text-blue-500",
                         seleccionada.estado === "ABIERTA" && "text-amber-500",

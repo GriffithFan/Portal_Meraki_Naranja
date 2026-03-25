@@ -24,19 +24,10 @@ export async function GET(request: NextRequest) {
   let where: any;
 
   if (user?.esMesa) {
-    // Mesa ve: conversations sin asignar (ABIERTA) + las que tomó (EN_CURSO/CERRADA)
-    where = {
-      OR: [
-        { estado: "ABIERTA", agenteId: null },
-        { agenteId: session.userId },
-      ],
-    };
+    // Mesa ve TODAS las conversaciones (historial completo)
+    where = {};
     if (estado) {
-      if (estado === "ABIERTA") {
-        where = { estado: "ABIERTA", agenteId: null };
-      } else {
-        where = { estado, agenteId: session.userId };
-      }
+      where.estado = estado;
     }
   } else {
     // Técnico solo ve sus propias conversaciones
@@ -63,8 +54,8 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/chat — Técnico crea nueva conversación
- * Body: { asunto: string, mensaje: string }
+ * POST /api/chat — Técnico crea nueva conversación (chat en vivo)
+ * Body: { mensaje: string }
  */
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -72,11 +63,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { asunto, mensaje } = body;
+    const { mensaje } = body;
 
-    if (!asunto?.trim() || !mensaje?.trim()) {
+    if (!mensaje?.trim()) {
       return NextResponse.json(
-        { error: "Asunto y mensaje son requeridos" },
+        { error: "Mensaje requerido" },
         { status: 400 }
       );
     }
@@ -98,7 +89,6 @@ export async function POST(request: NextRequest) {
 
     const conversacion = await prisma.chatConversacion.create({
       data: {
-        asunto: asunto.trim().slice(0, 200),
         creadorId: session.userId,
         mensajes: {
           create: {
@@ -126,7 +116,7 @@ export async function POST(request: NextRequest) {
           enviarPushYBandeja(u.id, {
             tipo: "CHAT",
             titulo: "Nueva consulta en Mesa de Ayuda",
-            mensaje: `${session.nombre}: ${asunto.trim().slice(0, 80)}`,
+            mensaje: `${session.nombre}: ${mensaje.trim().slice(0, 80)}`,
             enlace: "/dashboard/chat",
             entidad: "CHAT",
             entidadId: conversacion.id,

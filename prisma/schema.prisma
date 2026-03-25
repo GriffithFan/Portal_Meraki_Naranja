@@ -528,7 +528,7 @@ model PapeleraItem {
 // ─── CHAT MESA DE AYUDA ─────────────────────────────
 model ChatConversacion {
   id          String    @id @default(cuid())
-  asunto      String    // Asunto breve del técnico
+  asunto      String?   // Opcional, se auto-genera si no se provee
   estado      String    @default("ABIERTA") // ABIERTA (esperando), EN_CURSO, CERRADA
   creadorId   String    // El técnico que inicia
   agenteId    String?   // El usuario Mesa que toma la conversación
