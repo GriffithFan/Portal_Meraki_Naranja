@@ -34,8 +34,8 @@ const SECCIONES = [
 const ROLES_EDITABLES = ["MODERADOR", "TECNICO"] as const;
 
 const ROL_COLORS: Record<string, string> = {
-  MODERADOR: "text-amber-700 bg-amber-50 border-amber-200",
-  TECNICO: "text-teal-700 bg-teal-50 border-teal-200",
+  MODERADOR: "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-900/30 dark:border-amber-700",
+  TECNICO: "text-teal-700 bg-teal-50 border-teal-200 dark:text-teal-300 dark:bg-teal-900/30 dark:border-teal-700",
 };
 
 export default function PermisosPage() {
@@ -230,11 +230,11 @@ export default function PermisosPage() {
       ) : (
         <>
           {/* Desktop matrix */}
-          <div className="hidden md:block bg-white rounded-lg border border-surface-200 overflow-hidden">
+          <div className="hidden md:block bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
             <table className="w-full text-[11px]">
-              <thead className="border-b border-surface-200 bg-surface-50">
+              <thead className="border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/80">
                 <tr>
-                  <th className="text-left px-4 py-3 uppercase text-[10px] tracking-wider text-surface-400 font-medium w-[180px]">Sección</th>
+                  <th className="text-left px-4 py-3 uppercase text-[10px] tracking-wider text-surface-400 dark:text-surface-500 font-medium w-[180px]">Sección</th>
                   {ROLES_EDITABLES.map((rol) => (
                     <th key={rol} className="text-center px-3 py-3" colSpan={2}>
                       <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border ${ROL_COLORS[rol]}`}>
@@ -243,12 +243,12 @@ export default function PermisosPage() {
                     </th>
                   ))}
                 </tr>
-                <tr className="border-b border-surface-100">
+                <tr className="border-b border-surface-100 dark:border-surface-700">
                   <th />
                   {ROLES_EDITABLES.map((rol) => (
                     <th key={`${rol}-sub`} className="contents">
-                      <th className="text-center px-3 py-1.5 text-[10px] text-surface-400 font-medium">Ver</th>
-                      <th className="text-center px-3 py-1.5 text-[10px] text-surface-400 font-medium border-r border-surface-100 last:border-r-0">Editar</th>
+                      <th className="text-center px-3 py-1.5 text-[10px] text-surface-400 dark:text-surface-500 font-medium">Ver</th>
+                      <th className="text-center px-3 py-1.5 text-[10px] text-surface-400 dark:text-surface-500 font-medium border-r border-surface-100 dark:border-surface-700 last:border-r-0">Editar</th>
                     </th>
                   ))}
                 </tr>
@@ -257,13 +257,13 @@ export default function PermisosPage() {
                 {grupos.map((grupo) => (
                   <>
                     <tr key={`g-${grupo}`}>
-                      <td colSpan={1 + ROLES_EDITABLES.length * 2} className="px-4 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-400 bg-surface-50/50">
+                      <td colSpan={1 + ROLES_EDITABLES.length * 2} className="px-4 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500 bg-surface-50/50 dark:bg-surface-700/30">
                         {grupo}
                       </td>
                     </tr>
                     {SECCIONES.filter((s) => s.grupo === grupo).map((sec, idx) => (
-                      <tr key={sec.clave} className={`hover:bg-surface-50 ${idx % 2 ? "bg-surface-50/30" : ""}`}>
-                        <td className="px-4 py-2 text-surface-700 font-medium">{sec.label}</td>
+                      <tr key={sec.clave} className={`hover:bg-surface-50 dark:hover:bg-surface-700/50 ${idx % 2 ? "bg-surface-50/30 dark:bg-surface-700/20" : ""}`}>
+                        <td className="px-4 py-2 text-surface-700 dark:text-surface-300 font-medium">{sec.label}</td>
                         {ROLES_EDITABLES.map((rol) => {
                           const p = getPermiso(sec.clave, rol);
                           return (
@@ -276,7 +276,7 @@ export default function PermisosPage() {
                                   className="w-3.5 h-3.5 rounded border-surface-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
                                 />
                               </td>
-                              <td className="text-center px-3 py-2 border-r border-surface-100 last:border-r-0">
+                              <td className="text-center px-3 py-2 border-r border-surface-100 dark:border-surface-700 last:border-r-0">
                                 <input
                                   type="checkbox"
                                   checked={p.editar}
@@ -301,8 +301,8 @@ export default function PermisosPage() {
               <div key={grupo}>
                 <h3 className="text-[10px] font-semibold uppercase tracking-wider text-surface-400 mb-2 px-1">{grupo}</h3>
                 {SECCIONES.filter((s) => s.grupo === grupo).map((sec) => (
-                  <div key={sec.clave} className="bg-white rounded-lg border border-surface-200 p-3 mb-2">
-                    <p className="text-xs font-semibold text-surface-800 mb-2">{sec.label}</p>
+                  <div key={sec.clave} className="bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 p-3 mb-2">
+                    <p className="text-xs font-semibold text-surface-800 dark:text-surface-200 mb-2">{sec.label}</p>
                     <div className="space-y-2">
                       {ROLES_EDITABLES.map((rol) => {
                         const p = getPermiso(sec.clave, rol);
@@ -363,11 +363,11 @@ export default function PermisosPage() {
               </div>
 
               {/* Desktop table */}
-              <div className="hidden md:block bg-white rounded-lg border border-surface-200 overflow-hidden">
+              <div className="hidden md:block bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
                 <table className="w-full text-[11px]">
-                  <thead className="border-b border-surface-200 bg-surface-50">
+                  <thead className="border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/80">
                     <tr>
-                      <th className="text-left px-4 py-3 uppercase text-[10px] tracking-wider text-surface-400 font-medium w-[200px]">Estado</th>
+                      <th className="text-left px-4 py-3 uppercase text-[10px] tracking-wider text-surface-400 dark:text-surface-500 font-medium w-[200px]">Estado</th>
                       {ROLES_EDITABLES.map((rol) => (
                         <th key={rol} className="text-center px-4 py-3">
                           <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border ${ROL_COLORS[rol]}`}>
@@ -379,8 +379,8 @@ export default function PermisosPage() {
                   </thead>
                   <tbody>
                     {estados.map((estado: any, idx: number) => (
-                      <tr key={estado.id} className={`hover:bg-surface-50 ${idx % 2 ? "bg-surface-50/30" : ""}`}>
-                        <td className="px-4 py-2 text-surface-700 font-medium">
+                      <tr key={estado.id} className={`hover:bg-surface-50 dark:hover:bg-surface-700/50 ${idx % 2 ? "bg-surface-50/30 dark:bg-surface-700/20" : ""}`}>
+                        <td className="px-4 py-2 text-surface-700 dark:text-surface-300 font-medium">
                           <span className="inline-flex items-center gap-2">
                             <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: estado.color }} />
                             {estado.nombre}
@@ -405,8 +405,8 @@ export default function PermisosPage() {
               {/* Mobile cards */}
               <div className="flex flex-col gap-2 md:hidden">
                 {estados.map((estado: any) => (
-                  <div key={estado.id} className="bg-white rounded-lg border border-surface-200 p-3">
-                    <p className="text-xs font-semibold text-surface-800 mb-2 flex items-center gap-2">
+                  <div key={estado.id} className="bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 p-3">
+                    <p className="text-xs font-semibold text-surface-800 dark:text-surface-200 mb-2 flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: estado.color }} />
                       {estado.nombre}
                     </p>

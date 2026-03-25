@@ -9,6 +9,7 @@ import {
 } from "recharts";
 import SectionSettings from "@/components/ui/SectionSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTheme } from "@/contexts/ThemeContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -50,6 +51,8 @@ const EQUIPO_COLORS = [
 const AMBITO_COLORS = ["#6366f1", "#22c55e", "#f97316", "#94a3b8"];
 
 export default function KPIsPage() {
+  const { theme } = useTheme();
+  const dk = theme === "dark";
   const [data, setData] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -252,9 +255,9 @@ export default function KPIsPage() {
                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="d" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} domain={[0, 100]} />
+                <CartesianGrid strokeDasharray="3 3" stroke={dk ? "#334155" : "#f1f5f9"} />
+                <XAxis dataKey="d" tick={{ fontSize: 10, fill: dk ? "#94a3b8" : "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: dk ? "#94a3b8" : "#94a3b8" }} axisLine={false} tickLine={false} domain={[0, 100]} />
                 <Area type="monotone" dataKey="v" stroke="#6366f1" strokeWidth={2} fill="url(#progGrad)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -387,7 +390,7 @@ export default function KPIsPage() {
                     </Pie>
                     <Tooltip
                       formatter={(value: any, name: any) => [`${value} predios`, name]}
-                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px", fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}
+                      contentStyle={{ borderRadius: "8px", border: dk ? "1px solid #334155" : "1px solid #e2e8f0", fontSize: "13px", fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", backgroundColor: dk ? "#1e293b" : "#fff", color: dk ? "#e2e8f0" : "#1e293b" }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -410,7 +413,7 @@ export default function KPIsPage() {
                     </Pie>
                     <Tooltip
                       formatter={(value: any, name: any) => [`${value} predios`, name]}
-                      contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px" }}
+                      contentStyle={{ borderRadius: "8px", border: dk ? "1px solid #334155" : "1px solid #e2e8f0", fontSize: "11px", backgroundColor: dk ? "#1e293b" : "#fff", color: dk ? "#e2e8f0" : "#1e293b" }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -433,12 +436,12 @@ export default function KPIsPage() {
           {equipoData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={equipoData} layout="vertical" margin={{ left: 10, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} />
-                <YAxis dataKey="nombre" type="category" tick={{ fontSize: 11, fill: "#64748b" }} width={60} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={dk ? "#334155" : "#f1f5f9"} horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: dk ? "#94a3b8" : "#94a3b8" }} axisLine={false} />
+                <YAxis dataKey="nombre" type="category" tick={{ fontSize: 11, fill: dk ? "#cbd5e1" : "#64748b" }} width={60} axisLine={false} />
                 <Tooltip
                   formatter={(value: any) => [`${value} predios`, "Asignados"]}
-                  contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+                  contentStyle={{ borderRadius: "8px", border: dk ? "1px solid #334155" : "1px solid #e2e8f0", fontSize: "12px", backgroundColor: dk ? "#1e293b" : "#fff", color: dk ? "#e2e8f0" : "#1e293b" }}
                 />
                 <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={20}>
                   {equipoData.map((_, i) => (
@@ -464,12 +467,12 @@ export default function KPIsPage() {
                   data={predios.byProvincia.filter(p => p.nombre !== "Sin provincia").slice(0, 12)}
                   margin={{ left: 10, right: 20, bottom: 5 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="nombre" tick={{ fontSize: 10, fill: "#64748b" }} angle={-30} textAnchor="end" height={60} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={dk ? "#334155" : "#f1f5f9"} />
+                  <XAxis dataKey="nombre" tick={{ fontSize: 10, fill: dk ? "#cbd5e1" : "#64748b" }} angle={-30} textAnchor="end" height={60} axisLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: dk ? "#94a3b8" : "#94a3b8" }} axisLine={false} />
                   <Tooltip
                     formatter={(value: any) => [`${value} predios`, "Total"]}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "12px" }}
+                    contentStyle={{ borderRadius: "8px", border: dk ? "1px solid #334155" : "1px solid #e2e8f0", fontSize: "12px", backgroundColor: dk ? "#1e293b" : "#fff", color: dk ? "#e2e8f0" : "#1e293b" }}
                   />
                   <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={30}>
                     {predios.byProvincia.filter(p => p.nombre !== "Sin provincia").slice(0, 12).map((_, i) => (
@@ -501,7 +504,7 @@ export default function KPIsPage() {
                     ))}
                   </Pie>
                   <Tooltip formatter={(value: any) => [`${value}`, "Predios"]}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px" }} />
+                    contentStyle={{ borderRadius: "8px", border: dk ? "1px solid #334155" : "1px solid #e2e8f0", fontSize: "11px", backgroundColor: dk ? "#1e293b" : "#fff", color: dk ? "#e2e8f0" : "#1e293b" }} />
                   <Legend wrapperStyle={{ fontSize: "10px" }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -525,7 +528,7 @@ export default function KPIsPage() {
                     ))}
                   </Pie>
                   <Tooltip formatter={(value: any) => [`${value}`, "Equipos"]}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "11px" }} />
+                    contentStyle={{ borderRadius: "8px", border: dk ? "1px solid #334155" : "1px solid #e2e8f0", fontSize: "11px", backgroundColor: dk ? "#1e293b" : "#fff", color: dk ? "#e2e8f0" : "#1e293b" }} />
                   <Legend wrapperStyle={{ fontSize: "10px" }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -653,14 +656,14 @@ function ActivityStat({ label, value, icon, color, highlight }: {
   label: string; value: number; icon: string; color: string; highlight?: boolean;
 }) {
   return (
-    <div className="text-center p-3 rounded-lg bg-surface-50/50">
+    <div className="text-center p-3 rounded-lg bg-surface-50/50 dark:bg-surface-700/50">
       <div className="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center"
         style={{ backgroundColor: `${color}15` }}>
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
         </svg>
       </div>
-      <p className={`text-xl font-bold tabular-nums ${highlight ? "text-amber-600" : "text-surface-800"}`}>
+      <p className={`text-xl font-bold tabular-nums ${highlight ? "text-amber-600" : "text-surface-800 dark:text-surface-100"}`}>
         {value.toLocaleString()}
       </p>
       <p className="text-[10px] text-surface-400 leading-tight mt-0.5">{label}</p>

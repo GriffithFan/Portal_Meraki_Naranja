@@ -21,6 +21,25 @@ interface Instructivo {
 
 const CATEGORIAS = ["General", "Redes", "Switches", "Access Points", "Seguridad", "Procedimientos"];
 
+/** Extract YouTube video ID from various URL formats */
+function extractYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/,
+  ];
+  for (const p of patterns) {
+    const match = url.match(p);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+function isYouTubeUrl(url: string | null): boolean {
+  if (!url) return false;
+  return /youtube\.com|youtu\.be/i.test(url);
+}
+
 export default function InstructivoPage() {
   const [instructivos, setInstructivos] = useState<Instructivo[]>([]);
   const [selected, setSelected] = useState<Instructivo | null>(null);
@@ -241,7 +260,7 @@ export default function InstructivoPage() {
                 </div>
 
                 {/* Reproductor de video */}
-                {getVideoSrc(selected) && (
+                {getVideoSrc(selected) && !isYouTubeUrl(selected.videoUrl) && (
                   <div className="bg-black">
                     <video
                       key={selected.id}
@@ -256,6 +275,25 @@ export default function InstructivoPage() {
                   </div>
                 )}
 
+                {/* YouTube embed */}
+                {isYouTubeUrl(selected.videoUrl) && (() => {
+                  const ytId = extractYouTubeId(selected.videoUrl!);
+                  return ytId ? (
+                    <div className="bg-black">
+                      <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+                        <iframe
+                          className="absolute inset-0 w-full h-full"
+                          src={`https://www.youtube-nocookie.com/embed/${ytId}`}
+                          title={selected.titulo}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          referrerPolicy="strict-origin-when-cross-origin"
+                        />
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
                 {/* Contenido de texto */}
                 {selected.contenido && (
                   <div className="p-4">
@@ -266,7 +304,7 @@ export default function InstructivoPage() {
                 )}
 
                 {/* Si no tiene ni video ni contenido */}
-                {!getVideoSrc(selected) && !selected.contenido && (
+                {!getVideoSrc(selected) && !isYouTubeUrl(selected.videoUrl) && !selected.contenido && (
                   <div className="p-8 text-center text-surface-400">
                     <p className="text-sm">Este instructivo aún no tiene contenido.</p>
                   </div>
@@ -306,6 +344,7 @@ function InstructivoForm({
   const [categoria, setCategoria] = useState(editando?.categoria || "General");
   const [orden, setOrden] = useState(editando?.orden || 0);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState(editando?.videoUrl && isYouTubeUrl(editando.videoUrl) ? editando.videoUrl : "");
   const [removeVideo, setRemoveVideo] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -326,6 +365,7 @@ function InstructivoForm({
     formData.append("orden", String(orden));
     if (videoFile) formData.append("video", videoFile);
     if (removeVideo) formData.append("removeVideo", "true");
+    if (youtubeUrl.trim()) formData.append("youtubeUrl", youtubeUrl.trim());
 
     try {
       // Use XMLHttpRequest for upload progress
@@ -519,6 +559,51 @@ function InstructivoForm({
                 {videoFile ? "Cambiar video" : "Seleccionar video"}
               </span>
             </button>
+          </div>
+
+          {/* YouTube URL */}
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">
+              URL de YouTube (alternativa al video local)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={youtubeUrl}
+                onChange={e => {
+                  setYoutubeUrl(e.target.value);
+                  if (e.target.value.trim()) {
+                    setVideoFile(null);
+                    setRemoveVideo(true);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }
+                }}
+                className="flex-1 px-3 py-2 border border-surface-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-300"
+                placeholder="https://www.youtube.com/watch?v=..."
+              />
+              {youtubeUrl && (
+                <button
+                  type="button"
+                  onClick={() => setYoutubeUrl("")}
+                  className="px-2 text-xs text-red-500 hover:text-red-700"
+                >
+                  Quitar
+                </button>
+              )}
+            </div>
+            {youtubeUrl && extractYouTubeId(youtubeUrl) && (
+              <p className="text-[10px] text-emerald-600 mt-1 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                URL de YouTube válida
+              </p>
+            )}
+            {youtubeUrl && !extractYouTubeId(youtubeUrl) && (
+              <p className="text-[10px] text-amber-600 mt-1">
+                No se pudo extraer el ID del video. Verifica la URL.
+              </p>
+            )}
           </div>
 
           {/* Barra de progreso */}

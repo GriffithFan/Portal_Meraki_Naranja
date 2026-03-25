@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
     const categoria = (formData.get("categoria") as string)?.trim() || "General";
     const orden = parseInt(formData.get("orden") as string) || 0;
     const video = formData.get("video") as File | null;
+    const youtubeUrl = (formData.get("youtubeUrl") as string)?.trim() || null;
 
     if (!titulo) {
       return NextResponse.json({ error: "El título es requerido" }, { status: 400 });
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest) {
         categoria,
         orden,
         creadoPorId: session.userId,
+        videoUrl: youtubeUrl || null,
         ...videoData,
       },
       include: {

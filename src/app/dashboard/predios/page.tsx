@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
+import { useSession } from "@/hooks/useSession";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -36,15 +37,42 @@ const PROVINCIA_COLORS: Record<string, string> = {
 };
 
 export default function PrediosPage() {
+  const { session, isModOrAdmin } = useSession();
+  const isTecnico = session?.rol === "TECNICO";
   const [predios, setPredios] = useState<PredioMapa[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroEquipo, setFiltroEquipo] = useState("");
   const [filtroProvincia, setFiltroProvincia] = useState("");
   const [search, setSearch] = useState("");
-  const [colorBy, setColorBy] = useState<"provincia" | "estado">("provincia");
+  const [colorBy, setColorBy] = useState<"provincia" | "estado" | "tecnico">("provincia");
+  // Initialize colorBy based on role once session loads
+  const [roleInitialized, setRoleInitialized] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Set initial colorBy and filter based on role
+  useEffect(() => {
+    if (!session || roleInitialized) return;
+    if (isTecnico) {
+      setColorBy("estado");
+      setFiltroEquipo(session.nombre);
+    } else if (isModOrAdmin) {
+      setColorBy("tecnico");
+    }
+    setRoleInitialized(true);
+  }, [session, isTecnico, isModOrAdmin, roleInitialized]);
+
+  // For admin/mod: when filtering by specific tech, switch to estado view
+  // When clearing tech filter, revert to tecnico view
+  useEffect(() => {
+    if (isTecnico || !roleInitialized) return;
+    if (filtroEquipo) {
+      setColorBy("estado");
+    } else {
+      setColorBy("tecnico");
+    }
+  }, [filtroEquipo, isTecnico, roleInitialized]);
 
   const fetchPredios = useCallback(async () => {
     setLoading(true);
@@ -92,6 +120,29 @@ export default function PrediosPage() {
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([nombre, count]) => ({ nombre, count }));
+  }, [predios]);
+
+  // Colors for tecnico mode (mirrors MapView's TECNICO_COLORS)
+  const TECNICO_COLORS_LEGEND = [
+    "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
+    "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#14b8a6",
+    "#6366f1", "#d946ef", "#0ea5e9", "#f43f5e", "#eab308",
+  ];
+
+  const tecnicosList = useMemo(() => {
+    const map = new Map<string, number>();
+    predios.forEach((p) => {
+      const eq = p.equipoAsignado || "Sin asignar";
+      map.set(eq, (map.get(eq) || 0) + 1);
+    });
+    const sorted = Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([nombre, count]) => ({ nombre, count }));
+    // Build color map mirroring MapView
+    const colorMap: Record<string, string> = {};
+    const tecNames = Array.from(new Set(predios.map(p => p.equipoAsignado).filter(Boolean) as string[])).sort();
+    tecNames.forEach((t, i) => { colorMap[t] = TECNICO_COLORS_LEGEND[i % TECNICO_COLORS_LEGEND.length]; });
+    return sorted.map(s => ({ ...s, color: colorMap[s.nombre] || "#94a3b8" }));
   }, [predios]);
 
   const filtered = useMemo(() => {
@@ -159,21 +210,29 @@ export default function PrediosPage() {
           </select>
         </div>
 
-        {/* Toggle color por provincia/estado */}
+        {/* Toggle color por provincia/estado/tecnico */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center bg-surface-100 rounded-md p-0.5 text-xs">
             <button
               onClick={() => setColorBy("provincia")}
               className={`px-2.5 py-1 rounded transition-colors ${colorBy === "provincia" ? "bg-white text-surface-800 shadow-sm font-medium" : "text-surface-500 hover:text-surface-700"}`}
             >
-              Por provincia
+              Provincia
             </button>
             <button
               onClick={() => setColorBy("estado")}
               className={`px-2.5 py-1 rounded transition-colors ${colorBy === "estado" ? "bg-white text-surface-800 shadow-sm font-medium" : "text-surface-500 hover:text-surface-700"}`}
             >
-              Por estado
+              Estado
             </button>
+            {isModOrAdmin && (
+              <button
+                onClick={() => setColorBy("tecnico")}
+                className={`px-2.5 py-1 rounded transition-colors ${colorBy === "tecnico" ? "bg-white text-surface-800 shadow-sm font-medium" : "text-surface-500 hover:text-surface-700"}`}
+              >
+                Técnico
+              </button>
+            )}
           </div>
 
           {/* Limpiar filtros */}
@@ -221,7 +280,7 @@ export default function PrediosPage() {
         {!loading && filtered.length > 0 && (
           <div className="md:w-44 shrink-0 bg-white rounded-lg border border-surface-200 overflow-hidden flex flex-col max-h-[140px] md:max-h-none">
             <h3 className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider px-3 pt-2 pb-1 shrink-0">
-              {colorBy === "provincia" ? "Provincias" : "Estados"}
+              {colorBy === "provincia" ? "Provincias" : colorBy === "tecnico" ? "Técnicos" : "Estados"}
             </h3>
             <div className="flex-1 overflow-y-auto px-3 pb-2 scrollbar-thin">
               <div className="flex flex-row flex-wrap md:flex-col gap-0.5">
@@ -235,6 +294,21 @@ export default function PrediosPage() {
                       <span
                         className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shrink-0"
                         style={{ background: PROVINCIA_COLORS[nombre] || "#94a3b8" }}
+                      />
+                      <span className="truncate">{nombre}</span>
+                      <span className="text-[10px] text-surface-400">{count}</span>
+                    </button>
+                  ))
+                ) : colorBy === "tecnico" ? (
+                  tecnicosList.map(({ nombre, count, color }) => (
+                    <button
+                      key={nombre}
+                      onClick={() => setFiltroEquipo(nombre === "Sin asignar" ? "" : nombre)}
+                      className={`flex items-center gap-1.5 md:gap-2 md:w-full text-left px-1.5 py-1 rounded text-xs hover:bg-surface-50 transition-colors whitespace-nowrap ${filtroEquipo === nombre ? "bg-surface-100 font-medium" : ""}`}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shrink-0"
+                        style={{ background: color }}
                       />
                       <span className="truncate">{nombre}</span>
                       <span className="text-[10px] text-surface-400">{count}</span>

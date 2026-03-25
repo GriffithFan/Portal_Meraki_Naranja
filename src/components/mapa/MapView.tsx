@@ -50,9 +50,21 @@ const PROVINCIA_COLORS: Record<string, string> = {
 
 const DEFAULT_PROVINCIA_COLOR = "#94a3b8";
 
+// Paleta de colores distinguibles para técnicos/equipos
+const TECNICO_COLORS = [
+  "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
+  "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#14b8a6",
+  "#6366f1", "#d946ef", "#0ea5e9", "#f43f5e", "#eab308",
+];
+
 function getProvinciaColor(provincia: string | null): string {
   if (!provincia) return DEFAULT_PROVINCIA_COLOR;
   return PROVINCIA_COLORS[provincia] || DEFAULT_PROVINCIA_COLOR;
+}
+
+function getTecnicoColor(tecnico: string | null, tecnicoColorMap: Record<string, string>): string {
+  if (!tecnico) return DEFAULT_PROVINCIA_COLOR;
+  return tecnicoColorMap[tecnico] || DEFAULT_PROVINCIA_COLOR;
 }
 
 function createMarkerIcon(color: string, label?: string) {
@@ -72,13 +84,21 @@ function createMarkerIcon(color: string, label?: string) {
 
 interface MapViewProps {
   predios: PredioMapa[];
-  colorBy: "provincia" | "estado";
+  colorBy: "provincia" | "estado" | "tecnico";
 }
 
 export default function MapView({ predios, colorBy }: MapViewProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
+
+  // Build a stable color map for technicians
+  const tecnicoColorMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const tecnicos = Array.from(new Set(predios.map(p => p.equipoAsignado).filter(Boolean) as string[])).sort();
+    tecnicos.forEach((t, i) => { map[t] = TECNICO_COLORS[i % TECNICO_COLORS.length]; });
+    return map;
+  }, [predios]);
 
   const center = useMemo(() => {
     if (predios.length === 0) return { lat: -34.6, lng: -58.4 };
@@ -126,10 +146,14 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
     for (const p of predios) {
       const color = colorBy === "provincia"
         ? getProvinciaColor(p.provincia)
+        : colorBy === "tecnico"
+        ? getTecnicoColor(p.equipoAsignado, tecnicoColorMap)
         : (p.estado?.color || DEFAULT_PROVINCIA_COLOR);
 
-      // Inicial de la provincia como label dentro del marcador
-      const label = p.provincia ? p.provincia[0].toUpperCase() : "";
+      // Label inside marker depends on colorBy mode
+      const label = colorBy === "tecnico"
+        ? (p.equipoAsignado ? p.equipoAsignado[0].toUpperCase() : "")
+        : (p.provincia ? p.provincia[0].toUpperCase() : "");
 
       const marker = L.marker([p.latitud, p.longitud], {
         icon: createMarkerIcon(color, label),
@@ -165,7 +189,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
     }
 
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-  }, [predios, colorBy]);
+  }, [predios, colorBy, tecnicoColorMap]);
 
   return <div ref={containerRef} className="w-full h-full rounded-lg" />;
 }

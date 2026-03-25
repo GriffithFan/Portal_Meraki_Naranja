@@ -57,6 +57,7 @@ export async function PUT(
     const orden = parseInt(formData.get("orden") as string) || existing.orden;
     const video = formData.get("video") as File | null;
     const removeVideo = formData.get("removeVideo") === "true";
+    const youtubeUrl = (formData.get("youtubeUrl") as string)?.trim() || null;
 
     if (!titulo) {
       return NextResponse.json({ error: "El título es requerido" }, { status: 400 });
@@ -68,6 +69,7 @@ export async function PUT(
       contenido,
       categoria,
       orden,
+      videoUrl: youtubeUrl,
     };
 
     // Si se sube un nuevo video, eliminar el anterior
