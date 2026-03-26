@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
+import { usePermisos } from "@/hooks/usePermisos";
 
 interface Instructivo {
   id: string;
@@ -76,7 +77,8 @@ export default function InstructivoPage() {
     }).catch(() => {});
   }, []);
 
-  const canEdit = userRol === "ADMIN" || userRol === "MODERADOR";
+  const { puedeEditar } = usePermisos();
+  const canEdit = userRol === "ADMIN" || userRol === "MODERADOR" || puedeEditar("instructivo");
 
   const handleDelete = async (id: string) => {
     toast("¿Eliminar este instructivo?", {

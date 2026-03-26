@@ -49,7 +49,7 @@ export function usePermisos(): PermisosResult {
       if (!p) {
         if (session.rol === "MODERADOR") return true;
         // Técnicos por default ven: tareas, calendario, bandeja, instructivo, predios, chat
-        return ["tareas", "calendario", "bandeja", "instructivo", "predios", "chat"].includes(seccion);
+        return ["tareas", "calendario", "bandeja", "instructivo", "predios", "chat", "hospedajes", "actas"].includes(seccion);
       }
       return p.ver;
     },

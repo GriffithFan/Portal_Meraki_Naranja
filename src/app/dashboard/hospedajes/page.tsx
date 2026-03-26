@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
+import { usePermisos } from "@/hooks/usePermisos";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconPlus, IconX, IconTrash, IconEdit } from "@/components/ui/Icons";
 
@@ -20,6 +21,8 @@ interface Hospedaje {
 
 export default function HospedajesPage() {
   const { isModOrAdmin } = useSession();
+  const { puedeEditar } = usePermisos();
+  const canEdit = isModOrAdmin || puedeEditar("hospedajes");
   const { headerSearch } = useSearchContext();
   const [hospedajes, setHospedajes] = useState<Hospedaje[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,7 +157,7 @@ export default function HospedajesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isModOrAdmin && (
+          {canEdit && (
             <button
               onClick={openCreate}
               className="px-2.5 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1"
@@ -229,7 +232,7 @@ export default function HospedajesPage() {
                       <th className="text-left px-3 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider w-[80px]">Garage</th>
                       <th className="text-left px-3 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider w-[120px]">Teléfono</th>
                       <th className="text-left px-3 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider w-[200px]">Notas</th>
-                      {isModOrAdmin && (
+                      {canEdit && (
                         <th className="text-right px-3 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider w-[70px]">Acciones</th>
                       )}
                     </tr>
@@ -259,7 +262,7 @@ export default function HospedajesPage() {
                           ) : <span className="text-surface-300">—</span>}
                         </td>
                         <td className="px-3 py-2 text-surface-500 truncate max-w-[200px]">{h.notas || "—"}</td>
-                        {isModOrAdmin && (
+                        {canEdit && (
                           <td className="px-3 py-2 text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button
