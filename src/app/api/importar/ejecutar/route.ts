@@ -63,6 +63,7 @@ const EQUIPO_FIELDS: Record<string, string> = {
   categoria: "Categoría",
   ubicacion: "Ubicación",
   notas: "Notas",
+  asignado: "Asignado (Técnico)",
 };
 
 export async function GET() {
@@ -275,6 +276,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Debes mapear la columna "Nombre"' }, { status: 400 });
       }
 
+      // Pre-cargar usuarios para matching de asignado
+      let allUsers: { id: string; nombre: string }[] = [];
+      if (fieldMap.has("asignado")) {
+        allUsers = await prisma.user.findMany({
+          where: { activo: true },
+          select: { id: true, nombre: true },
+        });
+      }
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         if (!row || !Array.isArray(row)) { skipped++; continue; }
@@ -305,6 +315,17 @@ export async function POST(request: NextRequest) {
 
           const estadoVal = safeGet(row, fieldMap.get("estado"));
           if (estadoVal) data.estado = estadoVal.toUpperCase();
+
+          // Matching de asignado: buscar usuario por nombre (case-insensitive, parcial)
+          const asignadoVal = safeGet(row, fieldMap.get("asignado"));
+          if (asignadoVal && allUsers.length > 0) {
+            const needle = asignadoVal.toLowerCase();
+            const match = allUsers.find(u => {
+              const n = u.nombre.toLowerCase();
+              return n === needle || n.includes(needle) || needle.includes(n);
+            });
+            if (match) data.asignadoId = match.id;
+          }
 
           await prisma.equipo.create({ data: data as any });
           created++;

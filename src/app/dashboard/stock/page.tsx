@@ -207,6 +207,7 @@ export default function StockPage() {
   const fetchEquipos = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
+    params.set("limit", "5000");
     if (search) params.set("buscar", search);
     if (filtroEstado) params.set("estado", filtroEstado);
     if (filtroCat) params.set("categoria", filtroCat);

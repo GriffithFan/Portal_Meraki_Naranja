@@ -212,6 +212,7 @@ export default function ImportarPage() {
         categoria:   ["categoria", "categoría", "cat", "category", "tipo", "type"],
         ubicacion:   ["ubicacion", "ubicación", "location", "lugar", "sitio", "sede"],
         notas:       ["notas", "nota", "notes", "observaciones", "comentarios"],
+        asignado:    ["asignado", "asignado_a", "asignadoa", "tecnico", "técnico", "technician", "asignacion", "asignación"],
       };
 
       const aliases = tipo === "EQUIPO" ? equipoAliases : predioAliases;

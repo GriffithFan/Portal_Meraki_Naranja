@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   const categoria = searchParams.get("categoria");
   const buscar = sanitizeSearch(searchParams.get("buscar"));
   const page = Math.max(parseInt(searchParams.get("page") || "1") || 1, 1);
-  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "100") || 100, 1), 500);
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "5000") || 5000, 1), 10000);
   const skip = (page - 1) * limit;
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
