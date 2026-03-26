@@ -171,7 +171,7 @@ export default function ImportarPage() {
     const autoMappings: Record<number, string> = {};
     const usedFields = new Set<string>();
     if (data.headers) {
-      const aliases: Record<string, string[]> = {
+      const predioAliases: Record<string, string[]> = {
         codigo:    ["predio", "codigo", "código", "cod", "code", "id_predio"],
         nombre:    ["nombre", "name", "cue_nombre", "establecimiento"],
         latitud:   ["latitud", "lat", "latitude", "latitud_gps"],
@@ -200,6 +200,21 @@ export default function ImportarPage() {
         nombreInstitucion: ["institucion", "institución", "nombre_institucion", "nombreinstitucion", "escuela"],
         correo: ["correo", "email", "mail", "e-mail", "correo_electronico"],
       };
+
+      const equipoAliases: Record<string, string[]> = {
+        nombre:      ["nombre", "name", "equipo", "dispositivo", "device"],
+        descripcion: ["descripcion", "descripción", "desc", "detalle"],
+        numeroSerie: ["numero_serie", "numeroserie", "n/s", "ns", "serial", "serie", "sn", "numero_de_serie"],
+        modelo:      ["modelo", "model"],
+        marca:       ["marca", "brand", "fabricante"],
+        cantidad:    ["cantidad", "cant", "qty", "quantity", "unidades"],
+        estado:      ["estado", "status", "state"],
+        categoria:   ["categoria", "categoría", "cat", "category", "tipo", "type"],
+        ubicacion:   ["ubicacion", "ubicación", "location", "lugar", "sitio", "sede"],
+        notas:       ["notas", "nota", "notes", "observaciones", "comentarios"],
+      };
+
+      const aliases = tipo === "EQUIPO" ? equipoAliases : predioAliases;
 
       for (let i = 0; i < data.headers.length; i++) {
         const h = data.headers[i]?.toString().toLowerCase().trim().replace(/[^a-záéíóúñü0-9_-]/g, "");

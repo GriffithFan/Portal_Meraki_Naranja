@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { TableSkeleton } from "@/components/ui/Skeletons";
@@ -23,6 +23,32 @@ const ESTADO_COLORS: Record<string, string> = {
   EN_REPARACION: "bg-orange-100 text-orange-700",
 };
 
+/* ── Column System ──────────────────────────────────────────── */
+interface StockColumn {
+  id: string;
+  label: string;
+  field: string;
+  visible: boolean;
+  editable: boolean;
+  type: "text" | "select" | "number";
+  options?: string[];
+}
+
+const STORAGE_KEY = "pmn-stock-col-config";
+
+const DEFAULT_COLUMNS: StockColumn[] = [
+  { id: "nombre",      label: "Equipo",      field: "nombre",      visible: true,  editable: true,  type: "text" },
+  { id: "modelo",      label: "Modelo",      field: "modelo",      visible: true,  editable: true,  type: "text" },
+  { id: "marca",       label: "Marca",       field: "marca",       visible: true,  editable: true,  type: "text" },
+  { id: "numeroSerie", label: "N/S",         field: "numeroSerie", visible: true,  editable: true,  type: "text" },
+  { id: "cantidad",    label: "Cant.",        field: "cantidad",    visible: true,  editable: true,  type: "number" },
+  { id: "estado",      label: "Estado",       field: "estado",      visible: true,  editable: true,  type: "select", options: ESTADOS_EQUIPO },
+  { id: "categoria",   label: "Categoría",    field: "categoria",   visible: true,  editable: true,  type: "text" },
+  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text" },
+  { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
+  { id: "descripcion", label: "Descripción",  field: "descripcion", visible: false, editable: true,  type: "text" },
+];
+
 export default function StockPage() {
   const { isModOrAdmin } = useSession();
   const { headerSearch } = useSearchContext();
@@ -31,7 +57,6 @@ export default function StockPage() {
   const [categorias, setCategorias] = useState<string[]>([]);
   const [search, setSearch] = useState("");
 
-  // Sincronizar búsqueda del Header global
   useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroCat, setFiltroCat] = useState("");
@@ -39,6 +64,130 @@ export default function StockPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", marca: "", cantidad: "1", estado: "DISPONIBLE", categoria: "", ubicacion: "", notas: "" });
 
+  /* ── Column state ── */
+  const [columns, setColumns] = useState<StockColumn[]>(DEFAULT_COLUMNS);
+  const colConfigLoaded = useRef(false);
+
+  // Load column config from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const config: { id: string; visible: boolean; order: number }[] = JSON.parse(saved);
+        const configMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: c.order ?? i }]));
+        setColumns(prev =>
+          [...prev]
+            .map(col => ({ ...col, visible: configMap.get(col.id)?.visible ?? col.visible }))
+            .sort((a, b) => (configMap.get(a.id)?.order ?? 999) - (configMap.get(b.id)?.order ?? 999))
+        );
+      }
+    } catch { /* ignore corrupt data */ }
+    colConfigLoaded.current = true;
+  }, []);
+
+  // Persist column config
+  useEffect(() => {
+    if (!colConfigLoaded.current) return;
+    const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  }, [columns]);
+
+  /* ── Sorting ── */
+  const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
+
+  function toggleSort(field: string) {
+    setSortConfig(prev => {
+      if (prev?.field === field) return prev.dir === "asc" ? { field, dir: "desc" } : null;
+      return { field, dir: "asc" };
+    });
+  }
+
+  const sortedEquipos = useMemo(() => {
+    if (!sortConfig) return equipos;
+    return [...equipos].sort((a, b) => {
+      const aVal = a[sortConfig.field] ?? "";
+      const bVal = b[sortConfig.field] ?? "";
+      const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
+      return sortConfig.dir === "asc" ? cmp : -cmp;
+    });
+  }, [equipos, sortConfig]);
+
+  /* ── Drag & Drop columns ── */
+  const [dragColId, setDragColId] = useState<string | null>(null);
+  const [dragOverColId, setDragOverColId] = useState<string | null>(null);
+  const didDragRef = useRef(false);
+
+  function handleColDragStart(e: React.DragEvent, colId: string) {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/x-col-id", colId);
+    setDragColId(colId);
+    didDragRef.current = false;
+  }
+  function handleColDragOver(e: React.DragEvent, colId: string) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    didDragRef.current = true;
+    setDragOverColId(colId);
+  }
+  function handleColDrop(e: React.DragEvent, colId: string) {
+    e.preventDefault();
+    const sourceId = e.dataTransfer.getData("text/x-col-id");
+    if (!sourceId || sourceId === colId) { setDragColId(null); setDragOverColId(null); return; }
+    setColumns(prev => {
+      const n = [...prev];
+      const srcIdx = n.findIndex(c => c.id === sourceId);
+      const [moved] = n.splice(srcIdx, 1);
+      const tgtIdx = n.findIndex(c => c.id === colId);
+      n.splice(tgtIdx, 0, moved);
+      return n;
+    });
+    setDragColId(null);
+    setDragOverColId(null);
+  }
+  function handleColDragEnd() { setDragColId(null); setDragOverColId(null); }
+
+  /* ── Inline editing ── */
+  const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  function startEdit(equipoId: string, field: string, currentValue: string) {
+    if (!isModOrAdmin) return;
+    setEditingCell({ id: equipoId, field });
+    setEditValue(currentValue || "");
+  }
+
+  async function saveEdit() {
+    if (!editingCell) return;
+    const { id, field } = editingCell;
+    const val = field === "cantidad" ? parseInt(editValue) || 1 : editValue.trim();
+    setEditingCell(null);
+
+    // Skip if unchanged
+    const prev = equipos.find(e => e.id === id);
+    if (prev && String(prev[field] ?? "") === String(val)) return;
+
+    // Optimistic update
+    setEquipos(es => es.map(e => e.id === id ? { ...e, [field]: val } : e));
+    const res = await fetch(`/api/stock/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ [field]: val }),
+    });
+    if (res.ok) {
+      toast.success("Campo actualizado");
+    } else {
+      setEquipos(es => es.map(e => e.id === id ? { ...e, [field]: prev?.[field] } : e));
+      toast.error("Error al actualizar");
+    }
+  }
+
+  function handleEditKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
+    if (e.key === "Escape") setEditingCell(null);
+  }
+
+  /* ── Data fetching ── */
   const fetchEquipos = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -79,7 +228,6 @@ export default function StockPage() {
 
   async function cambiarEstado(id: string, nuevoEstado: string) {
     const prev = equipos.find(e => e.id === id)?.estado;
-    // Optimistic update
     setEquipos(es => es.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
     const res = await fetch(`/api/stock/${id}`, {
       method: "PUT",
@@ -95,6 +243,62 @@ export default function StockPage() {
     }
   }
 
+  const visibleColumns = useMemo(() => columns.filter(c => c.visible), [columns]);
+
+  /* ── Render cell ── */
+  function renderCell(eq: any, col: StockColumn) {
+    const isEditing = editingCell?.id === eq.id && editingCell?.field === col.field;
+
+    // Estado always uses dropdown for mod/admin
+    if (col.id === "estado") {
+      if (isModOrAdmin) {
+        return (
+          <select
+            value={eq.estado}
+            onChange={(e) => cambiarEstado(eq.id, e.target.value)}
+            className={`px-2 py-1 rounded-lg text-xs font-medium border-0 cursor-pointer ${ESTADO_COLORS[eq.estado] || "bg-gray-100 text-gray-600"}`}
+          >
+            {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
+          </select>
+        );
+      }
+      return (
+        <Badge variant="secondary" className={`${ESTADO_COLORS[eq.estado] || "bg-gray-100 text-gray-600"}`}>
+          {eq.estado.replace(/_/g, " ")}
+        </Badge>
+      );
+    }
+
+    // Inline editing input
+    if (isEditing) {
+      return (
+        <input
+          autoFocus
+          type={col.type === "number" ? "number" : "text"}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={saveEdit}
+          onKeyDown={handleEditKeyDown}
+          className="w-full px-1.5 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
+          min={col.type === "number" ? 1 : undefined}
+        />
+      );
+    }
+
+    // Display value — double click to edit
+    const val = eq[col.field];
+    const display = col.id === "ubicacion" ? (val || eq.predio?.nombre || "—") : (val ?? "—");
+    return (
+      <span
+        className={`${isModOrAdmin && col.editable ? "cursor-pointer hover:bg-primary-50 hover:text-primary-700 px-1 -mx-1 rounded transition-colors" : ""} ${col.id === "numeroSerie" ? "font-mono text-[10px]" : "text-[11px]"} ${col.id === "nombre" ? "font-medium text-surface-800" : "text-surface-600"}`}
+        onDoubleClick={() => col.editable && startEdit(eq.id, col.field, String(val ?? ""))}
+        title={isModOrAdmin && col.editable ? "Doble clic para editar" : undefined}
+      >
+        {display || "—"}
+      </span>
+    );
+  }
+
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
@@ -104,7 +308,26 @@ export default function StockPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <SectionSettings seccion="stock">
-            <p className="text-[10px] text-surface-400 italic">Próximamente: opciones de vista y columnas visibles</p>
+            {/* Column visibility toggles */}
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1.5">Columnas visibles</p>
+            {columns.map(col => (
+              <label key={col.id} className="flex items-center gap-2 text-xs text-surface-600 cursor-pointer py-0.5">
+                <input
+                  type="checkbox"
+                  checked={col.visible}
+                  onChange={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5"
+                />
+                {col.label}
+              </label>
+            ))}
+            <hr className="border-surface-100 my-2" />
+            <button
+              onClick={() => setColumns(DEFAULT_COLUMNS)}
+              className="text-[10px] text-primary-600 hover:text-primary-700 font-medium"
+            >
+              Restablecer columnas
+            </button>
           </SectionSettings>
           {isModOrAdmin && (
             <button onClick={() => setShowModal(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
@@ -132,11 +355,18 @@ export default function StockPage() {
         </div>
       </div>
 
+      {isModOrAdmin && (
+        <p className="text-[10px] text-surface-400 mb-2 flex items-center gap-1">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+          Arrastra las cabeceras para reordenar · Doble clic en una celda para editar
+        </p>
+      )}
+
       {/* Tabla */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
         {loading ? (
-          <TableSkeleton rows={6} cols={6} />
+          <TableSkeleton rows={6} cols={visibleColumns.length || 6} />
         ) : equipos.length === 0 ? (
           <div className="text-center py-16 text-surface-400">
             <svg className="w-10 h-10 mx-auto mb-3 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
@@ -144,48 +374,42 @@ export default function StockPage() {
             <p className="text-xs">{search || filtroEstado ? "No se encontraron resultados" : "Agrega tu primer equipo al inventario"}</p>
           </div>
         ) : (
-          <table className="w-full text-sm mobile-card-table">
+          <table className="w-full text-sm">
             <thead className="border-b border-surface-200">
               <tr>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Equipo</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden sm:table-cell">Modelo / Marca</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden md:table-cell">N/S</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden sm:table-cell">Cant.</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Estado</th>
-                <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium hidden lg:table-cell">Ubicación</th>
+                {visibleColumns.map(col => (
+                  <th
+                    key={col.id}
+                    draggable={isModOrAdmin}
+                    onDragStart={(e) => handleColDragStart(e, col.id)}
+                    onDragOver={(e) => handleColDragOver(e, col.id)}
+                    onDrop={(e) => handleColDrop(e, col.id)}
+                    onDragEnd={handleColDragEnd}
+                    onClick={() => { if (!didDragRef.current) toggleSort(col.field); didDragRef.current = false; }}
+                    className={`text-left px-2.5 py-2 uppercase text-[10px] tracking-wider font-medium select-none transition-all ${
+                      isModOrAdmin ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+                    } ${dragColId === col.id ? "opacity-40" : ""} ${
+                      dragOverColId === col.id && dragColId !== col.id ? "border-l-2 border-primary-400" : ""
+                    } ${sortConfig?.field === col.field ? "text-primary-600" : "text-surface-400"}`}
+                  >
+                    <span className="flex items-center gap-1">
+                      {col.label}
+                      {sortConfig?.field === col.field && (
+                        <span className="text-[9px]">{sortConfig.dir === "asc" ? "▲" : "▼"}</span>
+                      )}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
-              {equipos.map((eq) => (
+              {sortedEquipos.map((eq) => (
                 <tr key={eq.id} className="hover:bg-surface-50 transition-colors row-animate">
-                  <td className="px-2.5 py-2 sm:py-1.5">
-                    <div className="font-medium text-surface-800 text-xs sm:text-[11px]">{eq.nombre}</div>
-                    {eq.categoria && <span className="text-[10px] text-surface-400">{eq.categoria}</span>}
-                    {/* Mobile: show model inline */}
-                    <div className="sm:hidden text-[10px] text-surface-500 mt-0.5">{eq.modelo || "—"} {eq.marca && `(${eq.marca})`}</div>
-                  </td>
-                  <td className="px-2.5 py-1.5 text-surface-600 text-[11px] hidden sm:table-cell">
-                    {eq.modelo || "—"}
-                    {eq.marca && <span className="text-[10px] text-surface-400 ml-1">({eq.marca})</span>}
-                  </td>
-                  <td className="px-2.5 py-1.5 text-surface-500 font-mono text-[10px] hidden md:table-cell">{eq.numeroSerie || "—"}</td>
-                  <td className="px-2.5 py-1.5 text-surface-600 text-[11px] hidden sm:table-cell">{eq.cantidad}</td>
-                  <td className="px-2.5 py-1.5">
-                    {isModOrAdmin ? (
-                      <select
-                        value={eq.estado}
-                        onChange={(e) => cambiarEstado(eq.id, e.target.value)}
-                        className={`px-2 py-1 rounded-lg text-xs font-medium border-0 cursor-pointer ${ESTADO_COLORS[eq.estado] || "bg-gray-100 text-gray-600"}`}
-                      >
-                        {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
-                      </select>
-                    ) : (
-                      <Badge variant="secondary" className={`${ESTADO_COLORS[eq.estado] || "bg-gray-100 text-gray-600"}`}>
-                        {eq.estado.replace(/_/g, " ")}
-                      </Badge>
-                    )}
-                  </td>
-                  <td className="px-2.5 py-1.5 text-surface-500 text-[11px] hidden lg:table-cell">{eq.ubicacion || eq.predio?.nombre || "—"}</td>
+                  {visibleColumns.map(col => (
+                    <td key={col.id} className="px-2.5 py-1.5">
+                      {renderCell(eq, col)}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>

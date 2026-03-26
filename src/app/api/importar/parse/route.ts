@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       h ? String(h).trim() : `Columna ${i + 1}`
     );
 
-    const rows = rawData.slice(1, 201).map((row) =>
+    const rows = rawData.slice(1, 2001).map((row) =>
       headers.map((_, i) => {
         const val = (row as unknown[])[i];
         if (val instanceof Date) return val.toISOString().split("T")[0];
