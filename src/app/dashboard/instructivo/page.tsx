@@ -53,6 +53,7 @@ export default function InstructivoPage() {
   const [showForm, setShowForm] = useState(false);
   const [editando, setEditando] = useState<Instructivo | null>(null);
   const [userRol, setUserRol] = useState("");
+  const [imagenExpandida, setImagenExpandida] = useState<string | null>(null);
 
   const fetchInstructivos = useCallback(async () => {
     try {
@@ -324,14 +325,7 @@ export default function InstructivoPage() {
                       src={getImagenSrc(selected)!}
                       alt={selected.titulo}
                       className="max-w-full max-h-[600px] object-contain rounded-lg cursor-zoom-in"
-                      onClick={(e) => {
-                        const img = e.currentTarget;
-                        if (document.fullscreenElement) {
-                          document.exitFullscreen();
-                        } else {
-                          img.requestFullscreen?.();
-                        }
-                      }}
+                      onClick={() => setImagenExpandida(getImagenSrc(selected))}
                     />
                   </div>
                 )}
@@ -364,6 +358,31 @@ export default function InstructivoPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Modal fullscreen para imagen expandida */}
+      {imagenExpandida && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+          onClick={() => setImagenExpandida(null)}
+        >
+          <button
+            className="absolute top-4 right-4 z-10 text-white/80 hover:text-white bg-black/40 rounded-full p-2"
+            onClick={() => setImagenExpandida(null)}
+            aria-label="Cerrar"
+          >
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <img
+            src={imagenExpandida}
+            alt="Imagen expandida"
+            className="max-w-[100vw] max-h-[100vh] object-contain select-none"
+            style={{ touchAction: "pinch-zoom" }}
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
