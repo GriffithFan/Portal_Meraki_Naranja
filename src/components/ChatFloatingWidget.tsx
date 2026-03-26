@@ -18,25 +18,38 @@ function formatFileSize(bytes: number) {
 
 function ChatArchivo({ msg }: { msg: any }) {
   if (!msg.archivoUrl) return null;
-  const tipo = msg.archivoTipo || "";
+  const tipo = (msg.archivoTipo || "").split(";")[0].trim();
   const downloadUrl = `/api/chat/archivo/${msg.id}`;
   const inlineUrl = `${downloadUrl}?inline=true`;
+
+  const DownloadBtn = () => (
+    <a href={downloadUrl} download className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition text-[10px] opacity-70 hover:opacity-100">
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+      Descargar
+    </a>
+  );
 
   if (tipo.startsWith("image/")) {
     return (
       <div className="mt-1">
-        <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+        <a href={inlineUrl} target="_blank" rel="noopener noreferrer">
           <img src={inlineUrl} alt={msg.archivoNombre} className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90" loading="lazy" />
         </a>
-        <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+          <DownloadBtn />
+        </div>
       </div>
     );
   }
   if (tipo.startsWith("video/")) {
     return (
       <div className="mt-1">
-        <video src={inlineUrl} controls className="max-w-[220px] max-h-[160px] rounded-lg" preload="metadata" />
-        <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+        <video src={inlineUrl} controls playsInline className="max-w-[220px] max-h-[160px] rounded-lg" preload="metadata" />
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+          <DownloadBtn />
+        </div>
       </div>
     );
   }
@@ -180,7 +193,7 @@ export default function ChatFloatingWidget() {
         const err = await res.json();
         alert(err.error || "Error al subir archivo");
       }
-    } catch { /* silenciar */ }
+    } catch (err) { console.error("[ChatWidget] Error subiendo archivo:", err); alert("Error al subir archivo. Intentá de nuevo."); }
     setSubiendo(false);
   };
 
