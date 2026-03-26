@@ -316,12 +316,13 @@ export async function POST(request: NextRequest) {
           const estadoVal = safeGet(row, fieldMap.get("estado"));
           if (estadoVal) data.estado = estadoVal.toUpperCase();
 
-          // Matching de asignado: buscar usuario por nombre (case-insensitive, parcial)
+          // Matching de asignado: normalizar (sin acentos, minúsculas) y match parcial
           const asignadoVal = safeGet(row, fieldMap.get("asignado"));
           if (asignadoVal && allUsers.length > 0) {
-            const needle = asignadoVal.toLowerCase();
+            const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+            const needle = norm(asignadoVal);
             const match = allUsers.find(u => {
-              const n = u.nombre.toLowerCase();
+              const n = norm(u.nombre);
               return n === needle || n.includes(needle) || needle.includes(n);
             });
             if (match) data.asignadoId = match.id;
