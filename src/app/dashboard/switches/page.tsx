@@ -18,18 +18,15 @@ export default function SwitchesPage() {
 
   return (
     <div className="animate-fade-in-up">
-      <h1 className="text-xl font-semibold text-surface-800 mb-1">Switches</h1>
-      <p className="text-xs text-surface-400 mb-6">Estado y puertos de switches Meraki</p>
-
-      {!selectedNetwork ? (
-        <div className="py-20 px-5 text-center text-surface-400 text-sm">Seleccioná una red desde la barra superior para ver sus switches</div>
-      ) : sectionLoading === "switches" || !loadedSections.has("switches") ? (
-        <LoadingSpinner section="switches" />
-      ) : (
-        <ExportableSection sectionName="Switches">
+      <ExportableSection sectionName="Switches" title="Switches" subtitle="Estado y puertos de switches Meraki">
+        {!selectedNetwork ? (
+          <div className="py-20 px-5 text-center text-surface-400 text-sm">Seleccioná una red desde la barra superior para ver sus switches</div>
+        ) : sectionLoading === "switches" || !loadedSections.has("switches") ? (
+          <LoadingSpinner section="switches" />
+        ) : (
           <SwitchesSection switchesDetailed={switchesDetailed} sortData={sortData} sortConfig={sortConfig} handleSort={handleSort} />
-        </ExportableSection>
-      )}
+        )}
+      </ExportableSection>
     </div>
   );
 }

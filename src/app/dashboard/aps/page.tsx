@@ -8,16 +8,13 @@ export default function APsPage() {
 
   return (
     <div className="animate-fade-in-up">
-      <h1 className="text-xl font-semibold text-surface-800 mb-1">Puntos de Acceso</h1>
-      <p className="text-xs text-surface-400 mb-6">Estado y señal de access points Meraki</p>
-
-      {!selectedNetwork ? (
-        <div className="py-20 px-5 text-center text-surface-400 text-sm">Seleccioná una red desde la barra superior para ver sus puntos de acceso</div>
-      ) : (
-        <ExportableSection sectionName="Access Points">
+      <ExportableSection sectionName="Access Points" title="Puntos de Acceso" subtitle="Estado y señal de access points Meraki">
+        {!selectedNetwork ? (
+          <div className="py-20 px-5 text-center text-surface-400 text-sm">Seleccioná una red desde la barra superior para ver sus puntos de acceso</div>
+        ) : (
           <AccessPointsSection summaryData={summaryData} loadedSections={loadedSections} sectionLoading={sectionLoading} loadSection={loadSection} />
-        </ExportableSection>
-      )}
+        )}
+      </ExportableSection>
     </div>
   );
 }
