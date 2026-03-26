@@ -42,6 +42,18 @@ const ETIQUETA_COLORS = [
   "#3b82f6", "#8b5cf6", "#ec4899", "#6b7280", "#1e293b",
 ];
 
+/* ── Auto-fill por prefijo de serial ── */
+const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
+  Q2PD: { nombre: "AP", modelo: "MR33" },
+  Q3AJ: { nombre: "AP", modelo: "MR36" },
+  Q3AL: { nombre: "AP", modelo: "MR44" },
+  Q2GW: { nombre: "SWITCH 24P", modelo: "MS225" },
+  Q2CX: { nombre: "SWITCH 8P", modelo: "MS120" },
+  Q2PN: { nombre: "UTM", modelo: "MX84" },
+  Q2YN: { nombre: "UTM", modelo: "MX85" },
+  Q2TN: { nombre: "Gateway", modelo: "Z3" },
+};
+
 const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "nombre",      label: "Equipo",      field: "nombre",      visible: true,  editable: true,  type: "text" },
   { id: "modelo",      label: "Modelo",      field: "modelo",      visible: true,  editable: true,  type: "text" },
@@ -688,10 +700,24 @@ export default function StockPage() {
           >
             <h2 className="text-base font-semibold text-surface-800 mb-4">Agregar Equipo</h2>
             <div className="space-y-3">
-              <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre *" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+              <div>
+                <input value={form.numeroSerie} onChange={(e) => {
+                  const val = e.target.value;
+                  const prefix = val.slice(0, 4).toUpperCase();
+                  const match = prefix.length === 4 ? SERIAL_PREFIX_MAP[prefix] : null;
+                  setForm(f => ({
+                    ...f,
+                    numeroSerie: val,
+                    ...(match ? { nombre: match.nombre, modelo: match.modelo } : {}),
+                  }));
+                }} placeholder="Número de serie" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                {form.numeroSerie.length >= 4 && SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()] && (
+                  <p className="text-[10px] text-green-600 mt-0.5 ml-1">Auto-completado: {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].nombre} · {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].modelo}</p>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre *" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
                 <input value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} placeholder="Modelo" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
-                <input value={form.numeroSerie} onChange={(e) => setForm({ ...form, numeroSerie: e.target.value })} placeholder="Número de serie" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">

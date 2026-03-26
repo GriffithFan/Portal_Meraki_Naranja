@@ -52,6 +52,18 @@ const PREDIO_FIELDS: Record<string, string> = {
   correo: "Correo",
 };
 
+/* Auto-fill por prefijo de serial (4 primeros caracteres) */
+const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
+  Q2PD: { nombre: "AP", modelo: "MR33" },
+  Q3AJ: { nombre: "AP", modelo: "MR36" },
+  Q3AL: { nombre: "AP", modelo: "MR44" },
+  Q2GW: { nombre: "SWITCH 24P", modelo: "MS225" },
+  Q2CX: { nombre: "SWITCH 8P", modelo: "MS120" },
+  Q2PN: { nombre: "UTM", modelo: "MX84" },
+  Q2YN: { nombre: "UTM", modelo: "MX85" },
+  Q2TN: { nombre: "Gateway", modelo: "Z3" },
+};
+
 const EQUIPO_FIELDS: Record<string, string> = {
   nombre: "Nombre",
   descripcion: "Descripción",
@@ -273,8 +285,8 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      if (!fieldMap.has("nombre")) {
-        return NextResponse.json({ error: 'Debes mapear la columna "Nombre"' }, { status: 400 });
+      if (!fieldMap.has("nombre") && !fieldMap.has("numeroSerie")) {
+        return NextResponse.json({ error: 'Debes mapear la columna "Nombre" o "Número de Serie"' }, { status: 400 });
       }
 
       // Pre-cargar usuarios para matching de asignado
@@ -292,16 +304,20 @@ export async function POST(request: NextRequest) {
 
         try {
           const nombre = safeGet(row, fieldMap.get("nombre"));
-          if (!nombre) { skipped++; continue; }
+          const ns = safeGet(row, fieldMap.get("numeroSerie"));
 
-          const data: Record<string, unknown> = { nombre };
+          // Auto-fill por prefijo de serial
+          const prefixMatch = ns ? SERIAL_PREFIX_MAP[ns.slice(0, 4).toUpperCase()] : null;
+          const finalNombre = nombre || prefixMatch?.nombre || "";
+          if (!finalNombre) { skipped++; continue; }
+
+          const data: Record<string, unknown> = { nombre: finalNombre };
 
           const desc = safeGet(row, fieldMap.get("descripcion"));
           if (desc) data.descripcion = desc;
-          const ns = safeGet(row, fieldMap.get("numeroSerie"));
           if (ns) data.numeroSerie = ns;
           const modelo = safeGet(row, fieldMap.get("modelo"));
-          if (modelo) data.modelo = modelo;
+          data.modelo = modelo || prefixMatch?.modelo || "";
           const marca = safeGet(row, fieldMap.get("marca"));
           if (marca) data.marca = marca;
           const cat = safeGet(row, fieldMap.get("categoria"));
