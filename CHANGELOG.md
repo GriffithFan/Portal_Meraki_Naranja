@@ -2,6 +2,39 @@
 
 ---
 
+## [2026-03-28] — Stock: Reestructuración columnas, Asignado, Etiquetas, Carga total, Importación inteligente
+
+### Stock — Reestructuración de columnas
+- **Columnas eliminadas** — Removidas `cantidad`, `marca`, `categoría` de DEFAULT_COLUMNS y formulario de creación.
+- **DEFAULT_COLUMNS (8)** — nombre, modelo, N/S, estado, asignado, ubicación, notas, descripción.
+
+### Stock — Columna Asignado (Técnico)
+- **Dropdown de técnicos** — Selector en celda de tabla que muestra usuarios activos (fetch `/api/usuarios`).
+- **Cambio directo** — MOD/ADMIN pueden asignar técnico desde la tabla sin abrir modal.
+- **Modelo Prisma** — Nuevo campo `asignadoId` (FK → User), relación `EquipoAsignado`.
+- **API stock GET** — Incluye `asignado: { select: { id, nombre } }` en la respuesta.
+- **API stock POST/PUT** — Aceptan `asignadoId` para asignar técnico.
+
+### Stock — Sistema de Etiquetas con colores
+- **Badge junto al nombre** — Etiqueta con color personalizable visible en la celda de nombre.
+- **10 colores predefinidos** — Rojo, naranja, ámbar, verde, esmeralda, cyan, azul, violeta, rosa, gris.
+- **Editor inline** — Clic en badge abre editor con input de texto + selector de color.
+- **CRUD etiqueta** — Guardar, editar y eliminar etiqueta por equipo (PUT /api/stock/[id]).
+- **Modelo Prisma** — Nuevos campos `etiqueta` (String?) y `etiquetaColor` (String?).
+
+### Stock — Carga de todos los equipos
+- **API stock** — Límite default cambiado de 100 a 5000, máximo de 500 a 10000.
+- **Frontend** — `fetchEquipos()` ahora envía `limit=5000` para cargar la totalidad (830+ equipos).
+
+### Importación — Auto-asignación de técnico
+- **Nuevo campo "asignado"** — Agregado a `equipoAliases` con aliases: asignado, asignado_a, tecnico, técnico, technician, asignación.
+- **EQUIPO_FIELDS** — Nuevo campo `Asignado (Técnico)` en dropdown de mapeo de columnas.
+- **Matching inteligente** — Busca usuario por nombre parcial, case-insensitive y sin acentos (normalización NFD + strip diacríticos).
+- **Ejemplos** — `th07` → TH07, `enzò` → Enzo, `josé` → Jose. Funciona en ambas direcciones.
+- **Pre-carga** — Usuarios activos se cargan una sola vez antes del loop de importación.
+
+---
+
 ## [2026-03-28] — Stock: Sistema de columnas, eliminación, importación mejorada, exportación html-to-image
 
 ### Stock — Sistema de columnas personalizable

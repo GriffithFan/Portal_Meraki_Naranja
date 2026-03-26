@@ -1,5 +1,42 @@
 # Registro de Cambios — Portal Meraki Naranja
 
+## Fase 8: Stock reestructurado, Asignado, Etiquetas, Importación inteligente
+
+### Stock — Reestructuración de columnas
+- **stock/page.tsx** — Removidas columnas `cantidad`, `marca`, `categoría` de DEFAULT_COLUMNS. Ahora 8 columnas: nombre, modelo, N/S, estado, asignado, ubicación, notas, descripción.
+- **Formulario de creación** — Eliminados campos cantidad/marca/categoría del modal de nuevo equipo.
+
+### Stock — Columna Asignado
+- **stock/page.tsx** — Nuevo estado `tecnicos` (fetch `/api/usuarios`). Dropdown `<select>` en celda de tabla para asignar técnico.
+- **cambiarAsignado()** — Función que actualiza optimista + PUT `/api/stock/[id]` con `{ asignadoId }`. Rollback en error.
+- **Formulario creación** — Selector de técnico en modal de nuevo equipo.
+- **schema.prisma** — `asignadoId String?` con `@relation("EquipoAsignado")` a User. Índice en `asignadoId`.
+- **api/stock/route.ts GET** — Include `asignado: { select: { id: true, nombre: true } }`.
+- **api/stock/route.ts POST** — Acepta `asignadoId` en body.
+- **api/stock/[id]/route.ts PUT** — Acepta `asignadoId` en body.
+- **lib/validation.ts** — `stockCreateSchema` incluye `asignadoId: cuidOpt()`.
+
+### Stock — Sistema de Etiquetas
+- **ETIQUETA_COLORS** — Array de 10 colores: rojo, naranja, ámbar, verde, esmeralda, cyan, azul, violeta, rosa, gris.
+- **editingEtiqueta / etiquetaForm** — Estados para editor inline de etiqueta (texto + color).
+- **guardarEtiqueta()** — PUT `/api/stock/[id]` con `{ etiqueta, etiquetaColor }`. Optimistic update.
+- **eliminarEtiqueta()** — PUT con `{ etiqueta: null, etiquetaColor: null }`.
+- **renderCell "nombre"** — Badge de color junto al nombre del equipo. Click abre editor inline.
+- **schema.prisma** — `etiqueta String?`, `etiquetaColor String?` en modelo Equipo.
+- **lib/validation.ts** — `etiqueta: strOpt(50)`, `etiquetaColor: strOpt(20)` en stockCreateSchema.
+
+### Stock — Carga total de equipos
+- **api/stock/route.ts** — `limit` default cambiado de `100` a `5000`, max de `500` a `10000`.
+- **stock/page.tsx** — `fetchEquipos()` pasa `limit=5000` en URLSearchParams para traer todos los registros.
+
+### Importación — Auto-asignación de técnico
+- **importar/page.tsx** — Nuevo entry `asignado` en `equipoAliases`: aliases `asignado`, `asignado_a`, `tecnico`, `técnico`, `technician`, `asignación`.
+- **api/importar/ejecutar/route.ts** — `EQUIPO_FIELDS` incluye `asignado: "Asignado (Técnico)"`.
+- **Lógica de matching** — Pre-carga `prisma.user.findMany({ where: { activo: true } })`. Para cada fila, normaliza valor del Excel (NFD + strip diacríticos + lowercase) y compara contra nombres de usuarios. Match parcial bidireccional (`includes` en ambas direcciones).
+- **Normalización** — `s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()` — elimina acentos, tildes, diéresis. Permite: `th07`↔`TH07`, `enzò`↔`Enzo`, `josé`↔`Jose`.
+
+---
+
 ## Fase 7: Stock avanzado, Exportación, Importación mejorada
 
 ### Stock — Columnas personalizables (como Tareas)
