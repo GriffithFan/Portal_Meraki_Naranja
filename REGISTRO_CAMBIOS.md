@@ -1,5 +1,30 @@
 # Registro de Cambios — Portal Meraki Naranja
 
+## Fase 6: Permisos Avanzados, Chat RBAC, Instructivos con Imágenes
+
+### Permisos dinámicos por sección
+- **usePermisos.ts** — Hook de permisos dinámicos con defaults por rol. TECNICO ahora puede ver: `tareas`, `calendario`, `bandeja`, `instructivo`, `predios`, `chat`, `hospedajes`, `actas`.
+- **hospedajes/page.tsx** — `canEdit = isModOrAdmin || puedeEditar("hospedajes")`. Botón "Nuevo", columna "Acciones" y botones editar/eliminar ocultos para técnicos.
+- **actas/page.tsx** — `canEdit = isModOrAdmin || puedeEditar("actas")`. Botón "Subir acta" oculto para técnicos.
+- **instructivo/page.tsx** — `canEdit = userRol === "ADMIN" || userRol === "MODERADOR" || puedeEditar("instructivo")`. CRUD oculto para técnicos.
+
+### Chat — Sistema de permisos Mesa de Ayuda
+- **Sub-rol esMesa** — Boolean en modelo User. Solo usuarios con `esMesa: true` pueden responder/tomar/cerrar conversaciones.
+- **api/chat/route.ts** — GET: Admin/Mod ven todas las conversaciones. Técnicos solo ven las propias (`creadorId`).
+- **api/chat/[id]/route.ts** — GET: Admin/Mod pueden ver cualquier conversación. No anonimiza nombres para admin/mod. POST: Solo creador o agente asignado pueden enviar mensajes.
+- **api/chat/sin-leer/route.ts** — Admin/Mod incluidos en conteo de sin leer.
+- **chat/page.tsx** — `soloLectura = isModOrAdmin && !isMesa`. Oculta formulario de envío, botón "Tomar" y nueva consulta para usuarios en solo lectura. Badge "Solo lectura" en header.
+- **usuarios/page.tsx** — Badge "Mesa" azul visible en tarjetas mobile y tabla desktop.
+
+### Instructivos — Soporte de imágenes
+- **Prisma schema** — Nuevos campos en modelo Instructivo: `imagenNombre`, `imagenRuta`, `imagenTipo`, `imagenSize` (todos opcionales).
+- **api/instructivos/route.ts** — POST acepta campo `imagen` (JPG/PNG/WebP/GIF, máx 25MB). Validación de MIME type y extensión.
+- **api/instructivos/[id]/route.ts** — PUT soporta upload/reemplazo/eliminación de imagen. DELETE limpia imagen del filesystem. `deleteVideoFile` → `deleteUploadFile`.
+- **api/instructivos/video/[filename]/route.ts** — MIME types ampliados: `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`.
+- **instructivo/page.tsx** — Visor de imagen con zoom fullscreen (click). Icono verde esmeralda en lista para instructivos con imagen. Formulario con sección de upload de imagen (independiente del video). Badge de tamaño en lista lateral.
+
+---
+
 ## Fase 1: Estructura Base + Auth + Layout
 
 ### Inicialización del proyecto

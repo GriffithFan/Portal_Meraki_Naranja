@@ -75,7 +75,9 @@ src/
 | Facturación | Control de facturación por predio |
 | Stock | Inventario de equipamiento con trazabilidad |
 | Actas | Generación de documentos formales (PDF) |
-| Usuarios | RBAC con tres niveles (Admin, Moderador, Técnico) |
+| Instructivos | Guías técnicas con video, YouTube e imágenes |
+| Chat | Mesa de Ayuda con sub-rol esMesa, soporte archivos/audio |
+| Usuarios | RBAC con tres niveles (Admin, Moderador, Técnico) + sub-rol Mesa |
 | Hospedajes | Gestión de hospedajes y asignaciones |
 
 ## Roles y permisos
@@ -84,7 +86,8 @@ src/
 |-----|---------|
 | Admin | Acceso total, gestión de usuarios, permisos y configuración |
 | Moderador | Gestión de tareas, stock, actas, facturación |
-| Técnico | Monitoreo de red, tareas asignadas, calendario |
+| Técnico | Monitoreo de red, tareas asignadas, calendario, lectura de hospedajes/actas/instructivos |
+| Mesa (sub-rol) | Responder y gestionar conversaciones del Chat de Ayuda |
 
 ## Deploy a producción
 

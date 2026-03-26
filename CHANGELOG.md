@@ -2,6 +2,35 @@
 
 ---
 
+## [2026-03-26] — Permisos Gestión/Recursos, Chat RBAC Mesa, Imágenes en Instructivos
+
+### Permisos por rol (Gestión y Recursos)
+- **Hospedajes** — Visible para todos los roles. Técnicos solo lectura (sin editar/eliminar/crear). Usa `usePermisos` con `puedeEditar("hospedajes")`.
+- **Actas** — Visible para todos los roles. Técnicos solo lectura. Usa `usePermisos` con `puedeEditar("actas")`.
+- **Instructivos** — Visible para todos. Técnicos solo lectura. Usa `usePermisos` con `puedeEditar("instructivo")`.
+- **usePermisos.ts** — TECNICO `puedeVer` defaults ahora incluyen `hospedajes` y `actas`.
+
+### Chat — RBAC con sub-rol Mesa
+- **Admin/Mod sin esMesa** — Ven todas las conversaciones en modo solo lectura. No pueden responder ni tomar conversaciones. Ven nombres reales (no anonimizados).
+- **esMesa** — Funcionalidad completa: tomar, responder, cerrar conversaciones.
+- **Técnicos** — Solo ven su propio historial de consultas (filtro por `creadorId`).
+- **API chat/route.ts** — GET incluye `esAdminOMod` para listar todas las conversaciones.
+- **API chat/[id]/route.ts** — GET permite acceso a admin/mod. Anonymización desactivada para admin/mod.
+- **API chat/sin-leer/route.ts** — Incluye admin/mod en conteo de mensajes sin leer.
+- **chat/page.tsx** — Variable `soloLectura = isModOrAdmin && !isMesa`. Título contextual. Oculta input y botón "Tomar" en modo solo lectura.
+- **usuarios/page.tsx** — Badge "Mesa" (azul) visible en tarjetas mobile y tabla desktop para usuarios con `esMesa: true`.
+
+### Instructivos — Soporte de imágenes
+- **Modelo Prisma** — Nuevos campos: `imagenNombre`, `imagenRuta`, `imagenTipo`, `imagenSize`.
+- **API POST/PUT** — Acepta campo `imagen` (JPG, PNG, WebP, GIF, máx 25MB). Validación MIME y extensión. Almacenamiento en `uploads/instructivos/` con prefijo `img-`.
+- **API DELETE** — Elimina tanto video como imagen del filesystem.
+- **API video/[filename]** — MIME types ampliados para servir imágenes (.jpg, .png, .webp, .gif).
+- **Frontend visor** — Visor de imagen con zoom fullscreen (click → `requestFullscreen`). Icono verde esmeralda para instructivos con imagen.
+- **Frontend formulario** — Sección de upload de imagen independiente del video. Misma UX: seleccionar, quitar, eliminar existente. Progreso compartido con video.
+- **Función `deleteVideoFile`** → renombrada a `deleteUploadFile` (genérica para video e imagen).
+
+---
+
 ## [2026-03-20] — Animaciones, Responsive, Prisma fix, Lint fix
 
 ### Animaciones y Responsive (global)
