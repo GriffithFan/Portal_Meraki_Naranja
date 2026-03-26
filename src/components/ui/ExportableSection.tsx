@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { useNetworkContext } from "@/contexts/NetworkContext";
+import { toast } from "sonner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -25,24 +26,32 @@ export default function ExportableSection({ sectionName, children }: ExportableS
     const raw = await html2canvas(contentRef.current, {
       scale: 2,
       useCORS: true,
-      allowTaint: true,
+      allowTaint: false,
       backgroundColor: "#ffffff",
       logging: false,
-      removeContainer: true,
-      imageTimeout: 0,
-      scrollX: 0,
-      scrollY: 0,
+      imageTimeout: 15000,
+      scrollX: -window.scrollX,
+      scrollY: -window.scrollY,
+      windowWidth: contentRef.current.scrollWidth,
+      windowHeight: contentRef.current.scrollHeight,
       onclone: (clonedDoc: Document, clonedEl: HTMLElement) => {
-        // Forzar posición fija para evitar offset por scroll
         clonedEl.style.position = "fixed";
         clonedEl.style.top = "0";
         clonedEl.style.left = "0";
         clonedEl.style.margin = "0";
+        clonedEl.style.width = contentRef.current!.scrollWidth + "px";
         clonedDoc.querySelectorAll("svg").forEach((svg) => {
           svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
         });
+        // Remover imágenes cross-origin que no se pudieron cargar con CORS
+        clonedDoc.querySelectorAll("img").forEach((img) => {
+          if (!img.complete || img.naturalWidth === 0) {
+            img.style.display = "none";
+          }
+        });
       },
     });
+    if (raw.width === 0 || raw.height === 0) return null;
     // Crear canvas con márgenes blancos alrededor
     const pad = 48;
     const padded = document.createElement("canvas");
@@ -59,18 +68,25 @@ export default function ExportableSection({ sectionName, children }: ExportableS
     setExporting("jpg");
     try {
       const canvas = await captureSection();
-      if (!canvas) return;
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = getFileName("jpg");
-        a.click();
-        URL.revokeObjectURL(url);
-      }, "image/jpeg", 0.95);
+      if (!canvas) { toast.error("No se pudo capturar la sección"); return; }
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error("Blob vacío")); return; }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = getFileName("jpg");
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          resolve();
+        }, "image/jpeg", 0.95);
+      });
+      toast.success("JPG descargado");
     } catch (e) {
       console.error("Error capturando imagen:", e);
+      toast.error("Error al exportar JPG");
     } finally {
       setExporting(null);
     }
@@ -80,7 +96,7 @@ export default function ExportableSection({ sectionName, children }: ExportableS
     setExporting("pdf");
     try {
       const canvas = await captureSection();
-      if (!canvas) return;
+      if (!canvas) { toast.error("No se pudo capturar la sección"); return; }
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
       const { jsPDF } = await import("jspdf");
       const margin = 40;
@@ -93,8 +109,10 @@ export default function ExportableSection({ sectionName, children }: ExportableS
       });
       pdf.addImage(imgData, "JPEG", margin, margin, canvas.width, canvas.height);
       pdf.save(getFileName("pdf"));
+      toast.success("PDF descargado");
     } catch (e) {
       console.error("Error generando PDF:", e);
+      toast.error("Error al exportar PDF");
     } finally {
       setExporting(null);
     }
