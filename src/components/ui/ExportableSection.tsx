@@ -21,50 +21,63 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
     return `${sectionName} ${code}.${ext}`;
   };
 
-  const captureMainContent = async () => {
+  const captureMainContent = async (): Promise<HTMLCanvasElement | null> => {
     const mainEl = document.querySelector("main");
-    if (!mainEl) return null;
-    const html2canvas = (await import("html2canvas")).default;
+    if (!mainEl) {
+      console.error("[Export] No se encontró elemento <main>");
+      return null;
+    }
 
-    // Ocultar botones de export durante la captura
-    const exportBtns = mainEl.querySelector("[data-export-buttons]") as HTMLElement | null;
-    if (exportBtns) exportBtns.style.display = "none";
+    // Importar html2canvas defensivamente (CJS y ESM)
+    let h2c: any;
+    try {
+      const mod: any = await import("html2canvas");
+      h2c = typeof mod.default === "function" ? mod.default : typeof mod === "function" ? mod : null;
+      if (!h2c) {
+        console.error("[Export] html2canvas import inválido:", Object.keys(mod));
+        return null;
+      }
+    } catch (err) {
+      console.error("[Export] Error importando html2canvas:", err);
+      return null;
+    }
+
+    // Ocultar botones de export
+    const btns = mainEl.querySelectorAll("[data-export-buttons]");
+    btns.forEach((b: any) => (b.style.display = "none"));
 
     try {
-      const raw = await html2canvas(mainEl, {
+      const raw: HTMLCanvasElement = await h2c(mainEl, {
         scale: 2,
         useCORS: true,
-        allowTaint: true,
+        allowTaint: false,
         backgroundColor: "#ffffff",
         logging: false,
-        imageTimeout: 15000,
-        scrollX: 0,
-        scrollY: 0,
-        width: mainEl.scrollWidth,
-        height: mainEl.scrollHeight,
-        onclone: (clonedDoc: Document) => {
-          // Ocultar botones en el clon también
-          const clonedBtns = clonedDoc.querySelector("[data-export-buttons]") as HTMLElement | null;
-          if (clonedBtns) clonedBtns.style.display = "none";
-          clonedDoc.querySelectorAll("svg").forEach((svg) => {
-            svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-          });
-        },
+        removeContainer: true,
+        imageTimeout: 5000,
       });
-      if (raw.width === 0 || raw.height === 0) return null;
 
-      // Crear canvas con márgenes blancos
+      if (!raw || raw.width === 0 || raw.height === 0) {
+        console.error("[Export] Canvas vacío:", raw?.width, raw?.height);
+        return null;
+      }
+
+      // Canvas con márgenes blancos
       const pad = 48;
       const padded = document.createElement("canvas");
       padded.width = raw.width + pad * 2;
       padded.height = raw.height + pad * 2;
-      const ctx = padded.getContext("2d")!;
+      const ctx = padded.getContext("2d");
+      if (!ctx) return null;
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, padded.width, padded.height);
       ctx.drawImage(raw, pad, pad);
       return padded;
+    } catch (err) {
+      console.error("[Export] Error en html2canvas:", err);
+      return null;
     } finally {
-      if (exportBtns) exportBtns.style.display = "";
+      btns.forEach((b: any) => (b.style.display = ""));
     }
   };
 
@@ -72,30 +85,20 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
     setExporting("jpg");
     try {
       const canvas = await captureMainContent();
-      if (!canvas) { toast.error("No se pudo capturar la sección"); return; }
-
-      // Con allowTaint, toBlob puede fallar por SecurityError — usar fallback
-      let blob: Blob | null = null;
-      try {
-        blob = await new Promise<Blob | null>((resolve) => {
-          canvas.toBlob((b) => resolve(b), "image/jpeg", 0.95);
-        });
-      } catch {
-        // Fallback: redibujar en canvas limpio
-        const clean = document.createElement("canvas");
-        clean.width = canvas.width;
-        clean.height = canvas.height;
-        const ctx = clean.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, clean.width, clean.height);
-        const imgData = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
-        ctx.putImageData(imgData, 0, 0);
-        blob = await new Promise<Blob | null>((resolve) => {
-          clean.toBlob((b) => resolve(b), "image/jpeg", 0.95);
-        });
+      if (!canvas) {
+        toast.error("No se pudo capturar la sección");
+        return;
       }
 
-      if (!blob) { toast.error("Error al generar imagen"); return; }
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92);
+      });
+
+      if (!blob) {
+        toast.error("Error al generar imagen");
+        return;
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -105,8 +108,8 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast.success("JPG descargado");
-    } catch (e) {
-      console.error("Error capturando imagen:", e);
+    } catch (e: any) {
+      console.error("[Export JPG] Error:", e?.message || e);
       toast.error("Error al exportar JPG");
     } finally {
       setExporting(null);
@@ -117,24 +120,12 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
     setExporting("pdf");
     try {
       const canvas = await captureMainContent();
-      if (!canvas) { toast.error("No se pudo capturar la sección"); return; }
-
-      let imgData: string;
-      try {
-        imgData = canvas.toDataURL("image/jpeg", 0.95);
-      } catch {
-        // Fallback
-        const clean = document.createElement("canvas");
-        clean.width = canvas.width;
-        clean.height = canvas.height;
-        const ctx = clean.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, clean.width, clean.height);
-        const pixels = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
-        ctx.putImageData(pixels, 0, 0);
-        imgData = clean.toDataURL("image/jpeg", 0.95);
+      if (!canvas) {
+        toast.error("No se pudo capturar la sección");
+        return;
       }
 
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
       const { jsPDF } = await import("jspdf");
       const margin = 40;
       const pdfW = canvas.width + margin * 2;
@@ -147,8 +138,8 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
       pdf.addImage(imgData, "JPEG", margin, margin, canvas.width, canvas.height);
       pdf.save(getFileName("pdf"));
       toast.success("PDF descargado");
-    } catch (e) {
-      console.error("Error generando PDF:", e);
+    } catch (e: any) {
+      console.error("[Export PDF] Error:", e?.message || e);
       toast.error("Error al exportar PDF");
     } finally {
       setExporting(null);
