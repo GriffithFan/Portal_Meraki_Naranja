@@ -8,7 +8,7 @@ export default function APsPage() {
 
   return (
     <div className="animate-fade-in-up">
-      <ExportableSection sectionName="Access Points" title="Puntos de Acceso" subtitle="Estado y señal de access points Meraki">
+      <ExportableSection sectionName="Access Points en Gigas" title="Puntos de Acceso" subtitle="Estado y señal de access points Meraki">
         {!selectedNetwork ? (
           <div className="py-20 px-5 text-center text-surface-400 text-sm">Seleccioná una red desde la barra superior para ver sus puntos de acceso</div>
         ) : (

@@ -8,7 +8,7 @@ export default function AppliancePage() {
 
   return (
     <div className="animate-fade-in-up">
-      <ExportableSection sectionName="Appliance" title="Appliance Status" subtitle="Estado, puertos y datos históricos del appliance">
+      <ExportableSection sectionName="Appliance Status" title="Appliance Status" subtitle="Estado, puertos y datos históricos del appliance">
         {!selectedNetwork ? (
           <div className="py-20 px-5 text-center text-surface-400 text-sm">Seleccioná una red desde la barra superior para ver su appliance</div>
         ) : (
