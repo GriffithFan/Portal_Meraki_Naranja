@@ -9,6 +9,58 @@ import clsx from "clsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+const MAX_AUDIO_SECONDS = 120;
+const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,application/zip,application/x-zip-compressed";
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
+  if (!msg.archivoUrl) return null;
+  const tipo = msg.archivoTipo || "";
+  const downloadUrl = `/api/chat/archivo/${msg.id}`;
+  const inlineUrl = `${downloadUrl}?inline=true`;
+
+  if (tipo.startsWith("image/")) {
+    return (
+      <div className="mt-1.5">
+        <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+          <img src={inlineUrl} alt={msg.archivoNombre} className="max-w-[280px] max-h-[200px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition" loading="lazy" />
+        </a>
+        <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+      </div>
+    );
+  }
+  if (tipo.startsWith("video/")) {
+    return (
+      <div className="mt-1.5">
+        <video src={inlineUrl} controls className="max-w-[280px] max-h-[200px] rounded-lg" preload="metadata" />
+        <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+      </div>
+    );
+  }
+  if (tipo.startsWith("audio/")) {
+    return (
+      <div className="mt-1.5">
+        <audio src={inlineUrl} controls className="max-w-[280px] h-9" preload="metadata" />
+        <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+      </div>
+    );
+  }
+  return (
+    <a href={downloadUrl} className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition text-xs" download>
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      <span className="truncate">{msg.archivoNombre}</span>
+      <span className="opacity-60 flex-shrink-0">{formatFileSize(msg.archivoTamanio)}</span>
+    </a>
+  );
+}
+
 const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
   ABIERTA: { label: "Esperando", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   EN_CURSO: { label: "En curso", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
@@ -23,9 +75,16 @@ export default function ChatPage() {
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [loading, setLoading] = useState(true);
   const [enviando, setEnviando] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const [grabando, setGrabando] = useState(false);
+  const [grabSegundos, setGrabSegundos] = useState(0);
   const [vistaMovil, setVistaMovil] = useState<"lista" | "chat">("lista");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
 
   // Cargar conversaciones
   const cargarConversaciones = useCallback(async () => {
@@ -160,6 +219,67 @@ export default function ChatPage() {
   const tieneActiva = conversaciones.some(
     (c) => c.creadorId === session?.userId && (c.estado === "ABIERTA" || c.estado === "EN_CURSO")
   );
+
+  // ── Upload de archivos ──
+  const subirArchivo = async (file: File) => {
+    if (!seleccionada?.id) return;
+    setSubiendo(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("conversacionId", seleccionada.id);
+      const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
+      if (res.ok) {
+        await cargarMensajes(seleccionada.id);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Error al subir archivo");
+      }
+    } catch { /* silenciar */ }
+    setSubiendo(false);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) subirArchivo(file);
+    e.target.value = "";
+  };
+
+  // ── Grabación de audio ──
+  const iniciarGrabacion = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      setGrabSegundos(0);
+      setGrabando(true);
+
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        clearInterval(grabTimerRef.current);
+        const blob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType });
+        const ext = mediaRecorder.mimeType.includes("webm") ? "webm" : "mp4";
+        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: mediaRecorder.mimeType });
+        setGrabando(false);
+        setGrabSegundos(0);
+        await subirArchivo(file);
+      };
+
+      mediaRecorder.start(1000);
+      grabTimerRef.current = setInterval(() => {
+        setGrabSegundos((s) => {
+          if (s + 1 >= MAX_AUDIO_SECONDS) { mediaRecorderRef.current?.stop(); return 0; }
+          return s + 1;
+        });
+      }, 1000);
+    } catch {
+      alert("No se pudo acceder al micrófono");
+    }
+  };
+
+  const detenerGrabacion = () => { mediaRecorderRef.current?.stop(); };
 
   if (loading) {
     return (
@@ -348,7 +468,8 @@ export default function ChatPage() {
                             {isMesa ? msg.autor?.nombre : "Mesa de Ayuda"}
                           </p>
                         )}
-                        <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>
+                        {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
+                        <ChatArchivo msg={msg} esMio={esMio} />
                         <p className={clsx(
                           "text-[10px] mt-1",
                           esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500"
@@ -365,32 +486,63 @@ export default function ChatPage() {
               {/* Input de mensaje */}
               {seleccionada.estado !== "CERRADA" && (
                 (isMesa ? seleccionada.agenteId === session?.userId : true) ? (
-                  <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder={
-                          seleccionada.estado === "ABIERTA" && !isMesa
-                            ? "Esperando que Mesa tome tu consulta..."
-                            : "Escribí un mensaje..."
-                        }
-                        disabled={seleccionada.estado === "ABIERTA" && !isMesa}
-                        value={nuevoMensaje}
-                        onChange={(e) => setNuevoMensaje(e.target.value)}
-                        maxLength={2000}
-                        className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!nuevoMensaje.trim() || enviando || (seleccionada.estado === "ABIERTA" && !isMesa)}
-                        className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
-                      >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                        </svg>
-                      </button>
-                    </div>
-                  </form>
+                  <div className="p-3 border-t border-surface-200 dark:border-surface-700">
+                    <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} className="hidden" onChange={handleFileSelect} />
+
+                    {grabando ? (
+                      <div className="flex items-center gap-3 px-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-sm text-red-500 font-medium flex-1">
+                          Grabando audio... {Math.floor(grabSegundos / 60)}:{String(grabSegundos % 60).padStart(2, "0")} / 2:00
+                        </span>
+                        <button type="button" onClick={detenerGrabacion} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium hover:bg-red-600 transition">
+                          Enviar audio
+                        </button>
+                      </div>
+                    ) : subiendo ? (
+                      <div className="flex items-center justify-center gap-2 py-2">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
+                        <span className="text-sm text-surface-500">Subiendo archivo...</span>
+                      </div>
+                    ) : (
+                      <form onSubmit={enviarMensaje} className="flex items-center gap-2">
+                        {/* Adjuntar archivo */}
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo (foto, video, audio, zip)">
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                          </svg>
+                        </button>
+                        {/* Grabar audio */}
+                        <button type="button" onClick={iniciarGrabacion} className="p-2 text-surface-400 hover:text-red-500 transition" title="Grabar audio (máx 2 min)">
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                          </svg>
+                        </button>
+                        <input
+                          type="text"
+                          placeholder={
+                            seleccionada.estado === "ABIERTA" && !isMesa
+                              ? "Esperando que Mesa tome tu consulta..."
+                              : "Escribí un mensaje..."
+                          }
+                          disabled={seleccionada.estado === "ABIERTA" && !isMesa}
+                          value={nuevoMensaje}
+                          onChange={(e) => setNuevoMensaje(e.target.value)}
+                          maxLength={2000}
+                          className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                        />
+                        <button
+                          type="submit"
+                          disabled={!nuevoMensaje.trim() || enviando || (seleccionada.estado === "ABIERTA" && !isMesa)}
+                          className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                        >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                          </svg>
+                        </button>
+                      </form>
+                    )}
+                  </div>
                 ) : (
                   <div className="p-3 border-t border-surface-200 dark:border-surface-700 text-center text-xs text-surface-400">
                     Tomá esta conversación primero para responder

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getNetworkInfo, getDevice, getOrganizationDevices, getOrganizations } from "@/lib/meraki";
 import { getFromCache, setInCache } from "@/lib/merakiCache";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -21,8 +21,8 @@ const MAC_RAW_REGEX = /^[0-9a-f]{12}$/i;
  */
 export async function GET(request: NextRequest) {
   const session = await getSession();
-  if (!session || !isModOrAdmin(session.rol))
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  if (!session)
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   try {
     const q = request.nextUrl.searchParams.get("q")?.trim()?.slice(0, 100) ?? "";

@@ -8,7 +8,7 @@ import {
   getOrgDevicesUplinksLossAndLatency,
   getDeviceLossAndLatencyHistory,
 } from "@/lib/meraki";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -17,8 +17,8 @@ export async function GET(
   { params }: { params: Promise<{ networkId: string }> }
 ) {
   const session = await getSession();
-  if (!session || !isModOrAdmin(session.rol))
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  if (!session)
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { networkId } = await params;
   const sp = request.nextUrl.searchParams;

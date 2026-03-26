@@ -29,7 +29,16 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       agente: { select: { id: true, nombre: true } },
       mensajes: {
         orderBy: { createdAt: "asc" },
-        include: {
+        select: {
+          id: true,
+          contenido: true,
+          conversacionId: true,
+          autorId: true,
+          archivoUrl: true,
+          archivoNombre: true,
+          archivoTipo: true,
+          archivoTamanio: true,
+          createdAt: true,
           autor: { select: { id: true, nombre: true, esMesa: true } },
         },
       },

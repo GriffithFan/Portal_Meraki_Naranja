@@ -54,8 +54,8 @@ function checkLoginRateLimit(ip: string): boolean {
 const MAX_BODY_BYTES = 16 * 1024; // 16 KB
 const LARGE_BODY_PATHS = ["/api/tareas", "/api/stock", "/api/calendario"]; // rutas con payloads más grandes
 const MAX_LARGE_BODY_BYTES = 256 * 1024; // 256 KB
-const UPLOAD_PATHS = ["/api/importar"]; // rutas con archivos
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+const UPLOAD_PATHS = ["/api/importar", "/api/actas", "/api/instructivos", "/api/chat/upload"]; // rutas con archivos
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 
 const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron", "/api/notificaciones/changelog"];
 

@@ -7,6 +7,59 @@ import clsx from "clsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+const MAX_AUDIO_SECONDS = 120; // 2 minutos
+const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,application/zip,application/x-zip-compressed";
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function ChatArchivo({ msg }: { msg: any }) {
+  if (!msg.archivoUrl) return null;
+  const tipo = msg.archivoTipo || "";
+  const downloadUrl = `/api/chat/archivo/${msg.id}`;
+  const inlineUrl = `${downloadUrl}?inline=true`;
+
+  if (tipo.startsWith("image/")) {
+    return (
+      <div className="mt-1">
+        <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+          <img src={inlineUrl} alt={msg.archivoNombre} className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90" loading="lazy" />
+        </a>
+        <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+      </div>
+    );
+  }
+  if (tipo.startsWith("video/")) {
+    return (
+      <div className="mt-1">
+        <video src={inlineUrl} controls className="max-w-[220px] max-h-[160px] rounded-lg" preload="metadata" />
+        <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+      </div>
+    );
+  }
+  if (tipo.startsWith("audio/")) {
+    return (
+      <div className="mt-1">
+        <audio src={inlineUrl} controls className="max-w-[220px] h-8" preload="metadata" />
+        <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+      </div>
+    );
+  }
+  // zip u otros
+  return (
+    <a href={downloadUrl} className="mt-1 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition text-xs" download>
+      <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      <span className="truncate">{msg.archivoNombre}</span>
+      <span className="text-[10px] opacity-60 flex-shrink-0">{formatFileSize(msg.archivoTamanio)}</span>
+    </a>
+  );
+}
+
 export default function ChatFloatingWidget() {
   const { session, loading, isMesa } = useSession();
   const pathname = usePathname();
@@ -16,8 +69,15 @@ export default function ChatFloatingWidget() {
   const [mensajes, setMensajes] = useState<any[]>([]);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const [grabando, setGrabando] = useState(false);
+  const [grabSegundos, setGrabSegundos] = useState(0);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
   const isHidden = pathname === "/dashboard/chat";
 
   const checkUnread = useCallback(async () => {
@@ -89,6 +149,68 @@ export default function ChatFloatingWidget() {
       await cargarConvActiva();
     }
   };
+
+  // ── Upload de archivos ──
+  const subirArchivo = async (file: File) => {
+    if (!conversacion?.id) return;
+    setSubiendo(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("conversacionId", conversacion.id);
+      const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
+      if (res.ok) {
+        const res2 = await fetch(`/api/chat/${conversacion.id}`, { credentials: "include" });
+        if (res2.ok) { const data = await res2.json(); setMensajes(data.mensajes || []); }
+      } else {
+        const err = await res.json();
+        alert(err.error || "Error al subir archivo");
+      }
+    } catch { /* silenciar */ }
+    setSubiendo(false);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) subirArchivo(file);
+    e.target.value = "";
+  };
+
+  // ── Grabación de audio ──
+  const iniciarGrabacion = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      setGrabSegundos(0);
+      setGrabando(true);
+
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        clearInterval(grabTimerRef.current);
+        const blob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType });
+        const ext = mediaRecorder.mimeType.includes("webm") ? "webm" : "mp4";
+        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: mediaRecorder.mimeType });
+        setGrabando(false);
+        setGrabSegundos(0);
+        await subirArchivo(file);
+      };
+
+      mediaRecorder.start(1000);
+      grabTimerRef.current = setInterval(() => {
+        setGrabSegundos((s) => {
+          if (s + 1 >= MAX_AUDIO_SECONDS) { mediaRecorderRef.current?.stop(); return 0; }
+          return s + 1;
+        });
+      }, 1000);
+    } catch {
+      alert("No se pudo acceder al micrófono");
+    }
+  };
+
+  const detenerGrabacion = () => { mediaRecorderRef.current?.stop(); };
 
   if (isHidden) return null;
 
@@ -222,7 +344,8 @@ export default function ChatFloatingWidget() {
                       ? "bg-blue-600 text-white rounded-br-md"
                       : "bg-surface-100 dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-bl-md"
                   )}>
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>
+                    {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
+                    <ChatArchivo msg={msg} />
                     <p className={clsx(
                       "text-[10px] mt-0.5",
                       esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500"
@@ -238,32 +361,69 @@ export default function ChatFloatingWidget() {
 
           {/* Input — siempre visible */}
           {(!conversacion || conversacion.estado !== "CERRADA") ? (
-            <form onSubmit={enviarMensaje} className="p-2 border-t border-surface-200 dark:border-surface-700">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder={
-                    conversacion?.estado === "ABIERTA"
-                      ? "Esperando agente..."
-                      : "Escribí tu consulta..."
-                  }
-                  disabled={conversacion?.estado === "ABIERTA"}
-                  value={nuevoMensaje}
-                  onChange={(e) => setNuevoMensaje(e.target.value)}
-                  maxLength={2000}
-                  className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={!nuevoMensaje.trim() || enviando || conversacion?.estado === "ABIERTA"}
-                  className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                  </svg>
-                </button>
-              </div>
-            </form>
+            <div className="p-2 border-t border-surface-200 dark:border-surface-700">
+              <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} className="hidden" onChange={handleFileSelect} />
+
+              {grabando ? (
+                <div className="flex items-center gap-2 px-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-xs text-red-500 font-medium flex-1">
+                    Grabando... {Math.floor(grabSegundos / 60)}:{String(grabSegundos % 60).padStart(2, "0")} / 2:00
+                  </span>
+                  <button type="button" onClick={detenerGrabacion} className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition" title="Enviar audio">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                    </svg>
+                  </button>
+                </div>
+              ) : subiendo ? (
+                <div className="flex items-center justify-center gap-2 py-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
+                  <span className="text-xs text-surface-500">Subiendo archivo...</span>
+                </div>
+              ) : (
+                <form onSubmit={enviarMensaje} className="flex items-center gap-1">
+                  {/* Adjuntar archivo */}
+                  {conversacion && conversacion.estado !== "ABIERTA" && (
+                    <>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                        </svg>
+                      </button>
+                      {/* Grabar audio */}
+                      <button type="button" onClick={iniciarGrabacion} className="p-1.5 text-surface-400 hover:text-red-500 transition" title="Grabar audio (máx 2 min)">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                  <input
+                    type="text"
+                    placeholder={
+                      conversacion?.estado === "ABIERTA"
+                        ? "Esperando agente..."
+                        : "Escribí tu consulta..."
+                    }
+                    disabled={conversacion?.estado === "ABIERTA"}
+                    value={nuevoMensaje}
+                    onChange={(e) => setNuevoMensaje(e.target.value)}
+                    maxLength={2000}
+                    className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!nuevoMensaje.trim() || enviando || conversacion?.estado === "ABIERTA"}
+                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                    </svg>
+                  </button>
+                </form>
+              )}
+            </div>
           ) : (
             <div className="p-3 border-t border-surface-200 dark:border-surface-700 text-center">
               <p className="text-xs text-surface-400 dark:text-surface-500 mb-2">Consulta cerrada</p>

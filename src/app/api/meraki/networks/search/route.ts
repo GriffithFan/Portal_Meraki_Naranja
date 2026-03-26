@@ -8,7 +8,7 @@ import {
 } from "@/lib/meraki";
 import { getFromCache, setInCache, getOrFetch } from "@/lib/merakiCache";
 import { prisma } from "@/lib/prisma";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -43,8 +43,8 @@ async function searchInOrg(org: { id: string; name: string }, lower: string): Pr
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
-  if (!session || !isModOrAdmin(session.rol))
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  if (!session)
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   try {
     const q = request.nextUrl.searchParams.get("q")?.trim()?.slice(0, 100) ?? "";

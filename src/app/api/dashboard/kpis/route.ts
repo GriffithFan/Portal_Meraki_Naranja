@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 export async function GET() {
   const session = await getSession();
-  if (!session || !isModOrAdmin(session.rol))
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  if (!session)
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const now = new Date();
   const startOfWeek = new Date(now);

@@ -551,6 +551,10 @@ model ChatMensaje {
   contenido       String   @db.Text
   conversacionId  String
   autorId         String
+  archivoUrl      String?  // Ruta relativa del archivo subido
+  archivoNombre   String?  // Nombre original del archivo
+  archivoTipo     String?  // MIME type (image/jpeg, video/mp4, audio/webm, application/zip)
+  archivoTamanio  Int?     // Tamaño en bytes
   conversacion    ChatConversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
   autor           User @relation(fields: [autorId], references: [id], onDelete: Cascade)
 
