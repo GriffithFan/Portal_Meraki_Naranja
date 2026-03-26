@@ -313,8 +313,20 @@ export async function POST(request: NextRequest) {
           const cantStr = safeGet(row, fieldMap.get("cantidad"));
           if (cantStr) { const v = parseInt(cantStr); if (!isNaN(v) && v > 0) data.cantidad = v; }
 
+          // Matching de estado: normalizar y buscar coincidencia parcial entre estados válidos
+          const ESTADOS_VALIDOS = ["DISPONIBLE", "INSTALADO", "EN_TRANSITO", "ROTO", "PERDIDO", "EN_REPARACION"];
           const estadoVal = safeGet(row, fieldMap.get("estado"));
-          if (estadoVal) data.estado = estadoVal.toUpperCase();
+          if (estadoVal) {
+            const normE = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim().replace(/[\s_-]+/g, "_");
+            const needle = normE(estadoVal);
+            const match = ESTADOS_VALIDOS.find(e => {
+              const n = normE(e);
+              return n === needle || n.includes(needle) || needle.includes(n);
+            });
+            data.estado = match || "DISPONIBLE";
+          } else {
+            data.estado = "DISPONIBLE";
+          }
 
           // Matching de asignado: normalizar (sin acentos, minúsculas) y match parcial
           const asignadoVal = safeGet(row, fieldMap.get("asignado"));

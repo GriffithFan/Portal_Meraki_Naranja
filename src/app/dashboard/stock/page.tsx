@@ -12,12 +12,12 @@ import { motion, AnimatePresence } from "framer-motion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const ESTADOS_EQUIPO = ["DISPONIBLE", "INSTALADO", "EN_TRANSICION", "ROTO", "PERDIDO", "EN_REPARACION"];
+const ESTADOS_EQUIPO = ["DISPONIBLE", "INSTALADO", "EN_TRANSITO", "ROTO", "PERDIDO", "EN_REPARACION"];
 
 const ESTADO_COLORS: Record<string, string> = {
   DISPONIBLE: "bg-green-100 text-green-700",
   INSTALADO: "bg-blue-100 text-blue-700",
-  EN_TRANSICION: "bg-yellow-100 text-yellow-700",
+  EN_TRANSITO: "bg-yellow-100 text-yellow-700",
   ROTO: "bg-red-100 text-red-700",
   PERDIDO: "bg-gray-100 text-gray-600",
   EN_REPARACION: "bg-orange-100 text-orange-700",
