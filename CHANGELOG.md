@@ -2,6 +2,38 @@
 
 ---
 
+## [2026-03-28] — Stock: Sistema de columnas, eliminación, importación mejorada, exportación html-to-image
+
+### Stock — Sistema de columnas personalizable
+- **StockColumn interface** — Columnas con id, label, field, visible, editable, type (text/select/number).
+- **Drag & drop** — Reordenar columnas arrastrando cabeceras (HTML5 DragEvents).
+- **Inline editing** — Doble clic en celda para editar cualquier campo. Enter para guardar, Escape para cancelar.
+- **Sorting** — Clic en cabecera para ordenar asc/desc. Indicadores ▲▼.
+- **Visibilidad** — Toggles de columnas en SectionSettings. Botón "Restablecer columnas".
+- **Persistencia** — Configuración guardada en localStorage (`pmn-stock-col-config`): orden y visibilidad.
+- **10 columnas** — nombre, modelo, marca, N/S, cantidad, estado, categoría, ubicación, notas, descripción.
+
+### Stock — Eliminación de equipos
+- **Eliminar equipo individual** — Botón de eliminar por fila (visible en hover, solo ADMIN). Confirmación con modal.
+- **Limpiar campo** — Botón ✕ al editar inline para vaciar el valor del campo (excepto nombre). Optimistic update con rollback.
+- **Eliminar todo el stock** — Botón en SectionSettings (solo ADMIN). Modal de confirmación con conteo de equipos.
+- **API DELETE bulk** — `api/stock/route.ts` DELETE: elimina todos los equipos con registro en papelera y actividad.
+- **Papelera** — Tanto eliminación individual como masiva guardan datos en papelera antes de borrar.
+
+### Importación — Auto-detección de campos EQUIPO
+- **equipoAliases** — Mapa de aliases para auto-detección de columnas en importar/page.tsx: nombre, descripcion, numeroSerie (n/s, serial, serie), modelo, marca, cantidad, estado, categoria, ubicacion (location), notas.
+- **predioAliases** — Separado del mapa de equipos, mantiene aliases para predios.
+
+### Importación — Límite ampliado
+- **Parse limit** — Cambiado de 200 a 2000 filas en `api/importar/parse/route.ts`.
+
+### Exportación — html-to-image (fix oklch)
+- **html2canvas → html-to-image** — Reemplazado html2canvas por html-to-image (toCanvas) para soportar colores oklch() de Tailwind CSS v4.
+- **jspdf** — Mantiene PDF generation con canvas de html-to-image.
+- **Nombres personalizados** — Archivos exportados con nombre de sección y fecha.
+
+---
+
 ## [2026-03-26] — Permisos Gestión/Recursos, Chat RBAC Mesa, Imágenes en Instructivos
 
 ### Permisos por rol (Gestión y Recursos)

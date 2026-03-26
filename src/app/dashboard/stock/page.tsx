@@ -50,7 +50,7 @@ const DEFAULT_COLUMNS: StockColumn[] = [
 ];
 
 export default function StockPage() {
-  const { isModOrAdmin } = useSession();
+  const { isModOrAdmin, isAdmin } = useSession();
   const { headerSearch } = useSearchContext();
   const [equipos, setEquipos] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -245,6 +245,55 @@ export default function StockPage() {
 
   const visibleColumns = useMemo(() => columns.filter(c => c.visible), [columns]);
 
+  /* ── Delete equipo ── */
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "row"; id: string; nombre: string } | { type: "bulk" } | null>(null);
+
+  async function eliminarEquipo(id: string) {
+    const prev = equipos.find(e => e.id === id);
+    setEquipos(es => es.filter(e => e.id !== id));
+    setTotal(t => t - 1);
+    const res = await fetch(`/api/stock/${id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) {
+      toast.success("Equipo eliminado");
+    } else {
+      if (prev) setEquipos(es => [...es, prev]);
+      setTotal(t => t + 1);
+      toast.error("Error al eliminar equipo");
+    }
+    setConfirmDelete(null);
+  }
+
+  async function eliminarTodoStock() {
+    const res = await fetch("/api/stock", { method: "DELETE", credentials: "include" });
+    if (res.ok) {
+      const data = await res.json();
+      setEquipos([]);
+      setTotal(0);
+      toast.success(`Stock eliminado (${data.count} equipos)`);
+    } else {
+      toast.error("Error al eliminar stock");
+    }
+    setConfirmDelete(null);
+  }
+
+  async function limpiarCampo(equipoId: string, field: string) {
+    const prev = equipos.find(e => e.id === equipoId);
+    const val = field === "cantidad" ? 1 : "";
+    setEquipos(es => es.map(e => e.id === equipoId ? { ...e, [field]: field === "cantidad" ? 1 : null } : e));
+    const res = await fetch(`/api/stock/${equipoId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ [field]: val }),
+    });
+    if (res.ok) {
+      toast.success("Campo limpiado");
+    } else {
+      if (prev) setEquipos(es => es.map(e => e.id === equipoId ? prev : e));
+      toast.error("Error al limpiar campo");
+    }
+  }
+
   /* ── Render cell ── */
   function renderCell(eq: any, col: StockColumn) {
     const isEditing = editingCell?.id === eq.id && editingCell?.field === col.field;
@@ -272,16 +321,27 @@ export default function StockPage() {
     // Inline editing input
     if (isEditing) {
       return (
-        <input
-          autoFocus
-          type={col.type === "number" ? "number" : "text"}
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={saveEdit}
-          onKeyDown={handleEditKeyDown}
-          className="w-full px-1.5 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
-          min={col.type === "number" ? 1 : undefined}
-        />
+        <div className="flex items-center gap-0.5">
+          <input
+            autoFocus
+            type={col.type === "number" ? "number" : "text"}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={saveEdit}
+            onKeyDown={handleEditKeyDown}
+            className="w-full px-1.5 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
+            min={col.type === "number" ? 1 : undefined}
+          />
+          {col.id !== "nombre" && (
+            <button
+              onMouseDown={(e) => { e.preventDefault(); setEditingCell(null); limpiarCampo(eq.id, col.field); }}
+              className="shrink-0 p-0.5 rounded hover:bg-red-50 text-surface-300 hover:text-red-500"
+              title="Limpiar campo"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          )}
+        </div>
       );
     }
 
@@ -328,6 +388,17 @@ export default function StockPage() {
             >
               Restablecer columnas
             </button>
+            {isAdmin && equipos.length > 0 && (
+              <>
+                <hr className="border-surface-100 my-2" />
+                <button
+                  onClick={() => setConfirmDelete({ type: "bulk" })}
+                  className="text-[10px] text-red-500 hover:text-red-600 font-medium"
+                >
+                  Eliminar todo el stock ({total})
+                </button>
+              </>
+            )}
           </SectionSettings>
           {isModOrAdmin && (
             <button onClick={() => setShowModal(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
@@ -358,7 +429,7 @@ export default function StockPage() {
       {isModOrAdmin && (
         <p className="text-[10px] text-surface-400 mb-2 flex items-center gap-1">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
-          Arrastra las cabeceras para reordenar · Doble clic en una celda para editar
+          Arrastra cabeceras para reordenar · Doble clic para editar · ✕ para limpiar campo
         </p>
       )}
 
@@ -400,16 +471,28 @@ export default function StockPage() {
                     </span>
                   </th>
                 ))}
+                {isAdmin && <th className="w-8 px-1.5 py-2"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
               {sortedEquipos.map((eq) => (
-                <tr key={eq.id} className="hover:bg-surface-50 transition-colors row-animate">
+                <tr key={eq.id} className="hover:bg-surface-50 transition-colors row-animate group">
                   {visibleColumns.map(col => (
                     <td key={col.id} className="px-2.5 py-1.5">
                       {renderCell(eq, col)}
                     </td>
                   ))}
+                  {isAdmin && (
+                    <td className="px-1.5 py-1.5">
+                      <button
+                        onClick={() => setConfirmDelete({ type: "row", id: eq.id, nombre: eq.nombre })}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 text-surface-300 hover:text-red-500"
+                        title="Eliminar equipo"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -459,6 +542,52 @@ export default function StockPage() {
               <button type="submit" className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium">Crear</button>
             </div>
           </motion.form>
+        </motion.div>
+      )}
+      </AnimatePresence>
+
+      {/* Modal confirmar eliminación */}
+      <AnimatePresence>
+      {confirmDelete && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="bg-white rounded-lg shadow-xl p-5 w-full max-w-sm mx-4"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+              </div>
+              <h3 className="text-sm font-semibold text-surface-800">
+                {confirmDelete.type === "bulk" ? "Eliminar todo el stock" : "Eliminar equipo"}
+              </h3>
+            </div>
+            <p className="text-xs text-surface-500 mb-4">
+              {confirmDelete.type === "bulk"
+                ? `¿Estás seguro de eliminar los ${total} equipos del stock? Se guardarán en la papelera.`
+                : `¿Eliminar "${confirmDelete.nombre}"? Se guardará en la papelera.`}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmDelete(null)} className="px-3 py-1.5 text-xs text-surface-600 hover:bg-surface-100 rounded-md">
+                Cancelar
+              </button>
+              <button
+                onClick={() => confirmDelete.type === "bulk" ? eliminarTodoStock() : eliminarEquipo(confirmDelete.id)}
+                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
+              >
+                Eliminar
+              </button>
+            </div>
+          </motion.div>
         </motion.div>
       )}
       </AnimatePresence>

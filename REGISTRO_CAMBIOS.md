@@ -1,5 +1,33 @@
 # Registro de Cambios — Portal Meraki Naranja
 
+## Fase 7: Stock avanzado, Exportación, Importación mejorada
+
+### Stock — Columnas personalizables (como Tareas)
+- **stock/page.tsx** — Reescrito con sistema de columnas completo: StockColumn interface, DEFAULT_COLUMNS (10 cols), localStorage key `pmn-stock-col-config`.
+- **Drag & drop** — Reordenar columnas arrastrando cabeceras con HTML5 DragEvents (dragStart/dragOver/drop/dragEnd).
+- **Inline editing** — Doble clic en celda abre input. Enter guarda (PUT /api/stock/[id]), Escape cancela. Optimistic update con rollback en error.
+- **Sorting** — Clic en cabecera ordena asc→desc→sin orden. `useMemo` para sortedEquipos.
+- **Visibilidad** — Checkboxes en SectionSettings para mostrar/ocultar columnas. "Restablecer columnas" resetea a DEFAULT_COLUMNS.
+- **Persistencia** — `useEffect` guarda `{ id, visible, order }[]` en localStorage. Se restaura al montar el componente.
+
+### Stock — Eliminación
+- **Eliminar fila** — Botón trash SVG por fila, visible en hover (`group`/`group-hover:opacity-100`), solo ADMIN (`isAdmin`). Modal de confirmación con nombre del equipo.
+- **Limpiar campo** — Botón ✕ junto al input de edición inline. Envía valor vacío al PUT /api/stock/[id]. No disponible para campo "nombre".
+- **Eliminar todo el stock** — Botón rojo en SectionSettings (solo ADMIN, solo si hay equipos). Modal de confirmación con conteo.
+- **api/stock/route.ts DELETE** — Nuevo handler: ADMIN only, itera todos los equipos → `registrarEnPapelera()` por cada uno → `prisma.equipo.deleteMany()` → log en actividad.
+- **api/stock/[id]/route.ts DELETE** — Ya existía: ADMIN only, papelera + delete + actividad.
+
+### Importación — Aliases EQUIPO
+- **importar/page.tsx** — Nuevo `equipoAliases` map separado de `predioAliases`. Cubre: nombre, descripcion, numeroSerie (aliases: n/s, serial, n_s, numero_serie, serie), modelo, marca, cantidad, estado, categoria, ubicacion (alias: location), notas.
+- **api/importar/parse/route.ts** — Límite de parseo cambiado de `rawData.slice(1, 201)` a `rawData.slice(1, 2001)`.
+
+### Exportación — html-to-image
+- **ExportableSection.tsx** — Reemplazado `html2canvas` por `html-to-image` (`toCanvas()`). Resuelve bug donde colores oklch() de Tailwind CSS v4 no se renderizaban (canvas blanco).
+- **jspdf** — PDF usa canvas generado por html-to-image. Mismo flow.
+- **Nombres de archivo** — Exportaciones JPG/PDF ahora incluyen nombre de sección y fecha en el filename.
+
+---
+
 ## Fase 6: Permisos Avanzados, Chat RBAC, Instructivos con Imágenes
 
 ### Permisos dinámicos por sección

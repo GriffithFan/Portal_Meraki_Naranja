@@ -110,3 +110,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Error al crear equipo" }, { status: 500 });
   }
 }
+
+export async function DELETE() {
+  const session = await getSession();
+  if (!session || session.rol !== "ADMIN") {
+    return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
+  }
+
+  try {
+    const { registrarEnPapelera } = await import("@/lib/papelera");
+
+    const todos = await prisma.equipo.findMany();
+    if (todos.length === 0) {
+      return NextResponse.json({ error: "No hay equipos para eliminar" }, { status: 404 });
+    }
+
+    // Guardar en papelera antes de eliminar
+    for (const eq of todos) {
+      await registrarEnPapelera("EQUIPO", eq.nombre, eq as unknown as Record<string, unknown>, session.userId);
+    }
+
+    const { count } = await prisma.equipo.deleteMany({});
+
+    await prisma.actividad.create({
+      data: {
+        accion: "ELIMINAR",
+        descripcion: `Stock completo eliminado (${count} equipos)`,
+        entidad: "EQUIPO",
+        entidadId: "BULK",
+        userId: session.userId,
+      },
+    });
+
+    return NextResponse.json({ success: true, count });
+  } catch (error) {
+    console.error("Error eliminando stock completo:", error);
+    return NextResponse.json({ error: "Error al eliminar stock" }, { status: 500 });
+  }
+}
