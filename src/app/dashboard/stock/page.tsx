@@ -36,14 +36,17 @@ interface StockColumn {
 
 const STORAGE_KEY = "pmn-stock-col-config";
 
+const ETIQUETA_COLORS = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",
+  "#3b82f6", "#8b5cf6", "#ec4899", "#6b7280", "#1e293b",
+];
+
 const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "nombre",      label: "Equipo",      field: "nombre",      visible: true,  editable: true,  type: "text" },
   { id: "modelo",      label: "Modelo",      field: "modelo",      visible: true,  editable: true,  type: "text" },
-  { id: "marca",       label: "Marca",       field: "marca",       visible: true,  editable: true,  type: "text" },
   { id: "numeroSerie", label: "N/S",         field: "numeroSerie", visible: true,  editable: true,  type: "text" },
-  { id: "cantidad",    label: "Cant.",        field: "cantidad",    visible: true,  editable: true,  type: "number" },
   { id: "estado",      label: "Estado",       field: "estado",      visible: true,  editable: true,  type: "select", options: ESTADOS_EQUIPO },
-  { id: "categoria",   label: "Categoría",    field: "categoria",   visible: true,  editable: true,  type: "text" },
+  { id: "asignado",    label: "Asignado",     field: "asignadoId",  visible: true,  editable: true,  type: "select" },
   { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text" },
   { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
   { id: "descripcion", label: "Descripción",  field: "descripcion", visible: false, editable: true,  type: "text" },
@@ -62,7 +65,20 @@ export default function StockPage() {
   const [filtroCat, setFiltroCat] = useState("");
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", marca: "", cantidad: "1", estado: "DISPONIBLE", categoria: "", ubicacion: "", notas: "" });
+  const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "" });
+
+  /* ── Técnicos (para columna Asignado) ── */
+  const [tecnicos, setTecnicos] = useState<{ id: string; nombre: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/usuarios", { credentials: "include" })
+      .then(r => r.ok ? r.json() : [])
+      .then((users: any[]) => setTecnicos(users.map(u => ({ id: u.id, nombre: u.nombre }))))
+      .catch(() => {});
+  }, []);
+
+  /* ── Etiqueta editing ── */
+  const [editingEtiqueta, setEditingEtiqueta] = useState<string | null>(null);
+  const [etiquetaForm, setEtiquetaForm] = useState({ texto: "", color: ETIQUETA_COLORS[0] });
 
   /* ── Column state ── */
   const [columns, setColumns] = useState<StockColumn[]>(DEFAULT_COLUMNS);
@@ -218,11 +234,49 @@ export default function StockPage() {
     });
     if (res.ok) {
       setShowModal(false);
-      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", marca: "", cantidad: "1", estado: "DISPONIBLE", categoria: "", ubicacion: "", notas: "" });
+      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "" });
       toast.success("Equipo creado exitosamente");
       fetchEquipos();
     } else {
       toast.error("Error al crear equipo");
+    }
+  }
+
+  async function cambiarAsignado(id: string, asignadoId: string) {
+    const prev = equipos.find(e => e.id === id);
+    const tecnico = tecnicos.find(t => t.id === asignadoId);
+    setEquipos(es => es.map(e => e.id === id ? { ...e, asignadoId: asignadoId || null, asignado: tecnico ? { id: tecnico.id, nombre: tecnico.nombre } : null } : e));
+    const res = await fetch(`/api/stock/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ asignadoId: asignadoId || "" }),
+    });
+    if (res.ok) {
+      toast.success(asignadoId ? `Asignado a ${tecnico?.nombre}` : "Asignación removida");
+    } else {
+      if (prev) setEquipos(es => es.map(e => e.id === id ? prev : e));
+      toast.error("Error al asignar");
+    }
+  }
+
+  async function guardarEtiqueta(id: string, overrideTexto?: string) {
+    const prev = equipos.find(e => e.id === id);
+    const texto = overrideTexto !== undefined ? overrideTexto : etiquetaForm.texto.trim();
+    const color = etiquetaForm.color;
+    setEquipos(es => es.map(e => e.id === id ? { ...e, etiqueta: texto || null, etiquetaColor: texto ? color : null } : e));
+    setEditingEtiqueta(null);
+    const res = await fetch(`/api/stock/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ etiqueta: texto || "", etiquetaColor: texto ? color : "" }),
+    });
+    if (res.ok) {
+      toast.success(texto ? "Etiqueta guardada" : "Etiqueta removida");
+    } else {
+      if (prev) setEquipos(es => es.map(e => e.id === id ? prev : e));
+      toast.error("Error al guardar etiqueta");
     }
   }
 
@@ -318,6 +372,111 @@ export default function StockPage() {
       );
     }
 
+    // Asignado — dropdown de técnicos
+    if (col.id === "asignado") {
+      if (isModOrAdmin) {
+        return (
+          <select
+            value={eq.asignadoId || ""}
+            onChange={(e) => cambiarAsignado(eq.id, e.target.value)}
+            className="px-1.5 py-0.5 rounded text-[11px] border border-surface-200 bg-white focus:outline-none focus:border-primary-400 cursor-pointer max-w-[130px]"
+          >
+            <option value="">Sin asignar</option>
+            {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+          </select>
+        );
+      }
+      return <span className="text-[11px] text-surface-600">{eq.asignado?.nombre || "—"}</span>;
+    }
+
+    // Nombre — includes etiqueta badge
+    if (col.id === "nombre") {
+      const isEditingTag = editingEtiqueta === eq.id;
+      return (
+        <div className="flex items-center gap-1.5">
+          {isEditing ? (
+            <input
+              autoFocus
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={saveEdit}
+              onKeyDown={handleEditKeyDown}
+              className="px-1.5 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white font-medium"
+            />
+          ) : (
+            <span
+              className={`font-medium text-surface-800 text-[11px] ${isModOrAdmin ? "cursor-pointer hover:bg-primary-50 hover:text-primary-700 px-1 -mx-1 rounded transition-colors" : ""}`}
+              onDoubleClick={() => startEdit(eq.id, col.field, eq.nombre || "")}
+              title={isModOrAdmin ? "Doble clic para editar" : undefined}
+            >
+              {eq.nombre || "—"}
+            </span>
+          )}
+          {/* Etiqueta badge */}
+          {eq.etiqueta && !isEditingTag && (
+            <span
+              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium text-white shrink-0 ${isModOrAdmin ? "cursor-pointer" : ""}`}
+              style={{ backgroundColor: eq.etiquetaColor || "#6b7280" }}
+              onClick={() => {
+                if (isModOrAdmin) {
+                  setEditingEtiqueta(eq.id);
+                  setEtiquetaForm({ texto: eq.etiqueta, color: eq.etiquetaColor || ETIQUETA_COLORS[0] });
+                }
+              }}
+              title={isModOrAdmin ? "Clic para editar etiqueta" : eq.etiqueta}
+            >
+              {eq.etiqueta}
+            </span>
+          )}
+          {!eq.etiqueta && !isEditingTag && isModOrAdmin && (
+            <button
+              onClick={() => { setEditingEtiqueta(eq.id); setEtiquetaForm({ texto: "", color: ETIQUETA_COLORS[0] }); }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-surface-300 hover:text-primary-500 shrink-0"
+              title="Agregar etiqueta"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" /></svg>
+            </button>
+          )}
+          {isEditingTag && (
+            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+              <input
+                autoFocus
+                type="text"
+                value={etiquetaForm.texto}
+                onChange={(e) => setEtiquetaForm(f => ({ ...f, texto: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") guardarEtiqueta(eq.id); if (e.key === "Escape") setEditingEtiqueta(null); }}
+                placeholder="Etiqueta"
+                className="w-16 px-1 py-0.5 border border-primary-300 rounded text-[10px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
+                maxLength={30}
+              />
+              <div className="flex gap-0.5">
+                {ETIQUETA_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setEtiquetaForm(f => ({ ...f, color: c }))}
+                    className={`w-3.5 h-3.5 rounded-full border-2 transition-transform ${etiquetaForm.color === c ? "border-surface-800 scale-125" : "border-transparent"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <button onClick={() => guardarEtiqueta(eq.id)} className="text-green-600 hover:text-green-700 p-0.5">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+              </button>
+              <button onClick={() => setEditingEtiqueta(null)} className="text-surface-400 hover:text-surface-600 p-0.5">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+              {eq.etiqueta && (
+                <button onClick={() => guardarEtiqueta(eq.id, "")} className="text-red-400 hover:text-red-600 p-0.5" title="Quitar etiqueta">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                  </button>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     // Inline editing input
     if (isEditing) {
       return (
@@ -332,15 +491,13 @@ export default function StockPage() {
             className="w-full px-1.5 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
             min={col.type === "number" ? 1 : undefined}
           />
-          {col.id !== "nombre" && (
-            <button
-              onMouseDown={(e) => { e.preventDefault(); setEditingCell(null); limpiarCampo(eq.id, col.field); }}
-              className="shrink-0 p-0.5 rounded hover:bg-red-50 text-surface-300 hover:text-red-500"
-              title="Limpiar campo"
-            >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          )}
+          <button
+            onMouseDown={(e) => { e.preventDefault(); setEditingCell(null); limpiarCampo(eq.id, col.field); }}
+            className="shrink-0 p-0.5 rounded hover:bg-red-50 text-surface-300 hover:text-red-500"
+            title="Limpiar campo"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
         </div>
       );
     }
@@ -350,7 +507,7 @@ export default function StockPage() {
     const display = col.id === "ubicacion" ? (val || eq.predio?.nombre || "—") : (val ?? "—");
     return (
       <span
-        className={`${isModOrAdmin && col.editable ? "cursor-pointer hover:bg-primary-50 hover:text-primary-700 px-1 -mx-1 rounded transition-colors" : ""} ${col.id === "numeroSerie" ? "font-mono text-[10px]" : "text-[11px]"} ${col.id === "nombre" ? "font-medium text-surface-800" : "text-surface-600"}`}
+        className={`${isModOrAdmin && col.editable ? "cursor-pointer hover:bg-primary-50 hover:text-primary-700 px-1 -mx-1 rounded transition-colors" : ""} ${col.id === "numeroSerie" ? "font-mono text-[10px]" : "text-[11px]"} text-surface-600`}
         onDoubleClick={() => col.editable && startEdit(eq.id, col.field, String(val ?? ""))}
         title={isModOrAdmin && col.editable ? "Doble clic para editar" : undefined}
       >
@@ -524,15 +681,16 @@ export default function StockPage() {
               <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre *" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} placeholder="Modelo" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
-                <input value={form.marca} onChange={(e) => setForm({ ...form, marca: e.target.value })} placeholder="Marca" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                <input value={form.numeroSerie} onChange={(e) => setForm({ ...form, numeroSerie: e.target.value })} placeholder="Número de serie" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
               </div>
-              <input value={form.numeroSerie} onChange={(e) => setForm({ ...form, numeroSerie: e.target.value })} placeholder="Número de serie" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input type="number" min="1" value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: e.target.value })} placeholder="Cantidad" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
                   {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
                 </select>
-                <input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} placeholder="Categoría" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                <select value={form.asignadoId} onChange={(e) => setForm({ ...form, asignadoId: e.target.value })} className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                  <option value="">Sin asignar</option>
+                  {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                </select>
               </div>
               <input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} placeholder="Ubicación" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />

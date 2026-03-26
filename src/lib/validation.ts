@@ -97,6 +97,9 @@ export const stockCreateSchema = z.object({
   ubicacion: strOpt(500),
   predioId: cuidOpt(),
   notas: strOpt(2000),
+  asignadoId: cuidOpt(),
+  etiqueta: strOpt(50),
+  etiquetaColor: strOpt(20),
 });
 
 // PUT /api/stock/[id]

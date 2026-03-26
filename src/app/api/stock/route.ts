@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         predio: { select: { id: true, nombre: true } },
+        asignado: { select: { id: true, nombre: true } },
         _count: { select: { comentarios: true } },
       },
       orderBy: { updatedAt: "desc" },
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
     const data = await parseBody(request, stockCreateSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas } = data;
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, asignadoId, etiqueta, etiquetaColor } = data;
 
     if (numeroSerie) {
       const existing = await prisma.equipo.findUnique({ where: { numeroSerie } });
@@ -91,6 +92,9 @@ export async function POST(request: NextRequest) {
         ubicacion,
         predioId: predioId || null,
         notas,
+        asignadoId: asignadoId || null,
+        etiqueta: etiqueta || null,
+        etiquetaColor: etiquetaColor || null,
       },
     });
 
