@@ -8,7 +8,7 @@ import clsx from "clsx";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const MAX_AUDIO_SECONDS = 120; // 2 minutos
-const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,application/zip,application/x-zip-compressed";
+const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/zip,application/x-zip-compressed";
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

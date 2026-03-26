@@ -64,7 +64,9 @@ export async function GET(
 
   try {
     const uploadsDir = path.resolve(process.cwd(), "uploads");
-    const filePath = path.resolve(process.cwd(), mensaje.archivoUrl);
+    // Quitar / inicial si existe para que path.resolve sea relativo al cwd
+    const cleanUrl = mensaje.archivoUrl.replace(/^\/+/, "");
+    const filePath = path.resolve(process.cwd(), cleanUrl);
 
     // Path traversal protection
     if (!filePath.startsWith(uploadsDir)) {
@@ -74,7 +76,9 @@ export async function GET(
     const fileBuffer = await readFile(filePath);
 
     const ext = path.extname(mensaje.archivoUrl).toLowerCase();
-    const safeContentType = SAFE_MIME[ext] || "application/octet-stream";
+    // Preferir el MIME tipo guardado en la DB (más preciso para .webm audio vs video)
+    const storedMime = mensaje.archivoTipo?.split(";")[0]?.trim();
+    const safeContentType = storedMime || SAFE_MIME[ext] || "application/octet-stream";
 
     const inline = request.nextUrl.searchParams.get("inline") === "true";
     const disposition = inline ? "inline" : "attachment";

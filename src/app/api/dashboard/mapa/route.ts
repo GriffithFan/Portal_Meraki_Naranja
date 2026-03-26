@@ -24,9 +24,12 @@ export async function GET(request: NextRequest) {
   if (provincia) where.provincia = provincia;
   if (estadoId) where.estadoId = estadoId;
 
-  // Usuarios normales (no mod/admin): solo ver predios asignados a ellos
+  // Usuarios normales (no mod/admin): solo ver predios de su equipo o asignados
   if (!isModOrAdmin(session.rol)) {
-    where.asignaciones = { some: { userId: session.userId } };
+    where.OR = [
+      { equipoAsignado: session.nombre },
+      { asignaciones: { some: { userId: session.userId } } },
+    ];
   }
 
   const predios = await prisma.predio.findMany({

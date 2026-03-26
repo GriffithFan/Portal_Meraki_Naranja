@@ -41,8 +41,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "conversacionId requerido" }, { status: 400 });
     }
 
-    // Validar tipo MIME
-    if (!ALL_ALLOWED.includes(file.type)) {
+    // Validar tipo MIME (ignorar parámetros como codecs=opus)
+    const baseMime = file.type.split(";")[0].trim().toLowerCase();
+    if (!ALL_ALLOWED.includes(baseMime)) {
       return NextResponse.json(
         { error: "Tipo de archivo no permitido. Permitidos: imágenes, video, audio, zip" },
         { status: 400 }
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
         contenido: mensaje || file.name,
         conversacionId,
         autorId: session.userId,
-        archivoUrl: `/uploads/chat/${safeName}`,
+        archivoUrl: `uploads/chat/${safeName}`,
         archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() áéíóúñÁÉÍÓÚÑ]/g, "_").slice(0, 200),
         archivoTipo: file.type,
         archivoTamanio: file.size,
