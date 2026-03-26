@@ -48,8 +48,8 @@ export function usePermisos(): PermisosResult {
       // Si no hay configuración explícita, default: moderadores ven todo, técnicos ven lo básico
       if (!p) {
         if (session.rol === "MODERADOR") return true;
-        // Técnicos por default ven: tareas, calendario, bandeja, instructivo
-        return ["tareas", "calendario", "bandeja", "instructivo"].includes(seccion);
+        // Técnicos por default ven: tareas, calendario, bandeja, instructivo, predios, chat
+        return ["tareas", "calendario", "bandeja", "instructivo", "predios", "chat"].includes(seccion);
       }
       return p.ver;
     },

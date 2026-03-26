@@ -152,15 +152,29 @@ export default function ChatFloatingWidget() {
 
   // ── Upload de archivos ──
   const subirArchivo = async (file: File) => {
-    if (!conversacion?.id) return;
     setSubiendo(true);
     try {
+      let convId = conversacion?.id;
+      // Si no hay conversación activa, crear una con mensaje descriptivo
+      if (!convId) {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ mensaje: `[Archivo adjunto: ${file.name}]` }),
+        });
+        if (!res.ok) { const err = await res.json(); alert(err.error || "Error al crear conversación"); setSubiendo(false); return; }
+        const created = await res.json();
+        convId = created.id;
+        if (!convId) { alert("No se pudo crear la conversación"); setSubiendo(false); return; }
+        await cargarConvActiva();
+      }
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("conversacionId", conversacion.id);
+      fd.append("conversacionId", convId);
       const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
       if (res.ok) {
-        const res2 = await fetch(`/api/chat/${conversacion.id}`, { credentials: "include" });
+        const res2 = await fetch(`/api/chat/${convId}`, { credentials: "include" });
         if (res2.ok) { const data = await res2.json(); setMensajes(data.mensajes || []); }
       } else {
         const err = await res.json();
@@ -384,7 +398,7 @@ export default function ChatFloatingWidget() {
               ) : (
                 <form onSubmit={enviarMensaje} className="flex items-center gap-1">
                   {/* Adjuntar archivo */}
-                  {conversacion && conversacion.estado !== "ABIERTA" && (
+                  {(!conversacion || conversacion.estado !== "ABIERTA") && (
                     <>
                       <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
