@@ -14,17 +14,19 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const estado = searchParams.get("estado"); // ABIERTA, EN_CURSO, CERRADA
 
-  // Verificar si el usuario es Mesa
+  // Verificar si el usuario es Mesa o Admin/Mod
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { esMesa: true },
+    select: { esMesa: true, rol: true },
   });
+
+  const esAdminOMod = user?.rol === "ADMIN" || user?.rol === "MODERADOR";
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   let where: any;
 
-  if (user?.esMesa) {
-    // Mesa ve TODAS las conversaciones (historial completo)
+  if (user?.esMesa || esAdminOMod) {
+    // Mesa y Admin/Mod ven TODAS las conversaciones (Admin/Mod en solo lectura)
     where = {};
     if (estado) {
       where.estado = estado;

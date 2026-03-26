@@ -8,6 +8,7 @@ interface Usuario {
   nombre: string;
   email: string;
   rol: "ADMIN" | "MODERADOR" | "TECNICO";
+  esMesa?: boolean;
 }
 
 interface Delegacion {
@@ -172,6 +173,7 @@ export default function UsuariosPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-surface-800 truncate">{u.nombre}</span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${cfg.bg}`}>{u.rol}</span>
+                        {u.esMesa && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
                         {esMiUsuario && <span className="text-[10px] text-surface-400">(tú)</span>}
                       </div>
                       <p className="text-xs text-surface-500 mt-0.5 truncate">{u.email}</p>
@@ -217,6 +219,7 @@ export default function UsuariosPage() {
                         <td className="px-2.5 py-2.5 text-surface-600 text-[12px]">{u.email}</td>
                         <td className="px-2.5 py-2.5">
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${cfg.bg}`}>{u.rol}</span>
+                          {u.esMesa && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
                         </td>
                         <td className="px-2.5 py-2.5">
                           {isAdmin && !esMiUsuario ? (

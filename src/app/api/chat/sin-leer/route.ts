@@ -13,13 +13,14 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { esMesa: true },
+    select: { esMesa: true, rol: true },
   });
 
+  const esAdminOMod = user?.rol === "ADMIN" || user?.rol === "MODERADOR";
   let count = 0;
 
-  if (user?.esMesa) {
-    // Mesa: conversaciones abiertas sin asignar
+  if (user?.esMesa || esAdminOMod) {
+    // Mesa y Admin/Mod: conversaciones abiertas sin asignar
     count = await prisma.chatConversacion.count({
       where: { estado: "ABIERTA", agenteId: null },
     });

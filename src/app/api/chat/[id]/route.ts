@@ -49,18 +49,19 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
   }
 
-  // Verificar acceso: creador, agente, o cualquier usuario Mesa
+  // Verificar acceso: creador, agente, usuario Mesa, o Admin/Mod (lectura)
   const esCreador = conversacion.creadorId === session.userId;
   const esAgente = conversacion.agenteId === session.userId;
   const esMesa = user?.esMesa === true;
-  const puedeVer = esCreador || esAgente || esMesa;
+  const esAdminOMod = session.rol === "ADMIN" || session.rol === "MODERADOR";
+  const puedeVer = esCreador || esAgente || esMesa || esAdminOMod;
 
   if (!puedeVer) {
     return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
   }
 
-  // Para técnicos: anonimizar los nombres de Mesa
-  if (!esMesa) {
+  // Para técnicos: anonimizar los nombres de Mesa (admin/mod ven todo)
+  if (!esMesa && !esAdminOMod) {
     const anonimizado = {
       ...conversacion,
       agente: conversacion.agente ? { id: "mesa", nombre: "Mesa de Ayuda" } : null,

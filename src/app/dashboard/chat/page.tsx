@@ -81,7 +81,9 @@ const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
 };
 
 export default function ChatPage() {
-  const { session, isMesa } = useSession();
+  const { session, isMesa, isModOrAdmin } = useSession();
+  // Admin/Mod sin esMesa pueden ver todo pero no responder
+  const soloLectura = isModOrAdmin && !isMesa;
   const [conversaciones, setConversaciones] = useState<any[]>([]);
   const [seleccionada, setSeleccionada] = useState<any>(null);
   const [mensajes, setMensajes] = useState<any[]>([]);
@@ -311,12 +313,14 @@ export default function ChatPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-surface-800 dark:text-surface-100">
-            {isMesa ? "Mesa de Ayuda" : "Chat de Ayuda"}
+            {isMesa ? "Mesa de Ayuda" : soloLectura ? "Chat de Ayuda — Vista" : "Chat de Ayuda"}
           </h1>
           <p className="text-sm text-surface-500 dark:text-surface-400">
             {isMesa
               ? "Consultá y respondé las dudas de los técnicos"
-              : "Enviá tus consultas a Mesa de Ayuda"}
+              : soloLectura
+                ? "Solo lectura — Solo usuarios con rol Mesa pueden responder"
+                : "Enviá tus consultas a Mesa de Ayuda"}
           </p>
         </div>
       </div>
@@ -330,7 +334,7 @@ export default function ChatPage() {
         )}>
           <div className="p-3 border-b border-surface-200 dark:border-surface-700">
             <h2 className="text-sm font-semibold text-surface-600 dark:text-surface-300">
-              {isMesa ? "Consultas" : "Mis consultas"}
+              {isMesa || soloLectura ? "Consultas" : "Mis consultas"}
             </h2>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -340,7 +344,7 @@ export default function ChatPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
                 </svg>
                 <p className="text-sm">
-                  {isMesa ? "No hay consultas pendientes" : "No tenés consultas aún"}
+                  {isMesa || soloLectura ? "No hay consultas pendientes" : "No tenés consultas aún"}
                 </p>
               </div>
             ) : (
@@ -356,7 +360,7 @@ export default function ChatPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-surface-800 dark:text-surface-100 truncate">
-                        {isMesa ? conv.creador?.nombre : "Mesa de Ayuda"}
+                        {isMesa || soloLectura ? conv.creador?.nombre : "Mesa de Ayuda"}
                       </p>
                       <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
                         {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: es })}
@@ -389,10 +393,10 @@ export default function ChatPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
                 </svg>
                 <p className="text-sm">
-                  {isMesa ? "Seleccioná una conversación" : !tieneActiva ? "Escribí tu primer mensaje para iniciar" : "Seleccioná tu conversación"}
+                  {isMesa || soloLectura ? "Seleccioná una conversación" : !tieneActiva ? "Escribí tu primer mensaje para iniciar" : "Seleccioná tu conversación"}
                 </p>
               </div>
-              {!isMesa && !tieneActiva && (
+              {!isMesa && !soloLectura && !tieneActiva && (
                 <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700">
                   <div className="flex gap-2">
                     <input
@@ -431,7 +435,7 @@ export default function ChatPage() {
                   </button>
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-100 truncate">
-                      {isMesa ? seleccionada.creador?.nombre : "Mesa de Ayuda"}
+                      {isMesa || soloLectura ? seleccionada.creador?.nombre : "Mesa de Ayuda"}
                     </h3>
                     <p className="text-xs text-surface-500 dark:text-surface-400">
                       <span className={clsx(
@@ -445,7 +449,10 @@ export default function ChatPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {isMesa && seleccionada.estado === "ABIERTA" && (
+                  {soloLectura && (
+                    <span className="px-2 py-1 bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-400 rounded-lg text-[10px] font-medium">Solo lectura</span>
+                  )}
+                  {isMesa && !soloLectura && seleccionada.estado === "ABIERTA" && (
                     <button
                       onClick={() => tomarConversacion(seleccionada.id)}
                       className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition"
@@ -481,7 +488,7 @@ export default function ChatPage() {
                             "text-[11px] font-medium mb-0.5",
                             esMio ? "text-blue-200" : "text-surface-500 dark:text-surface-400"
                           )}>
-                            {isMesa ? msg.autor?.nombre : "Mesa de Ayuda"}
+                            {isMesa || soloLectura ? msg.autor?.nombre : "Mesa de Ayuda"}
                           </p>
                         )}
                         {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
@@ -500,7 +507,7 @@ export default function ChatPage() {
               </div>
 
               {/* Input de mensaje */}
-              {seleccionada.estado !== "CERRADA" && (
+              {seleccionada.estado !== "CERRADA" && !soloLectura && (
                 (isMesa ? seleccionada.agenteId === session?.userId : true) ? (
                   <div className="p-3 border-t border-surface-200 dark:border-surface-700">
                     <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} className="hidden" onChange={handleFileSelect} />
