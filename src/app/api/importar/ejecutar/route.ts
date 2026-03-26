@@ -63,6 +63,7 @@ const EQUIPO_FIELDS: Record<string, string> = {
   categoria: "Categoría",
   ubicacion: "Ubicación",
   notas: "Notas",
+  fecha: "Fecha",
   asignado: "Asignado (Técnico)",
 };
 
@@ -309,6 +310,8 @@ export async function POST(request: NextRequest) {
           if (ub) data.ubicacion = ub;
           const notas = safeGet(row, fieldMap.get("notas"));
           if (notas) data.notas = notas;
+          const fecha = safeGet(row, fieldMap.get("fecha"));
+          if (fecha) data.fecha = fecha;
 
           const cantStr = safeGet(row, fieldMap.get("cantidad"));
           if (cantStr) { const v = parseInt(cantStr); if (!isNaN(v) && v > 0) data.cantidad = v; }

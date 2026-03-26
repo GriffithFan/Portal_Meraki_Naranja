@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -47,8 +48,7 @@ const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "numeroSerie", label: "N/S",         field: "numeroSerie", visible: true,  editable: true,  type: "text" },
   { id: "estado",      label: "Estado",       field: "estado",      visible: true,  editable: true,  type: "select", options: ESTADOS_EQUIPO },
   { id: "asignado",    label: "Asignado",     field: "asignadoId",  visible: true,  editable: true,  type: "select" },
-  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text" },
-  { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
+  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text" },  { id: "fecha",       label: "Fecha",        field: "fecha",       visible: true,  editable: true,  type: "text" },  { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
   { id: "descripcion", label: "Descripción",  field: "descripcion", visible: false, editable: true,  type: "text" },
 ];
 
@@ -65,7 +65,7 @@ export default function StockPage() {
   const [filtroCat, setFiltroCat] = useState("");
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "" });
+  const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
 
   /* ── Técnicos (para columna Asignado) ── */
   const [tecnicos, setTecnicos] = useState<{ id: string; nombre: string }[]>([]);
@@ -235,7 +235,7 @@ export default function StockPage() {
     });
     if (res.ok) {
       setShowModal(false);
-      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "" });
+      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
       toast.success("Equipo creado exitosamente");
       fetchEquipos();
     } else {
@@ -600,7 +600,16 @@ export default function StockPage() {
           <div className="text-center py-16 text-surface-400">
             <svg className="w-10 h-10 mx-auto mb-3 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
             <p className="text-sm font-medium mb-1">Sin equipos</p>
-            <p className="text-xs">{search || filtroEstado ? "No se encontraron resultados" : "Agrega tu primer equipo al inventario"}</p>
+            <p className="text-xs mb-4">{search || filtroEstado ? "No se encontraron resultados" : "Agrega tu primer equipo al inventario"}</p>
+            {!search && !filtroEstado && isModOrAdmin && (
+              <Link
+                href="/dashboard/importar"
+                className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-surface-300 rounded-lg text-xs text-surface-500 hover:border-surface-400 hover:text-surface-600 hover:bg-surface-50 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                Importar desde Excel
+              </Link>
+            )}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -693,7 +702,10 @@ export default function StockPage() {
                   {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
                 </select>
               </div>
-              <input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} placeholder="Ubicación" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} placeholder="Ubicación" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                <input value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} placeholder="Fecha" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+              </div>
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
             </div>
             <div className="flex justify-end gap-2 mt-5">

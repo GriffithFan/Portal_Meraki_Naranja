@@ -196,6 +196,7 @@ model Equipo {
   categoria   String?
   ubicacion   String?
   notas         String?
+  fecha         String?
   etiqueta      String?
   etiquetaColor String?
   predioId      String?

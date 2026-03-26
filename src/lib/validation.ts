@@ -97,6 +97,7 @@ export const stockCreateSchema = z.object({
   ubicacion: strOpt(500),
   predioId: cuidOpt(),
   notas: strOpt(2000),
+  fecha: strOpt(100),
   asignadoId: cuidOpt(),
   etiqueta: strOpt(50),
   etiquetaColor: strOpt(20),
