@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNetworkContext } from "@/contexts/NetworkContext";
 import { toast } from "sonner";
 
@@ -15,89 +15,82 @@ interface ExportableSectionProps {
 export default function ExportableSection({ sectionName, title, subtitle, children }: ExportableSectionProps) {
   const { selectedNetwork } = useNetworkContext();
   const [exporting, setExporting] = useState<"jpg" | "pdf" | null>(null);
+  const sectionRef = useRef<HTMLDivElement>(null);
 
   const getFileName = (ext: string) => {
     const code = selectedNetwork?.predioCode || selectedNetwork?.name || selectedNetwork?.id || "export";
     return `${sectionName} ${code}.${ext}`;
   };
 
-  const captureMainContent = async (): Promise<HTMLCanvasElement | null> => {
-    const mainEl = document.querySelector("main");
-    if (!mainEl) {
-      console.error("[Export] No se encontró elemento <main>");
-      return null;
-    }
+  const captureContent = async (): Promise<HTMLCanvasElement> => {
+    const el = sectionRef.current;
+    if (!el) throw new Error("Ref no disponible");
 
-    // Importar html2canvas defensivamente (CJS y ESM)
-    let h2c: any;
-    try {
-      const mod: any = await import("html2canvas");
-      h2c = typeof mod.default === "function" ? mod.default : typeof mod === "function" ? mod : null;
-      if (!h2c) {
-        console.error("[Export] html2canvas import inválido:", Object.keys(mod));
-        return null;
-      }
-    } catch (err) {
-      console.error("[Export] Error importando html2canvas:", err);
-      return null;
-    }
+    // Import html2canvas
+    const mod: any = await import("html2canvas");
+    const h2c = mod.default ?? mod;
+    if (typeof h2c !== "function") throw new Error("html2canvas no es función");
 
-    // Ocultar botones de export
-    const btns = mainEl.querySelectorAll("[data-export-buttons]");
-    btns.forEach((b: any) => (b.style.display = "none"));
+    // Ocultar botones durante captura
+    const btns = el.querySelectorAll("[data-export-buttons]");
+    btns.forEach((b) => ((b as HTMLElement).style.visibility = "hidden"));
 
     try {
-      const raw: HTMLCanvasElement = await h2c(mainEl, {
+      const canvas: HTMLCanvasElement = await h2c(el, {
         scale: 2,
         useCORS: true,
-        allowTaint: false,
+        allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
-        removeContainer: true,
-        imageTimeout: 5000,
       });
-
-      if (!raw || raw.width === 0 || raw.height === 0) {
-        console.error("[Export] Canvas vacío:", raw?.width, raw?.height);
-        return null;
+      if (!canvas || canvas.width === 0 || canvas.height === 0) {
+        throw new Error(`Canvas vacío (${canvas?.width}x${canvas?.height})`);
       }
 
-      // Canvas con márgenes blancos
+      // Agregar padding blanco
       const pad = 48;
       const padded = document.createElement("canvas");
-      padded.width = raw.width + pad * 2;
-      padded.height = raw.height + pad * 2;
+      padded.width = canvas.width + pad * 2;
+      padded.height = canvas.height + pad * 2;
       const ctx = padded.getContext("2d");
-      if (!ctx) return null;
+      if (!ctx) throw new Error("No se pudo crear contexto 2D");
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, padded.width, padded.height);
-      ctx.drawImage(raw, pad, pad);
+      ctx.drawImage(canvas, pad, pad);
       return padded;
-    } catch (err) {
-      console.error("[Export] Error en html2canvas:", err);
-      return null;
     } finally {
-      btns.forEach((b: any) => (b.style.display = ""));
+      btns.forEach((b) => ((b as HTMLElement).style.visibility = ""));
     }
   };
 
   const downloadJPG = async () => {
     setExporting("jpg");
     try {
-      const canvas = await captureMainContent();
-      if (!canvas) {
-        toast.error("No se pudo capturar la sección");
-        return;
+      const canvas = await captureContent();
+
+      // Intentar toBlob directamente
+      let blob: Blob | null = null;
+      try {
+        blob = await new Promise<Blob | null>((res) =>
+          canvas.toBlob((b) => res(b), "image/jpeg", 0.92)
+        );
+      } catch {
+        // Canvas tainted: redibujar pixel a pixel en canvas limpio
+        const w = canvas.width, h = canvas.height;
+        const srcCtx = canvas.getContext("2d");
+        if (!srcCtx) throw new Error("No ctx src");
+        const pixels = srcCtx.getImageData(0, 0, w, h);
+        const clean = document.createElement("canvas");
+        clean.width = w;
+        clean.height = h;
+        const cCtx = clean.getContext("2d")!;
+        cCtx.putImageData(pixels, 0, 0);
+        blob = await new Promise<Blob | null>((res) =>
+          clean.toBlob((b) => res(b), "image/jpeg", 0.92)
+        );
       }
 
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92);
-      });
-
-      if (!blob) {
-        toast.error("Error al generar imagen");
-        return;
-      }
+      if (!blob) throw new Error("Blob nulo");
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -109,8 +102,8 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
       URL.revokeObjectURL(url);
       toast.success("JPG descargado");
     } catch (e: any) {
-      console.error("[Export JPG] Error:", e?.message || e);
-      toast.error("Error al exportar JPG");
+      console.error("[Export JPG]", e);
+      toast.error(`Error JPG: ${e?.message || e}`);
     } finally {
       setExporting(null);
     }
@@ -119,13 +112,25 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
   const downloadPDF = async () => {
     setExporting("pdf");
     try {
-      const canvas = await captureMainContent();
-      if (!canvas) {
-        toast.error("No se pudo capturar la sección");
-        return;
+      const canvas = await captureContent();
+
+      let imgData: string;
+      try {
+        imgData = canvas.toDataURL("image/jpeg", 0.92);
+      } catch {
+        // Canvas tainted: fallback
+        const w = canvas.width, h = canvas.height;
+        const srcCtx = canvas.getContext("2d");
+        if (!srcCtx) throw new Error("No ctx src");
+        const pixels = srcCtx.getImageData(0, 0, w, h);
+        const clean = document.createElement("canvas");
+        clean.width = w;
+        clean.height = h;
+        const cCtx = clean.getContext("2d")!;
+        cCtx.putImageData(pixels, 0, 0);
+        imgData = clean.toDataURL("image/jpeg", 0.92);
       }
 
-      const imgData = canvas.toDataURL("image/jpeg", 0.92);
       const { jsPDF } = await import("jspdf");
       const margin = 40;
       const pdfW = canvas.width + margin * 2;
@@ -139,15 +144,15 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
       pdf.save(getFileName("pdf"));
       toast.success("PDF descargado");
     } catch (e: any) {
-      console.error("[Export PDF] Error:", e?.message || e);
-      toast.error("Error al exportar PDF");
+      console.error("[Export PDF]", e);
+      toast.error(`Error PDF: ${e?.message || e}`);
     } finally {
       setExporting(null);
     }
   };
 
   return (
-    <div>
+    <div ref={sectionRef}>
       {/* Header: título a la izquierda, botones a la derecha */}
       <div className="flex items-start justify-between mb-6">
         <div>
