@@ -12,6 +12,15 @@ const ALLOWED_VIDEO_TYPES = [
 const ALLOWED_VIDEO_EXT = /\.(mp4|webm|ogg)$/i;
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024;
 
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
+const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif)$/i;
+const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -56,7 +65,9 @@ export async function PUT(
     const categoria = (formData.get("categoria") as string)?.trim() || existing.categoria;
     const orden = parseInt(formData.get("orden") as string) || existing.orden;
     const video = formData.get("video") as File | null;
+    const imagen = formData.get("imagen") as File | null;
     const removeVideo = formData.get("removeVideo") === "true";
+    const removeImagen = formData.get("removeImagen") === "true";
     const youtubeUrl = (formData.get("youtubeUrl") as string)?.trim() || null;
 
     if (!titulo) {
@@ -90,7 +101,7 @@ export async function PUT(
 
       // Eliminar video anterior si existe
       if (existing.videoRuta) {
-        await deleteVideoFile(existing.videoRuta);
+        await deleteUploadFile(existing.videoRuta);
       }
 
       const uploadsDir = path.join(process.cwd(), "uploads", "instructivos");
@@ -109,11 +120,53 @@ export async function PUT(
       updateData.videoSize = video.size;
     } else if (removeVideo && existing.videoRuta) {
       // Si se solicita eliminar el video sin reemplazar
-      await deleteVideoFile(existing.videoRuta);
+      await deleteUploadFile(existing.videoRuta);
       updateData.videoNombre = null;
       updateData.videoRuta = null;
       updateData.videoTipo = null;
       updateData.videoSize = null;
+    }
+
+    // Manejo de imagen
+    if (imagen && imagen.size > 0) {
+      if (!ALLOWED_IMAGE_TYPES.includes(imagen.type) || !imagen.name.match(ALLOWED_IMAGE_EXT)) {
+        return NextResponse.json(
+          { error: "Solo se permiten imágenes JPG, PNG, WebP o GIF" },
+          { status: 400 }
+        );
+      }
+
+      if (imagen.size > MAX_IMAGE_SIZE) {
+        return NextResponse.json(
+          { error: "La imagen no puede superar 25MB" },
+          { status: 400 }
+        );
+      }
+
+      if (existing.imagenRuta) {
+        await deleteUploadFile(existing.imagenRuta);
+      }
+
+      const imgDir = path.join(process.cwd(), "uploads", "instructivos");
+      await mkdir(imgDir, { recursive: true });
+
+      const imgExt = path.extname(imagen.name);
+      const imgSafeName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${imgExt}`;
+      const imgPath = path.join(imgDir, imgSafeName);
+
+      const imgBuffer = Buffer.from(await imagen.arrayBuffer());
+      await writeFile(imgPath, imgBuffer);
+
+      updateData.imagenNombre = imagen.name;
+      updateData.imagenRuta = `/uploads/instructivos/${imgSafeName}`;
+      updateData.imagenTipo = imagen.type;
+      updateData.imagenSize = imagen.size;
+    } else if (removeImagen && existing.imagenRuta) {
+      await deleteUploadFile(existing.imagenRuta);
+      updateData.imagenNombre = null;
+      updateData.imagenRuta = null;
+      updateData.imagenTipo = null;
+      updateData.imagenSize = null;
     }
 
     const instructivo = await prisma.instructivo.update({
@@ -152,7 +205,12 @@ export async function DELETE(
 
   // Eliminar video del filesystem
   if (existing.videoRuta) {
-    await deleteVideoFile(existing.videoRuta);
+    await deleteUploadFile(existing.videoRuta);
+  }
+
+  // Eliminar imagen del filesystem
+  if (existing.imagenRuta) {
+    await deleteUploadFile(existing.imagenRuta);
   }
 
   await prisma.instructivo.delete({ where: { id } });
@@ -160,10 +218,10 @@ export async function DELETE(
   return NextResponse.json({ ok: true });
 }
 
-async function deleteVideoFile(videoRuta: string) {
+async function deleteUploadFile(fileRuta: string) {
   try {
     const uploadsDir = path.resolve(process.cwd(), "uploads");
-    const filePath = path.resolve(process.cwd(), videoRuta);
+    const filePath = path.resolve(process.cwd(), fileRuta);
     // Path traversal protection
     if (!filePath.startsWith(uploadsDir)) return;
     await unlink(filePath);

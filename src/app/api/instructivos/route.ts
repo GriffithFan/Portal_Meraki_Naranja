@@ -16,6 +16,15 @@ const ALLOWED_VIDEO_TYPES = [
 const ALLOWED_VIDEO_EXT = /\.(mp4|webm|ogg)$/i;
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200MB
 
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
+const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif)$/i;
+const MAX_IMAGE_SIZE = 25 * 1024 * 1024; // 25MB
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -50,6 +59,7 @@ export async function POST(request: NextRequest) {
     const categoria = (formData.get("categoria") as string)?.trim() || "General";
     const orden = parseInt(formData.get("orden") as string) || 0;
     const video = formData.get("video") as File | null;
+    const imagen = formData.get("imagen") as File | null;
     const youtubeUrl = (formData.get("youtubeUrl") as string)?.trim() || null;
 
     if (!titulo) {
@@ -96,6 +106,46 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    let imagenData: {
+      imagenNombre?: string;
+      imagenRuta?: string;
+      imagenTipo?: string;
+      imagenSize?: number;
+    } = {};
+
+    if (imagen && imagen.size > 0) {
+      if (!ALLOWED_IMAGE_TYPES.includes(imagen.type) || !imagen.name.match(ALLOWED_IMAGE_EXT)) {
+        return NextResponse.json(
+          { error: "Solo se permiten imágenes JPG, PNG, WebP o GIF" },
+          { status: 400 }
+        );
+      }
+
+      if (imagen.size > MAX_IMAGE_SIZE) {
+        return NextResponse.json(
+          { error: "La imagen no puede superar 25MB" },
+          { status: 400 }
+        );
+      }
+
+      const imgDir = path.join(process.cwd(), "uploads", "instructivos");
+      await mkdir(imgDir, { recursive: true });
+
+      const imgExt = path.extname(imagen.name);
+      const imgSafeName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${imgExt}`;
+      const imgPath = path.join(imgDir, imgSafeName);
+
+      const imgBuffer = Buffer.from(await imagen.arrayBuffer());
+      await writeFile(imgPath, imgBuffer);
+
+      imagenData = {
+        imagenNombre: imagen.name,
+        imagenRuta: `/uploads/instructivos/${imgSafeName}`,
+        imagenTipo: imagen.type,
+        imagenSize: imagen.size,
+      };
+    }
+
     const instructivo = await prisma.instructivo.create({
       data: {
         titulo,
@@ -105,6 +155,7 @@ export async function POST(request: NextRequest) {
         creadoPorId: session.userId,
         videoUrl: youtubeUrl || null,
         ...videoData,
+        ...imagenData,
       },
       include: {
         creador: { select: { id: true, nombre: true } },

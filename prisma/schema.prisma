@@ -345,20 +345,24 @@ model TareaCalendario {
 
 // ─── INSTRUCTIVOS ───────────────────────────────────
 model Instructivo {
-  id          String  @id @default(cuid())
-  titulo      String
-  descripcion String?
-  contenido   String? @db.Text
-  videoUrl    String?
-  videoNombre String?
-  videoRuta   String?
-  videoTipo   String?
-  videoSize   Int?
-  categoria   String  @default("General")
-  orden       Int     @default(0)
-  activo      Boolean @default(true)
-  creadoPorId String
-  creador     User    @relation("CreadorInstructivo", fields: [creadoPorId], references: [id])
+  id           String  @id @default(cuid())
+  titulo       String
+  descripcion  String?
+  contenido    String? @db.Text
+  videoUrl     String?
+  videoNombre  String?
+  videoRuta    String?
+  videoTipo    String?
+  videoSize    Int?
+  imagenNombre String?
+  imagenRuta   String?
+  imagenTipo   String?
+  imagenSize   Int?
+  categoria    String  @default("General")
+  orden        Int     @default(0)
+  activo       Boolean @default(true)
+  creadoPorId  String
+  creador      User    @relation("CreadorInstructivo", fields: [creadoPorId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
