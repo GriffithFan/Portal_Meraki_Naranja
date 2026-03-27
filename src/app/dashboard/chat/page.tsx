@@ -94,6 +94,9 @@ export default function ChatPage() {
   const [grabando, setGrabando] = useState(false);
   const [grabSegundos, setGrabSegundos] = useState(0);
   const [vistaMovil, setVistaMovil] = useState<"lista" | "chat">("lista");
+  const [filtroEstado, setFiltroEstado] = useState<string>("TODAS");
+  const [orden, setOrden] = useState<"recientes" | "antiguas">("recientes");
+  const [busqueda, setBusqueda] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -238,6 +241,43 @@ export default function ChatPage() {
     (c) => c.creadorId === session?.userId && (c.estado === "ABIERTA" || c.estado === "EN_CURSO")
   );
 
+  const eliminarConversacion = async (id: string) => {
+    if (!confirm("¿Eliminar esta conversación? Se borrarán todos los mensajes y archivos.")) return;
+    try {
+      const res = await fetch(`/api/chat/${id}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) {
+        if (seleccionada?.id === id) { setSeleccionada(null); setMensajes([]); setVistaMovil("lista"); }
+        await cargarConversaciones();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Error al eliminar");
+      }
+    } catch { alert("Error de conexión"); }
+  };
+
+  // Filtrar y ordenar conversaciones
+  const convsFiltradas = conversaciones.filter((c) => {
+    if (filtroEstado !== "TODAS" && c.estado !== filtroEstado) return false;
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase();
+      const nombre = (c.creador?.nombre || "").toLowerCase();
+      const preview = (c.mensajes?.[0]?.contenido || "").toLowerCase();
+      if (!nombre.includes(q) && !preview.includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => {
+    const tA = new Date(a.updatedAt).getTime();
+    const tB = new Date(b.updatedAt).getTime();
+    return orden === "recientes" ? tB - tA : tA - tB;
+  });
+
+  const conteoEstados = {
+    TODAS: conversaciones.length,
+    ABIERTA: conversaciones.filter((c) => c.estado === "ABIERTA").length,
+    EN_CURSO: conversaciones.filter((c) => c.estado === "EN_CURSO").length,
+    CERRADA: conversaciones.filter((c) => c.estado === "CERRADA").length,
+  };
+
   // ── Upload de archivos ──
   const subirArchivo = async (file: File) => {
     if (!seleccionada?.id) return;
@@ -332,10 +372,49 @@ export default function ChatPage() {
           "w-full md:w-80 lg:w-96 flex-shrink-0 flex flex-col bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 overflow-hidden",
           vistaMovil === "chat" && "hidden md:flex"
         )}>
-          <div className="p-3 border-b border-surface-200 dark:border-surface-700">
-            <h2 className="text-sm font-semibold text-surface-600 dark:text-surface-300">
-              {isMesa || soloLectura ? "Consultas" : "Mis consultas"}
-            </h2>
+          <div className="p-3 border-b border-surface-200 dark:border-surface-700 space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-surface-600 dark:text-surface-300">
+                {isMesa || soloLectura ? "Consultas" : "Mis consultas"}
+              </h2>
+              <select
+                value={orden}
+                onChange={(e) => setOrden(e.target.value as any)}
+                className="text-[10px] px-1.5 py-0.5 rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-600 dark:text-surface-300"
+              >
+                <option value="recientes">Más recientes</option>
+                <option value="antiguas">Más antiguas</option>
+              </select>
+            </div>
+            {/* Filtros por estado */}
+            <div className="flex gap-1 flex-wrap">
+              {(["TODAS", "ABIERTA", "EN_CURSO", "CERRADA"] as const).map((e) => {
+                const labels: Record<string, string> = { TODAS: "Todas", ABIERTA: "Esperando", EN_CURSO: "En curso", CERRADA: "Cerradas" };
+                const count = conteoEstados[e];
+                return (
+                  <button
+                    key={e}
+                    onClick={() => setFiltroEstado(e)}
+                    className={clsx(
+                      "px-2 py-0.5 rounded-full text-[10px] font-medium transition",
+                      filtroEstado === e
+                        ? "bg-blue-600 text-white"
+                        : "bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-600"
+                    )}
+                  >
+                    {labels[e]} {count > 0 && <span className="ml-0.5 opacity-75">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Búsqueda */}
+            <input
+              type="text"
+              placeholder="Buscar por nombre o mensaje..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full px-2 py-1 rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-700 dark:text-surface-200 text-xs placeholder:text-surface-400 focus:ring-1 focus:ring-blue-500 outline-none"
+            />
           </div>
           <div className="flex-1 overflow-y-auto">
             {conversaciones.length === 0 ? (
@@ -347,13 +426,17 @@ export default function ChatPage() {
                   {isMesa || soloLectura ? "No hay consultas pendientes" : "No tenés consultas aún"}
                 </p>
               </div>
+            ) : convsFiltradas.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-surface-400 dark:text-surface-500 p-4 text-center">
+                <p className="text-sm">Sin resultados para este filtro</p>
+              </div>
             ) : (
-              conversaciones.map((conv) => (
+              convsFiltradas.map((conv) => (
                 <button
                   key={conv.id}
                   onClick={() => seleccionarConv(conv)}
                   className={clsx(
-                    "w-full text-left p-3 border-b border-surface-100 dark:border-surface-700/50 hover:bg-surface-50 dark:hover:bg-surface-700/50 transition",
+                    "group/conv w-full text-left p-3 border-b border-surface-100 dark:border-surface-700/50 hover:bg-surface-50 dark:hover:bg-surface-700/50 transition",
                     seleccionada?.id === conv.id && "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500"
                   )}
                 >
@@ -371,9 +454,22 @@ export default function ChatPage() {
                         </p>
                       )}
                     </div>
-                    <Badge className={ESTADO_BADGE[conv.estado]?.className || ""}>
-                      {ESTADO_BADGE[conv.estado]?.label || conv.estado}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge className={ESTADO_BADGE[conv.estado]?.className || ""}>
+                        {ESTADO_BADGE[conv.estado]?.label || conv.estado}
+                      </Badge>
+                      {(isMesa || session?.rol === "ADMIN") && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); eliminarConversacion(conv.id); }}
+                          className="p-0.5 text-surface-300 dark:text-surface-600 hover:text-red-500 dark:hover:text-red-400 transition opacity-0 group-hover/conv:opacity-100"
+                          title="Eliminar conversación"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </button>
               ))
@@ -466,6 +562,17 @@ export default function ChatPage() {
                       className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium hover:bg-red-600 transition"
                     >
                       Cerrar
+                    </button>
+                  )}
+                  {(isMesa || session?.rol === "ADMIN") && (
+                    <button
+                      onClick={() => eliminarConversacion(seleccionada.id)}
+                      className="p-1.5 text-surface-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                      title="Eliminar conversación"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
                     </button>
                   )}
                 </div>

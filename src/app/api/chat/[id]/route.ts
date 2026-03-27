@@ -240,3 +240,54 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/chat/[id] — Eliminar conversación (solo Mesa o Admin)
+ * Cascade borra mensajes automáticamente. También limpia archivos del disco.
+ */
+export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+
+  const { id } = await params;
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { esMesa: true, rol: true },
+  });
+
+  const esMesa = user?.esMesa === true;
+  const esAdmin = user?.rol === "ADMIN";
+
+  if (!esMesa && !esAdmin) {
+    return NextResponse.json({ error: "Sin permisos para eliminar" }, { status: 403 });
+  }
+
+  const conversacion = await prisma.chatConversacion.findUnique({
+    where: { id },
+    include: {
+      mensajes: { select: { id: true, archivoUrl: true } },
+    },
+  });
+
+  if (!conversacion) {
+    return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
+  }
+
+  // Eliminar archivos del disco
+  const { unlink } = await import("fs/promises");
+  const { join } = await import("path");
+  for (const msg of conversacion.mensajes) {
+    if (msg.archivoUrl) {
+      try {
+        const filePath = join(process.cwd(), "uploads", "chat", msg.archivoUrl.split("/").pop()!);
+        await unlink(filePath);
+      } catch { /* archivo ya no existe */ }
+    }
+  }
+
+  // Cascade delete: mensajes se eliminan automáticamente
+  await prisma.chatConversacion.delete({ where: { id } });
+
+  return NextResponse.json({ ok: true });
+}
