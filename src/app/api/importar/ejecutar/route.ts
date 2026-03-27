@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
   let updated = 0;
   let skipped = 0;
   const errors: string[] = [];
+  const duplicates: { fila: number; serial: string; nuevo: Record<string, string>; existente: Record<string, string>; iguales: string[]; diferentes: string[] }[] = [];
 
   try {
     if (tipo === "PREDIO") {
@@ -298,6 +299,10 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // Fecha de hoy en formato DD/MM/AAAA para auto-rellenar
+      const hoy = new Date();
+      const fechaHoy = `${String(hoy.getDate()).padStart(2, "0")}/${String(hoy.getMonth() + 1).padStart(2, "0")}/${hoy.getFullYear()}`;
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         if (!row || !Array.isArray(row)) { skipped++; continue; }
@@ -327,7 +332,8 @@ export async function POST(request: NextRequest) {
           const notas = safeGet(row, fieldMap.get("notas"));
           if (notas) data.notas = notas;
           const fecha = safeGet(row, fieldMap.get("fecha"));
-          if (fecha) data.fecha = fecha;
+          // Auto-rellenar fecha con hoy si está vacía
+          data.fecha = fecha || fechaHoy;
 
           const cantStr = safeGet(row, fieldMap.get("cantidad"));
           if (cantStr) { const v = parseInt(cantStr); if (!isNaN(v) && v > 0) data.cantidad = v; }
@@ -359,6 +365,38 @@ export async function POST(request: NextRequest) {
             if (match) data.asignadoId = match.id;
           }
 
+          // Verificar si serial ya existe antes de crear (para detalle de duplicados)
+          if (ns) {
+            const existing = await prisma.equipo.findUnique({ where: { numeroSerie: ns }, include: { asignado: { select: { nombre: true } } } });
+            if (existing) {
+              const COMPARE_FIELDS = ["nombre", "modelo", "estado", "ubicacion", "fecha", "notas", "marca", "categoria"];
+              const nuevoObj: Record<string, string> = {};
+              const existenteObj: Record<string, string> = {};
+              const iguales: string[] = [];
+              const diferentes: string[] = [];
+              for (const f of COMPARE_FIELDS) {
+                const newVal = String(data[f] ?? "").trim();
+                const oldVal = String((existing as any)[f] ?? "").trim();
+                nuevoObj[f] = newVal;
+                existenteObj[f] = oldVal;
+                if (newVal && oldVal && newVal.toUpperCase() === oldVal.toUpperCase()) iguales.push(f);
+                else if (newVal || oldVal) diferentes.push(f);
+              }
+              // Asignado
+              const newAsignado = asignadoVal || "";
+              const oldAsignado = existing.asignado?.nombre || "";
+              nuevoObj.asignado = newAsignado;
+              existenteObj.asignado = oldAsignado;
+              if (newAsignado && oldAsignado && newAsignado.toLowerCase() === oldAsignado.toLowerCase()) iguales.push("asignado");
+              else if (newAsignado || oldAsignado) diferentes.push("asignado");
+
+              duplicates.push({ fila: i + 2, serial: ns, nuevo: nuevoObj, existente: existenteObj, iguales, diferentes });
+              errors.push(`Fila ${i + 2}: Número de serie duplicado`);
+              skipped++;
+              continue;
+            }
+          }
+
           await prisma.equipo.create({ data: data as any });
           created++;
         } catch (err: unknown) {
@@ -381,7 +419,7 @@ export async function POST(request: NextRequest) {
       });
     } catch { /* no bloquear por log */ }
 
-    return NextResponse.json({ success: true, created, updated, skipped, total: rows.length, errors: errors.slice(0, 20) });
+    return NextResponse.json({ success: true, created, updated, skipped, total: rows.length, errors: errors.slice(0, 20), duplicates: duplicates.slice(0, 20) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error desconocido";
     console.error("Import error:", msg);

@@ -729,10 +729,65 @@ export default function ImportarPage() {
             <div><span className="text-2xl font-bold text-yellow-600">{result.skipped}</span><p className="text-surface-500">Omitidos</p></div>
             <div><span className="text-2xl font-bold text-surface-400">{result.total}</span><p className="text-surface-500">Total</p></div>
           </div>
-          {result.errors?.length > 0 && (
+          {result.errors?.length > 0 && !result.duplicates?.length && (
             <div className="text-left bg-red-50 rounded-lg p-3 mb-4 max-h-40 overflow-y-auto">
               <p className="text-xs font-medium text-red-700 mb-1">Errores:</p>
               {result.errors.map((e: string, i: number) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+            </div>
+          )}
+          {/* Detalle de duplicados */}
+          {result.duplicates?.length > 0 && (
+            <div className="text-left bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 max-h-[60vh] overflow-y-auto">
+              <p className="text-sm font-semibold text-amber-800 mb-3">
+                {result.duplicates.length} serial{result.duplicates.length > 1 ? "es" : ""} duplicado{result.duplicates.length > 1 ? "s" : ""} encontrado{result.duplicates.length > 1 ? "s" : ""}
+              </p>
+              {result.duplicates.map((dup: any, idx: number) => {
+                const FIELD_LABELS: Record<string, string> = { nombre: "Equipo", modelo: "Modelo", estado: "Estado", ubicacion: "Ubicación", fecha: "Fecha", notas: "Notas", marca: "Marca", categoria: "Categoría", asignado: "Asignado" };
+                return (
+                  <div key={idx} className="mb-4 last:mb-0 bg-white rounded-lg border border-amber-100 p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">Fila {dup.fila}</span>
+                      <span className="text-xs font-mono text-surface-600">Serial: <b>{dup.serial}</b></span>
+                    </div>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="text-left">
+                          <th className="py-1 px-2 text-surface-500 font-medium w-24">Campo</th>
+                          <th className="py-1 px-2 text-surface-500 font-medium">Excel (nuevo)</th>
+                          <th className="py-1 px-2 text-surface-500 font-medium">BD (existente)</th>
+                          <th className="py-1 px-2 text-surface-500 font-medium w-20">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...dup.diferentes, ...dup.iguales].map((field: string) => {
+                          const isDiff = dup.diferentes.includes(field);
+                          const newVal = dup.nuevo[field] || "—";
+                          const oldVal = dup.existente[field] || "—";
+                          return (
+                            <tr key={field} className={isDiff ? "bg-red-50" : ""}>
+                              <td className="py-1 px-2 font-medium text-surface-700">{FIELD_LABELS[field] || field}</td>
+                              <td className={`py-1 px-2 ${isDiff ? "text-red-700 font-semibold" : "text-surface-600"}`}>{newVal}</td>
+                              <td className={`py-1 px-2 ${isDiff ? "text-blue-700 font-semibold" : "text-surface-600"}`}>{oldVal}</td>
+                              <td className="py-1 px-2">
+                                {isDiff
+                                  ? <span className="text-red-600 font-medium">Diferente</span>
+                                  : <span className="text-green-600 font-medium">Igual</span>
+                                }
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+              {result.errors?.length > result.duplicates?.length && (
+                <div className="mt-3 pt-3 border-t border-amber-200">
+                  <p className="text-xs font-medium text-red-700 mb-1">Otros errores:</p>
+                  {result.errors.filter((e: string) => !e.includes("serie duplicado")).map((e: string, i: number) => <p key={i} className="text-xs text-red-600">{e}</p>)}
+                </div>
+              )}
             </div>
           )}
           <button onClick={reset} className="px-6 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700">Nueva importación</button>

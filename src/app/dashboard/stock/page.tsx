@@ -327,18 +327,26 @@ export default function StockPage() {
 
   /* ── Export functions ── */
   function exportStock(format: "csv" | "xlsx") {
-    const data = sortedEquipos.map((eq: any) => ({
-      Equipo: eq.nombre || "",
-      Modelo: eq.modelo || "",
-      "N/S": eq.numeroSerie || "",
-      Estado: (eq.estado || "").replace(/_/g, " "),
-      Asignado: eq.asignado?.nombre || "",
-      Ubicación: eq.ubicacion || eq.predio?.nombre || "",
-      Fecha: eq.fecha || "",
-      Notas: eq.notas || "",
-      Etiqueta: eq.etiqueta || "",
-      Categoría: eq.categoria || "",
-    }));
+    const data = sortedEquipos.map((eq: any) => {
+      let fecha = eq.fecha || "";
+      // Normalizar fecha a DD/MM/AAAA en la exportación
+      if (fecha) {
+        const isoMatch = fecha.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+        if (isoMatch) fecha = `${isoMatch[3].padStart(2, "0")}/${isoMatch[2].padStart(2, "0")}/${isoMatch[1]}`;
+      }
+      return {
+        Equipo: eq.nombre || "",
+        Modelo: eq.modelo || "",
+        "N/S": eq.numeroSerie || "",
+        Estado: (eq.estado || "").replace(/_/g, " "),
+        Asignado: eq.asignado?.nombre || "",
+        Ubicación: eq.ubicacion || eq.predio?.nombre || "",
+        Fecha: fecha,
+        Notas: eq.notas || "",
+        Etiqueta: eq.etiqueta || "",
+        Categoría: eq.categoria || "",
+      };
+    });
 
     if (data.length === 0) { toast.error("No hay datos para exportar"); return; }
 
@@ -702,7 +710,19 @@ export default function StockPage() {
 
     // Display value — double click to edit
     const val = eq[col.field];
-    const display = col.id === "ubicacion" ? (val || eq.predio?.nombre || "—") : (val ?? "—");
+    let display: string = col.id === "ubicacion" ? (val || eq.predio?.nombre || "—") : (val ?? "—");
+    // Formatear fecha a DD/MM/AAAA
+    if (col.id === "fecha" && val) {
+      const raw = String(val).trim();
+      // Si viene en formato ISO (YYYY-MM-DD) o similar, convertir
+      const isoMatch = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+      if (isoMatch) {
+        display = `${isoMatch[3].padStart(2, "0")}/${isoMatch[2].padStart(2, "0")}/${isoMatch[1]}`;
+      } else {
+        // Si ya viene DD/MM/AAAA dejarlo así
+        display = raw;
+      }
+    }
     return (
       <span
         className={`${isModOrAdmin && col.editable ? "cursor-pointer hover:bg-primary-50 hover:text-primary-700 px-1 -mx-1 rounded transition-colors" : ""} ${col.id === "numeroSerie" ? "font-mono text-[10px]" : "text-[11px]"} text-surface-600`}
