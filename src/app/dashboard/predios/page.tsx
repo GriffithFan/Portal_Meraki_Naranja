@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useSession } from "@/hooks/useSession";
+import { obtenerProvincia } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -33,8 +34,14 @@ const PROVINCIA_COLORS: Record<string, string> = {
   "Formosa": "#eab308", "Chubut": "#6366f1", "San Luis": "#f43f5e",
   "Catamarca": "#2dd4bf", "La Rioja": "#fb923c", "La Pampa": "#a3e635",
   "Santa Cruz": "#38bdf8", "Tierra del Fuego": "#c084fc", "CABA": "#818cf8",
-  "Demo": "#94a3b8",
+  "SGO. DEL ESTERO": "#a855f7", "Demo": "#94a3b8",
 };
+const PROVINCIA_COLOR_MAP = new Map(
+  Object.entries(PROVINCIA_COLORS).map(([k, v]) => [k.toUpperCase(), v])
+);
+function getProvColor(nombre: string): string {
+  return PROVINCIA_COLOR_MAP.get(nombre.toUpperCase()) || "#94a3b8";
+}
 
 export default function PrediosPage() {
   const { session, isModOrAdmin } = useSession();
@@ -81,7 +88,6 @@ export default function PrediosPage() {
       const params = new URLSearchParams();
       if (filtroEstado) params.set("estadoId", filtroEstado);
       if (filtroEquipo) params.set("equipo", filtroEquipo);
-      if (filtroProvincia) params.set("provincia", filtroProvincia);
       const res = await fetch(`/api/dashboard/mapa?${params}`, { credentials: "include" });
       if (res.ok) {
         setPredios(await res.json());
@@ -95,7 +101,7 @@ export default function PrediosPage() {
     } finally {
       setLoading(false);
     }
-  }, [filtroEstado, filtroEquipo, filtroProvincia]);
+  }, [filtroEstado, filtroEquipo]);
 
   useEffect(() => { fetchPredios(); }, [fetchPredios]);
 
@@ -114,7 +120,7 @@ export default function PrediosPage() {
   const provincias = useMemo(() => {
     const map = new Map<string, number>();
     predios.forEach((p) => {
-      const prov = p.provincia || "Sin provincia";
+      const prov = obtenerProvincia(p.provincia, p.codigo) || "Sin provincia";
       map.set(prov, (map.get(prov) || 0) + 1);
     });
     return Array.from(map.entries())
@@ -146,16 +152,22 @@ export default function PrediosPage() {
   }, [predios]);
 
   const filtered = useMemo(() => {
-    if (!search) return predios;
-    const q = search.toLowerCase();
-    return predios.filter(
-      (p) =>
-        p.nombre?.toLowerCase().includes(q) ||
-        p.codigo?.toLowerCase().includes(q) ||
-        p.direccion?.toLowerCase().includes(q) ||
-        p.ciudad?.toLowerCase().includes(q)
-    );
-  }, [predios, search]);
+    let result = predios;
+    if (filtroProvincia) {
+      result = result.filter(p => obtenerProvincia(p.provincia, p.codigo) === filtroProvincia);
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.nombre?.toLowerCase().includes(q) ||
+          p.codigo?.toLowerCase().includes(q) ||
+          p.direccion?.toLowerCase().includes(q) ||
+          p.ciudad?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [predios, search, filtroProvincia]);
 
   return (
     <div className="animate-fade-in-up flex flex-col overflow-hidden" style={{ height: "calc(100vh - 120px)" }}>
@@ -293,7 +305,7 @@ export default function PrediosPage() {
                     >
                       <span
                         className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shrink-0"
-                        style={{ background: PROVINCIA_COLORS[nombre] || "#94a3b8" }}
+                        style={{ background: getProvColor(nombre) }}
                       />
                       <span className="truncate">{nombre}</span>
                       <span className="text-[10px] text-surface-400">{count}</span>

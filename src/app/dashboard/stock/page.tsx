@@ -61,7 +61,9 @@ const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "numeroSerie", label: "N/S",         field: "numeroSerie", visible: true,  editable: true,  type: "text" },
   { id: "estado",      label: "Estado",       field: "estado",      visible: true,  editable: true,  type: "select", options: ESTADOS_EQUIPO },
   { id: "asignado",    label: "Asignado",     field: "asignadoId",  visible: true,  editable: true,  type: "select" },
-  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text" },  { id: "fecha",       label: "Fecha",        field: "fecha",       visible: true,  editable: true,  type: "text" },  { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
+  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "select", options: ["", "THNET", "Dinatech"] },
+  { id: "fecha",       label: "Fecha",        field: "fecha",       visible: true,  editable: true,  type: "text" },
+  { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
   { id: "descripcion", label: "Descripción",  field: "descripcion", visible: false, editable: true,  type: "text" },
 ];
 
@@ -687,16 +689,29 @@ export default function StockPage() {
     if (isEditing) {
       return (
         <div className="flex items-center gap-0.5">
-          <input
-            autoFocus
-            type={col.type === "number" ? "number" : "text"}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={saveEdit}
-            onKeyDown={handleEditKeyDown}
-            className="w-full px-1.5 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
-            min={col.type === "number" ? 1 : undefined}
-          />
+          {col.type === "select" && col.options ? (
+            <select
+              autoFocus
+              value={editValue}
+              onChange={(e) => { setEditValue(e.target.value); }}
+              onBlur={saveEdit}
+              onKeyDown={handleEditKeyDown}
+              className="w-full px-1 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
+            >
+              {col.options.map(o => <option key={o} value={o}>{o || "— Vacío (predio) —"}</option>)}
+            </select>
+          ) : (
+            <input
+              autoFocus
+              type={col.type === "number" ? "number" : "text"}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={saveEdit}
+              onKeyDown={handleEditKeyDown}
+              className="w-full px-1.5 py-0.5 border border-primary-300 rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white"
+              min={col.type === "number" ? 1 : undefined}
+            />
+          )}
           <button
             onMouseDown={(e) => { e.preventDefault(); setEditingCell(null); limpiarCampo(eq.id, col.field); }}
             className="shrink-0 p-0.5 rounded hover:bg-red-50 text-surface-300 hover:text-red-500"
@@ -974,7 +989,11 @@ export default function StockPage() {
                 </select>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} placeholder="Ubicación" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                <select value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                  <option value="">— Vacío (predio) —</option>
+                  <option value="THNET">THNET</option>
+                  <option value="Dinatech">Dinatech</option>
+                </select>
                 <input value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} placeholder="Fecha" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
               </div>
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />

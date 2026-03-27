@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { obtenerProvincia } from "@/utils/provinciaUtils";
 
 interface PredioMapa {
   id: string;
@@ -45,6 +46,7 @@ const PROVINCIA_COLORS: Record<string, string> = {
   "Santa Cruz":         "#38bdf8", // celeste
   "Tierra del Fuego":   "#c084fc", // violet claro
   "CABA":               "#818cf8", // indigo claro
+  "SGO. DEL ESTERO":    "#a855f7", // púrpura (alias)
   "Demo":               "#94a3b8", // slate
 };
 
@@ -57,9 +59,14 @@ const TECNICO_COLORS = [
   "#6366f1", "#d946ef", "#0ea5e9", "#f43f5e", "#eab308",
 ];
 
+// Lookup case-insensitive para provincias
+const PROVINCIA_COLOR_MAP = new Map(
+  Object.entries(PROVINCIA_COLORS).map(([k, v]) => [k.toUpperCase(), v])
+);
+
 function getProvinciaColor(provincia: string | null): string {
   if (!provincia) return DEFAULT_PROVINCIA_COLOR;
-  return PROVINCIA_COLORS[provincia] || DEFAULT_PROVINCIA_COLOR;
+  return PROVINCIA_COLOR_MAP.get(provincia.toUpperCase()) || PROVINCIA_COLORS[provincia] || DEFAULT_PROVINCIA_COLOR;
 }
 
 function getTecnicoColor(tecnico: string | null, tecnicoColorMap: Record<string, string>): string {
@@ -144,8 +151,9 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
     const bounds = L.latLngBounds([]);
 
     for (const p of predios) {
+      const prov = obtenerProvincia(p.provincia, p.codigo) || null;
       const color = colorBy === "provincia"
-        ? getProvinciaColor(p.provincia)
+        ? getProvinciaColor(prov)
         : colorBy === "tecnico"
         ? getTecnicoColor(p.equipoAsignado, tecnicoColorMap)
         : (p.estado?.color || DEFAULT_PROVINCIA_COLOR);
@@ -153,7 +161,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
       // Label inside marker depends on colorBy mode
       const label = colorBy === "tecnico"
         ? (p.equipoAsignado ? p.equipoAsignado[0].toUpperCase() : "")
-        : (p.provincia ? p.provincia[0].toUpperCase() : "");
+        : (prov ? prov[0].toUpperCase() : "");
 
       const marker = L.marker([p.latitud, p.longitud], {
         icon: createMarkerIcon(color, label),
@@ -163,13 +171,13 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
         ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.estado.color};margin-right:4px"></span>${p.estado.nombre}`
         : "Sin estado";
 
-      const provColor = getProvinciaColor(p.provincia);
+      const provColor = getProvinciaColor(prov);
 
       marker.bindPopup(
         `<div style="font-family:system-ui;font-size:12px;min-width:180px">
           <div style="font-weight:600;font-size:13px;margin-bottom:2px">${escapeHtml(p.nombre)}</div>
           <div style="color:#64748b;margin-bottom:6px;font-size:11px">${escapeHtml(p.codigo)}</div>
-          ${p.provincia ? `<div style="display:inline-flex;align-items:center;gap:4px;background:${provColor}15;border:1px solid ${provColor}40;color:${provColor};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;margin-bottom:8px"><span style="width:6px;height:6px;border-radius:50%;background:${provColor}"></span>${escapeHtml(p.provincia)}</div>` : ""}
+          ${prov ? `<div style="display:inline-flex;align-items:center;gap:4px;background:${provColor}15;border:1px solid ${provColor}40;color:${provColor};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;margin-bottom:8px"><span style="width:6px;height:6px;border-radius:50%;background:${provColor}"></span>${escapeHtml(prov)}</div>` : ""}
           <table style="width:100%;border-collapse:collapse">
             <tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Estado</td><td>${estadoLabel}</td></tr>
             ${p.equipoAsignado ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Equipo</td><td>${escapeHtml(p.equipoAsignado)}</td></tr>` : ""}
