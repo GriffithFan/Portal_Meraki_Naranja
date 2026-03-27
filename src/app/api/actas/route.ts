@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
-import { writeFile, mkdir } from "fs/promises";
+import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
 import { sanitizeSearch } from "@/lib/sanitize";
 
@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
     const nombre = formData.get("nombre") as string;
     const descripcion = formData.get("descripcion") as string | null;
     const predioId = formData.get("predioId") as string | null;
+    const overwrite = formData.get("overwrite") === "true";
 
     if (!file || !nombre) {
       return NextResponse.json({ error: "Archivo y nombre son requeridos" }, { status: 400 });
@@ -80,6 +81,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "El archivo no puede superar 10MB" }, { status: 400 });
     }
 
+    // Detectar duplicado por nombre
+    const existing = await prisma.acta.findFirst({
+      where: { nombre: { equals: nombre, mode: "insensitive" } },
+      select: { id: true, nombre: true, archivoNombre: true, archivoRuta: true, archivoSize: true, createdAt: true },
+    });
+
+    if (existing && !overwrite) {
+      return NextResponse.json({
+        error: "Ya existe un acta con ese nombre",
+        duplicado: existing,
+      }, { status: 409 });
+    }
+
     // Guardar archivo
     const uploadsDir = path.join(process.cwd(), "uploads", "actas");
     await mkdir(uploadsDir, { recursive: true });
@@ -91,28 +105,65 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     await writeFile(filePath, buffer);
 
-    const acta = await prisma.acta.create({
-      data: {
-        nombre,
-        descripcion: descripcion || null,
-        archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() ]/g, '_').slice(0, 200),
-        archivoTipo: file.type || ext.replace(".", ""),
-        archivoRuta: `/uploads/actas/${safeName}`,
-        archivoSize: file.size,
-        predioId: predioId || null,
-        subidoPorId: session.userId,
-      },
-    });
+    let acta;
+    if (existing && overwrite) {
+      // Intentar borrar archivo anterior
+      try {
+        const oldPath = path.join(process.cwd(), existing.archivoRuta);
+        const resolved = path.resolve(oldPath);
+        if (resolved.startsWith(path.join(process.cwd(), "uploads"))) {
+          await unlink(resolved).catch(() => {});
+        }
+      } catch { /* ignorar */ }
 
-    await prisma.actividad.create({
-      data: {
-        accion: "CREAR",
-        descripcion: `Acta "${nombre}" subida (${file.name})`,
-        entidad: "ACTA",
-        entidadId: acta.id,
-        userId: session.userId,
-      },
-    });
+      acta = await prisma.acta.update({
+        where: { id: existing.id },
+        data: {
+          nombre,
+          descripcion: descripcion || null,
+          archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() ]/g, '_').slice(0, 200),
+          archivoTipo: file.type || ext.replace(".", ""),
+          archivoRuta: `/uploads/actas/${safeName}`,
+          archivoSize: file.size,
+          predioId: predioId || null,
+          subidoPorId: session.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await prisma.actividad.create({
+        data: {
+          accion: "EDITAR",
+          descripcion: `Acta "${nombre}" sobreescrita (${file.name})`,
+          entidad: "ACTA",
+          entidadId: acta.id,
+          userId: session.userId,
+        },
+      });
+    } else {
+      acta = await prisma.acta.create({
+        data: {
+          nombre,
+          descripcion: descripcion || null,
+          archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() ]/g, '_').slice(0, 200),
+          archivoTipo: file.type || ext.replace(".", ""),
+          archivoRuta: `/uploads/actas/${safeName}`,
+          archivoSize: file.size,
+          predioId: predioId || null,
+          subidoPorId: session.userId,
+        },
+      });
+
+      await prisma.actividad.create({
+        data: {
+          accion: "CREAR",
+          descripcion: `Acta "${nombre}" subida (${file.name})`,
+          entidad: "ACTA",
+          entidadId: acta.id,
+          userId: session.userId,
+        },
+      });
+    }
 
     return NextResponse.json(acta, { status: 201 });
   } catch (error) {

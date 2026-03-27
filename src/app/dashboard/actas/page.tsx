@@ -55,9 +55,14 @@ export default function ActasPage() {
   // Carga masiva
   const [showBulk, setShowBulk] = useState(false);
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
-  const [bulkProgress, setBulkProgress] = useState<{ done: number; failed: number; total: number } | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; failed: number; skipped: number; overwritten: number; total: number } | null>(null);
   const [bulkUploading, setBulkUploading] = useState(false);
   const bulkRef = useRef<HTMLInputElement>(null);
+  const [bulkDuplicates, setBulkDuplicates] = useState<{ file: File; existing: any }[]>([]);
+  const [bulkChecking, setBulkChecking] = useState(false);
+
+  // Individual duplicate confirm
+  const [dupConfirm, setDupConfirm] = useState<{ file: File; nombre: string; descripcion: string; existing: any } | null>(null);
 
   const fetchActas = useCallback(async () => {
     setLoading(true);
@@ -86,7 +91,7 @@ export default function ActasPage() {
     }
   }
 
-  async function handleUpload(e: React.FormEvent) {
+  async function handleUpload(e: React.FormEvent, overwrite = false) {
     e.preventDefault();
     const file = selectedFile || fileRef.current?.files?.[0];
     if (!file || !nombre) return;
@@ -96,6 +101,36 @@ export default function ActasPage() {
     fd.append("file", file);
     fd.append("nombre", nombre);
     if (descripcion) fd.append("descripcion", descripcion);
+    if (overwrite) fd.append("overwrite", "true");
+
+    const res = await fetch("/api/actas", { method: "POST", credentials: "include", body: fd });
+    setUploading(false);
+
+    if (res.status === 409) {
+      const data = await res.json();
+      setDupConfirm({ file, nombre, descripcion, existing: data.duplicado });
+      return;
+    }
+
+    if (res.ok) {
+      setShowUpload(false);
+      setNombre("");
+      setDescripcion("");
+      setSelectedFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+      fetchActas();
+    }
+  }
+
+  async function confirmOverwrite() {
+    if (!dupConfirm) return;
+    setDupConfirm(null);
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", dupConfirm.file);
+    fd.append("nombre", dupConfirm.nombre);
+    if (dupConfirm.descripcion) fd.append("descripcion", dupConfirm.descripcion);
+    fd.append("overwrite", "true");
 
     const res = await fetch("/api/actas", { method: "POST", credentials: "include", body: fd });
     setUploading(false);
@@ -118,35 +153,79 @@ export default function ActasPage() {
     if (!files) return;
     const valid = Array.from(files).filter(f => /\.(pdf|docx|doc)$/i.test(f.name) && f.size <= 10 * 1024 * 1024);
     setBulkFiles(valid);
+    setBulkDuplicates([]);
+    setBulkProgress(null);
   }
 
-  async function handleBulkUpload() {
+  // Check duplicates before bulk uploading
+  async function checkBulkDuplicates() {
+    if (bulkFiles.length === 0) return;
+    setBulkChecking(true);
+
+    // Fetch all existing acta names
+    const res = await fetch("/api/actas?limit=500", { credentials: "include" });
+    const data = res.ok ? await res.json() : { actas: [] };
+    const existingMap = new Map<string, any>();
+    for (const a of (data.actas || [])) {
+      existingMap.set(a.nombre.toLowerCase(), a);
+    }
+
+    const dups: { file: File; existing: any }[] = [];
+    for (const file of bulkFiles) {
+      const nombre = file.name.replace(/\.(pdf|docx|doc)$/i, "").trim().toLowerCase();
+      const match = existingMap.get(nombre);
+      if (match) dups.push({ file, existing: match });
+    }
+
+    setBulkDuplicates(dups);
+    setBulkChecking(false);
+
+    if (dups.length === 0) {
+      // No duplicates, proceed directly
+      doBulkUpload(false);
+    }
+    // If duplicates found, UI will show the prompt
+  }
+
+  async function doBulkUpload(overwriteDups: boolean) {
     if (bulkFiles.length === 0) return;
     setBulkUploading(true);
-    setBulkProgress({ done: 0, failed: 0, total: bulkFiles.length });
+    const dupNames = new Set(bulkDuplicates.map(d => d.file.name));
+    setBulkProgress({ done: 0, failed: 0, skipped: 0, overwritten: 0, total: bulkFiles.length });
 
     const BATCH = 5;
     let done = 0;
     let failed = 0;
+    let skipped = 0;
+    let overwritten = 0;
 
     for (let i = 0; i < bulkFiles.length; i += BATCH) {
       const batch = bulkFiles.slice(i, i + BATCH);
       const results = await Promise.allSettled(
         batch.map(async (file) => {
+          const isDup = dupNames.has(file.name);
+          if (isDup && !overwriteDups) {
+            skipped++;
+            return "skipped";
+          }
           const fd = new FormData();
           fd.append("file", file);
-          // Usar nombre del archivo sin extensión como nombre del acta
           const nombre = file.name.replace(/\.(pdf|docx|doc)$/i, "").trim();
           fd.append("nombre", nombre || file.name);
+          if (isDup && overwriteDups) fd.append("overwrite", "true");
           const res = await fetch("/api/actas", { method: "POST", credentials: "include", body: fd });
           if (!res.ok) throw new Error("upload failed");
+          return isDup ? "overwritten" : "ok";
         })
       );
       for (const r of results) {
-        if (r.status === "fulfilled") done++;
-        else failed++;
+        if (r.status === "fulfilled") {
+          if (r.value === "skipped") { /* already counted */ }
+          else if (r.value === "overwritten") { overwritten++; done++; }
+          else { done++; }
+        } else { failed++; }
       }
-      setBulkProgress({ done, failed, total: bulkFiles.length });
+      setBulkProgress({ done, failed, skipped, overwritten, total: bulkFiles.length });
     }
 
     setBulkUploading(false);
@@ -154,6 +233,7 @@ export default function ActasPage() {
       setShowBulk(false);
       setBulkFiles([]);
       setBulkProgress(null);
+      setBulkDuplicates([]);
       if (bulkRef.current) bulkRef.current.value = "";
     }
     fetchActas();
@@ -298,21 +378,57 @@ export default function ActasPage() {
                 </div>
               )}
 
+              {bulkDuplicates.length > 0 && !bulkUploading && !bulkProgress && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2 mb-2">
+                    <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                    <div>
+                      <p className="text-xs font-semibold text-amber-800">
+                        {bulkDuplicates.length} archivo{bulkDuplicates.length !== 1 ? "s" : ""} ya existe{bulkDuplicates.length !== 1 ? "n" : ""}
+                      </p>
+                      <p className="text-[10px] text-amber-600 mt-0.5">Elegí si querés sobreescribir los duplicados o solo subir los nuevos.</p>
+                    </div>
+                  </div>
+                  <div className="max-h-28 overflow-y-auto mb-3 border border-amber-200 rounded-md bg-white divide-y divide-amber-100">
+                    {bulkDuplicates.slice(0, 20).map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 px-2.5 py-1 text-[11px]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                        <span className="truncate flex-1 text-amber-800">{d.file.name}</span>
+                        <span className="text-amber-500 flex-shrink-0">v{d.existing.version || 1}</span>
+                      </div>
+                    ))}
+                    {bulkDuplicates.length > 20 && (
+                      <div className="px-2.5 py-1 text-[10px] text-amber-500 text-center">...y {bulkDuplicates.length - 20} más</div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => doBulkUpload(true)} className="flex-1 px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 transition-colors">
+                      Sobreescribir duplicados
+                    </button>
+                    <button onClick={() => doBulkUpload(false)} className="flex-1 px-3 py-1.5 bg-white text-surface-700 border border-surface-300 rounded-md text-xs font-medium hover:bg-surface-50 transition-colors">
+                      Solo subir nuevos
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {bulkProgress && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs font-medium text-surface-700">
-                      {bulkProgress.done + bulkProgress.failed} / {bulkProgress.total}
+                      {bulkProgress.done + bulkProgress.failed + bulkProgress.skipped} / {bulkProgress.total}
                     </span>
-                    <span className="text-[10px] text-surface-400">
+                    <span className="text-[10px] text-surface-400 flex gap-2">
+                      {bulkProgress.overwritten > 0 && <span className="text-amber-600">{bulkProgress.overwritten} sobreescrito{bulkProgress.overwritten !== 1 ? "s" : ""}</span>}
+                      {bulkProgress.skipped > 0 && <span className="text-surface-500">{bulkProgress.skipped} omitido{bulkProgress.skipped !== 1 ? "s" : ""}</span>}
                       {bulkProgress.failed > 0 && <span className="text-red-500">{bulkProgress.failed} error{bulkProgress.failed !== 1 ? "es" : ""}</span>}
-                      {bulkProgress.failed === 0 && bulkProgress.done === bulkProgress.total && <span className="text-emerald-600">Completado</span>}
+                      {bulkProgress.failed === 0 && !bulkUploading && (bulkProgress.done + bulkProgress.skipped) === bulkProgress.total && <span className="text-emerald-600">Completado</span>}
                     </span>
                   </div>
                   <div className="w-full bg-surface-200 rounded-full h-2 overflow-hidden">
                     <div
                       className="bg-primary-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${((bulkProgress.done + bulkProgress.failed) / bulkProgress.total) * 100}%` }}
+                      style={{ width: `${((bulkProgress.done + bulkProgress.failed + bulkProgress.skipped) / bulkProgress.total) * 100}%` }}
                     />
                   </div>
                 </div>
@@ -322,19 +438,51 @@ export default function ActasPage() {
             <div className="flex justify-end gap-2 mt-5">
               <button
                 type="button"
-                onClick={() => { setShowBulk(false); setBulkFiles([]); setBulkProgress(null); if (bulkRef.current) bulkRef.current.value = ""; }}
-                disabled={bulkUploading}
+                onClick={() => { setShowBulk(false); setBulkFiles([]); setBulkProgress(null); setBulkDuplicates([]); if (bulkRef.current) bulkRef.current.value = ""; }}
+                disabled={bulkUploading || bulkChecking}
                 className="px-4 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md disabled:opacity-50"
               >
-                {bulkProgress && bulkProgress.done === bulkProgress.total ? "Cerrar" : "Cancelar"}
+                {bulkProgress && !bulkUploading && (bulkProgress.done + bulkProgress.skipped) === bulkProgress.total ? "Cerrar" : "Cancelar"}
               </button>
               <button
                 type="button"
-                onClick={handleBulkUpload}
-                disabled={bulkUploading || bulkFiles.length === 0}
+                onClick={checkBulkDuplicates}
+                disabled={bulkUploading || bulkChecking || bulkFiles.length === 0}
                 className="px-4 py-2 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium disabled:opacity-50"
               >
-                {bulkUploading ? `Subiendo... (${bulkProgress?.done || 0}/${bulkFiles.length})` : `Subir ${bulkFiles.length} archivo${bulkFiles.length !== 1 ? "s" : ""}`}
+                {bulkChecking ? "Verificando..." : bulkUploading ? `Subiendo... (${bulkProgress?.done || 0}/${bulkFiles.length})` : `Subir ${bulkFiles.length} archivo${bulkFiles.length !== 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmación duplicado individual */}
+      {dupConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-4 animate-fade-in-up">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-surface-800">Acta duplicada</h3>
+                <p className="text-xs text-surface-500 mt-1">
+                  Ya existe un acta con el nombre <strong className="text-surface-700">&quot;{dupConfirm.existing.nombre}&quot;</strong>
+                </p>
+                <div className="mt-2 text-[10px] text-surface-400 space-y-0.5">
+                  <p>Archivo actual: {dupConfirm.existing.archivoNombre}</p>
+                  <p>Tamaño: {formatSize(dupConfirm.existing.archivoSize)}</p>
+                  <p>Subido: {new Date(dupConfirm.existing.createdAt).toLocaleDateString("es-MX")}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setDupConfirm(null)} className="flex-1 px-3 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md border border-surface-200">
+                Cancelar
+              </button>
+              <button onClick={confirmOverwrite} className="flex-1 px-3 py-2 text-xs bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium">
+                Sobreescribir
               </button>
             </div>
           </div>
