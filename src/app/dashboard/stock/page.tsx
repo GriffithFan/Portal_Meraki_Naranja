@@ -381,7 +381,9 @@ export default function StockPage() {
 
   /* ── Stock summary report ── */
   const stockSummary = useMemo(() => {
+    // Inicializar todos los estados con 0
     const porEstado: Record<string, number> = {};
+    ESTADOS_EQUIPO.forEach(e => { porEstado[e.replace(/_/g, " ")] = 0; });
     const porNombre: Record<string, Record<string, number>> = {};
     const porUbicacion: Record<string, number> = {};
 
