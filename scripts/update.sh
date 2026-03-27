@@ -43,7 +43,7 @@ fi
 
 # ── Instalar dependencias ───────────────────────────────────
 step "2/5  Instalando dependencias"
-npm ci --omit=dev 2>&1 | tail -1
+npm ci 2>&1 | tail -1
 ok "Dependencias actualizadas"
 
 # ── Prisma ───────────────────────────────────────────────────
