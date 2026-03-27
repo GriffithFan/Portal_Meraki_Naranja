@@ -50,6 +50,7 @@ const PREDIO_FIELDS: Record<string, string> = {
   lab: "LAB",
   nombreInstitucion: "Nombre de la Institución",
   correo: "Correo",
+  asignado: "Asignado (Técnico)",
 };
 
 /* Auto-fill por prefijo de serial (4 primeros caracteres) */
@@ -160,6 +161,17 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Debes mapear al menos "Nombre / CUE" o "Código"' }, { status: 400 });
       }
 
+      // Pre-cargar usuarios para matching de asignado en predios
+      let predioUsers: { id: string; nombre: string }[] = [];
+      if (fieldMap.has("asignado")) {
+        predioUsers = await prisma.user.findMany({
+          where: { activo: true },
+          select: { id: true, nombre: true },
+        });
+      }
+
+      const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         if (!row || !Array.isArray(row)) { skipped++; continue; }
@@ -269,11 +281,38 @@ export async function POST(request: NextRequest) {
                 }
               }
               await prisma.predio.update({ where: { codigo }, data: updateData as any });
+              // Match asignado y crear Asignacion si corresponde
+              const asignadoVal = safeGet(row, fieldMap.get("asignado"));
+              if (asignadoVal && predioUsers.length > 0) {
+                const needle = norm(asignadoVal);
+                const match = predioUsers.find(u => {
+                  const n = norm(u.nombre);
+                  return n === needle || n.includes(needle) || needle.includes(n);
+                });
+                if (match) {
+                  const exists = await prisma.asignacion.findFirst({ where: { userId: match.id, predioId: existing.id } });
+                  if (!exists) {
+                    await prisma.asignacion.create({ data: { tipo: "tecnico", userId: match.id, predioId: existing.id } });
+                  }
+                }
+              }
               updated++;
               continue;
             }
           }
-          await prisma.predio.create({ data: data as any });
+          const newPredio = await prisma.predio.create({ data: data as any });
+          // Match asignado y crear Asignacion tras crear el predio
+          const asignadoVal = safeGet(row, fieldMap.get("asignado"));
+          if (asignadoVal && predioUsers.length > 0) {
+            const needle = norm(asignadoVal);
+            const match = predioUsers.find(u => {
+              const n = norm(u.nombre);
+              return n === needle || n.includes(needle) || needle.includes(n);
+            });
+            if (match) {
+              await prisma.asignacion.create({ data: { tipo: "tecnico", userId: match.id, predioId: newPredio.id } });
+            }
+          }
           created++;
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Error desconocido";

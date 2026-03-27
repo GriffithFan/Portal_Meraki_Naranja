@@ -199,6 +199,7 @@ export default function ImportarPage() {
         lab: ["lab"],
         nombreInstitucion: ["institucion", "institución", "nombre_institucion", "nombreinstitucion", "escuela"],
         correo: ["correo", "email", "mail", "e-mail", "correo_electronico"],
+        asignado: ["asignado", "tecnico", "técnico", "responsable", "assigned", "asignado_a"],
       };
 
       const equipoAliases: Record<string, string[]> = {
