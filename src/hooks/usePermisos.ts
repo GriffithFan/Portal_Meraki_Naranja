@@ -6,14 +6,23 @@ interface PermisoSeccion {
   seccion: string;
   rol: string;
   ver: boolean;
+  crear: boolean;
   editar: boolean;
+  eliminar: boolean;
+  exportar: boolean;
 }
 
 interface PermisosResult {
   /** Puede el usuario actual ver esta sección? */
   puedeVer: (seccion: string) => boolean;
+  /** Puede el usuario actual crear en esta sección? */
+  puedeCrear: (seccion: string) => boolean;
   /** Puede el usuario actual editar en esta sección? */
   puedeEditar: (seccion: string) => boolean;
+  /** Puede el usuario actual eliminar en esta sección? */
+  puedeEliminar: (seccion: string) => boolean;
+  /** Puede el usuario actual exportar en esta sección? */
+  puedeExportar: (seccion: string) => boolean;
   /** Todos los permisos (para panel admin) */
   permisos: PermisoSeccion[];
   /** Actualizar permisos (solo admin) */
@@ -58,7 +67,7 @@ export function usePermisos(): PermisosResult {
 
   const puedeEditar = useCallback(
     (seccion: string): boolean => {
-      if (SECCIONES_MONITOREO.includes(seccion)) return false; // monitoreo es read-only
+      if (SECCIONES_MONITOREO.includes(seccion)) return false;
       if (!session || session.rol === "ADMIN") return true;
       const p = permisos.find((x) => x.seccion === seccion && x.rol === session.rol);
       if (!p) {
@@ -66,6 +75,48 @@ export function usePermisos(): PermisosResult {
         return ["tareas", "calendario"].includes(seccion);
       }
       return p.editar;
+    },
+    [session, permisos]
+  );
+
+  const puedeCrear = useCallback(
+    (seccion: string): boolean => {
+      if (SECCIONES_MONITOREO.includes(seccion)) return false;
+      if (!session || session.rol === "ADMIN") return true;
+      const p = permisos.find((x) => x.seccion === seccion && x.rol === session.rol);
+      if (!p) {
+        if (session.rol === "MODERADOR") return true;
+        return ["tareas", "calendario"].includes(seccion);
+      }
+      return p.crear;
+    },
+    [session, permisos]
+  );
+
+  const puedeEliminar = useCallback(
+    (seccion: string): boolean => {
+      if (SECCIONES_MONITOREO.includes(seccion)) return false;
+      if (!session || session.rol === "ADMIN") return true;
+      const p = permisos.find((x) => x.seccion === seccion && x.rol === session.rol);
+      if (!p) {
+        if (session.rol === "MODERADOR") return true;
+        return false;
+      }
+      return p.eliminar;
+    },
+    [session, permisos]
+  );
+
+  const puedeExportar = useCallback(
+    (seccion: string): boolean => {
+      if (SECCIONES_MONITOREO.includes(seccion)) return false;
+      if (!session || session.rol === "ADMIN") return true;
+      const p = permisos.find((x) => x.seccion === seccion && x.rol === session.rol);
+      if (!p) {
+        if (session.rol === "MODERADOR") return true;
+        return false;
+      }
+      return p.exportar;
     },
     [session, permisos]
   );
@@ -97,5 +148,5 @@ export function usePermisos(): PermisosResult {
     []
   );
 
-  return { puedeVer, puedeEditar, permisos, guardarPermisos, loading };
+  return { puedeVer, puedeCrear, puedeEditar, puedeEliminar, puedeExportar, permisos, guardarPermisos, loading };
 }

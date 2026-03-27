@@ -17,8 +17,9 @@ export async function GET() {
 
 // Secciones configurables (excluye monitoreo que es visible para todos)
 const SECCIONES_VALIDAS = [
-  "tareas", "calendario", "stock", "importar",
-  "bandeja", "actividad", "instructivo", "actas", "facturacion", "usuarios",
+  "tareas", "calendario", "stock", "importar", "predios", "hospedajes",
+  "bandeja", "actividad", "chat", "instructivo", "actas",
+  "facturacion", "usuarios", "kpis", "mapa",
 ];
 
 // PUT: actualizar permisos (solo ADMIN)
@@ -44,12 +45,15 @@ export async function PUT(request: NextRequest) {
 
     const result = await prisma.permisoSeccion.upsert({
       where: { seccion_rol: { seccion: p.seccion, rol: p.rol as "ADMIN" | "MODERADOR" | "TECNICO" } },
-      update: { ver: p.ver, editar: p.editar },
+      update: { ver: p.ver, crear: p.crear ?? false, editar: p.editar, eliminar: p.eliminar ?? false, exportar: p.exportar ?? false },
       create: {
         seccion: p.seccion,
         rol: p.rol as "ADMIN" | "MODERADOR" | "TECNICO",
         ver: p.ver,
+        crear: p.crear ?? false,
         editar: p.editar,
+        eliminar: p.eliminar ?? false,
+        exportar: p.exportar ?? false,
       },
     });
     results.push(result);

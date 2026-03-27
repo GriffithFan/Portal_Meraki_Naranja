@@ -154,8 +154,11 @@ export const permisosSchema = z.object({
     seccion: str(50),
     rol: z.enum(ROLES),
     ver: z.boolean(),
+    crear: z.boolean().optional().default(false),
     editar: z.boolean(),
-  })).min(1).max(100),
+    eliminar: z.boolean().optional().default(false),
+    exportar: z.boolean().optional().default(false),
+  })).min(1).max(200),
 });
 
 // POST /api/tareas (campos principales)

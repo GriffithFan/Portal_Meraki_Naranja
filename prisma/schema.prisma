@@ -460,11 +460,14 @@ model ReporteFacturacion {
 
 // ─── PERMISOS POR SECCIÓN ────────────────────────────
 model PermisoSeccion {
-  id        String @id @default(cuid())
-  seccion   String // clave de sección: tareas, calendario, stock, etc.
+  id        String  @id @default(cuid())
+  seccion   String  // clave de sección: tareas, calendario, stock, etc.
   rol       Role
   ver       Boolean @default(true)
+  crear     Boolean @default(false)
   editar    Boolean @default(false)
+  eliminar  Boolean @default(false)
+  exportar  Boolean @default(false)
 
   @@unique([seccion, rol])
   @@index([seccion])
