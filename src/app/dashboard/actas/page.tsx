@@ -52,6 +52,13 @@ export default function ActasPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Carga masiva
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; failed: number; total: number } | null>(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const bulkRef = useRef<HTMLInputElement>(null);
+
   const fetchActas = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -106,6 +113,52 @@ export default function ActasPage() {
     window.open(`/api/actas/${acta.id}`, "_blank");
   }
 
+  function handleBulkSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+    const valid = Array.from(files).filter(f => /\.(pdf|docx|doc)$/i.test(f.name) && f.size <= 10 * 1024 * 1024);
+    setBulkFiles(valid);
+  }
+
+  async function handleBulkUpload() {
+    if (bulkFiles.length === 0) return;
+    setBulkUploading(true);
+    setBulkProgress({ done: 0, failed: 0, total: bulkFiles.length });
+
+    const BATCH = 5;
+    let done = 0;
+    let failed = 0;
+
+    for (let i = 0; i < bulkFiles.length; i += BATCH) {
+      const batch = bulkFiles.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        batch.map(async (file) => {
+          const fd = new FormData();
+          fd.append("file", file);
+          // Usar nombre del archivo sin extensión como nombre del acta
+          const nombre = file.name.replace(/\.(pdf|docx|doc)$/i, "").trim();
+          fd.append("nombre", nombre || file.name);
+          const res = await fetch("/api/actas", { method: "POST", credentials: "include", body: fd });
+          if (!res.ok) throw new Error("upload failed");
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") done++;
+        else failed++;
+      }
+      setBulkProgress({ done, failed, total: bulkFiles.length });
+    }
+
+    setBulkUploading(false);
+    if (failed === 0) {
+      setShowBulk(false);
+      setBulkFiles([]);
+      setBulkProgress(null);
+      if (bulkRef.current) bulkRef.current.value = "";
+    }
+    fetchActas();
+  }
+
   function iconForType(tipo: string) {
     if (tipo.includes("pdf")) return <IconPdf />;
     if (tipo.includes("word") || tipo.includes("docx")) return <IconWord />;
@@ -120,10 +173,16 @@ export default function ActasPage() {
           <p className="text-xs text-surface-400">Documentos y actas del proyecto</p>
         </div>
         {canEdit && (
-          <button onClick={() => setShowUpload(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
-            Subir acta
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowBulk(true)} className="px-3 py-1.5 bg-surface-100 text-surface-700 rounded-md text-xs font-medium hover:bg-surface-200 transition-colors flex items-center gap-1.5 border border-surface-200">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3h9" /></svg>
+              Carga masiva
+            </button>
+            <button onClick={() => setShowUpload(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+              Subir acta
+            </button>
+          </div>
         )}
       </div>
 
@@ -196,6 +255,89 @@ export default function ActasPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal carga masiva */}
+      {showBulk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4 animate-fade-in-up max-h-[85vh] overflow-y-auto">
+            <h2 className="text-base font-semibold text-surface-800 mb-1">Carga masiva de actas</h2>
+            <p className="text-xs text-surface-400 mb-4">Seleccioná múltiples archivos PDF o DOCX. Se subirán con su nombre original.</p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-surface-300 rounded-lg cursor-pointer hover:border-surface-400 hover:bg-surface-50 transition-colors">
+                  <svg className="w-8 h-8 text-surface-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                  <span className="text-xs text-surface-500">Click para seleccionar archivos</span>
+                  <span className="text-[10px] text-surface-400 mt-0.5">PDF, DOCX, DOC · Máx 10MB c/u</span>
+                  <input ref={bulkRef} type="file" accept=".pdf,.docx,.doc" multiple onChange={handleBulkSelect} className="hidden" />
+                </label>
+              </div>
+
+              {bulkFiles.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-surface-700">{bulkFiles.length} archivo{bulkFiles.length !== 1 ? "s" : ""} seleccionado{bulkFiles.length !== 1 ? "s" : ""}</span>
+                    <span className="text-[10px] text-surface-400">{formatSize(bulkFiles.reduce((s, f) => s + f.size, 0))} total</span>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto border border-surface-200 rounded-md divide-y divide-surface-100">
+                    {bulkFiles.slice(0, 50).map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${f.name.endsWith(".pdf") ? "bg-red-400" : "bg-blue-400"}`} />
+                        <span className="truncate flex-1 text-surface-700">{f.name}</span>
+                        <span className="text-surface-400 flex-shrink-0">{formatSize(f.size)}</span>
+                      </div>
+                    ))}
+                    {bulkFiles.length > 50 && (
+                      <div className="px-3 py-1.5 text-[10px] text-surface-400 text-center">
+                        ...y {bulkFiles.length - 50} más
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {bulkProgress && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium text-surface-700">
+                      {bulkProgress.done + bulkProgress.failed} / {bulkProgress.total}
+                    </span>
+                    <span className="text-[10px] text-surface-400">
+                      {bulkProgress.failed > 0 && <span className="text-red-500">{bulkProgress.failed} error{bulkProgress.failed !== 1 ? "es" : ""}</span>}
+                      {bulkProgress.failed === 0 && bulkProgress.done === bulkProgress.total && <span className="text-emerald-600">Completado</span>}
+                    </span>
+                  </div>
+                  <div className="w-full bg-surface-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-primary-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${((bulkProgress.done + bulkProgress.failed) / bulkProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => { setShowBulk(false); setBulkFiles([]); setBulkProgress(null); if (bulkRef.current) bulkRef.current.value = ""; }}
+                disabled={bulkUploading}
+                className="px-4 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md disabled:opacity-50"
+              >
+                {bulkProgress && bulkProgress.done === bulkProgress.total ? "Cerrar" : "Cancelar"}
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkUpload}
+                disabled={bulkUploading || bulkFiles.length === 0}
+                className="px-4 py-2 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium disabled:opacity-50"
+              >
+                {bulkUploading ? `Subiendo... (${bulkProgress?.done || 0}/${bulkFiles.length})` : `Subir ${bulkFiles.length} archivo${bulkFiles.length !== 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
