@@ -29,10 +29,10 @@ export const deriveConnectedPortsFromTopology = (applianceSerial: string, topolo
   const portsWithCarrier = new Set<number>();
   ports.forEach((p) => {
     const num = typeof p.number === "string" ? parseInt(p.number, 10) : (p.number ?? 0);
-    const status = ((p as any).status || "").toLowerCase();
-    const hasSpeed = typeof (p as any).speed === "number" && (p as any).speed > 0;
-    const hasCarrier = (p as any).hasCarrier === true;
-    const isConnected = /(connected|active|up|ready)/.test(status) || hasSpeed || hasCarrier;
+    const status = (p.status || "").toLowerCase();
+    const speedNum = Number(p.speed);
+    const hasSpeed = Number.isFinite(speedNum) && speedNum > 0;
+    const isConnected = /(connected|active|up|ready)/.test(status) || hasSpeed;
     if (isConnected) portsWithCarrier.add(num);
   });
 
