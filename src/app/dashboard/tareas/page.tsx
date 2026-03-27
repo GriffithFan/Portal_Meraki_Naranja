@@ -211,15 +211,13 @@ export default function TareasPage() {
   // Cargar datos
   const fetchTareas = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("buscar", search);
-    const res = await fetch(`/api/tareas?${params}`, { credentials: "include" });
+    const res = await fetch("/api/tareas?limit=2000", { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
       setTareas(data.predios || []);
     }
     setLoading(false);
-  }, [search]);
+  }, []);
 
   useEffect(() => {
     fetchTareas();
