@@ -391,8 +391,22 @@ export async function POST(request: NextRequest) {
               else if (newAsignado || oldAsignado) diferentes.push("asignado");
 
               duplicates.push({ fila: i + 2, serial: ns, nuevo: nuevoObj, existente: existenteObj, iguales, diferentes });
-              errors.push(`Fila ${i + 2}: Número de serie duplicado`);
-              skipped++;
+
+              // Si updateExisting está activo, sobreescribir con los datos nuevos (solo campos con valor)
+              if (updateExisting) {
+                const updateData: Record<string, unknown> = {};
+                for (const [key, val] of Object.entries(data)) {
+                  if (key === "numeroSerie") continue; // no cambiar el serial
+                  if (val !== undefined && val !== null && val !== "") {
+                    updateData[key] = val;
+                  }
+                }
+                await prisma.equipo.update({ where: { id: existing.id }, data: updateData as any });
+                updated++;
+              } else {
+                errors.push(`Fila ${i + 2}: Número de serie duplicado`);
+                skipped++;
+              }
               continue;
             }
           }
@@ -411,7 +425,7 @@ export async function POST(request: NextRequest) {
       await prisma.actividad.create({
         data: {
           accion: "CREAR",
-          descripcion: `Importación masiva: ${created} ${tipo === "PREDIO" ? "predios" : "equipos"}`,
+          descripcion: `Importación masiva: ${created} creados${updated > 0 ? `, ${updated} actualizados` : ""} (${tipo === "PREDIO" ? "predios" : "equipos"})`,
           entidad: tipo,
           entidadId: "bulk-import",
           userId: session.userId,
