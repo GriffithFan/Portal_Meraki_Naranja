@@ -325,6 +325,19 @@ export default function EspacioTareasPage() {
     setTimeout(() => { didDragRef.current = false; }, 0);
   }
 
+  // Guardar campo inline (desde la tabla, sin abrir detalle)
+  async function saveCellField(tareaId: string, field: string, value: string) {
+    const res = await fetch(`/api/tareas/${tareaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ [field]: value }),
+    });
+    if (res.ok) {
+      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value } : t));
+    }
+  }
+
   // Render de celda
   const renderCell = (t: any, col: Column) => {
     if (col.field.startsWith("_custom_")) {
@@ -347,6 +360,32 @@ export default function EspacioTareasPage() {
       );
     }
     if (col.type === "date") return formatDate(t[col.field]);
+    if (col.type === "badge" && col.id === "lacR") {
+      const val = t[col.field]?.toUpperCase() || "";
+      if (isModOrAdmin) {
+        return (
+          <select
+            value={val}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => { e.stopPropagation(); saveCellField(t.id, col.field, e.target.value); }}
+            className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border cursor-pointer focus:outline-none focus:ring-1 focus:ring-surface-300 ${
+              val === "SI" ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+              val === "NO" ? "bg-red-50 text-red-500 border-red-200" :
+              "bg-surface-50 text-surface-400 border-surface-200"
+            }`}
+          >
+            <option value="">\u2014</option>
+            <option value="SI">SI</option>
+            <option value="NO">NO</option>
+          </select>
+        );
+      }
+      return val ? (
+        <span className={`px-1.5 py-px rounded text-[10px] font-semibold ${val === "SI" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
+          {val}
+        </span>
+      ) : <span className="text-surface-300">&mdash;</span>;
+    }
     if (col.type === "badge") {
       return t[col.field] ? (
         <span className={`px-1.5 py-px rounded text-[10px] font-semibold ${t[col.field]?.toUpperCase() === "SI" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
