@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
 import { ListSkeleton } from "@/components/ui/Skeletons";
+import { detectarProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -11,6 +12,14 @@ function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatDatetime(d: string) {
+  return new Date(d).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 // Íconos SVG minimalistas
@@ -43,6 +52,7 @@ export default function ActasPage() {
   const { puedeEditar } = usePermisos();
   const canEdit = isModOrAdmin || puedeEditar("actas");
   const [actas, setActas] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -51,6 +61,16 @@ export default function ActasPage() {
   const [descripcion, setDescripcion] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Filtros
+  const [filterProvincia, setFilterProvincia] = useState("");
+  const [filterDesde, setFilterDesde] = useState("");
+  const [filterHasta, setFilterHasta] = useState("");
+
+  // Selección
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; label: string } | null>(null);
 
   // Carga masiva
   const [showBulk, setShowBulk] = useState(false);
@@ -68,22 +88,95 @@ export default function ActasPage() {
     setLoading(true);
     const params = new URLSearchParams();
     if (search) params.set("buscar", search);
+    if (filterProvincia) params.set("provincia", filterProvincia);
+    if (filterDesde) params.set("desde", filterDesde);
+    if (filterHasta) params.set("hasta", filterHasta);
+    params.set("limit", "500");
     const res = await fetch(`/api/actas?${params}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
       setActas(data.actas || []);
+      setTotal(data.total || 0);
     }
     setLoading(false);
-  }, [search]);
+    setSelected(new Set());
+  }, [search, filterProvincia, filterDesde, filterHasta]);
 
   useEffect(() => { fetchActas(); }, [fetchActas]);
+
+  // Provincias encontradas en las actas actuales (para el dropdown)
+  const provinciasEnActas = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of actas) {
+      const p = detectarProvincia(a.nombre);
+      if (p) set.add(p);
+    }
+    return PROVINCIAS.filter((p) => set.has(p));
+  }, [actas]);
+
+  // Filtros activos
+  const hasFilters = !!(filterProvincia || filterDesde || filterHasta);
+
+  function clearFilters() {
+    setFilterProvincia("");
+    setFilterDesde("");
+    setFilterHasta("");
+  }
+
+  // --- Selección ---
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === actas.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(actas.map((a) => a.id)));
+    }
+  }
+
+  // --- Eliminar ---
+  function requestDeleteSingle(acta: any) {
+    setDeleteConfirm({ ids: [acta.id], label: `"${acta.nombre}"` });
+  }
+
+  function requestDeleteSelected() {
+    setDeleteConfirm({ ids: Array.from(selected), label: `${selected.size} acta${selected.size !== 1 ? "s" : ""} seleccionada${selected.size !== 1 ? "s" : ""}` });
+  }
+
+  function requestDeleteAll() {
+    setDeleteConfirm({ ids: actas.map((a) => a.id), label: `TODAS las ${actas.length} actas${hasFilters ? " filtradas" : ""}` });
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    if (deleteConfirm.ids.length === 1) {
+      await fetch(`/api/actas/${deleteConfirm.ids[0]}`, { method: "DELETE", credentials: "include" });
+    } else {
+      await fetch("/api/actas/bulk-delete", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: deleteConfirm.ids }),
+      });
+    }
+    setDeleting(false);
+    setDeleteConfirm(null);
+    fetchActas();
+  }
 
   // Extraer número de 6 dígitos del nombre del archivo
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-      // Buscar patrón de 6 dígitos en el nombre (ej: Acta_600222.docx → 600222)
       const match = file.name.match(/(\d{6})/);
       if (match) {
         setNombre(match[1]);
@@ -157,12 +250,10 @@ export default function ActasPage() {
     setBulkProgress(null);
   }
 
-  // Check duplicates before bulk uploading
   async function checkBulkDuplicates() {
     if (bulkFiles.length === 0) return;
     setBulkChecking(true);
 
-    // Fetch all existing acta names
     const res = await fetch("/api/actas?limit=500", { credentials: "include" });
     const data = res.ok ? await res.json() : { actas: [] };
     const existingMap = new Map<string, any>();
@@ -181,10 +272,8 @@ export default function ActasPage() {
     setBulkChecking(false);
 
     if (dups.length === 0) {
-      // No duplicates, proceed directly
       doBulkUpload(false);
     }
-    // If duplicates found, UI will show the prompt
   }
 
   async function doBulkUpload(overwriteDups: boolean) {
@@ -247,29 +336,71 @@ export default function ActasPage() {
 
   return (
     <div className="animate-fade-in-up">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Actas</h1>
-          <p className="text-xs text-surface-400">Documentos y actas del proyecto</p>
+          <p className="text-xs text-surface-400">Documentos y actas del proyecto · {total} total</p>
         </div>
-        {canEdit && (
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowBulk(true)} className="px-3 py-1.5 bg-surface-100 text-surface-700 rounded-md text-xs font-medium hover:bg-surface-200 transition-colors flex items-center gap-1.5 border border-surface-200">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3h9" /></svg>
-              Carga masiva
-            </button>
-            <button onClick={() => setShowUpload(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
-              Subir acta
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <>
+              <button onClick={() => setShowBulk(true)} className="px-3 py-1.5 bg-surface-100 text-surface-700 rounded-md text-xs font-medium hover:bg-surface-200 transition-colors flex items-center gap-1.5 border border-surface-200">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3h9" /></svg>
+                Carga masiva
+              </button>
+              <button onClick={() => setShowUpload(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                Subir acta
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Búsqueda */}
-      <div className="mb-4">
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, descripción o predio..." className="w-full max-w-md px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+      {/* Búsqueda y filtros */}
+      <div className="mb-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, descripción o predio..." className="flex-1 max-w-md px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+          <select value={filterProvincia} onChange={(e) => setFilterProvincia(e.target.value)} className="px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 bg-white min-w-[160px]">
+            <option value="">Todas las provincias</option>
+            {(filterProvincia ? PROVINCIAS : provinciasEnActas).map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          <input type="date" value={filterDesde} onChange={(e) => setFilterDesde(e.target.value)} className="px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" title="Desde" />
+          <input type="date" value={filterHasta} onChange={(e) => setFilterHasta(e.target.value)} className="px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" title="Hasta" />
+          {hasFilters && (
+            <button onClick={clearFilters} className="px-3 py-1.5 text-xs text-surface-500 hover:text-surface-700 hover:bg-surface-100 rounded-md transition-colors">
+              Limpiar filtros
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Barra de selección / acciones masivas */}
+      {canEdit && actas.length > 0 && (
+        <div className="flex items-center gap-3 mb-3 px-1">
+          <label className="flex items-center gap-1.5 text-xs text-surface-500 cursor-pointer select-none">
+            <input type="checkbox" checked={actas.length > 0 && selected.size === actas.length} onChange={toggleSelectAll} className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5" />
+            Seleccionar todo ({actas.length})
+          </label>
+          {selected.size > 0 && (
+            <>
+              <span className="text-xs text-surface-400">|</span>
+              <span className="text-xs font-medium text-primary-600">{selected.size} seleccionada{selected.size !== 1 ? "s" : ""}</span>
+              <button onClick={requestDeleteSelected} className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded-md transition-colors font-medium flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                Eliminar seleccionadas
+              </button>
+              <span className="text-xs text-surface-400">|</span>
+              <button onClick={requestDeleteAll} className="px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 rounded-md transition-colors flex items-center gap-1">
+                Eliminar todas{hasFilters ? " filtradas" : ""}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Lista de actas */}
       <div className="bg-white rounded-lg border border-surface-200">
@@ -279,32 +410,76 @@ export default function ActasPage() {
           <div className="text-center py-16 text-surface-400">
             <div className="flex justify-center mb-3"><IconFolderOpen /></div>
             <p className="text-lg font-medium mb-1">Sin actas</p>
-            <p className="text-sm">{search ? "No se encontraron resultados" : "Aún no se han subido documentos"}</p>
+            <p className="text-sm">{search || hasFilters ? "No se encontraron resultados" : "Aún no se han subido documentos"}</p>
+            {hasFilters && (
+              <button onClick={clearFilters} className="mt-3 text-xs text-primary-600 hover:underline">Limpiar filtros</button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-surface-100">
-            {actas.map((a) => (
-              <div key={a.id} className="flex items-center gap-4 px-5 py-4 hover:bg-surface-50 transition-colors">
-                {iconForType(a.archivoTipo)}
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-surface-800 truncate">{a.nombre}</div>
-                  <div className="text-xs text-surface-400 flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-                    <span>{a.archivoNombre}</span>
-                    <span>{formatSize(a.archivoSize)}</span>
-                    <span>Subido por {a.subidoPor?.nombre}</span>
-                    <span>{new Date(a.createdAt).toLocaleDateString("es-MX")}</span>
+            {actas.map((a) => {
+              const prov = detectarProvincia(a.nombre);
+              return (
+                <div key={a.id} className={`flex items-center gap-4 px-5 py-4 hover:bg-surface-50 transition-colors group ${selected.has(a.id) ? "bg-primary-50/50" : ""}`}>
+                  {canEdit && (
+                    <input
+                      type="checkbox"
+                      checked={selected.has(a.id)}
+                      onChange={() => toggleSelect(a.id)}
+                      className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5 flex-shrink-0"
+                    />
+                  )}
+                  {iconForType(a.archivoTipo)}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-surface-800 truncate">{a.nombre}</span>
+                      {prov && (
+                        <span className="text-[10px] bg-primary-50 text-primary-600 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">
+                          {prov}
+                        </span>
+                      )}
+                      {a.version > 1 && (
+                        <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">
+                          v{a.version}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-surface-400 flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+                      <span>{a.archivoNombre}</span>
+                      <span>{formatSize(a.archivoSize)}</span>
+                      <span>Subido por {a.subidoPor?.nombre}</span>
+                    </div>
+                    {a.descripcion && <p className="text-xs text-surface-500 mt-1">{a.descripcion}</p>}
+                    {a.predio && <span className="text-xs bg-surface-100 text-surface-600 px-2 py-0.5 rounded-full mt-1 inline-block">Predio: {a.predio.nombre}</span>}
                   </div>
-                  {a.descripcion && <p className="text-xs text-surface-500 mt-1">{a.descripcion}</p>}
-                  {a.predio && <span className="text-xs bg-surface-100 text-surface-600 px-2 py-0.5 rounded-full mt-1 inline-block">Predio: {a.predio.nombre}</span>}
+                  {/* Fecha de subida prominente */}
+                  <div className="text-right flex-shrink-0 hidden sm:block">
+                    <div className="text-xs font-medium text-surface-600">{formatDate(a.createdAt)}</div>
+                    <div className="text-[10px] text-surface-400">{new Date(a.createdAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}</div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => downloadActa(a)} className="px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 rounded-lg transition-colors font-medium" title="Descargar">
+                      Descargar
+                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => requestDeleteSingle(a)}
+                        className="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                        title="Eliminar"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <button onClick={() => downloadActa(a)} className="px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 rounded-lg transition-colors font-medium">
-                  Descargar
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Fecha en mobile (visible below breakpoint) */}
+      <style>{`@media(max-width:639px){.acta-date-mobile{display:block!important}}`}</style>
 
       {/* Modal upload */}
       {showUpload && (
@@ -473,7 +648,7 @@ export default function ActasPage() {
                 <div className="mt-2 text-[10px] text-surface-400 space-y-0.5">
                   <p>Archivo actual: {dupConfirm.existing.archivoNombre}</p>
                   <p>Tamaño: {formatSize(dupConfirm.existing.archivoSize)}</p>
-                  <p>Subido: {new Date(dupConfirm.existing.createdAt).toLocaleDateString("es-MX")}</p>
+                  <p>Subido: {formatDatetime(dupConfirm.existing.createdAt)}</p>
                 </div>
               </div>
             </div>
@@ -483,6 +658,34 @@ export default function ActasPage() {
               </button>
               <button onClick={confirmOverwrite} className="flex-1 px-3 py-2 text-xs bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium">
                 Sobreescribir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmación eliminación */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-4 animate-fade-in-up">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-surface-800">Confirmar eliminación</h3>
+                <p className="text-xs text-surface-500 mt-1">
+                  ¿Estás seguro de eliminar {deleteConfirm.label}?
+                </p>
+                <p className="text-[10px] text-red-500 mt-1.5">Esta acción no se puede deshacer. Se eliminarán los archivos del servidor.</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteConfirm(null)} disabled={deleting} className="flex-1 px-3 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md border border-surface-200 disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={confirmDelete} disabled={deleting} className="flex-1 px-3 py-2 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 font-medium disabled:opacity-50">
+                {deleting ? "Eliminando..." : "Eliminar"}
               </button>
             </div>
           </div>

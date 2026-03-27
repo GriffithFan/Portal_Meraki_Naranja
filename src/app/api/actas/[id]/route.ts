@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
-import { readFile } from "fs/promises";
+import { readFile, unlink } from "fs/promises";
 import path from "path";
 
 export async function GET(
@@ -60,4 +60,43 @@ export async function GET(
   } catch {
     return NextResponse.json({ error: "Archivo no encontrado en el servidor" }, { status: 404 });
   }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session || !isModOrAdmin(session.rol)) {
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const acta = await prisma.acta.findUnique({ where: { id } });
+  if (!acta) {
+    return NextResponse.json({ error: "Acta no encontrada" }, { status: 404 });
+  }
+
+  // Borrar archivo del disco
+  try {
+    const filePath = path.resolve(process.cwd(), acta.archivoRuta);
+    const uploadsDir = path.resolve(process.cwd(), "uploads");
+    if (filePath.startsWith(uploadsDir)) {
+      await unlink(filePath).catch(() => {});
+    }
+  } catch { /* ignorar */ }
+
+  await prisma.acta.delete({ where: { id } });
+
+  await prisma.actividad.create({
+    data: {
+      accion: "ELIMINAR",
+      descripcion: `Acta "${acta.nombre}" eliminada`,
+      entidad: "ACTA",
+      entidadId: id,
+      userId: session.userId,
+    },
+  });
+
+  return NextResponse.json({ ok: true });
 }

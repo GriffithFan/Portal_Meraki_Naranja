@@ -4,6 +4,7 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
 import { sanitizeSearch } from "@/lib/sanitize";
+import { detectarProvincia } from "@/utils/provinciaUtils";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -12,6 +13,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const buscar = sanitizeSearch(searchParams.get("buscar"));
   const predioId = searchParams.get("predioId");
+  const provincia = searchParams.get("provincia");
+  const desde = searchParams.get("desde");
+  const hasta = searchParams.get("hasta");
   const limitParam = searchParams.get("limit");
   const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 500);
   const pageParam = searchParams.get("page");
@@ -28,6 +32,38 @@ export async function GET(request: NextRequest) {
       { archivoNombre: { contains: buscar, mode: "insensitive" } },
       { predio: { nombre: { contains: buscar, mode: "insensitive" } } },
     ];
+  }
+  // Filtro por rango de fecha
+  if (desde || hasta) {
+    where.createdAt = {};
+    if (desde) where.createdAt.gte = new Date(desde);
+    if (hasta) {
+      const h = new Date(hasta);
+      h.setHours(23, 59, 59, 999);
+      where.createdAt.lte = h;
+    }
+  }
+
+  // Si se filtra por provincia, necesitamos traer todo y filtrar en memoria
+  // ya que la provincia se deriva del nombre (no es un campo en DB)
+  if (provincia) {
+    const allActas = await prisma.acta.findMany({
+      where,
+      include: {
+        predio: { select: { id: true, nombre: true } },
+        subidoPor: { select: { id: true, nombre: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const filtered = allActas.filter((a) => {
+      const prov = detectarProvincia(a.nombre);
+      return prov && prov.toLowerCase() === provincia.toLowerCase();
+    });
+
+    const total = filtered.length;
+    const paged = filtered.slice(skip, skip + limit);
+    return NextResponse.json({ actas: paged, total, page, limit });
   }
 
   const [actas, total] = await Promise.all([
