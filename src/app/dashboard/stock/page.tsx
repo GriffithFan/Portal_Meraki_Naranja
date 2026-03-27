@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import * as XLSX from "xlsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -91,6 +92,14 @@ export default function StockPage() {
   /* ── Etiqueta editing ── */
   const [editingEtiqueta, setEditingEtiqueta] = useState<string | null>(null);
   const [etiquetaForm, setEtiquetaForm] = useState({ texto: "", color: ETIQUETA_COLORS[0] });
+
+  /* ── Export & Report ── */
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+
+  /* ── Duplicate serial detection ── */
+  const [duplicateEquipo, setDuplicateEquipo] = useState<any | null>(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
   /* ── Column state ── */
   const [columns, setColumns] = useState<StockColumn[]>(DEFAULT_COLUMNS);
@@ -250,9 +259,183 @@ export default function StockPage() {
       setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
       toast.success("Equipo creado exitosamente");
       fetchEquipos();
+    } else if (res.status === 409) {
+      // Serial duplicado — buscar el equipo existente y ofrecer edición
+      const serial = form.numeroSerie.trim();
+      const existing = equipos.find(eq => eq.numeroSerie?.toUpperCase() === serial.toUpperCase());
+      if (existing) {
+        setDuplicateEquipo(existing);
+        setShowDuplicateModal(true);
+      } else {
+        toast.error("El número de serie ya existe");
+      }
     } else {
       toast.error("Error al crear equipo");
     }
+  }
+
+  function handleLoadDuplicate() {
+    if (!duplicateEquipo) return;
+    setForm({
+      nombre: duplicateEquipo.nombre || "",
+      descripcion: duplicateEquipo.descripcion || "",
+      numeroSerie: duplicateEquipo.numeroSerie || "",
+      modelo: duplicateEquipo.modelo || "",
+      estado: duplicateEquipo.estado || "DISPONIBLE",
+      ubicacion: duplicateEquipo.ubicacion || "",
+      notas: duplicateEquipo.notas || "",
+      asignadoId: duplicateEquipo.asignadoId || "",
+      fecha: duplicateEquipo.fecha || "",
+    });
+    setShowDuplicateModal(false);
+    setShowModal(true);
+    toast.info("Datos cargados — modificá lo que necesites y guardá");
+  }
+
+  async function handleUpdateDuplicate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!duplicateEquipo) return;
+    const nombre = form.nombre.trim();
+    if (!nombre) return;
+    const res = await fetch(`/api/stock/${duplicateEquipo.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ ...form, nombre }),
+    });
+    if (res.ok) {
+      setShowModal(false);
+      setDuplicateEquipo(null);
+      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
+      toast.success("Equipo actualizado exitosamente");
+      fetchEquipos();
+    } else {
+      toast.error("Error al actualizar equipo");
+    }
+  }
+
+  /* ── Check serial on blur ── */
+  function handleSerialBlur() {
+    const serial = form.numeroSerie.trim();
+    if (!serial || duplicateEquipo) return;
+    const existing = equipos.find(eq => eq.numeroSerie?.toUpperCase() === serial.toUpperCase());
+    if (existing) {
+      setDuplicateEquipo(existing);
+      setShowDuplicateModal(true);
+    }
+  }
+
+  /* ── Export functions ── */
+  function exportStock(format: "csv" | "xlsx") {
+    const data = sortedEquipos.map((eq: any) => ({
+      Equipo: eq.nombre || "",
+      Modelo: eq.modelo || "",
+      "N/S": eq.numeroSerie || "",
+      Estado: (eq.estado || "").replace(/_/g, " "),
+      Asignado: eq.asignado?.nombre || "",
+      Ubicación: eq.ubicacion || eq.predio?.nombre || "",
+      Fecha: eq.fecha || "",
+      Notas: eq.notas || "",
+      Etiqueta: eq.etiqueta || "",
+      Categoría: eq.categoria || "",
+    }));
+
+    if (data.length === 0) { toast.error("No hay datos para exportar"); return; }
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    // Auto-width
+    const colWidths = Object.keys(data[0]).map(key => ({
+      wch: Math.max(key.length, ...data.map((r: any) => String(r[key] ?? "").length)) + 2,
+    }));
+    ws["!cols"] = colWidths;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Stock");
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+
+    if (format === "csv") {
+      const csv = XLSX.utils.sheet_to_csv(ws, { FS: ";" });
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      downloadBlob(blob, `stock_${dateStr}.csv`);
+    } else {
+      const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      downloadBlob(blob, `stock_${dateStr}.xlsx`);
+    }
+    setShowExportMenu(false);
+    toast.success(`Stock exportado a ${format.toUpperCase()}`);
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /* ── Stock summary report ── */
+  const stockSummary = useMemo(() => {
+    const porEstado: Record<string, number> = {};
+    const porNombre: Record<string, Record<string, number>> = {};
+    const porUbicacion: Record<string, number> = {};
+
+    equipos.forEach((eq: any) => {
+      const estado = (eq.estado || "SIN_ESTADO").replace(/_/g, " ");
+      const nombre = eq.nombre || "Sin nombre";
+      const ubicacion = eq.ubicacion || eq.predio?.nombre || "Sin ubicación";
+
+      porEstado[estado] = (porEstado[estado] || 0) + 1;
+      porUbicacion[ubicacion] = (porUbicacion[ubicacion] || 0) + 1;
+
+      if (!porNombre[nombre]) porNombre[nombre] = {};
+      porNombre[nombre][estado] = (porNombre[nombre][estado] || 0) + 1;
+    });
+
+    return { totalItems: equipos.length, porEstado, porNombre, porUbicacion };
+  }, [equipos]);
+
+  function exportSummaryToExcel() {
+    const wb = XLSX.utils.book_new();
+
+    // Hoja resumen
+    const resumenRows: any[] = [
+      { Categoría: "TOTAL DE EQUIPOS", Cantidad: stockSummary.totalItems },
+      { Categoría: "", Cantidad: "" },
+      { Categoría: "── POR ESTADO ──", Cantidad: "" },
+      ...Object.entries(stockSummary.porEstado).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ Categoría: k, Cantidad: v })),
+      { Categoría: "", Cantidad: "" },
+      { Categoría: "── POR UBICACIÓN ──", Cantidad: "" },
+      ...Object.entries(stockSummary.porUbicacion).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ Categoría: k, Cantidad: v })),
+    ];
+    const ws1 = XLSX.utils.json_to_sheet(resumenRows);
+    ws1["!cols"] = [{ wch: 35 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws1, "Resumen General");
+
+    // Hoja detalle
+    const detalleRows: any[] = [];
+    Object.entries(stockSummary.porNombre).forEach(([nombre, estados]) => {
+      Object.entries(estados).forEach(([estado, cantidad]) => {
+        detalleRows.push({ Equipo: nombre, Estado: estado, Cantidad: cantidad });
+      });
+    });
+    if (detalleRows.length > 0) {
+      const ws2 = XLSX.utils.json_to_sheet(detalleRows.sort((a, b) => b.Cantidad - a.Cantidad));
+      ws2["!cols"] = [{ wch: 25 }, { wch: 20 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "Detalle Equipo-Estado");
+    }
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    downloadBlob(blob, `reporte_stock_${dateStr}.xlsx`);
+    toast.success("Reporte exportado a Excel");
   }
 
   async function cambiarAsignado(id: string, asignadoId: string) {
@@ -570,8 +753,39 @@ export default function StockPage() {
               </>
             )}
           </SectionSettings>
+          {/* Export dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="px-3 py-1.5 border border-surface-200 text-surface-600 rounded-md text-xs font-medium hover:bg-surface-50 transition-colors flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              Exportar
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-surface-200 rounded-lg shadow-lg overflow-hidden min-w-[160px]">
+                  <button onClick={() => exportStock("csv")} className="w-full px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50 flex items-center gap-2">
+                    <span>📄</span> Exportar a CSV
+                  </button>
+                  <button onClick={() => exportStock("xlsx")} className="w-full px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50 border-t border-surface-100 flex items-center gap-2">
+                    <span>📊</span> Exportar a Excel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          {/* Report button */}
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="px-3 py-1.5 border border-surface-200 text-surface-600 rounded-md text-xs font-medium hover:bg-surface-50 transition-colors flex items-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
+            Resumen
+          </button>
           {isModOrAdmin && (
-            <button onClick={() => setShowModal(true)} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
+            <button onClick={() => { setDuplicateEquipo(null); setShowModal(true); }} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
               Agregar equipo
             </button>
@@ -680,7 +894,7 @@ export default function StockPage() {
       </CardContent>
       </Card>
 
-      {/* Modal crear equipo */}
+      {/* Modal crear/editar equipo */}
       <AnimatePresence>
       {showModal && (
         <motion.div
@@ -695,10 +909,17 @@ export default function StockPage() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.97 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            onSubmit={handleCreate}
+            onSubmit={duplicateEquipo ? handleUpdateDuplicate : handleCreate}
             className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl p-5 sm:p-6 w-full sm:max-w-lg sm:mx-4 max-h-[90vh] overflow-y-auto"
           >
-            <h2 className="text-base font-semibold text-surface-800 mb-4">Agregar Equipo</h2>
+            <h2 className="text-base font-semibold text-surface-800 mb-4">
+              {duplicateEquipo ? "Modificar Equipo" : "Agregar Equipo"}
+            </h2>
+            {duplicateEquipo && (
+              <div className="mb-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-[11px] text-yellow-700">⚠️ Editando equipo existente con serial <strong>{duplicateEquipo.numeroSerie}</strong></p>
+              </div>
+            )}
             <div className="space-y-3">
               <div>
                 <input value={form.numeroSerie} onChange={(e) => {
@@ -710,7 +931,7 @@ export default function StockPage() {
                     numeroSerie: val,
                     ...(match ? { nombre: match.nombre, modelo: match.modelo } : {}),
                   }));
-                }} placeholder="Número de serie" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                }} onBlur={handleSerialBlur} placeholder="Número de serie" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo} />
                 {form.numeroSerie.length >= 4 && SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()] && (
                   <p className="text-[10px] text-green-600 mt-0.5 ml-1">Auto-completado: {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].nombre} · {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].modelo}</p>
                 )}
@@ -735,10 +956,156 @@ export default function StockPage() {
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
             </div>
             <div className="flex justify-end gap-2 mt-5">
-              <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
-              <button type="submit" className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium">Crear</button>
+              <button type="button" onClick={() => { setShowModal(false); setDuplicateEquipo(null); }} className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
+              <button type="submit" className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium">
+                {duplicateEquipo ? "Guardar cambios" : "Crear"}
+              </button>
             </div>
           </motion.form>
+        </motion.div>
+      )}
+      </AnimatePresence>
+
+      {/* Modal serial duplicado */}
+      <AnimatePresence>
+      {showDuplicateModal && duplicateEquipo && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="bg-white rounded-lg shadow-xl p-5 w-full max-w-md mx-4"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+              </div>
+              <h3 className="text-sm font-semibold text-surface-800">Serial ya existente</h3>
+            </div>
+            <p className="text-xs text-surface-500 mb-3">
+              El serial <strong className="text-surface-800">{duplicateEquipo.numeroSerie}</strong> ya existe con estos datos:
+            </p>
+            <div className="bg-surface-50 rounded-md p-3 mb-4 space-y-1.5">
+              <div className="flex justify-between text-xs"><span className="text-surface-400">Equipo:</span> <span className="font-medium">{duplicateEquipo.nombre || "—"}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-surface-400">Modelo:</span> <span className="font-medium">{duplicateEquipo.modelo || "—"}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-surface-400">Estado:</span> <Badge variant="secondary" className={`text-[10px] ${ESTADO_COLORS[duplicateEquipo.estado] || ""}`}>{(duplicateEquipo.estado || "").replace(/_/g, " ")}</Badge></div>
+              <div className="flex justify-between text-xs"><span className="text-surface-400">Ubicación:</span> <span className="font-medium">{duplicateEquipo.ubicacion || "—"}</span></div>
+              {duplicateEquipo.asignado && <div className="flex justify-between text-xs"><span className="text-surface-400">Asignado:</span> <span className="font-medium">{duplicateEquipo.asignado.nombre}</span></div>}
+            </div>
+            <p className="text-xs text-surface-500 mb-4">¿Querés cargar estos datos para modificarlos?</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setShowDuplicateModal(false); setDuplicateEquipo(null); setForm(f => ({ ...f, numeroSerie: "" })); }} className="px-3 py-1.5 text-xs text-surface-600 hover:bg-surface-100 rounded-md">
+                Cancelar
+              </button>
+              <button onClick={handleLoadDuplicate} className="px-3 py-1.5 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium">
+                Sí, modificar
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+      </AnimatePresence>
+
+      {/* Modal reporte resumen */}
+      <AnimatePresence>
+      {showReportModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 40, scale: 0.97 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl p-5 sm:p-6 w-full sm:max-w-2xl sm:mx-4 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-surface-800">📊 Resumen de Stock</h2>
+              <button onClick={() => setShowReportModal(false)} className="p-1 hover:bg-surface-100 rounded-md text-surface-400">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Total */}
+            <div className="bg-surface-50 border border-surface-200 rounded-lg p-4 text-center mb-5">
+              <p className="text-[10px] text-surface-400 uppercase tracking-wider">Total de equipos</p>
+              <p className="text-3xl font-bold text-surface-800">{stockSummary.totalItems}</p>
+            </div>
+
+            {/* Por estado */}
+            <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider mb-2">Por Estado</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
+              {Object.entries(stockSummary.porEstado).sort((a, b) => b[1] - a[1]).map(([estado, cantidad]) => (
+                <div key={estado} className="bg-surface-50 rounded-lg p-3 border border-surface-100">
+                  <Badge variant="secondary" className={`text-[9px] mb-1 ${ESTADO_COLORS[estado.replace(/ /g, "_")] || "bg-gray-100 text-gray-600"}`}>{estado}</Badge>
+                  <p className="text-lg font-bold text-surface-800">{cantidad}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Por tipo/nombre de equipo */}
+            <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider mb-2">Por Tipo de Equipo</h3>
+            <div className="bg-surface-50 rounded-lg border border-surface-100 overflow-hidden mb-5">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-surface-200">
+                    <th className="text-left px-3 py-2 text-surface-400 font-medium">Equipo</th>
+                    <th className="text-left px-3 py-2 text-surface-400 font-medium">Estado</th>
+                    <th className="text-right px-3 py-2 text-surface-400 font-medium">Cant.</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100">
+                  {Object.entries(stockSummary.porNombre)
+                    .sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0))
+                    .map(([nombre, estados]) =>
+                    Object.entries(estados).map(([estado, cantidad], idx) => (
+                      <tr key={`${nombre}-${estado}`}>
+                        <td className={`px-3 py-1.5 ${idx === 0 ? "font-medium text-surface-800" : "text-transparent"}`}>{nombre}</td>
+                        <td className="px-3 py-1.5 text-surface-600">{estado}</td>
+                        <td className="px-3 py-1.5 text-right font-bold text-surface-800">{cantidad}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Por ubicación */}
+            <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider mb-2">Por Ubicación</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
+              {Object.entries(stockSummary.porUbicacion).sort((a, b) => b[1] - a[1]).map(([ubicacion, cantidad]) => (
+                <div key={ubicacion} className="bg-surface-50 rounded-lg p-3 border border-surface-100">
+                  <p className="text-[10px] text-surface-400 truncate">{ubicacion}</p>
+                  <p className="text-lg font-bold text-surface-800">{cantidad}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Botones */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-surface-100">
+              <button
+                onClick={exportSummaryToExcel}
+                className="px-4 py-2 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium flex items-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                Exportar reporte a Excel
+              </button>
+              <button onClick={() => setShowReportModal(false)} className="px-4 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md">
+                Cerrar
+              </button>
+            </div>
+          </motion.div>
         </motion.div>
       )}
       </AnimatePresence>
