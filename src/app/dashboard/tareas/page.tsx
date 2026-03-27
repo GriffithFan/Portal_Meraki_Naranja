@@ -9,6 +9,36 @@ import { obtenerProvincia } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// ── Copiar al portapapeles ──────────────────────────────────
+const CopyBtn = ({ text }: { text: string }) => {
+  if (!text || text === "—") return null;
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text); }}
+      className="opacity-0 group-hover/cell:opacity-100 ml-0.5 p-0.5 text-surface-300 hover:text-surface-500 transition-all shrink-0"
+      title="Copiar texto"
+    >
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+      </svg>
+    </button>
+  );
+};
+
+// ── Indicador de notas/comentarios ──────────────────────────
+const NotesIndicator = ({ notas, comentarios }: { notas?: string; comentarios?: number }) => {
+  if (!notas && !(comentarios && comentarios > 0)) return null;
+  const tip = [notas ? "Tiene notas" : "", comentarios ? `${comentarios} comentario${comentarios > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
+  return (
+    <span className="shrink-0" title={tip}>
+      <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+      </svg>
+    </span>
+  );
+};
+
 // ═══════════════════════════════════════════════════════════════
 // OPCIONES DE AGRUPACIÓN
 // ═══════════════════════════════════════════════════════════════
@@ -676,7 +706,7 @@ export default function TareasPage() {
       const clave = col.field.substring(8);
       const val = t.camposExtra?.[clave];
       if (!val) return <span className="text-surface-300">&mdash;</span>;
-      return <span className="text-surface-700 truncate block">{val}</span>;
+      return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{val}</span><CopyBtn text={val} /></span>;
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
@@ -725,23 +755,37 @@ export default function TareasPage() {
         </span>
       ) : <span className="text-surface-300">&mdash;</span>;
     }
-    // Para la columna "codigoPredio", mostrar codigo numérico del predio
+    // Para la columna "codigoPredio", mostrar icono estado + codigo + indicador notas
     if (col.id === "codigoPredio") {
-      return <span className="text-surface-800 font-medium truncate block">{t.codigo || "\u2014"}</span>;
+      return (
+        <span className="flex items-center gap-1 group/cell">
+          {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />}
+          <span className="text-surface-800 font-medium truncate">{t.codigo || "\u2014"}</span>
+          <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
+          <CopyBtn text={t.codigo || ""} />
+        </span>
+      );
     }
     // Para la columna "predio", mostrar incidencias o nombre como fallback
     if (col.id === "predio") {
-      return <span className="text-surface-700 truncate block">{t[col.field] || t.nombre || "\u2014"}</span>;
+      const txt = t[col.field] || t.nombre || "\u2014";
+      return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{txt}</span><CopyBtn text={txt !== "\u2014" ? txt : ""} /></span>;
     }
     // Provincia: auto-detectar si está vacío
     if (col.id === "provincia") {
       const prov = obtenerProvincia(t.provincia, t.codigo);
       if (!prov) return <span className="text-surface-300">&mdash;</span>;
       const isAutoDetected = !t.provincia && prov;
-      return <span className={`truncate block ${isAutoDetected ? "text-surface-400 italic" : "text-surface-700"}`} title={isAutoDetected ? "Detectado automáticamente" : undefined}>{prov}</span>;
+      return (
+        <span className="flex items-center group/cell">
+          <span className={`truncate ${isAutoDetected ? "text-surface-400 italic" : "text-surface-700"}`} title={isAutoDetected ? "Detectado automáticamente" : undefined}>{prov}</span>
+          <CopyBtn text={prov} />
+        </span>
+      );
     }
     const val = t[col.field];
-    return <span className="text-surface-700 truncate block">{val != null && val !== "" ? String(val) : "\u2014"}</span>;
+    const display = val != null && val !== "" ? String(val) : "\u2014";
+    return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display !== "\u2014" ? display : ""} /></span>;
   };
 
   // Columnas visibles: ocultar automáticamente columnas del sistema sin datos
@@ -774,7 +818,9 @@ export default function TareasPage() {
           className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors"
         >
           <div className="flex items-center gap-2">
+            {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />}
             {t.codigo && <span className="text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
+            <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
             <p className="text-sm font-medium text-surface-700 truncate">
               {t.incidencias || t.nombre || "Sin nombre"}
             </p>
