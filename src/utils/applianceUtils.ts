@@ -15,13 +15,26 @@ export const groupPortsByRole = (ports: MerakiAppliancePortStatus[] = []): Map<s
 
 /**
  * Deriva puertos conectados desde la topología
+ * Solo incluye puertos que además figuran en `ports` con carrier/speed activo,
+ * para evitar falsos positivos de links obsoletos en la topología.
  */
-export const deriveConnectedPortsFromTopology = (applianceSerial: string, topology: TopologyResponse): number[] => {
+export const deriveConnectedPortsFromTopology = (applianceSerial: string, topology: TopologyResponse, ports: MerakiAppliancePortStatus[] = []): number[] => {
   if (!applianceSerial || !topology) return [];
   const nodes: TopologyNode[] = Array.isArray(topology.nodes) ? topology.nodes : [];
   const links: TopologyLink[] = Array.isArray(topology.links) ? topology.links : [];
   const applianceNode = nodes.find((n) => n.serial === applianceSerial);
   if (!applianceNode) return [];
+
+  // Puertos que realmente tienen carrier según el status de la API
+  const portsWithCarrier = new Set<number>();
+  ports.forEach((p) => {
+    const num = typeof p.number === "string" ? parseInt(p.number, 10) : (p.number ?? 0);
+    const status = ((p as any).status || "").toLowerCase();
+    const hasSpeed = typeof (p as any).speed === "number" && (p as any).speed > 0;
+    const hasCarrier = (p as any).hasCarrier === true;
+    const isConnected = /(connected|active|up|ready)/.test(status) || hasSpeed || hasCarrier;
+    if (isConnected) portsWithCarrier.add(num);
+  });
 
   const connectedPorts = new Set<number>();
   links.forEach((link) => {
@@ -34,6 +47,11 @@ export const deriveConnectedPortsFromTopology = (applianceSerial: string, topolo
       if (Number.isFinite(portNum)) connectedPorts.add(portNum);
     }
   });
+
+  // Si tenemos datos de puertos, filtrar solo los que realmente tienen carrier
+  if (ports.length > 0) {
+    return Array.from(connectedPorts).filter((p) => portsWithCarrier.has(p)).sort((a, b) => a - b);
+  }
   return Array.from(connectedPorts).sort((a, b) => a - b);
 };
 

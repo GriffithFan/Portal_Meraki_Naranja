@@ -55,7 +55,7 @@ export default function ApplianceSection({ networkId, summaryData, loadedSection
           return st === "active" || st === "ready" || st === "connected";
         });
         const ports = enrichPortsWithConnections(rawPorts, device.serial, topology);
-        const connectedOverrides = deriveConnectedPortsFromTopology(device.serial, topology);
+        const connectedOverrides = deriveConnectedPortsFromTopology(device.serial, topology, rawPorts);
         const statusN = (device.status || "").toLowerCase();
         const statusColor = statusN === "online" ? "#22c55e" : statusN === "offline" ? "#ef4444" : "#f59e0b";
         const statusBg = statusColor === "#22c55e" ? "#d1fae5" : statusColor === "#ef4444" ? "#fee2e2" : "#fef3c7";
