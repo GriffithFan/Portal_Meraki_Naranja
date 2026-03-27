@@ -5,8 +5,22 @@ import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
+import { obtenerProvincia } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// ═══════════════════════════════════════════════════════════════
+// OPCIONES DE AGRUPACIÓN
+// ═══════════════════════════════════════════════════════════════
+const GROUP_BY_OPTIONS = [
+  { value: "estado", label: "Estado" },
+  { value: "provincia", label: "Provincia" },
+  { value: "asignados", label: "Persona asignada" },
+  { value: "lacR", label: "LAC-R" },
+  { value: "equipoAsignado", label: "Equipo" },
+  { value: "ambito", label: "Ámbito" },
+  { value: "ciudad", label: "Departamento" },
+];
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -63,6 +77,7 @@ export default function TareasPage() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
+  const [groupBy, setGroupBy] = useState("estado");
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showEstadoModal, setShowEstadoModal] = useState(false);
@@ -237,28 +252,21 @@ export default function TareasPage() {
     }
   }, [fetchTareas, isModOrAdmin]);
 
-  // Agrupar tareas por estado
+  // Agrupar tareas
   const groupedTareas = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    const orderedEstados = [...estados].sort((a, b) => a.orden - b.orden);
-    for (const estado of orderedEstados) {
-      groups[estado.id] = [];
-    }
-    groups["sin-estado"] = [];
-
     let filtered = tareas;
     if (search) {
       const s = search.toLowerCase();
       filtered = tareas.filter(t => {
+        const prov = obtenerProvincia(t.provincia, t.codigo);
         if (
           t.nombre?.toLowerCase().includes(s) ||
           t.codigo?.toLowerCase().includes(s) ||
           t.incidencias?.toLowerCase().includes(s) ||
           t.cue?.toLowerCase().includes(s) ||
-          t.provincia?.toLowerCase().includes(s) ||
+          prov.toLowerCase().includes(s) ||
           t.equipoAsignado?.toLowerCase().includes(s)
         ) return true;
-        // Buscar en campos personalizados
         if (t.camposExtra) {
           for (const val of Object.values(t.camposExtra)) {
             if (String(val).toLowerCase().includes(s)) return true;
@@ -284,16 +292,43 @@ export default function TareasPage() {
       });
     }
 
-    for (const t of filtered) {
-      const estadoId = t.estadoId || "sin-estado";
-      if (groups[estadoId]) {
-        groups[estadoId].push(t);
-      } else {
-        groups["sin-estado"].push(t);
+    // Agrupación por estado (default)
+    if (groupBy === "estado") {
+      const groups: Record<string, any[]> = {};
+      const orderedEstados = [...estados].sort((a, b) => a.orden - b.orden);
+      for (const estado of orderedEstados) groups[estado.id] = [];
+      groups["sin-estado"] = [];
+      for (const t of filtered) {
+        const estadoId = t.estadoId || "sin-estado";
+        if (groups[estadoId]) groups[estadoId].push(t);
+        else groups["sin-estado"].push(t);
       }
+      return groups;
     }
-    return groups;
-  }, [tareas, estados, search, sortConfig]);
+
+    // Agrupación por campo
+    const groups: Record<string, any[]> = {};
+    for (const t of filtered) {
+      let key: string;
+      if (groupBy === "asignados") {
+        key = t.asignaciones?.length > 0
+          ? t.asignaciones.map((a: any) => a.usuario?.nombre || "?").join(", ")
+          : "Sin asignar";
+      } else if (groupBy === "provincia") {
+        key = obtenerProvincia(t.provincia, t.codigo) || "Sin provincia";
+      } else {
+        key = t[groupBy] || "Sin valor";
+      }
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    }
+    // Ordenar claves alfabéticamente
+    const sorted: Record<string, any[]> = {};
+    for (const k of Object.keys(groups).sort((a, b) => a.localeCompare(b, "es"))) {
+      sorted[k] = groups[k];
+    }
+    return sorted;
+  }, [tareas, estados, search, sortConfig, groupBy]);
 
   // Abrir modal de detalle
   async function openDetail(tarea: any) {
@@ -698,6 +733,13 @@ export default function TareasPage() {
     if (col.id === "predio") {
       return <span className="text-surface-700 truncate block">{t[col.field] || t.nombre || "\u2014"}</span>;
     }
+    // Provincia: auto-detectar si está vacío
+    if (col.id === "provincia") {
+      const prov = obtenerProvincia(t.provincia, t.codigo);
+      if (!prov) return <span className="text-surface-300">&mdash;</span>;
+      const isAutoDetected = !t.provincia && prov;
+      return <span className={`truncate block ${isAutoDetected ? "text-surface-400 italic" : "text-surface-700"}`} title={isAutoDetected ? "Detectado automáticamente" : undefined}>{prov}</span>;
+    }
     const val = t[col.field];
     return <span className="text-surface-700 truncate block">{val != null && val !== "" ? String(val) : "\u2014"}</span>;
   };
@@ -788,6 +830,19 @@ export default function TareasPage() {
               </button>
             )}
           </div>
+          <select
+            value={groupBy}
+            onChange={(e) => {
+              setGroupBy(e.target.value);
+              setExpandedSections(new Set(Object.keys(groupedTareas)));
+            }}
+            className="px-2 py-1.5 border border-surface-200 rounded-md text-xs bg-white focus:outline-none focus:border-surface-400 text-surface-600 cursor-pointer"
+            title="Agrupar por"
+          >
+            {GROUP_BY_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
           <button
             onClick={() => setShowColumnConfig(!showColumnConfig)}
             className={`p-1.5 rounded-md transition-colors ${showColumnConfig ? "bg-surface-200 text-surface-700" : "text-surface-400 hover:bg-surface-100 hover:text-surface-600"}`}
@@ -951,6 +1006,8 @@ export default function TareasPage() {
         </div>
       ) : (
         <div className="space-y-2">
+          {groupBy === "estado" ? (
+          <>
           {/* Toggle para mostrar estados vacíos */}
           {estados.some(e => (groupedTareas[e.id] || []).length === 0) && (
             <div className="flex justify-end mb-1">
@@ -1185,6 +1242,77 @@ export default function TareasPage() {
                 </div>
               )}
             </div>
+          )}
+          </>
+          ) : (
+          <>
+            {Object.entries(groupedTareas).map(([groupKey, items]: [string, any[]]) => {
+              const isExpanded = expandedSections.has(groupKey);
+              return (
+                <div key={groupKey} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleSection(groupKey)}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
+                  >
+                    <IconChevron expanded={isExpanded} className="w-3.5 h-3.5 text-surface-400" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-surface-400 flex-shrink-0" />
+                    <span className="text-sm font-medium text-surface-700">{groupKey}</span>
+                    <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t border-surface-100 overflow-x-auto">
+                      <MobileTaskList items={items} />
+                      <table className="w-full min-w-max text-[11px] hidden md:table">
+                        <thead>
+                          <tr className="border-b border-surface-100">
+                            {visibleColumns.map((col) => (
+                              <th
+                                key={col.id}
+                                draggable
+                                onDragStart={(e) => handleColDragStart(e, col.id)}
+                                onDragOver={(e) => handleColDragOver(e, col.id)}
+                                onDrop={(e) => handleColDrop(e, col.id)}
+                                onDragEnd={handleColDragEnd}
+                                style={{ width: col.width, minWidth: col.width }}
+                                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
+                                  dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
+                                } ${dragColId === col.id ? "opacity-40" : ""}`}
+                                onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
+                              >
+                                <span className="inline-flex items-center gap-0.5">
+                                  {col.label}
+                                  {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
+                                </span>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((t: any, idx: number) => (
+                            <tr
+                              key={t.id}
+                              onClick={() => openDetail(t)}
+                              className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
+                            >
+                              {visibleColumns.map((col) => (
+                                <td
+                                  key={col.id}
+                                  style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
+                                  className="px-2.5 py-1.5 text-surface-600"
+                                >
+                                  {renderCell(t, col)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
           )}
 
           {/* Vista tabla completa sin estados */}

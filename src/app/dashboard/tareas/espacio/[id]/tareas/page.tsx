@@ -6,6 +6,7 @@ import { useSession } from "@/hooks/useSession";
 import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import StatusIcon from "@/components/StatusIcon";
+import { obtenerProvincia } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -76,6 +77,16 @@ const LS_COL_KEY = "pmn-espacio-col-config";
 const LS_EMPTY_KEY = "pmn-espacio-show-empty";
 const LS_HIDDEN_KEY = "pmn-espacio-hidden-estados";
 
+const GROUP_BY_OPTIONS = [
+  { value: "estado", label: "Estado" },
+  { value: "provincia", label: "Provincia" },
+  { value: "asignados", label: "Persona asignada" },
+  { value: "lacR", label: "LAC-R" },
+  { value: "equipoAsignado", label: "Equipo" },
+  { value: "ambito", label: "Ámbito" },
+  { value: "ciudad", label: "Departamento" },
+];
+
 export default function EspacioTareasPage() {
   const params = useParams();
   const espacioId = params.id as string;
@@ -89,6 +100,7 @@ export default function EspacioTareasPage() {
   const [search, setSearch] = useState("");
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
+  const [groupBy, setGroupBy] = useState("estado");
 
   // Columnas configurables
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
@@ -211,24 +223,23 @@ export default function EspacioTareasPage() {
     fetchData();
   }, [fetchData]);
 
-  // Agrupar tareas por estado
+  // Agrupar tareas por estado o campo
   const groupedTareas = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    const orderedEstados = [...estados].sort((a, b) => a.orden - b.orden);
-    for (const estado of orderedEstados) groups[estado.id] = [];
-    groups["sin-estado"] = [];
-
     let filtered = tareas;
     if (search) {
       const s = search.toLowerCase();
-      filtered = tareas.filter((t) =>
-        t.nombre?.toLowerCase().includes(s) ||
-        t.incidencias?.toLowerCase().includes(s) ||
-        t.cue?.toLowerCase().includes(s) ||
-        t.provincia?.toLowerCase().includes(s) ||
-        t.equipoAsignado?.toLowerCase().includes(s) ||
-        (t.camposExtra && Object.values(t.camposExtra).some((v: any) => String(v).toLowerCase().includes(s)))
-      );
+      filtered = tareas.filter((t) => {
+        const prov = obtenerProvincia(t.provincia, t.codigo);
+        if (
+          t.nombre?.toLowerCase().includes(s) ||
+          t.incidencias?.toLowerCase().includes(s) ||
+          t.cue?.toLowerCase().includes(s) ||
+          prov.toLowerCase().includes(s) ||
+          t.equipoAsignado?.toLowerCase().includes(s) ||
+          (t.camposExtra && Object.values(t.camposExtra).some((v: any) => String(v).toLowerCase().includes(s)))
+        ) return true;
+        return false;
+      });
     }
 
     if (sortConfig) {
@@ -247,13 +258,42 @@ export default function EspacioTareasPage() {
       });
     }
 
-    for (const t of filtered) {
-      const eid = t.estadoId || "sin-estado";
-      if (groups[eid]) groups[eid].push(t);
-      else groups["sin-estado"].push(t);
+    // Agrupación por estado (default)
+    if (groupBy === "estado") {
+      const groups: Record<string, any[]> = {};
+      const orderedEstados = [...estados].sort((a, b) => a.orden - b.orden);
+      for (const estado of orderedEstados) groups[estado.id] = [];
+      groups["sin-estado"] = [];
+      for (const t of filtered) {
+        const eid = t.estadoId || "sin-estado";
+        if (groups[eid]) groups[eid].push(t);
+        else groups["sin-estado"].push(t);
+      }
+      return groups;
     }
-    return groups;
-  }, [tareas, estados, search, sortConfig]);
+
+    // Agrupación por campo
+    const groups: Record<string, any[]> = {};
+    for (const t of filtered) {
+      let key: string;
+      if (groupBy === "asignados") {
+        key = t.asignaciones?.length > 0
+          ? t.asignaciones.map((a: any) => a.usuario?.nombre || "?").join(", ")
+          : "Sin asignar";
+      } else if (groupBy === "provincia") {
+        key = obtenerProvincia(t.provincia, t.codigo) || "Sin provincia";
+      } else {
+        key = t[groupBy] || "Sin valor";
+      }
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    }
+    const sorted: Record<string, any[]> = {};
+    for (const k of Object.keys(groups).sort((a, b) => a.localeCompare(b, "es"))) {
+      sorted[k] = groups[k];
+    }
+    return sorted;
+  }, [tareas, estados, search, sortConfig, groupBy]);
 
   const toggleSection = (id: string) => {
     setExpandedSections((prev) => {
@@ -398,6 +438,14 @@ export default function EspacioTareasPage() {
     }
     if (col.id === "predio") {
       return <span className="text-surface-700 truncate block">{t[col.field] || t.nombre || "\u2014"}</span>;
+    }
+    if (col.id === "provincia") {
+      const explicita = t.provincia;
+      const autoDetected = obtenerProvincia(explicita, t.codigo);
+      if (!explicita && autoDetected) {
+        return <span className="text-surface-500 italic truncate block" title="Detectado automáticamente">{autoDetected}</span>;
+      }
+      return <span className="text-surface-700 truncate block">{autoDetected || "\u2014"}</span>;
     }
     const val = t[col.field];
     return <span className="text-surface-700 truncate block">{val != null && val !== "" ? String(val) : "\u2014"}</span>;
@@ -555,6 +603,14 @@ export default function EspacioTareasPage() {
               </button>
             )}
           </div>
+          <select
+            value={groupBy}
+            onChange={e => setGroupBy(e.target.value)}
+            className="text-[11px] border border-surface-200 rounded-md px-2 py-1.5 bg-white text-surface-600 focus:outline-none focus:border-surface-400"
+            title="Agrupar por"
+          >
+            {GROUP_BY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
           <button
             onClick={() => setShowColumnConfig(!showColumnConfig)}
             className={`p-1.5 rounded-md transition-colors ${showColumnConfig ? "bg-surface-200 text-surface-700" : "text-surface-400 hover:bg-surface-100 hover:text-surface-600"}`}
@@ -633,8 +689,10 @@ export default function EspacioTareasPage() {
         </div>
       )}
 
-      {/* Tareas agrupadas por estado */}
+      {/* Tareas agrupadas */}
       <div className="space-y-2">
+        {groupBy === "estado" ? (
+        <>
         {/* Toggle para mostrar estados vacíos */}
         {estados.some(e => (groupedTareas[e.id] || []).length === 0) && (
           <div className="flex justify-end mb-1">
@@ -699,6 +757,32 @@ export default function EspacioTareasPage() {
               </div>
             )}
           </div>
+        )}
+        </>
+        ) : (
+        <>
+          {Object.entries(groupedTareas).map(([groupKey, items]: [string, any[]]) => {
+            const isExpanded = expandedSections.has(groupKey);
+            return (
+              <div key={groupKey} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => toggleSection(groupKey)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
+                >
+                  <ChevronIcon expanded={isExpanded} className="w-3.5 h-3.5" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-surface-400 flex-shrink-0" />
+                  <span className="text-sm font-medium text-surface-700">{groupKey}</span>
+                  <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
+                </button>
+                {isExpanded && (
+                  <div className="border-t border-surface-100">
+                    <TaskTable items={items} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </>
         )}
       </div>
 

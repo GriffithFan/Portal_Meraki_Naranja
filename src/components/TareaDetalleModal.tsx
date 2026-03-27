@@ -2,8 +2,29 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { IconX, IconChevron, IconCheck, IconClock } from "@/components/ui/Icons";
+import { toast } from "sonner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// ── CopyButton ──────────────────────────────
+function CopyButton({ value }: { value: string }) {
+  if (!value || value === "—") return null;
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(value).then(() => toast.success("Copiado"));
+      }}
+      className="ml-1 p-0.5 text-surface-300 hover:text-surface-500 transition-colors shrink-0"
+      title="Copiar"
+    >
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+      </svg>
+    </button>
+  );
+}
 
 // ── Props ──────────────────────────────────────
 interface TareaDetalleModalProps {
@@ -147,8 +168,9 @@ export default function TareaDetalleModal({
         <div className="px-5 py-4 border-b border-surface-100 flex items-start justify-between shrink-0">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] text-surface-400 uppercase tracking-wider mb-1">Detalle de Tarea</p>
-            <h2 className="text-base font-semibold text-surface-800 truncate">
+            <h2 className="text-base font-semibold text-surface-800 truncate flex items-center gap-1">
               {loading ? "Cargando..." : tarea?.nombre || tarea?.incidencias || "Sin nombre"}
+              {!loading && tarea && <CopyButton value={tarea.nombre || tarea.incidencias || ""} />}
             </h2>
           </div>
           <button
@@ -249,6 +271,7 @@ export default function TareaDetalleModal({
                       {fields.map((f) => (
                         <div key={f.field} className="flex items-center gap-3 px-3 py-2">
                           <span className="text-[11px] text-surface-400 w-24 shrink-0">{f.label}</span>
+                          <div className="flex items-center flex-1 min-w-0">
                           {isModOrAdmin && f.editable ? (
                             f.type === "badge" ? (
                               <select
@@ -291,6 +314,12 @@ export default function TareaDetalleModal({
                                 : tarea[f.field] || "—"}
                             </span>
                           )}
+                          <CopyButton value={
+                            f.type === "date" && tarea[f.field]
+                              ? new Date(tarea[f.field]).toLocaleDateString("es-AR")
+                              : tarea[f.field] || ""
+                          } />
+                          </div>
                         </div>
                       ))}
                     </div>
