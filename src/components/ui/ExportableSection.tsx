@@ -59,11 +59,6 @@ function buildCaptureLayout(
   const gpsMatch = sidebarText.match(/([\-]?\d+\.\d+),\s*([\-]?\d+\.\d+)/);
   const gpsText = gpsMatch ? `${gpsMatch[1]}, ${gpsMatch[2]}` : "";
 
-  // Logo
-  const logoImg = document.querySelector('img[alt="Carrot"]') as HTMLImageElement | null;
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
-  const logoSrc = logoImg?.src || `${basePath}/images/logo-horizontal.png`;
-
   // Nav — estilos idénticos a .sidebar-menu-item de SidebarTopBar.details.jsx
   const navHTML = NAV_ITEMS.map((item) => {
     const active = item.key === sectionName;
@@ -106,7 +101,7 @@ function buildCaptureLayout(
       </div>
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;padding:4px 10px;height:34px;">
-          <img src="${logoSrc}" style="height:22px;width:auto;object-fit:contain;" crossorigin="anonymous" />
+          <svg width="24" height="24" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="6" fill="#fff"/><text x="20" y="27" font-size="24" font-weight="700" fill="#2563eb" text-anchor="middle" font-family="Arial">D</text></svg>
         </div>
         <div style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;padding:8px 12px;border-radius:6px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
