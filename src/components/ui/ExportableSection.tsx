@@ -85,26 +85,27 @@ function buildCaptureLayout(
     "position:fixed;top:0;left:0;z-index:99999;width:1500px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#fff;";
 
   shell.innerHTML = `
-    <!-- TopBar — idéntico a .topbar de SidebarTopBar.details.jsx -->
-    <div style="height:64px;background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);color:#fff;display:flex;align-items:center;padding:0 20px;gap:16px;box-shadow:0 2px 8px rgba(15,23,42,0.12);border-bottom:1px solid rgba(255,255,255,0.1);">
-      <div style="display:flex;align-items:center;gap:12px;min-width:fit-content;">
-        <div style="width:40px;height:40px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;color:#fff;">M</div>
-        <div style="font-size:18px;font-weight:700;color:#fff;">Portal</div>
+    <!-- TopBar — compacto, matching captura original -->
+    <div style="height:48px;background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);color:#fff;display:flex;align-items:center;padding:0 16px;gap:12px;box-shadow:0 2px 8px rgba(15,23,42,0.12);border-bottom:1px solid rgba(255,255,255,0.1);">
+      <div style="display:flex;align-items:center;gap:8px;min-width:fit-content;">
+        <div style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;">M</div>
+        <div style="font-size:14px;font-weight:700;color:#fff;">Portal</div>
       </div>
-      <div style="flex:1;min-width:300px;">
-        <div style="display:flex;align-items:center;background:rgba(255,255,255,0.15);border-radius:8px;padding:0 12px;border:1px solid rgba(255,255,255,0.2);">
-          <div style="flex:1;padding:12px 8px;font-size:14px;color:rgba(255,255,255,0.6);">Buscar por predio, serial (XXXX-XXXX-XXXX) o MAC...</div>
-          <div style="padding:6px;display:flex;align-items:center;opacity:0.8;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+      <div style="flex:1;min-width:200px;">
+        <div style="display:flex;align-items:center;background:rgba(255,255,255,0.15);border-radius:6px;padding:0 10px;border:1px solid rgba(255,255,255,0.2);">
+          <div style="flex:1;padding:7px 6px;font-size:12px;color:rgba(255,255,255,0.6);">${predioCode}</div>
+          <div style="padding:4px;display:flex;align-items:center;opacity:0.8;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
           </div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;padding:4px 10px;height:34px;">
-          <svg width="24" height="24" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="6" fill="#fff"/><text x="20" y="27" font-size="24" font-weight="700" fill="#2563eb" text-anchor="middle" font-family="Arial">D</text></svg>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;justify-content:center;background:#fff;border-radius:20px;padding:4px 14px;height:30px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="margin-right:4px;"><circle cx="12" cy="12" r="10" fill="#ffc803"/><text x="12" y="16" font-size="11" font-weight="700" fill="#6b696b" text-anchor="middle" font-family="Arial">d</text></svg>
+          <span style="font-size:12px;font-weight:600;color:#6b696b;letter-spacing:0.3px;">dinatech</span>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;padding:8px 12px;border-radius:6px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        <div style="display:flex;align-items:center;gap:5px;color:#fff;font-size:12px;padding:6px 10px;border-radius:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
           <span>Salir</span>
         </div>
       </div>
