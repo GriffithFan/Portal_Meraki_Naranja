@@ -13,7 +13,6 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   roles?: ("ADMIN" | "MODERADOR" | "TECNICO")[];
-  external?: boolean;
 }
 
 interface NavSection {
@@ -74,13 +73,6 @@ const sections: NavSection[] = [
       { label: "Usuarios", href: "/dashboard/usuarios", icon: icon("M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z") },
       { label: "Permisos", href: "/dashboard/permisos", icon: icon("M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"), roles: ["ADMIN"] },
       { label: "Papelera", href: "/dashboard/papelera", icon: icon("M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"), roles: ["ADMIN"] },
-    ],
-    roles: ["ADMIN", "MODERADOR"],
-  },
-  {
-    title: "Herramientas",
-    items: [
-      { label: "EducAR", href: "/api/educar/proxy/forms/pnce", icon: icon("M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"), roles: ["ADMIN", "MODERADOR"], external: true },
     ],
     roles: ["ADMIN", "MODERADOR"],
   },
@@ -285,41 +277,22 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             {(collapsed || openSections[section.title]) && (
               <ul className="space-y-0.5 px-2">
                 {section.items.map((item) => {
-                  const active = !item.external && (pathname === item.href || pathname.startsWith(item.href + "/"));
-                  const cls = clsx(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
-                    active
-                      ? "bg-primary-600/20 text-primary-400 shadow-sm"
-                      : "text-surface-400 hover:bg-surface-800 hover:text-white hover:translate-x-0.5"
-                  );
+                  const active = pathname === item.href || pathname.startsWith(item.href + "/");
                   return (
                     <li key={item.href}>
-                      {item.external ? (
-                        <a
-                          href={item.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={collapsed ? item.label : undefined}
-                          className={cls}
-                        >
-                          <span className="shrink-0">{item.icon}</span>
-                          {!collapsed && <span className="truncate">{item.label}</span>}
-                          {!collapsed && (
-                            <svg className="w-3 h-3 ml-auto text-surface-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                            </svg>
-                          )}
-                        </a>
-                      ) : (
-                        <Link
-                          href={item.href}
-                          title={collapsed ? item.label : undefined}
-                          className={cls}
-                        >
-                          <span className={clsx("shrink-0", active && "text-accent-400")}>{item.icon}</span>
-                          {!collapsed && <span className="truncate">{item.label}</span>}
-                        </Link>
-                      )}
+                      <Link
+                        href={item.href}
+                        title={collapsed ? item.label : undefined}
+                        className={clsx(
+                          "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                          active
+                            ? "bg-primary-600/20 text-primary-400 shadow-sm"
+                            : "text-surface-400 hover:bg-surface-800 hover:text-white hover:translate-x-0.5"
+                        )}
+                      >
+                        <span className={clsx("shrink-0", active && "text-accent-400")}>{item.icon}</span>
+                        {!collapsed && <span className="truncate">{item.label}</span>}
+                      </Link>
                     </li>
                   );
                 })}
