@@ -256,13 +256,8 @@ export async function POST(request: NextRequest) {
 
         try {
           const nombre = safeGet(row, fieldMap.get("nombre"));
-          let codigo = safeGet(row, fieldMap.get("codigo"));
+          const codigo = safeGet(row, fieldMap.get("codigo"));
           if (!nombre && !codigo) { skipped++; continue; }
-
-          // Pad codigo to 6 digits if it's purely numeric
-          if (codigo && /^\d+$/.test(codigo)) {
-            codigo = codigo.padStart(6, "0");
-          }
 
           const data: Record<string, unknown> = {
             prioridad: defaultPrioridad || "MEDIA",

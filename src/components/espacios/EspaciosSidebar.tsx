@@ -145,6 +145,7 @@ function SpaceNode({
   isModOrAdmin,
   onAdd,
   onDelete,
+  onClear,
 }: {
   node: any;
   depth: number;
@@ -152,6 +153,7 @@ function SpaceNode({
   isModOrAdmin: boolean;
   onAdd: (parentId: string, parentName: string) => void;
   onDelete: (id: string, nombre: string) => void;
+  onClear: (id: string, nombre: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const hasChildren = node.children?.length > 0;
@@ -205,6 +207,15 @@ function SpaceNode({
             >
               <PlusIcon />
             </button>
+            {totalCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onClear(node.id, node.nombre); }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 rounded shrink-0 text-surface-400 hover:text-red-500 transition-opacity"
+                title="Vaciar tareas del espacio"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+              </button>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(node.id, node.nombre); }}
               className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 rounded shrink-0 text-surface-400 hover:text-red-500 transition-opacity"
@@ -228,6 +239,7 @@ function SpaceNode({
               isModOrAdmin={isModOrAdmin}
               onAdd={onAdd}
               onDelete={onDelete}
+              onClear={onClear}
             />
           ))}
         </div>
@@ -244,6 +256,7 @@ export default function EspaciosSidebar() {
   const [loading, setLoading] = useState(true);
   const [createModal, setCreateModal] = useState<{ parentId: string | null; parentName: string | null } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; nombre: string } | null>(null);
+  const [clearConfirm, setClearConfirm] = useState<{ id: string; nombre: string } | null>(null);
 
   async function handleDeleteEspacio() {
     if (!deleteConfirm) return;
@@ -252,6 +265,15 @@ export default function EspaciosSidebar() {
       fetchEspacios();
     }
     setDeleteConfirm(null);
+  }
+
+  async function handleClearEspacio() {
+    if (!clearConfirm) return;
+    const res = await fetch(`/api/tareas?espacioId=${clearConfirm.id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) {
+      fetchEspacios();
+    }
+    setClearConfirm(null);
   }
 
   const fetchEspacios = useCallback(async () => {
@@ -326,6 +348,7 @@ export default function EspaciosSidebar() {
                   isModOrAdmin={isModOrAdmin}
                   onAdd={(parentId, parentName) => setCreateModal({ parentId, parentName })}
                   onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
+                  onClear={(id, nombre) => setClearConfirm({ id, nombre })}
                 />
               ))}
             </div>
@@ -401,6 +424,7 @@ export default function EspaciosSidebar() {
                 isModOrAdmin={isModOrAdmin}
                 onAdd={(parentId, parentName) => setCreateModal({ parentId, parentName })}
                 onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
+                onClear={(id, nombre) => setClearConfirm({ id, nombre })}
               />
             ))
           )}
@@ -415,6 +439,32 @@ export default function EspaciosSidebar() {
           onClose={() => setCreateModal(null)}
           onCreated={fetchEspacios}
         />
+      )}
+
+      {/* Modal confirmar vaciado de tareas */}
+      {clearConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-sm mx-4 animate-fade-in-up">
+            <h3 className="text-sm font-semibold text-surface-800 mb-2">Vaciar tareas</h3>
+            <p className="text-xs text-surface-600 mb-4">
+              ¿Eliminar todas las tareas de <strong>{clearConfirm.nombre}</strong>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setClearConfirm(null)}
+                className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 rounded-md transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleClearEspacio}
+                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 font-medium transition-colors"
+              >
+                Vaciar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal confirmar eliminación de espacio */}

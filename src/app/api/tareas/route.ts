@@ -189,10 +189,13 @@ export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const idsRaw = searchParams.get("ids");
   const estadoId = searchParams.get("estadoId");
+  const espacioId = searchParams.get("espacioId");
 
-  // Construir where: por IDs explícitos o por estadoId (borra TODOS del grupo)
+  // Construir where: por IDs explícitos, estadoId o espacioId
   let where: any;
-  if (estadoId) {
+  if (espacioId) {
+    where = { espacioId };
+  } else if (estadoId) {
     // "sin-estado" = predios sin estado asignado
     where = estadoId === "sin-estado" ? { estadoId: null } : { estadoId };
   } else if (idsRaw) {
@@ -200,7 +203,7 @@ export async function DELETE(request: NextRequest) {
     if (ids.length === 0) return NextResponse.json({ error: "IDs requeridos" }, { status: 400 });
     where = { id: { in: ids } };
   } else {
-    return NextResponse.json({ error: "IDs o estadoId requeridos" }, { status: 400 });
+    return NextResponse.json({ error: "IDs, estadoId o espacioId requeridos" }, { status: 400 });
   }
 
   try {

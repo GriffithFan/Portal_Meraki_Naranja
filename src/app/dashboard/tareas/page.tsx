@@ -128,10 +128,12 @@ export default function TareasPage() {
 
   // Persistir config de columnas en localStorage
   const colConfigLoaded = useRef(false);
+  const hadSavedConfig = useRef(false);
   useEffect(() => {
     try {
       const saved = localStorage.getItem("pmn-col-config");
       if (saved) {
+        hadSavedConfig.current = true;
         const config: { id: string; visible: boolean; order: number }[] = JSON.parse(saved);
         setColumns(prev => {
           const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i }]));
@@ -218,12 +220,29 @@ export default function TareasPage() {
   });
 
   // Cargar datos
+  const autoHideDone = useRef(false);
   const fetchTareas = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/tareas?limit=2000", { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
-      setTareas(data.predios || []);
+      const predios = data.predios || [];
+      setTareas(predios);
+
+      // Auto-ocultar columnas sin datos (solo la primera vez sin config guardada)
+      if (!autoHideDone.current && !hadSavedConfig.current && predios.length > 0) {
+        autoHideDone.current = true;
+        const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "asignados"]);
+        setColumns(prev => prev.map(col => {
+          if (ESSENTIAL.has(col.id)) return col;
+          if (col.id.startsWith("custom_")) return col;
+          const hasData = predios.some((t: any) => {
+            const v = t[col.field];
+            return v != null && v !== "";
+          });
+          return hasData ? { ...col, visible: true } : { ...col, visible: false };
+        }));
+      }
     }
     setLoading(false);
   }, []);
@@ -854,7 +873,7 @@ export default function TareasPage() {
     }
     // Para la columna "codigoPredio", mostrar icono estado + codigo + indicador notas
     if (col.id === "codigoPredio") {
-      const displayCode = t.codigo ? ((/^\d+$/.test(t.codigo)) ? t.codigo.padStart(6, "0") : t.codigo) : "\u2014";
+      const displayCode = t.codigo || "\u2014";
       return (
         <span className="flex items-center gap-1 group/cell">
           {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />}
@@ -886,22 +905,10 @@ export default function TareasPage() {
     return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display !== "\u2014" ? display : ""} /></span>;
   };
 
-  // Columnas visibles: ocultar automáticamente columnas del sistema sin datos
-  const ALWAYS_VISIBLE = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion", "asignados"]), []);
+  // Columnas visibles: respetar configuración del usuario (toggle del drawer)
   const visibleColumns = useMemo(() => {
-    return columns.filter(c => {
-      if (!c.visible) return false;
-      // Columnas esenciales siempre visibles
-      if (ALWAYS_VISIBLE.has(c.id)) return true;
-      // Campos personalizados: respetar toggle del usuario
-      if (c.id.startsWith("custom_")) return true;
-      // Columnas del sistema: solo mostrar si al menos una tarea tiene dato
-      return tareas.some((t: any) => {
-        const v = t[c.field];
-        return v != null && v !== "";
-      });
-    });
-  }, [columns, tareas, ALWAYS_VISIBLE]);
+    return columns.filter(c => c.visible);
+  }, [columns]);
 
   // Suprimir warning de session no usada
   void session;
