@@ -265,6 +265,10 @@ export async function POST(request: NextRequest) {
           };
           if (nombre) data.nombre = nombre;
           if (codigo) data.codigo = codigo;
+          // Si nombre es numérico y no hay codigo mapeado, usar nombre como codigo
+          if (nombre && !codigo && !fieldMap.has("codigo") && /^\d+$/.test(nombre)) {
+            data.codigo = nombre;
+          }
           // Si no hay nombre pero sí código, usar código como nombre (campo requerido en BD)
           if (!nombre && codigo) data.nombre = codigo;
 
@@ -326,8 +330,9 @@ export async function POST(request: NextRequest) {
           }
 
           // ── Auto-match estado por nombre si hay columna de estado ──
+          // El estado de la fila tiene prioridad sobre el estadoId por defecto
           const estadoText = safeGet(row, fieldMap.get("estado"));
-          if (estadoText && !data.estadoId) {
+          if (estadoText) {
             const matchedEstadoId = matchEstado(estadoText);
             if (matchedEstadoId) data.estadoId = matchedEstadoId;
           }
@@ -404,21 +409,24 @@ export async function POST(request: NextRequest) {
             }
           };
 
+          // Código efectivo para deduplicación (mapeado o derivado de nombre)
+          const effectiveCodigo = (data.codigo as string) || "";
+
           // Check for within-batch duplicate first
-          if (codigo && batchCreatedCodes.has(codigo)) {
-            const existingId = batchCreatedCodes.get(codigo)!;
+          if (effectiveCodigo && batchCreatedCodes.has(effectiveCodigo)) {
+            const existingId = batchCreatedCodes.get(effectiveCodigo)!;
             await updateExistingPredio(existingId, null);
             updated++;
             continue;
           }
 
           // Si tiene código, buscar existente en DB
-          if (codigo) {
-            const existing = await prisma.predio.findUnique({ where: { codigo } });
+          if (effectiveCodigo) {
+            const existing = await prisma.predio.findUnique({ where: { codigo: effectiveCodigo } });
             if (existing) {
               if (updateExisting) {
                 await updateExistingPredio(existing.id, existing.camposExtra);
-                batchCreatedCodes.set(codigo, existing.id);
+                batchCreatedCodes.set(effectiveCodigo, existing.id);
                 updated++;
                 continue;
               } else {
@@ -431,7 +439,7 @@ export async function POST(request: NextRequest) {
           }
 
           const newPredio = await prisma.predio.create({ data: data as any });
-          if (codigo) batchCreatedCodes.set(codigo, newPredio.id);
+          if (effectiveCodigo) batchCreatedCodes.set(effectiveCodigo, newPredio.id);
           // Match asignado y crear Asignacion tras crear el predio
           const asignadoVal = safeGet(row, fieldMap.get("asignado"));
           if (asignadoVal) {

@@ -172,8 +172,8 @@ export default function ImportarPage() {
     const usedFields = new Set<string>();
     if (data.headers) {
       const predioAliases: Record<string, string[]> = {
-        codigo:    ["predio", "codigo", "código", "cod", "code", "id_predio", "nro", "numero", "número"],
-        nombre:    ["nombre", "name", "cue_nombre", "establecimiento", "nombredelatarea", "tarea", "task"],
+        codigo:    ["predio", "codigo", "código", "code", "id_predio", "nro_predio", "numpredio", "numerodepredio"],
+        nombre:    ["nombre", "name", "cue_nombre", "nombredelatarea", "tarea", "task"],
         latitud:   ["latitud", "lat", "latitude", "latitud_gps"],
         longitud:  ["longitud", "lng", "lon", "longitude", "long", "longitud_gps"],
         direccion: ["direccion", "dirección", "address", "dir"],
@@ -192,12 +192,12 @@ export default function ImportarPage() {
         tipo:      ["tipo", "type"],
         notas:     ["notas", "nota", "notes", "observaciones"],
         prioridad: ["prioridad", "priority"],
-        tipoRed: ["tipo_red", "tipodered", "tipored", "tipo_de_red", "red", "prediotipodered"],
-        codigoPostal: ["codigo_postal", "cp", "cod_postal", "codigopostal", "código_postal"],
-        caracteristicaTelefonica: ["caracteristica", "car_tel", "caracteristica_telefonica", "caracteristicatelefonica", "car"],
+        tipoRed: ["tipo_red", "tipodered", "tipored", "tipo_de_red", "prediotipodered"],
+        codigoPostal: ["codigopostal", "codigo_postal", "cod_postal", "código_postal", "cp"],
+        caracteristicaTelefonica: ["caracteristica", "caracteristicatelefonica", "caracteristica_telefonica", "car_tel", "coddearea", "codigodearea", "cod_de_area", "codarea", "areatelefonica"],
         telefono: ["telefono", "tel", "phone", "teléfono", "nro_tel", "nro_telefono", "nrotelefono"],
         lab: ["lab", "proveedorlab", "predioproveedorlab"],
-        nombreInstitucion: ["institucion", "institución", "nombre_institucion", "nombreinstitucion", "escuela", "nombredelainstitucion"],
+        nombreInstitucion: ["institucion", "institución", "nombre_institucion", "nombreinstitucion", "escuela", "nombredelainstitucion", "establecimiento", "nombredelestablecimiento"],
         correo: ["correo", "email", "mail", "e-mail", "correo_electronico"],
         asignado: ["asignado", "tecnico", "técnico", "responsable", "assigned", "asignado_a", "personaasignada"],
         estado: ["estado", "status", "state"],
@@ -214,31 +214,42 @@ export default function ImportarPage() {
         estado:      ["estado", "status", "state"],
         categoria:   ["categoria", "categoría", "cat", "category", "tipo", "type"],
         ubicacion:   ["ubicacion", "ubicación", "location", "lugar", "sitio", "sede"],
-        notas:       ["notas", "nota", "notes", "observaciones", "comentarios"],        fecha:       ["fecha", "date", "fecha_ingreso", "fecha_alta", "fechaingreso", "fechaalta", "f_ingreso", "ingreso"],        asignado:    ["asignado", "asignado_a", "asignadoa", "tecnico", "técnico", "technician", "asignacion", "asignación"],
+        notas:       ["notas", "nota", "notes", "observaciones", "comentarios"],
+        fecha:       ["fecha", "date", "fecha_ingreso", "fecha_alta", "fechaingreso", "fechaalta", "f_ingreso", "ingreso"],
+        asignado:    ["asignado", "asignado_a", "asignadoa", "tecnico", "técnico", "technician", "asignacion", "asignación"],
       };
 
       const aliases = tipo === "EQUIPO" ? equipoAliases : predioAliases;
 
+      // Scoring-based auto-mapping: collect all potential matches with scores
+      const candidates: { col: number; field: string; score: number }[] = [];
       for (let i = 0; i < data.headers.length; i++) {
         const raw = data.headers[i]?.toString().toLowerCase().trim();
         if (!raw) continue;
-        // Versión sin espacios ni especiales para matcheo compacto
         const hCompact = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9_-]/g, "");
-        // Versión con palabras separadas para match parcial
-        const hWords = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+        const hWords = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ");
         for (const [field, aliasList] of Object.entries(aliases)) {
-          if (usedFields.has(field)) continue;
-          const matched = aliasList.some(a => {
-            return hCompact === a || hCompact.startsWith(a) || a.startsWith(hCompact)
-              || hWords.split(" ").some((w: string) => w === a)
-              || hCompact.includes(a);
-          });
-          if (matched) {
-            autoMappings[i] = field;
-            usedFields.add(field);
-            break;
+          let bestScore = 0;
+          for (const a of aliasList) {
+            let s = 0;
+            if (hCompact === a) s = 100;                                                         // exact
+            else if (hWords.some((w: string) => w === a && a.length >= 3)) s = 80;               // word match
+            else if (a.length >= 5 && hCompact === a.replace(/[_-]/g, "")) s = 95;               // exact ignoring separators
+            else if (a.length >= 5 && (hCompact.startsWith(a) || a.startsWith(hCompact))) s = 50; // prefix (long alias only)
+            else if (a.length >= 6 && hCompact.includes(a)) s = 30;                              // contains (long alias only)
+            if (s > bestScore) bestScore = s;
           }
+          if (bestScore > 0) candidates.push({ col: i, field, score: bestScore });
         }
+      }
+      // Sort by score desc → assign greedily (no col/field reuse)
+      candidates.sort((a, b) => b.score - a.score);
+      const usedCols = new Set<number>();
+      for (const { col, field } of candidates) {
+        if (usedCols.has(col) || usedFields.has(field)) continue;
+        autoMappings[col] = field;
+        usedFields.add(field);
+        usedCols.add(col);
       }
     }
     setMappings(autoMappings);
