@@ -1336,8 +1336,13 @@ export default function EspacioTareasPage() {
               <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors">
                 <button onClick={() => toggleSection(estado.id)} className="flex items-center gap-2.5 flex-1 text-left">
                   <ChevronIcon expanded={isExpanded} className="w-3.5 h-3.5" />
-                  <StatusIcon clave={estado.clave} color={estado.color} size={16} />
-                  <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide"
+                    style={{ backgroundColor: `${estado.color}18`, color: estado.color, border: `1.5px solid ${estado.color}40` }}
+                  >
+                    <StatusIcon clave={estado.clave} color={estado.color} size={14} />
+                    {estado.nombre}
+                  </span>
                   <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
                 </button>
                 {isModOrAdmin && items.length > 0 && (
@@ -1375,8 +1380,12 @@ export default function EspacioTareasPage() {
               className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
             >
               <ChevronIcon expanded={expandedSections.has("sin-estado")} className="w-3.5 h-3.5" />
-              <span className="w-2 h-2 rounded-full bg-surface-300 flex-shrink-0" />
-              <span className="text-sm font-medium text-surface-500">Sin estado</span>
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide bg-surface-100 text-surface-500 border border-surface-200"
+              >
+                <span className="w-2 h-2 rounded-full bg-surface-300 flex-shrink-0" />
+                Sin estado
+              </span>
               <span className="text-[11px] text-surface-400 tabular-nums">{groupedTareas["sin-estado"].length}</span>
             </button>
             {expandedSections.has("sin-estado") && (
