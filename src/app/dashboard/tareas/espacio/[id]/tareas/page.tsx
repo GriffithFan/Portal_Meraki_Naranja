@@ -66,6 +66,12 @@ const IconSort = ({ dir }: { dir: "asc" | "desc" }) => (
   </svg>
 );
 
+const IconTrash = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+  </svg>
+);
+
 // ── Columnas ────────────────────────────────────────
 interface Column {
   id: string;
@@ -135,6 +141,18 @@ export default function EspacioTareasPage() {
   // Columnas configurables
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [showEstadoModal, setShowEstadoModal] = useState(false);
+  const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6" });
+
+  // Inline new column form
+  const [newColName, setNewColName] = useState("");
+  const [newColType, setNewColType] = useState<"text" | "badge" | "date" | "select">("text");
+  const [creatingCol, setCreatingCol] = useState(false);
+  const [colConfigTab, setColConfigTab] = useState<"crear" | "existente">("existente");
+  const [colSearch, setColSearch] = useState("");
+
+  // Confirmar eliminación
+  const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: string; label: string } | null>(null);
 
   // Drag & drop columnas
   const [dragColId, setDragColId] = useState<string | null>(null);
@@ -406,6 +424,71 @@ export default function EspacioTareasPage() {
     if (res.ok) {
       setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value } : t));
     }
+  }
+
+  // Crear estado nuevo
+  async function handleCreateEstado(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nuevoEstado.nombre.trim()) return;
+    const res = await fetch("/api/estados", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(nuevoEstado),
+    });
+    if (res.ok) {
+      const newEst = await res.json();
+      setEstados(prev => [...prev, newEst]);
+      setExpandedSections(prev => { const next = new Set(prev); next.add(newEst.id); return next; });
+      setNuevoEstado({ nombre: "", color: "#3b82f6" });
+      setShowEstadoModal(false);
+    }
+  }
+
+  // Confirmar eliminación
+  async function handleConfirmDelete() {
+    if (!confirmDelete) return;
+    const { type, id } = confirmDelete;
+    setConfirmDelete(null);
+    if (type === "estado") {
+      const res = await fetch(`/api/estados/${id}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) { setEstados(prev => prev.filter(e => e.id !== id)); fetchData(); }
+    } else if (type === "campo") {
+      const res = await fetch(`/api/campos-personalizados?clave=${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) { setColumns(prev => prev.filter(c => c.id !== `custom_${id}`)); }
+    }
+  }
+
+  // Crear columna personalizada inline
+  async function handleCreateCol() {
+    const nombre = newColName.trim();
+    if (!nombre || creatingCol) return;
+    setCreatingCol(true);
+    try {
+      const res = await fetch("/api/campos-personalizados", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ nombre, tipo: newColType }),
+      });
+      if (res.ok) {
+        const campo = await res.json();
+        const colId = `custom_${campo.clave}`;
+        setColumns(prev => {
+          if (prev.some(c => c.id === colId)) return prev;
+          return [...prev, {
+            id: colId, label: campo.nombre, field: `_custom_${campo.clave}`,
+            width: campo.ancho || 100, visible: true, editable: true,
+            type: (campo.tipo || "text") as "text" | "badge" | "date" | "select",
+            options: campo.opciones?.length ? campo.opciones : undefined,
+          }];
+        });
+        setNewColName("");
+        setNewColType("text");
+        setColConfigTab("existente");
+      }
+    } catch { /* ignore */ }
+    setCreatingCol(false);
   }
 
   // Render de celda
@@ -681,57 +764,184 @@ export default function EspacioTareasPage() {
         </span>
       </div>
 
-      {/* Config panel */}
+      {/* Config panel — drawer lateral */}
       {showColumnConfig && (
-        <div className="mb-4 p-3 bg-white border border-surface-200 rounded-lg space-y-3">
-          <div>
-            <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-2">Columnas</p>
-            <div className="flex flex-wrap gap-1.5">
-              {columns.map(col => (
-                <label key={col.id} className={`flex items-center gap-1.5 text-[11px] cursor-pointer px-2 py-1 rounded border transition-colors ${
-                  col.visible ? "bg-surface-100 border-surface-300 text-surface-700" : "bg-white border-surface-200 text-surface-400"
-                }`}>
-                  <input
-                    type="checkbox"
-                    checked={col.visible}
-                    onChange={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
-                    className="sr-only"
-                  />
-                  {col.label}
-                </label>
-              ))}
+        <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setShowColumnConfig(false)}>
+          <div className="absolute inset-0 bg-black/20" />
+          <div
+            className="relative w-80 max-w-[85vw] bg-white shadow-xl flex flex-col animate-slide-in-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowColumnConfig(false)} className="text-surface-400 hover:text-surface-600 transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <h3 className="text-sm font-semibold text-surface-800">Campos</h3>
+              </div>
+              <button onClick={() => setShowColumnConfig(false)} className="text-surface-400 hover:text-surface-600 transition-colors">
+                <IconX className="w-4 h-4" />
+              </button>
             </div>
-          </div>
 
-          <div className="pt-2 border-t border-surface-100">
-            <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider mb-2">Estados (visibilidad)</p>
-            <div className="flex flex-wrap gap-1.5">
-              {estados.map(e => {
-                const isHidden = userHiddenEstados.has(e.id);
-                return (
-                  <label
-                    key={e.id}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border cursor-pointer transition-colors ${
-                      isHidden ? "opacity-40 bg-surface-50" : ""
-                    }`}
-                    style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!isHidden}
-                      onChange={() => setUserHiddenEstados(prev => {
-                        const next = new Set(prev);
-                        if (next.has(e.id)) next.delete(e.id); else next.add(e.id);
-                        return next;
-                      })}
-                      className="sr-only"
-                    />
-                    <StatusIcon clave={e.clave} color={e.color} size={12} />
-                    {e.nombre}
-                  </label>
-                );
-              })}
+            {/* Search */}
+            <div className="px-4 py-2">
+              <input
+                value={colSearch}
+                onChange={(e) => setColSearch(e.target.value)}
+                placeholder="Buscar campos nuevos o existentes"
+                className="w-full px-3 py-1.5 text-xs border border-surface-300 rounded-md focus:outline-none focus:border-primary-400 bg-surface-50"
+              />
             </div>
+
+            {/* Tabs */}
+            {isModOrAdmin && (
+              <div className="px-4 flex gap-4 border-b border-surface-100">
+                <button
+                  onClick={() => setColConfigTab("crear")}
+                  className={`pb-2 text-xs font-medium border-b-2 transition-colors ${
+                    colConfigTab === "crear" ? "border-primary-500 text-primary-600" : "border-transparent text-surface-400 hover:text-surface-600"
+                  }`}
+                >
+                  Crear
+                </button>
+                <button
+                  onClick={() => setColConfigTab("existente")}
+                  className={`pb-2 text-xs font-medium border-b-2 transition-colors ${
+                    colConfigTab === "existente" ? "border-primary-500 text-primary-600" : "border-transparent text-surface-400 hover:text-surface-600"
+                  }`}
+                >
+                  Añadir existente
+                </button>
+              </div>
+            )}
+
+            {/* Create tab */}
+            {isModOrAdmin && colConfigTab === "crear" && (
+              <div className="px-4 py-3 border-b border-surface-100">
+                <div className="space-y-2">
+                  <input
+                    value={newColName}
+                    onChange={e => setNewColName(e.target.value)}
+                    placeholder="Nombre del campo"
+                    className="w-full px-3 py-1.5 text-xs border border-surface-300 rounded-md focus:outline-none focus:border-primary-400"
+                    onKeyDown={e => e.key === "Enter" && handleCreateCol()}
+                    autoFocus
+                  />
+                  <select
+                    value={newColType}
+                    onChange={e => setNewColType(e.target.value as any)}
+                    className="w-full px-3 py-1.5 text-xs border border-surface-300 rounded-md bg-white focus:outline-none focus:border-primary-400"
+                  >
+                    <option value="text">Texto</option>
+                    <option value="badge">Badge (SI/NO)</option>
+                    <option value="date">Fecha</option>
+                    <option value="select">Selector</option>
+                  </select>
+                  <button
+                    onClick={handleCreateCol}
+                    disabled={!newColName.trim() || creatingCol}
+                    className="w-full px-3 py-1.5 text-xs bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors font-medium"
+                  >
+                    {creatingCol ? "Creando..." : "Crear campo"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Columns list */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Campos mostrados</span>
+                <button
+                  onClick={() => setColumns(prev => prev.map(c => ({ ...c, visible: false })))}
+                  className="text-[11px] text-surface-400 hover:text-surface-600 transition-colors"
+                >
+                  Ocultar todo
+                </button>
+              </div>
+              <div className="px-2 pb-2">
+                {columns
+                  .filter(col => !colSearch || col.label.toLowerCase().includes(colSearch.toLowerCase()))
+                  .map(col => (
+                  <div
+                    key={col.id}
+                    className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-50 rounded transition-colors group"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-surface-400 w-4 h-4 flex items-center justify-center flex-shrink-0">
+                        {col.type === "date" ? (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                        ) : col.type === "badge" ? (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="10" /></svg>
+                        ) : col.type === "select" ? (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h12" /></svg>
+                        )}
+                      </span>
+                      <span className={`text-xs truncate ${col.visible ? "text-surface-700" : "text-surface-400"}`}>
+                        {col.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {col.id.startsWith("custom_") && isModOrAdmin && (
+                        <button
+                          onClick={() => {
+                            const clave = col.id.replace("custom_", "");
+                            setConfirmDelete({ type: "campo", id: clave, label: col.label });
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all p-0.5"
+                          title="Eliminar campo"
+                        >
+                          <IconTrash className="w-3 h-3" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
+                        className="relative inline-flex flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
+                        style={{ width: 36, height: 20, backgroundColor: col.visible ? 'var(--color-primary-500, #3b82f6)' : '#cbd5e1' }}
+                      >
+                        <span
+                          className="pointer-events-none inline-block rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out"
+                          style={{ width: 16, height: 16, marginTop: 2, transform: col.visible ? 'translateX(18px)' : 'translateX(2px)' }}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Estados (visibilidad) */}
+            {estados.length > 0 && (
+              <div className="px-4 py-3 border-t border-surface-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Estados</span>
+                  {isModOrAdmin && <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium">+ Nuevo</button>}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {estados.map(e => {
+                    const isHidden = userHiddenEstados.has(e.id);
+                    return (
+                      <label key={e.id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
+                        style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}>
+                        <input type="checkbox" checked={!isHidden} onChange={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })} className="sr-only" />
+                        <StatusIcon clave={e.clave} color={e.color} size={12} />
+                        {e.nombre}
+                        {isModOrAdmin && (
+                          <button onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
+                            className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all" title="Eliminar estado">
+                            <IconX className="w-3 h-3" />
+                          </button>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -842,6 +1052,84 @@ export default function EspacioTareasPage() {
           onClose={() => setSelectedTareaId(null)}
           onUpdated={fetchData}
         />
+      )}
+
+      {/* Modal crear estado */}
+      {showEstadoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <form onSubmit={handleCreateEstado} className="bg-white rounded-xl shadow-xl p-5 w-full max-w-xs mx-4 animate-fade-in-up">
+            <h2 className="text-sm font-semibold text-surface-800 mb-3">Nuevo estado</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] text-surface-500 mb-1">Nombre</label>
+                <input
+                  required
+                  value={nuevoEstado.nombre}
+                  onChange={(e) => setNuevoEstado({ ...nuevoEstado, nombre: e.target.value })}
+                  placeholder="Ej: EN PROGRESO"
+                  className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-surface-500 mb-1">Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={nuevoEstado.color}
+                    onChange={(e) => setNuevoEstado({ ...nuevoEstado, color: e.target.value })}
+                    className="w-8 h-8 rounded border border-surface-200 cursor-pointer p-0"
+                  />
+                  <input
+                    type="text"
+                    value={nuevoEstado.color}
+                    onChange={(e) => setNuevoEstado({ ...nuevoEstado, color: e.target.value })}
+                    className="flex-1 px-2.5 py-1.5 border border-surface-200 rounded-md text-xs font-mono focus:outline-none focus:border-surface-400"
+                    placeholder="#3b82f6"
+                  />
+                </div>
+              </div>
+              <div className="py-2">
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border"
+                  style={{ borderColor: `${nuevoEstado.color}40`, color: nuevoEstado.color }}
+                >
+                  <StatusIcon clave={""} color={nuevoEstado.color} size={12} />
+                  {nuevoEstado.nombre || "Nombre del estado"}
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button type="button" onClick={() => setShowEstadoModal(false)} className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 rounded-md transition-colors">Cancelar</button>
+              <button type="submit" className="px-3 py-1.5 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium transition-colors">Crear</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal confirmar eliminación */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl p-5 w-full max-w-sm mx-4 animate-fade-in-up">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                <IconTrash className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-surface-800">Confirmar eliminación</h3>
+                <p className="text-xs text-surface-500 mt-0.5">Esta acción no se puede deshacer</p>
+              </div>
+            </div>
+            <p className="text-xs text-surface-600 mb-4">
+              ¿Eliminar <strong>{confirmDelete.label}</strong>?
+              {confirmDelete.type === "estado" && " Las tareas en este estado quedarán sin estado."}
+              {confirmDelete.type === "campo" && " La columna se ocultará de la tabla."}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmDelete(null)} className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 rounded-md transition-colors">Cancelar</button>
+              <button onClick={handleConfirmDelete} className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 font-medium transition-colors">Eliminar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
