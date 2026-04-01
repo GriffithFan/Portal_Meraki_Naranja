@@ -172,34 +172,35 @@ export default function ImportarPage() {
     const usedFields = new Set<string>();
     if (data.headers) {
       const predioAliases: Record<string, string[]> = {
-        codigo:    ["predio", "codigo", "código", "cod", "code", "id_predio"],
-        nombre:    ["nombre", "name", "cue_nombre", "establecimiento"],
+        codigo:    ["predio", "codigo", "código", "cod", "code", "id_predio", "nro", "numero", "número"],
+        nombre:    ["nombre", "name", "cue_nombre", "establecimiento", "nombredelatarea", "tarea", "task"],
         latitud:   ["latitud", "lat", "latitude", "latitud_gps"],
         longitud:  ["longitud", "lng", "lon", "longitude", "long", "longitud_gps"],
         direccion: ["direccion", "dirección", "address", "dir"],
-        ciudad:    ["ciudad", "city", "localidad"],
+        ciudad:    ["ciudad", "city", "localidad", "departamento", "depto"],
         provincia: ["provincia", "province", "prov"],
-        incidencias: ["incidencia", "incidencias", "ni", "ni-"],
-        cue:       ["cue"],
-        ambito:    ["ambito", "ámbito"],
+        incidencias: ["incidencia", "incidencias", "ni", "ni-", "númerodeinci", "numerodeinci"],
+        cue:       ["cue", "consolidadodecues", "consolidado"],
+        ambito:    ["ambito", "ámbito", "predioambito"],
         equipoAsignado: ["equipo", "team", "equipo_asignado", "equipoasignado"],
         lacR:      ["lac", "lacr", "lac-r", "lac_r"],
-        cuePredio: ["cue_predio", "cuePredio"],
-        gpsPredio: ["gps", "gps_predio", "gpspredio"],
+        cuePredio: ["cue_predio", "cuepredioconsolidadodecues", "cuePredio"],
+        gpsPredio: ["gps", "gps_predio", "gpspredio", "coordenadas", "coordenadasgps", "gpsdecimal"],
         fechaDesde: ["desde", "fecha_desde", "inicio", "start"],
         fechaHasta: ["hasta", "fecha_hasta", "fin", "end"],
         seccion:   ["seccion", "sección"],
         tipo:      ["tipo", "type"],
         notas:     ["notas", "nota", "notes", "observaciones"],
         prioridad: ["prioridad", "priority"],
-        tipoRed: ["tipo_red", "tipo de red", "tipored", "tipo_de_red", "red"],
+        tipoRed: ["tipo_red", "tipodered", "tipored", "tipo_de_red", "red", "prediotipodered"],
         codigoPostal: ["codigo_postal", "cp", "cod_postal", "codigopostal", "código_postal"],
         caracteristicaTelefonica: ["caracteristica", "car_tel", "caracteristica_telefonica", "caracteristicatelefonica", "car"],
-        telefono: ["telefono", "tel", "phone", "teléfono", "nro_tel"],
-        lab: ["lab"],
-        nombreInstitucion: ["institucion", "institución", "nombre_institucion", "nombreinstitucion", "escuela"],
+        telefono: ["telefono", "tel", "phone", "teléfono", "nro_tel", "nro_telefono", "nrotelefono"],
+        lab: ["lab", "proveedorlab", "predioproveedorlab"],
+        nombreInstitucion: ["institucion", "institución", "nombre_institucion", "nombreinstitucion", "escuela", "nombredelainstitucion"],
         correo: ["correo", "email", "mail", "e-mail", "correo_electronico"],
-        asignado: ["asignado", "tecnico", "técnico", "responsable", "assigned", "asignado_a"],
+        asignado: ["asignado", "tecnico", "técnico", "responsable", "assigned", "asignado_a", "personaasignada"],
+        estado: ["estado", "status", "state"],
       };
 
       const equipoAliases: Record<string, string[]> = {
@@ -218,11 +219,20 @@ export default function ImportarPage() {
       const aliases = tipo === "EQUIPO" ? equipoAliases : predioAliases;
 
       for (let i = 0; i < data.headers.length; i++) {
-        const h = data.headers[i]?.toString().toLowerCase().trim().replace(/[^a-záéíóúñü0-9_-]/g, "");
-        if (!h) continue;
+        const raw = data.headers[i]?.toString().toLowerCase().trim();
+        if (!raw) continue;
+        // Versión sin espacios ni especiales para matcheo compacto
+        const hCompact = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9_-]/g, "");
+        // Versión con palabras separadas para match parcial
+        const hWords = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
         for (const [field, aliasList] of Object.entries(aliases)) {
           if (usedFields.has(field)) continue;
-          if (aliasList.some(a => h === a || h.startsWith(a) || a.startsWith(h))) {
+          const matched = aliasList.some(a => {
+            return hCompact === a || hCompact.startsWith(a) || a.startsWith(hCompact)
+              || hWords.split(" ").some((w: string) => w === a)
+              || hCompact.includes(a);
+          });
+          if (matched) {
             autoMappings[i] = field;
             usedFields.add(field);
             break;

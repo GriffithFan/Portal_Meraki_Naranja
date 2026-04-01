@@ -4,6 +4,7 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
 import { parseBody, isErrorResponse, tareaCreateSchema } from "@/lib/validation";
 import { registrarEnPapelera } from "@/lib/papelera";
+import { detectarProvincia } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -226,5 +227,115 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error("Error en eliminación masiva:", error);
     return NextResponse.json({ error: "Error al eliminar" }, { status: 500 });
+  }
+}
+
+// PATCH /api/tareas — Edición masiva (ADMIN/MODERADOR)
+// Body: { ids: string[], action: string, value: any }
+// Acciones: "estadoId", "espacioId", "equipoAsignado", "provincia", "asignadoIds", "autoProvince", "autoGPS"
+export async function PATCH(request: NextRequest) {
+  const session = await getSession();
+  if (!session || !isModOrAdmin(session.rol)) {
+    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const { ids, action, value } = body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: "IDs requeridos" }, { status: 400 });
+    }
+    if (!action) {
+      return NextResponse.json({ error: "Acción requerida" }, { status: 400 });
+    }
+
+    // Limitar a 500 IDs por seguridad
+    const safeIds = ids.slice(0, 500);
+    let count = 0;
+
+    if (action === "autoProvince") {
+      // Auto-detectar provincia desde código para todos los seleccionados
+      const predios = await prisma.predio.findMany({
+        where: { id: { in: safeIds } },
+        select: { id: true, nombre: true, codigo: true, provincia: true },
+      });
+      for (const p of predios) {
+        const code = p.codigo || p.nombre || "";
+        const detected = detectarProvincia(code);
+        if (detected && detected !== p.provincia) {
+          await prisma.predio.update({ where: { id: p.id }, data: { provincia: detected } });
+          count++;
+        }
+      }
+    } else if (action === "autoGPS") {
+      // Auto-parsear gpsPredio → latitud/longitud
+      const predios = await prisma.predio.findMany({
+        where: { id: { in: safeIds } },
+        select: { id: true, gpsPredio: true, latitud: true, longitud: true },
+      });
+      for (const p of predios) {
+        if (p.gpsPredio && (!p.latitud || !p.longitud)) {
+          const parts = p.gpsPredio.split(",").map((s: string) => parseFloat(s.trim()));
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            await prisma.predio.update({
+              where: { id: p.id },
+              data: { latitud: parts[0], longitud: parts[1] },
+            });
+            count++;
+          }
+        }
+      }
+    } else if (action === "asignadoIds") {
+      // Asignar usuarios a múltiples predios (sin duplicados)
+      if (!Array.isArray(value) || value.length === 0) {
+        return NextResponse.json({ error: "IDs de usuarios requeridos" }, { status: 400 });
+      }
+      const validUsers = await prisma.user.findMany({
+        where: { id: { in: value }, activo: true },
+        select: { id: true },
+      });
+      const validUserIds = validUsers.map(u => u.id);
+      for (const predioId of safeIds) {
+        const existing = await prisma.asignacion.findMany({
+          where: { predioId },
+          select: { userId: true },
+        });
+        const existingIds = new Set(existing.map(a => a.userId));
+        const newIds = validUserIds.filter(uid => !existingIds.has(uid));
+        if (newIds.length > 0) {
+          await prisma.asignacion.createMany({
+            data: newIds.map(uid => ({ tipo: "TAREA", userId: uid, predioId })),
+          });
+          count++;
+        }
+      }
+    } else if (["estadoId", "espacioId", "equipoAsignado", "provincia", "prioridad", "ambito"].includes(action)) {
+      // Actualización directa de un campo
+      const result = await prisma.predio.updateMany({
+        where: { id: { in: safeIds } },
+        data: { [action]: value || null },
+      });
+      count = result.count;
+    } else {
+      return NextResponse.json({ error: "Acción no válida" }, { status: 400 });
+    }
+
+    try {
+      await prisma.actividad.create({
+        data: {
+          accion: "EDITAR",
+          descripcion: `Edición masiva (${action}): ${count} tareas actualizadas`,
+          entidad: "PREDIO",
+          entidadId: "bulk",
+          userId: session.userId,
+        },
+      });
+    } catch { /* no bloquear */ }
+
+    return NextResponse.json({ success: true, count });
+  } catch (error) {
+    console.error("Error en edición masiva:", error);
+    return NextResponse.json({ error: "Error al editar" }, { status: 500 });
   }
 }

@@ -162,6 +162,12 @@ export default function TareasPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDeleteGroup, setBulkDeleteGroup] = useState<string | null>(null);
 
+  // Selección múltiple para edición masiva
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<string>("");
+  const [bulkValue, setBulkValue] = useState<string>("");
+  const [bulkExecuting, setBulkExecuting] = useState(false);
+
   // Mostrar/ocultar estados vacíos
   const [showEmptyStates, setShowEmptyStates] = useState(false);
 
@@ -191,6 +197,7 @@ export default function TareasPage() {
 
   // Usuarios para asignación
   const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
+  const [espacios, setEspacios] = useState<any[]>([]);
   const [showUserPicker, setShowUserPicker] = useState(false);
 
   // Modal de detalle
@@ -276,6 +283,20 @@ export default function TareasPage() {
       fetch("/api/usuarios", { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
         .then(setAllUsers)
+        .catch(() => {});
+      fetch("/api/espacios", { credentials: "include" })
+        .then(r => r.ok ? r.json() : [])
+        .then((data: any[]) => {
+          const flat: any[] = [];
+          const walk = (arr: any[], depth: number) => {
+            for (const e of arr) {
+              flat.push({ ...e, _depth: depth });
+              if (e.hijos?.length) walk(e.hijos, depth + 1);
+            }
+          };
+          walk(data, 0);
+          setEspacios(flat);
+        })
         .catch(() => {});
     }
   }, [fetchTareas, isModOrAdmin]);
@@ -580,6 +601,62 @@ export default function TareasPage() {
     } catch { /* ignore */ }
     setBulkDeleting(false);
     setBulkDeleteGroup(null);
+  }
+
+  // Toggle selección individual
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // Seleccionar/deseleccionar todo un grupo
+  function toggleSelectGroup(items: any[]) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const allSelected = items.every(t => next.has(t.id));
+      if (allSelected) {
+        items.forEach(t => next.delete(t.id));
+      } else {
+        items.forEach(t => next.add(t.id));
+      }
+      return next;
+    });
+  }
+
+  // Ejecutar acción masiva
+  async function handleBulkAction() {
+    if (selectedIds.size === 0 || !bulkAction) return;
+    setBulkExecuting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const actionKey = bulkAction;
+      let actionValue: any = bulkValue;
+
+      // Para asignaciones, enviar como array de IDs
+      if (bulkAction === "asignadoIds") {
+        actionValue = bulkValue ? [bulkValue] : [];
+      }
+
+      const res = await fetch("/api/tareas", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids, action: actionKey, value: actionValue }),
+      });
+
+      if (res.ok) {
+        await res.json();
+        setSelectedIds(new Set());
+        setBulkAction("");
+        setBulkValue("");
+        await fetchTareas();
+        // Notificación de éxito implícita por el refresh
+      }
+    } catch { /* ignore */ }
+    setBulkExecuting(false);
   }
 
   // Crear columna personalizada inline
@@ -1043,6 +1120,95 @@ export default function TareasPage() {
         </div>
       )}
 
+      {/* Barra de acciones masivas */}
+      {isModOrAdmin && selectedIds.size > 0 && (
+        <div className="mb-3 p-2.5 bg-primary-50 border border-primary-200 rounded-lg flex items-center gap-2 flex-wrap animate-fade-in-up">
+          <span className="text-xs font-semibold text-primary-700">
+            {selectedIds.size} seleccionado{selectedIds.size > 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-[11px] text-primary-600 hover:text-primary-800 underline"
+          >
+            Deseleccionar
+          </button>
+          <span className="text-surface-300 mx-1">|</span>
+          <select
+            value={bulkAction}
+            onChange={(e) => { setBulkAction(e.target.value); setBulkValue(""); }}
+            className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500 text-surface-700"
+          >
+            <option value="">— Acción masiva —</option>
+            <option value="estadoId">Cambiar estado</option>
+            <option value="espacioId">Mover a espacio</option>
+            <option value="asignadoIds">Asignar técnico</option>
+            <option value="equipoAsignado">Cambiar equipo</option>
+            <option value="provincia">Cambiar provincia</option>
+            <option value="ambito">Cambiar ámbito</option>
+            <option value="prioridad">Cambiar prioridad</option>
+            <option value="autoProvince">Auto-detectar provincia</option>
+            <option value="autoGPS">Auto-parsear GPS → lat/lng</option>
+          </select>
+          {bulkAction === "estadoId" && (
+            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
+              <option value="">— Estado —</option>
+              {estados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+            </select>
+          )}
+          {bulkAction === "espacioId" && (
+            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
+              <option value="">— Espacio —</option>
+              {espacios.length > 0 ? espacios.map((e: any) => (
+                <option key={e.id} value={e.id}>{"  ".repeat(e._depth || 0)}{(e._depth || 0) > 0 ? "└ " : ""}{e.nombre}</option>
+              )) : <option disabled>Cargando...</option>}
+            </select>
+          )}
+          {bulkAction === "asignadoIds" && (
+            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
+              <option value="">— Técnico —</option>
+              {allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+          )}
+          {bulkAction === "equipoAsignado" && (
+            <input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder="Ej: TH01"
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500 w-24" />
+          )}
+          {bulkAction === "provincia" && (
+            <input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder="Ej: BUENOS AIRES"
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500 w-32" />
+          )}
+          {bulkAction === "ambito" && (
+            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
+              <option value="">— Ámbito —</option>
+              <option value="Urbano">Urbano</option>
+              <option value="Rural">Rural</option>
+              <option value="Rural Disperso">Rural Disperso</option>
+            </select>
+          )}
+          {bulkAction === "prioridad" && (
+            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
+              <option value="">— Prioridad —</option>
+              <option value="BAJA">Baja</option>
+              <option value="MEDIA">Media</option>
+              <option value="ALTA">Alta</option>
+              <option value="URGENTE">Urgente</option>
+            </select>
+          )}
+          <button
+            onClick={handleBulkAction}
+            disabled={bulkExecuting || !bulkAction || (!["autoProvince", "autoGPS"].includes(bulkAction) && !bulkValue)}
+            className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          >
+            {bulkExecuting ? "Aplicando..." : "Aplicar"}
+          </button>
+        </div>
+      )}
+
       {/* Lista */}
       {loading ? (
         <div className="flex justify-center py-12">
@@ -1140,6 +1306,7 @@ export default function TareasPage() {
                         <table className="w-full min-w-max text-[11px] hidden md:table">
                           <thead>
                             <tr className="border-b border-surface-100">
+                              {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
                               {visibleColumns.map((col) => (
                                 <th
                                   key={col.id}
@@ -1169,6 +1336,7 @@ export default function TareasPage() {
                                 onClick={() => openDetail(t)}
                                 className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                               >
+                                {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
                                 {visibleColumns.map((col) => (
                                   <td
                                     key={col.id}
@@ -1241,6 +1409,7 @@ export default function TareasPage() {
                   <table className="w-full min-w-max text-[11px] hidden md:table">
                     <thead>
                       <tr className="border-b border-surface-100">
+                        {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={groupedTareas["sin-estado"].length > 0 && groupedTareas["sin-estado"].every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(groupedTareas["sin-estado"])} className="accent-primary-600 cursor-pointer" /></th>}
                         {visibleColumns.map((col) => (
                           <th
                             key={col.id}
@@ -1270,6 +1439,7 @@ export default function TareasPage() {
                           onClick={() => openDetail(t)}
                           className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                         >
+                          {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
                           {visibleColumns.map((col) => (
                             <td
                               key={col.id}
@@ -1309,6 +1479,7 @@ export default function TareasPage() {
                       <table className="w-full min-w-max text-[11px] hidden md:table">
                         <thead>
                           <tr className="border-b border-surface-100">
+                            {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
                             {visibleColumns.map((col) => (
                               <th
                                 key={col.id}
@@ -1338,6 +1509,7 @@ export default function TareasPage() {
                               onClick={() => openDetail(t)}
                               className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                             >
+                              {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
                               {visibleColumns.map((col) => (
                                 <td
                                   key={col.id}
@@ -1371,6 +1543,7 @@ export default function TareasPage() {
                 <table className="w-full min-w-max text-[11px] hidden md:table">
                   <thead>
                     <tr className="border-b border-surface-100">
+                      {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={tareas.length > 0 && tareas.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(tareas)} className="accent-primary-600 cursor-pointer" /></th>}
                       {visibleColumns.map((col) => (
                         <th
                           key={col.id}
@@ -1405,6 +1578,7 @@ export default function TareasPage() {
                         onClick={() => openDetail(t)}
                         className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                       >
+                        {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
                         {visibleColumns.map((col) => (
                           <td
                             key={col.id}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, importarEjecutarSchema } from "@/lib/validation";
+import { detectarProvincia } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -51,6 +52,7 @@ const PREDIO_FIELDS: Record<string, string> = {
   nombreInstitucion: "Nombre de la Institución",
   correo: "Correo",
   asignado: "Asignado (Técnico)",
+  estado: "Estado (texto)",
 };
 
 /* Auto-fill por prefijo de serial (4 primeros caracteres) */
@@ -133,6 +135,16 @@ export async function POST(request: NextRequest) {
     return row[index]?.trim() ?? "";
   }
 
+  /** Parsea GPS combinado tipo "-35.123, -62.456" → { lat, lng } */
+  function parseGPSCombined(gpsStr: string): { lat: number | null; lng: number | null } {
+    if (!gpsStr) return { lat: null, lng: null };
+    const parts = gpsStr.split(",").map(s => parseFloat(s.trim().replace(",", ".")));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && !(parts[0] === 0 && parts[1] === 0)) {
+      return { lat: parts[0], lng: parts[1] };
+    }
+    return { lat: null, lng: null };
+  }
+
   function parseDate(val: string): Date | null {
     if (!val) return null;
     // Intentar varios formatos
@@ -162,15 +174,45 @@ export async function POST(request: NextRequest) {
       }
 
       // Pre-cargar usuarios para matching de asignado en predios
-      let predioUsers: { id: string; nombre: string }[] = [];
+      let predioUsers: { id: string; nombre: string; email: string }[] = [];
       if (fieldMap.has("asignado")) {
         predioUsers = await prisma.user.findMany({
           where: { activo: true },
-          select: { id: true, nombre: true },
+          select: { id: true, nombre: true, email: true },
         });
       }
 
-      const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      // Pre-cargar estados para auto-matching por nombre
+      const allEstados = await prisma.estadoConfig.findMany({
+        where: { activo: true },
+        select: { id: true, nombre: true, clave: true },
+      });
+
+      const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[\s_-]+/g, " ");
+
+      /** Match usuario por nombre, email o alias (ej: "Daniel c01" → th01@thnet.com) */
+      const matchUser = (val: string): string | null => {
+        if (!val || predioUsers.length === 0) return null;
+        const needle = norm(val);
+        const match = predioUsers.find(u => {
+          const n = norm(u.nombre);
+          const e = norm(u.email).split("@")[0]; // th01, th07, etc.
+          return n === needle || n.includes(needle) || needle.includes(n) || e === needle;
+        });
+        return match?.id || null;
+      }
+
+      /** Match estado por nombre (ej: "sin asignar" → SIN ASIGNAR) */
+      const matchEstado = (val: string): string | null => {
+        if (!val) return null;
+        const needle = norm(val);
+        const match = allEstados.find(e => {
+          const n = norm(e.nombre);
+          const c = norm(e.clave);
+          return n === needle || c === needle || n.includes(needle) || needle.includes(n);
+        });
+        return match?.id || null;
+      }
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -231,6 +273,30 @@ export async function POST(request: NextRequest) {
           const gpsPredio = safeGet(row, fieldMap.get("gpsPredio"));
           if (gpsPredio) data.gpsPredio = gpsPredio;
 
+          // ── Auto-parsear GPS combinado → latitud/longitud ──
+          // Si gpsPredio tiene "-35.xx, -62.xx" y no hay lat/lng mapeados, extraerlos
+          if (gpsPredio && !data.latitud && !data.longitud) {
+            const parsed = parseGPSCombined(gpsPredio);
+            if (parsed.lat !== null) data.latitud = parsed.lat;
+            if (parsed.lng !== null) data.longitud = parsed.lng;
+          }
+
+          // ── Auto-detectar provincia desde código de predio ──
+          // Si no se proporcionó provincia explícita, detectar desde nombre/código
+          if (!data.provincia) {
+            const codigoForDetect = (data.codigo as string) || (data.nombre as string) || "";
+            const detected = detectarProvincia(codigoForDetect);
+            if (detected) data.provincia = detected;
+          }
+
+          // ── Auto-match estado por nombre si hay columna de estado ──
+          // Si no tiene estadoId pero sí una columna con texto de estado
+          const estadoText = safeGet(row, fieldMap.get("estado"));
+          if (estadoText && !data.estadoId) {
+            const matchedEstadoId = matchEstado(estadoText);
+            if (matchedEstadoId) data.estadoId = matchedEstadoId;
+          }
+
           // Campos adicionales
           const tipoRed = safeGet(row, fieldMap.get("tipoRed"));
           if (tipoRed) data.tipoRed = tipoRed;
@@ -281,18 +347,14 @@ export async function POST(request: NextRequest) {
                 }
               }
               await prisma.predio.update({ where: { codigo }, data: updateData as any });
-              // Match asignado y crear Asignacion si corresponde
+              // Match asignado y crear Asignacion si corresponde (sin duplicar)
               const asignadoVal = safeGet(row, fieldMap.get("asignado"));
-              if (asignadoVal && predioUsers.length > 0) {
-                const needle = norm(asignadoVal);
-                const match = predioUsers.find(u => {
-                  const n = norm(u.nombre);
-                  return n === needle || n.includes(needle) || needle.includes(n);
-                });
-                if (match) {
-                  const exists = await prisma.asignacion.findFirst({ where: { userId: match.id, predioId: existing.id } });
+              if (asignadoVal) {
+                const userId = matchUser(asignadoVal);
+                if (userId) {
+                  const exists = await prisma.asignacion.findFirst({ where: { userId, predioId: existing.id } });
                   if (!exists) {
-                    await prisma.asignacion.create({ data: { tipo: "tecnico", userId: match.id, predioId: existing.id } });
+                    await prisma.asignacion.create({ data: { tipo: "TECNICO", userId, predioId: existing.id } });
                   }
                 }
               }
@@ -301,16 +363,15 @@ export async function POST(request: NextRequest) {
             }
           }
           const newPredio = await prisma.predio.create({ data: data as any });
-          // Match asignado y crear Asignacion tras crear el predio
+          // Match asignado y crear Asignacion tras crear el predio (sin duplicar)
           const asignadoVal = safeGet(row, fieldMap.get("asignado"));
-          if (asignadoVal && predioUsers.length > 0) {
-            const needle = norm(asignadoVal);
-            const match = predioUsers.find(u => {
-              const n = norm(u.nombre);
-              return n === needle || n.includes(needle) || needle.includes(n);
-            });
-            if (match) {
-              await prisma.asignacion.create({ data: { tipo: "tecnico", userId: match.id, predioId: newPredio.id } });
+          if (asignadoVal) {
+            const userId = matchUser(asignadoVal);
+            if (userId) {
+              const exists = await prisma.asignacion.findFirst({ where: { userId, predioId: newPredio.id } });
+              if (!exists) {
+                await prisma.asignacion.create({ data: { tipo: "TECNICO", userId, predioId: newPredio.id } });
+              }
             }
           }
           created++;
