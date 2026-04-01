@@ -229,16 +229,16 @@ export default function TareasPage() {
       const predios = data.predios || [];
       setTareas(predios);
 
-      // Auto-ocultar columnas sin datos (solo la primera vez sin config guardada)
-      if (!autoHideDone.current && !hadSavedConfig.current && predios.length > 0) {
+      // Auto-ocultar columnas sin datos (corre siempre en el primer load)
+      if (!autoHideDone.current && predios.length > 0) {
         autoHideDone.current = true;
-        const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "asignados"]);
+        const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "lacR", "equipoAsignado", "asignados"]);
         setColumns(prev => prev.map(col => {
           if (ESSENTIAL.has(col.id)) return col;
           if (col.id.startsWith("custom_")) return col;
           const hasData = predios.some((t: any) => {
             const v = t[col.field];
-            return v != null && v !== "";
+            return v != null && v !== "" && v !== 0;
           });
           return hasData ? { ...col, visible: true } : { ...col, visible: false };
         }));
