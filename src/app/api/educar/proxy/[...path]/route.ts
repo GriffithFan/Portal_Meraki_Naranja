@@ -147,17 +147,23 @@ async function handle(
 
   // ── JavaScript: debugMode bypass + devtools blocker ──
   if (ct.includes("javascript") || ct.includes("ecmascript")) {
-    let body = await resp.text();
-
-    // Block devtools detector completely
-    if (body.toLowerCase().includes("devtoolsdetector") || body.toLowerCase().includes("devtools_detector")) {
-      body = `window.devtoolsDetector={launch:function(){},stop:function(){},addListener:function(){},removeListener:function(){},isLaunch:function(){return false},setDetectDelay:function(){},isOpen:false};`;
+    // Block devtools detector by URL (same as bypass_final.py)
+    if (targetPath.toLowerCase().includes("devtoolsdetector") || targetPath.toLowerCase().includes("devtools_detector")) {
+      respHeaders["content-type"] = "application/javascript; charset=utf-8";
+      return new NextResponse(
+        `window.devtoolsDetector={launch:function(){},stop:function(){},addListener:function(){},removeListener:function(){},isLaunch:function(){return false},setDetectDelay:function(){},isOpen:false};`,
+        { status: 200, headers: respHeaders },
+      );
     }
 
-    // debugMode bypass (the core of bypass_final.py)
-    body = body.replace(/const\s+debugMode\s*=\s*false\s*;/g, "const debugMode = true; /* BYPASSED */");
-    body = body.replace(/var\s+debugMode\s*=\s*false\s*;/g, "var debugMode = true; /* BYPASSED */");
-    body = body.replace(/let\s+debugMode\s*=\s*false\s*;/g, "let debugMode = true; /* BYPASSED */");
+    let body = await resp.text();
+
+    // debugMode bypass (the core of bypass_final.py) — only in pnce_SPA
+    if (targetPath.toLowerCase().includes("pnce_spa")) {
+      body = body.replace(/const\s+debugMode\s*=\s*false\s*;/g, "const debugMode = true; /* BYPASSED */");
+      body = body.replace(/var\s+debugMode\s*=\s*false\s*;/g, "var debugMode = true; /* BYPASSED */");
+      body = body.replace(/let\s+debugMode\s*=\s*false\s*;/g, "let debugMode = true; /* BYPASSED */");
+    }
 
     respHeaders["content-type"] = "application/javascript; charset=utf-8";
     return new NextResponse(body, { status: resp.status, headers: respHeaders });
