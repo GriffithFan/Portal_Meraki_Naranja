@@ -686,16 +686,29 @@ export default function EspacioTareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      if (asigns.length === 0) return <span className="text-surface-300">&mdash;</span>;
-      return (
-        <span className="flex items-center gap-1 flex-wrap">
-          {asigns.map((a: any) => (
-            <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
-              {a.usuario?.nombre?.split(" ")[0] || "?"}
-            </span>
+      // Si hay asignaciones reales, mostrarlas
+      if (asigns.length > 0) {
+        return (
+          <span className="flex items-center gap-1 flex-wrap">
+            {asigns.map((a: any) => (
+              <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
+                {a.usuario?.nombre?.split(" ")[0] || "?"}
+              </span>
           ))}
         </span>
       );
+      }
+      // Fallback: derivar de equipoAsignado → THxx
+      const equipo = t.equipoAsignado?.toUpperCase();
+      const thCode = equipo ? EQUIPO_TH_MAP[equipo] : null;
+      if (thCode) {
+        return (
+          <span className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium">
+            {thCode}
+          </span>
+        );
+      }
+      return <span className="text-surface-300">&mdash;</span>;
     }
     if (col.type === "date") {
       if (col.id === "fechaActualizacion") {
