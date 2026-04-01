@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// Mapeo inverso TH → nombres de equipoAsignado en la DB
+const TH_EQUIPO_NAMES: Record<string, string[]> = {
+  TH01: ["DANIEL", "DANI"],
+  TH03: ["JORGE"],
+  TH04: ["LUCIO", "ADOLFO"],
+  TH07: ["FEDE", "FEDERICO"],
+};
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session)
@@ -9,25 +19,37 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const espacioId = searchParams.get("espacioId");
-  const equipoAsignado = searchParams.get("equipo");
+  const equipoParam = searchParams.get("equipo");
   const provincia = searchParams.get("provincia");
   const estadoId = searchParams.get("estadoId");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
     latitud: { not: null },
     longitud: { not: null },
   };
 
   if (espacioId) where.espacioId = espacioId;
-  if (equipoAsignado) where.equipoAsignado = equipoAsignado;
+
+  // Mapear código TH a nombres reales de la DB si corresponde
+  if (equipoParam) {
+    const mapped = TH_EQUIPO_NAMES[equipoParam.toUpperCase()];
+    if (mapped) {
+      where.equipoAsignado = { in: mapped, mode: "insensitive" };
+    } else {
+      where.equipoAsignado = { equals: equipoParam, mode: "insensitive" };
+    }
+  }
+
   if (provincia) where.provincia = provincia;
   if (estadoId) where.estadoId = estadoId;
 
   // Usuarios normales (no mod/admin): solo ver predios de su equipo o asignados
   if (!isModOrAdmin(session.rol)) {
+    const equipoNames = TH_EQUIPO_NAMES[session.nombre.toUpperCase()] || [];
     where.OR = [
-      { equipoAsignado: session.nombre },
+      ...(equipoNames.length > 0
+        ? [{ equipoAsignado: { in: equipoNames, mode: "insensitive" } }]
+        : [{ equipoAsignado: session.nombre }]),
       { asignaciones: { some: { userId: session.userId } } },
     ];
   }
