@@ -883,9 +883,9 @@ export default function TareasPage() {
         </span>
       );
     }
-    // Para la columna "predio", mostrar incidencias o nombre como fallback
+    // Para la columna "predio" (incidencias)
     if (col.id === "predio") {
-      const txt = t[col.field] || t.nombre || "\u2014";
+      const txt = t[col.field] || "\u2014";
       return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{txt}</span><CopyBtn text={txt !== "\u2014" ? txt : ""} /></span>;
     }
     // Provincia: auto-detectar si está vacío
