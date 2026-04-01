@@ -137,6 +137,10 @@ async function handle(
   resp.headers.forEach((v, k) => {
     if (!BLOCKED_HEADERS.has(k.toLowerCase())) respHeaders[k] = v;
   });
+  // Override with permissive policy so Salesforce scripts run
+  respHeaders["content-security-policy"] =
+    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; connect-src *; font-src * data:; frame-src *;";
+  respHeaders["x-frame-options"] = "SAMEORIGIN";
 
   /* ── Handle by content-type ─────────────── */
   const ct = resp.headers.get("content-type") || "";
