@@ -190,10 +190,42 @@ export async function POST(request: NextRequest) {
 
       const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[\s_-]+/g, " ");
 
+      // Mapeo de nombres/alias de técnicos → código de equipo (TH01, TH02, etc.)
+      const TECH_NAME_TO_EQUIPO: Record<string, string> = {
+        daniel: "TH01", dani: "TH01", "daniel c01": "TH01",
+        lucio: "TH02",
+        jorge: "TH03",
+        federico: "TH07", fede: "TH07",
+      };
+
+      /** Detectar equipo a partir de un nombre de técnico */
+      const detectEquipoFromName = (val: string): string | null => {
+        if (!val) return null;
+        const needle = norm(val);
+        // Intentar match exacto sobre todas las variantes
+        for (const [alias, equipo] of Object.entries(TECH_NAME_TO_EQUIPO)) {
+          if (needle === alias || needle.startsWith(alias + " ") || needle.includes(alias)) return equipo;
+        }
+        // Intentar por patrón THxx directo
+        const thMatch = needle.match(/\b(th\d{1,2})\b/i);
+        if (thMatch) return thMatch[1].toUpperCase();
+        return null;
+      };
+
       /** Match usuario por nombre, email o alias (ej: "Daniel c01" → th01@thnet.com) */
       const matchUser = (val: string): string | null => {
         if (!val || predioUsers.length === 0) return null;
         const needle = norm(val);
+
+        // 1. Intento con equipo detectado → buscar user por email que empiece con THxx
+        const equipo = detectEquipoFromName(val);
+        if (equipo) {
+          const eqLower = equipo.toLowerCase();
+          const byEmail = predioUsers.find(u => norm(u.email).split("@")[0] === eqLower);
+          if (byEmail) return byEmail.id;
+        }
+
+        // 2. Match por nombre directo
         const match = predioUsers.find(u => {
           const n = norm(u.nombre);
           const e = norm(u.email).split("@")[0]; // th01, th07, etc.
@@ -290,11 +322,20 @@ export async function POST(request: NextRequest) {
           }
 
           // ── Auto-match estado por nombre si hay columna de estado ──
-          // Si no tiene estadoId pero sí una columna con texto de estado
           const estadoText = safeGet(row, fieldMap.get("estado"));
           if (estadoText && !data.estadoId) {
             const matchedEstadoId = matchEstado(estadoText);
             if (matchedEstadoId) data.estadoId = matchedEstadoId;
+          }
+
+          // ── Auto-detectar equipoAsignado desde nombre de asignado ──
+          // Si no viene equipo explícito pero sí hay columna "asignado" con nombre de técnico
+          if (!data.equipoAsignado) {
+            const asignadoRaw = safeGet(row, fieldMap.get("asignado"));
+            if (asignadoRaw) {
+              const detectedEquipo = detectEquipoFromName(asignadoRaw);
+              if (detectedEquipo) data.equipoAsignado = detectedEquipo;
+            }
           }
 
           // Campos adicionales

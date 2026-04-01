@@ -69,7 +69,7 @@ interface Column {
 const DEFAULT_COLUMNS: Column[] = [
   { id: "codigoPredio", label: "Predio", field: "codigo", width: 100, visible: true, editable: false, type: "text" },
   { id: "predio", label: "Incidencia", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
-  { id: "fechaActualizacion", label: "Fecha", field: "fechaActualizacion", width: 80, visible: true, editable: false, type: "date" },
+  { id: "fechaActualizacion", label: "Fecha de actualización", field: "updatedAt", width: 110, visible: true, editable: false, type: "date" },
   { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO"] },
   { id: "cue", label: "CUE", field: "cue", width: 100, visible: true, editable: true, type: "text" },
   { id: "fechaDesde", label: "DESDE", field: "fechaDesde", width: 90, visible: true, editable: true, type: "date" },
@@ -114,10 +114,11 @@ export default function TareasPage() {
   const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6" });
 
   // Inline new column form
-  const [showNewCol, setShowNewCol] = useState(false);
   const [newColName, setNewColName] = useState("");
   const [newColType, setNewColType] = useState<"text" | "badge" | "date" | "select">("text");
   const [creatingCol, setCreatingCol] = useState(false);
+  const [colConfigTab, setColConfigTab] = useState<"crear" | "existente">("existente");
+  const [colSearch, setColSearch] = useState("");
 
   // Drag & drop columnas (refs para acceso sincrónico en event handlers)
   const [dragColId, setDragColId] = useState<string | null>(null);
@@ -689,7 +690,7 @@ export default function TareasPage() {
         });
         setNewColName("");
         setNewColType("text");
-        setShowNewCol(false);
+        setColConfigTab("existente");
       }
     } catch { /* ignore */ }
     setCreatingCol(false);
@@ -768,6 +769,23 @@ export default function TareasPage() {
     return new Date(d).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
   };
 
+  const formatRelativeDate = (d: string | null) => {
+    if (!d) return "—";
+    const now = new Date();
+    const date = new Date(d);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMin < 1) return "Ahora";
+    if (diffMin < 60) return `Hace ${diffMin} min`;
+    if (diffHours < 24) return `Hace ${diffHours}h`;
+    if (diffDays === 1) return "Ayer";
+    if (diffDays < 7) return `Hace ${diffDays} días`;
+    if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)} sem`;
+    return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+  };
+
   const formatDateTime = (d: string) => {
     return new Date(d).toLocaleDateString("es-AR", { 
       day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
@@ -782,6 +800,9 @@ export default function TareasPage() {
       const val = t.camposExtra?.[clave];
       if (!val) return <span className="text-surface-300">&mdash;</span>;
       return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{val}</span><CopyBtn text={val} /></span>;
+    }
+    if (col.id === "fechaActualizacion") {
+      return <span className="text-surface-500 text-[10px]" title={t.updatedAt ? new Date(t.updatedAt).toLocaleString("es-AR") : ""}>{formatRelativeDate(t.updatedAt)}</span>;
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
@@ -983,140 +1004,176 @@ export default function TareasPage() {
         </div>
       </div>
 
-      {/* Config */}
+      {/* Panel lateral de Campos (drawer) */}
       {showColumnConfig && (
-        <div className="mb-4 p-3 bg-white border border-surface-200 rounded-lg space-y-3">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider">Columnas</p>
-              {isModOrAdmin && (
-                <button
-                  onClick={() => setShowNewCol(!showNewCol)}
-                  className="text-[11px] text-surface-500 hover:text-surface-700 font-medium"
-                >
-                  + Columna
+        <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setShowColumnConfig(false)}>
+          <div className="absolute inset-0 bg-black/20" />
+          <div
+            className="relative w-80 max-w-[85vw] bg-white shadow-xl flex flex-col animate-slide-in-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowColumnConfig(false)} className="text-surface-400 hover:text-surface-600 transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
-              )}
+                <h3 className="text-sm font-semibold text-surface-800">Campos</h3>
+              </div>
+              <button onClick={() => setShowColumnConfig(false)} className="text-surface-400 hover:text-surface-600 transition-colors">
+                <IconX className="w-4 h-4" />
+              </button>
             </div>
-            {showNewCol && isModOrAdmin && (
-              <div className="flex items-center gap-2 mb-2 p-2 bg-surface-50 rounded border border-surface-200">
-                <input
-                  value={newColName}
-                  onChange={e => setNewColName(e.target.value)}
-                  placeholder="Nombre de la columna"
-                  className="flex-1 min-w-0 px-2 py-1 text-xs border border-surface-300 rounded focus:outline-none focus:border-surface-500"
-                  onKeyDown={e => e.key === "Enter" && handleCreateCol()}
-                  autoFocus
-                />
-                <select
-                  value={newColType}
-                  onChange={e => setNewColType(e.target.value as any)}
-                  className="px-2 py-1 text-xs border border-surface-300 rounded bg-white focus:outline-none focus:border-surface-500"
-                >
-                  <option value="text">Texto</option>
-                  <option value="badge">Badge (SI/NO)</option>
-                  <option value="date">Fecha</option>
-                  <option value="select">Selector</option>
-                </select>
+
+            {/* Search */}
+            <div className="px-4 py-2">
+              <input
+                value={colSearch}
+                onChange={(e) => setColSearch(e.target.value)}
+                placeholder="Buscar campos nuevos o existentes"
+                className="w-full px-3 py-1.5 text-xs border border-surface-300 rounded-md focus:outline-none focus:border-primary-400 bg-surface-50"
+              />
+            </div>
+
+            {/* Tabs */}
+            {isModOrAdmin && (
+              <div className="px-4 flex gap-4 border-b border-surface-100">
                 <button
-                  onClick={handleCreateCol}
-                  disabled={!newColName.trim() || creatingCol}
-                  className="px-2 py-1 text-xs bg-surface-800 text-white rounded hover:bg-surface-700 disabled:opacity-50 transition-colors"
+                  onClick={() => setColConfigTab("crear")}
+                  className={`pb-2 text-xs font-medium border-b-2 transition-colors ${
+                    colConfigTab === "crear" ? "border-primary-500 text-primary-600" : "border-transparent text-surface-400 hover:text-surface-600"
+                  }`}
                 >
-                  {creatingCol ? "..." : "Crear"}
+                  Crear
                 </button>
                 <button
-                  onClick={() => { setShowNewCol(false); setNewColName(""); }}
-                  className="text-surface-400 hover:text-surface-600"
+                  onClick={() => setColConfigTab("existente")}
+                  className={`pb-2 text-xs font-medium border-b-2 transition-colors ${
+                    colConfigTab === "existente" ? "border-primary-500 text-primary-600" : "border-transparent text-surface-400 hover:text-surface-600"
+                  }`}
                 >
-                  <IconX className="w-3.5 h-3.5" />
+                  Añadir existente
                 </button>
               </div>
             )}
-            <div className="flex flex-wrap gap-1.5">
-              {columns.map(col => (
-                <label key={col.id} className={`flex items-center gap-1.5 text-[11px] cursor-pointer px-2 py-1 rounded border transition-colors group ${
-                  col.visible ? "bg-surface-100 border-surface-300 text-surface-700" : "bg-white border-surface-200 text-surface-400"
-                }`}>
-                  <input
-                    type="checkbox"
-                    checked={col.visible}
-                    onChange={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
-                    className="sr-only"
-                  />
-                  {col.label}
-                  {col.id.startsWith("custom_") && isModOrAdmin && (
-                    <button
-                      onClick={(ev) => {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        const clave = col.id.replace("custom_", "");
-                        setConfirmDelete({ type: "campo", id: clave, label: col.label });
-                      }}
-                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"
-                      title="Eliminar columna"
-                    >
-                      <IconX className="w-3 h-3" />
-                    </button>
-                  )}
-                </label>
-              ))}
-            </div>
-          </div>
 
-          {isModOrAdmin && (
-            <div className="pt-2 border-t border-surface-100">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-medium text-surface-500 uppercase tracking-wider">Estados (visibilidad)</p>
+            {/* Create tab */}
+            {isModOrAdmin && colConfigTab === "crear" && (
+              <div className="px-4 py-3 border-b border-surface-100">
+                <div className="space-y-2">
+                  <input
+                    value={newColName}
+                    onChange={e => setNewColName(e.target.value)}
+                    placeholder="Nombre del campo"
+                    className="w-full px-3 py-1.5 text-xs border border-surface-300 rounded-md focus:outline-none focus:border-primary-400"
+                    onKeyDown={e => e.key === "Enter" && handleCreateCol()}
+                    autoFocus
+                  />
+                  <select
+                    value={newColType}
+                    onChange={e => setNewColType(e.target.value as any)}
+                    className="w-full px-3 py-1.5 text-xs border border-surface-300 rounded-md bg-white focus:outline-none focus:border-primary-400"
+                  >
+                    <option value="text">Texto</option>
+                    <option value="badge">Badge (SI/NO)</option>
+                    <option value="date">Fecha</option>
+                    <option value="select">Selector</option>
+                  </select>
+                  <button
+                    onClick={handleCreateCol}
+                    disabled={!newColName.trim() || creatingCol}
+                    className="w-full px-3 py-1.5 text-xs bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors font-medium"
+                  >
+                    {creatingCol ? "Creando..." : "Crear campo"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Columns list */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Mostrados header */}
+              <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Campos mostrados</span>
                 <button
-                  onClick={() => setShowEstadoModal(true)}
-                  className="text-[11px] text-surface-500 hover:text-surface-700 font-medium"
+                  onClick={() => setColumns(prev => prev.map(c => ({ ...c, visible: false })))}
+                  className="text-[11px] text-surface-400 hover:text-surface-600 transition-colors"
                 >
-                  + Nuevo
+                  Ocultar todo
                 </button>
               </div>
-              {estados.length === 0 ? (
-                <p className="text-[11px] text-surface-400">Sin estados. Crea uno para agrupar tareas.</p>
-              ) : (
+              <div className="px-2 pb-2">
+                {columns
+                  .filter(col => !colSearch || col.label.toLowerCase().includes(colSearch.toLowerCase()))
+                  .map(col => (
+                  <div
+                    key={col.id}
+                    className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-50 rounded transition-colors group"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-surface-400 text-[10px] w-5 flex-shrink-0">
+                        {col.type === "date" ? "📅" : col.type === "badge" ? "🏷️" : col.type === "select" ? "📋" : "T"}
+                      </span>
+                      <span className={`text-xs truncate ${col.visible ? "text-surface-700" : "text-surface-400"}`}>
+                        {col.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {col.id.startsWith("custom_") && isModOrAdmin && (
+                        <button
+                          onClick={() => {
+                            const clave = col.id.replace("custom_", "");
+                            setConfirmDelete({ type: "campo", id: clave, label: col.label });
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all p-0.5"
+                          title="Eliminar campo"
+                        >
+                          <IconTrash className="w-3 h-3" />
+                        </button>
+                      )}
+                      {/* Toggle switch */}
+                      <button
+                        onClick={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
+                        className={`relative w-8 h-4.5 rounded-full transition-colors ${col.visible ? "bg-primary-500" : "bg-surface-300"}`}
+                        style={{ minWidth: 32, height: 18 }}
+                      >
+                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${col.visible ? "translate-x-[15px]" : "translate-x-0.5"}`} style={{ width: 14, height: 14 }} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Estados (visibilidad) */}
+            {isModOrAdmin && estados.length > 0 && (
+              <div className="px-4 py-3 border-t border-surface-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Estados</span>
+                  <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium">+ Nuevo</button>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
                   {estados.map(e => {
                     const isHidden = userHiddenEstados.has(e.id);
                     return (
-                    <label
-                      key={e.id}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${
-                        isHidden ? "opacity-40 bg-surface-50" : ""
-                      }`}
-                      style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!isHidden}
-                        onChange={() => setUserHiddenEstados(prev => {
-                          const next = new Set(prev);
-                          if (next.has(e.id)) next.delete(e.id); else next.add(e.id);
-                          return next;
-                        })}
-                        className="sr-only"
-                      />
-                      <StatusIcon clave={e.clave} color={e.color} size={12} />
-                      {e.nombre}
-                      {session?.rol === "ADMIN" && (
-                        <button
-                          onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
-                          className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"
-                          title="Eliminar estado"
-                        >
-                          <IconX className="w-3 h-3" />
-                        </button>
-                      )}
-                    </label>
+                      <label key={e.id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
+                        style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}>
+                        <input type="checkbox" checked={!isHidden} onChange={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })} className="sr-only" />
+                        <StatusIcon clave={e.clave} color={e.color} size={12} />
+                        {e.nombre}
+                        {session?.rol === "ADMIN" && (
+                          <button onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
+                            className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all" title="Eliminar estado">
+                            <IconX className="w-3 h-3" />
+                          </button>
+                        )}
+                      </label>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
