@@ -239,12 +239,15 @@ export async function POST(request: NextRequest) {
       const matchEstado = (val: string): string | null => {
         if (!val) return null;
         const needle = norm(val);
-        const match = allEstados.find(e => {
+        // Priorizar match exacto
+        const exact = allEstados.find(e => norm(e.nombre) === needle || norm(e.clave) === needle);
+        if (exact) return exact.id;
+        // Fallback: match parcial (solo si uno de los dos contiene al otro)
+        const partial = allEstados.find(e => {
           const n = norm(e.nombre);
-          const c = norm(e.clave);
-          return n === needle || c === needle || n.includes(needle) || needle.includes(n);
+          return n.includes(needle) || needle.includes(n);
         });
-        return match?.id || null;
+        return partial?.id || null;
       }
 
       // Track codes created in this batch to handle within-batch duplicates
