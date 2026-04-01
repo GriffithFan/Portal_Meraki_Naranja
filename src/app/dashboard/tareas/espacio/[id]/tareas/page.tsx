@@ -154,10 +154,29 @@ export default function EspacioTareasPage() {
   // Confirmar eliminación
   const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: string; label: string } | null>(null);
 
+  // Selección masiva
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<string>("");
+  const [bulkValue, setBulkValue] = useState<string>("");
+  const [bulkExecuting, setBulkExecuting] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteGroup, setBulkDeleteGroup] = useState<string | null>(null);
+
+  // Usuarios y espacios (para acciones masivas)
+  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string }[]>([]);
+  const [allEspacios, setAllEspacios] = useState<any[]>([]);
+
   // Drag & drop columnas
   const [dragColId, setDragColId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const didDragRef = useRef(false);
+
+  // Drag & drop estados (reordenar)
+  const [dragEstadoId, setDragEstadoId] = useState<string | null>(null);
+  const [dragOverEstadoId, setDragOverEstadoId] = useState<string | null>(null);
+
+  // Auto-ocultar columnas sin datos (una sola vez)
+  const autoHideDone = useRef(false);
 
   // Persistir columnas
   const colConfigLoaded = useRef(false);
@@ -238,7 +257,28 @@ export default function EspacioTareasPage() {
         }
       })
       .catch(() => {});
-  }, []);
+    // Cargar usuarios y espacios para acciones masivas
+    if (isModOrAdmin) {
+      fetch("/api/usuarios", { credentials: "include" })
+        .then(r => r.ok ? r.json() : [])
+        .then(setAllUsers)
+        .catch(() => {});
+      fetch("/api/espacios", { credentials: "include" })
+        .then(r => r.ok ? r.json() : [])
+        .then((data: any[]) => {
+          const flat: any[] = [];
+          const walk = (arr: any[], depth: number) => {
+            for (const e of arr) {
+              flat.push({ ...e, _depth: depth });
+              if (e.hijos?.length) walk(e.hijos, depth + 1);
+            }
+          };
+          walk(data, 0);
+          setAllEspacios(flat);
+        })
+        .catch(() => {});
+    }
+  }, [isModOrAdmin]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -251,7 +291,22 @@ export default function EspacioTareasPage() {
 
     if (tareasRes.ok) {
       const d = await tareasRes.json();
-      setTareas(d.predios || []);
+      const predios = d.predios || [];
+      setTareas(predios);
+      // Auto-ocultar columnas sin datos (solo la primera vez)
+      if (!autoHideDone.current && predios.length > 0) {
+        autoHideDone.current = true;
+        const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "lacR", "equipoAsignado", "asignados"]);
+        setColumns(prev => prev.map(col => {
+          if (ESSENTIAL.has(col.id)) return col;
+          if (col.id.startsWith("custom_")) return col;
+          const hasData = predios.some((t: any) => {
+            const v = t[col.field];
+            return v != null && v !== "" && v !== 0;
+          });
+          return hasData ? { ...col, visible: true } : { ...col, visible: false };
+        }));
+      }
     }
     if (estadosRes.ok) {
       const d = await estadosRes.json();
@@ -362,6 +417,25 @@ export default function EspacioTareasPage() {
 
   const formatDate = (d: string | null) => {
     if (!d) return "—";
+    return new Date(d).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+  };
+
+  const formatRelativeDate = (d: string | null) => {
+    if (!d) return "—";
+    const now = Date.now();
+    const then = new Date(d).getTime();
+    const diff = now - then;
+    if (diff < 0) return "Ahora";
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Ahora";
+    if (mins < 60) return `Hace ${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `Hace ${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return "Ayer";
+    if (days < 7) return `Hace ${days} días`;
+    const weeks = Math.floor(days / 7);
+    if (weeks <= 4) return `Hace ${weeks} sem`;
     return new Date(d).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
   };
 
@@ -491,6 +565,85 @@ export default function EspacioTareasPage() {
     setCreatingCol(false);
   }
 
+  // Selección masiva: toggle individual
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // Selección masiva: toggle grupo
+  const toggleSelectGroup = (items: any[]) => {
+    const ids = items.map((t: any) => t.id);
+    const allSelected = ids.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) { ids.forEach(id => next.delete(id)); }
+      else { ids.forEach(id => next.add(id)); }
+      return next;
+    });
+  };
+
+  // Acción masiva
+  const handleBulkAction = async () => {
+    if (!bulkAction || !bulkValue || selectedIds.size === 0) return;
+    setBulkExecuting(true);
+    try {
+      const res = await fetch("/api/tareas", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids: Array.from(selectedIds), action: bulkAction, value: bulkValue }),
+      });
+      if (res.ok) {
+        setSelectedIds(new Set());
+        setBulkAction("");
+        setBulkValue("");
+        fetchData();
+      }
+    } catch { /* ignore */ }
+    setBulkExecuting(false);
+  };
+
+  // Eliminación masiva por grupo de estado
+  const handleBulkDelete = async (estadoId: string) => {
+    setBulkDeleting(true);
+    setBulkDeleteGroup(estadoId);
+    try {
+      const res = await fetch(`/api/tareas?estadoId=${estadoId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) fetchData();
+    } catch { /* ignore */ }
+    setBulkDeleting(false);
+    setBulkDeleteGroup(null);
+  };
+
+  // Reordenar estados (drag & drop)
+  const handleEstadoDrop = async (targetId: string) => {
+    if (!dragEstadoId || dragEstadoId === targetId) { setDragEstadoId(null); setDragOverEstadoId(null); return; }
+    const oldList = [...estados];
+    const fromIdx = oldList.findIndex(e => e.id === dragEstadoId);
+    const toIdx = oldList.findIndex(e => e.id === targetId);
+    if (fromIdx < 0 || toIdx < 0) { setDragEstadoId(null); setDragOverEstadoId(null); return; }
+    const [moved] = oldList.splice(fromIdx, 1);
+    oldList.splice(toIdx, 0, moved);
+    setEstados(oldList);
+    setDragEstadoId(null);
+    setDragOverEstadoId(null);
+    try {
+      await fetch("/api/estados", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids: oldList.map(e => e.id) }),
+      });
+    } catch { /* revert on error */ setEstados(estados); }
+  };
+
   // Render de celda
   const renderCell = (t: any, col: Column) => {
     if (col.field.startsWith("_custom_")) {
@@ -512,7 +665,13 @@ export default function EspacioTareasPage() {
         </span>
       );
     }
-    if (col.type === "date") return formatDate(t[col.field]);
+    if (col.type === "date") {
+      if (col.id === "fechaActualizacion") {
+        const full = t.updatedAt ? new Date(t.updatedAt).toLocaleString("es-AR") : "";
+        return <span title={full}>{formatRelativeDate(t.updatedAt)}</span>;
+      }
+      return formatDate(t[col.field]);
+    }
     if (col.type === "badge" && col.id === "lacR") {
       const val = t[col.field]?.toUpperCase() || "";
       if (isModOrAdmin) {
@@ -580,7 +739,7 @@ export default function EspacioTareasPage() {
   };
 
   // Columnas visibles
-  const ALWAYS_VISIBLE = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion", "asignados"]), []);
+  const ALWAYS_VISIBLE = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion", "lacR", "equipoAsignado", "asignados"]), []);
   const visibleColumns = useMemo(() => {
     return columns.filter(c => {
       if (!c.visible) return false;
@@ -614,7 +773,7 @@ export default function EspacioTareasPage() {
             </p>
           </div>
           <div className="flex items-center gap-2.5 mt-1.5 text-xs text-surface-500 flex-wrap">
-            <span className="tabular-nums">{formatDate(t.fechaActualizacion)}</span>
+            <span className="tabular-nums">{formatRelativeDate(t.updatedAt)}</span>
             {t.lacR && (
               <span className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${t.lacR?.toUpperCase() === "SI" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
                 LAC-R: {t.lacR}
@@ -637,6 +796,16 @@ export default function EspacioTareasPage() {
       <table className="w-full min-w-max text-[11px] hidden md:table">
         <thead>
           <tr className="border-b border-surface-100">
+            {isModOrAdmin && (
+              <th className="w-8 px-1 text-center">
+                <input
+                  type="checkbox"
+                  checked={items.length > 0 && items.every(t => selectedIds.has(t.id))}
+                  onChange={() => toggleSelectGroup(items)}
+                  className="accent-orange-500 w-3.5 h-3.5"
+                />
+              </th>
+            )}
             {visibleColumns.map((col) => (
               <th
                 key={col.id}
@@ -664,8 +833,18 @@ export default function EspacioTareasPage() {
             <tr
               key={t.id}
               onClick={() => setSelectedTareaId(t.id)}
-              className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
+              className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"} ${selectedIds.has(t.id) ? "bg-orange-50/60" : ""}`}
             >
+              {isModOrAdmin && (
+                <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(t.id)}
+                    onChange={() => toggleSelect(t.id)}
+                    className="accent-orange-500 w-3.5 h-3.5"
+                  />
+                </td>
+              )}
               {visibleColumns.map((col) => (
                 <td
                   key={col.id}
@@ -914,35 +1093,110 @@ export default function EspacioTareasPage() {
               </div>
             </div>
 
-            {/* Estados (visibilidad) */}
+            {/* Estados (visibilidad + reordenar) */}
             {estados.length > 0 && (
               <div className="px-4 py-3 border-t border-surface-100">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Estados</span>
+                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Estados (arrastrar para reordenar)</span>
                   {isModOrAdmin && <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium">+ Nuevo</button>}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="space-y-1">
                   {estados.map(e => {
                     const isHidden = userHiddenEstados.has(e.id);
                     return (
-                      <label key={e.id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
-                        style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}>
-                        <input type="checkbox" checked={!isHidden} onChange={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })} className="sr-only" />
+                      <div
+                        key={e.id}
+                        draggable
+                        onDragStart={() => setDragEstadoId(e.id)}
+                        onDragOver={(ev) => { ev.preventDefault(); setDragOverEstadoId(e.id); }}
+                        onDrop={(ev) => { ev.preventDefault(); handleEstadoDrop(e.id); }}
+                        onDragEnd={() => { setDragEstadoId(null); setDragOverEstadoId(null); }}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded border group cursor-grab active:cursor-grabbing transition-all ${
+                          isHidden ? "opacity-40 bg-surface-50 border-surface-200" : "bg-white border-surface-200 hover:border-surface-300"
+                        } ${dragOverEstadoId === e.id ? "border-primary-400 bg-primary-50/30" : ""} ${dragEstadoId === e.id ? "opacity-40" : ""}`}
+                      >
+                        <span className="text-surface-300 cursor-grab">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4 8h16M4 16h16" /></svg>
+                        </span>
                         <StatusIcon clave={e.clave} color={e.color} size={12} />
-                        {e.nombre}
+                        <span className={`text-xs flex-1 truncate ${isHidden ? "text-surface-400" : "text-surface-700"}`}>{e.nombre}</span>
+                        <button
+                          onClick={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })}
+                          className="relative inline-flex flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
+                          style={{ width: 28, height: 16, backgroundColor: !isHidden ? 'var(--color-primary-500, #3b82f6)' : '#cbd5e1' }}
+                        >
+                          <span className="pointer-events-none inline-block rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out" style={{ width: 12, height: 12, marginTop: 2, transform: !isHidden ? 'translateX(14px)' : 'translateX(2px)' }} />
+                        </button>
                         {isModOrAdmin && (
-                          <button onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
-                            className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all" title="Eliminar estado">
-                            <IconX className="w-3 h-3" />
+                          <button onClick={() => setConfirmDelete({ type: "estado", id: e.id, label: e.nombre })}
+                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all p-0.5" title="Eliminar estado">
+                            <IconTrash className="w-3 h-3" />
                           </button>
                         )}
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Barra acciones masivas */}
+      {isModOrAdmin && selectedIds.size > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mb-2 flex flex-wrap items-center gap-2 animate-fade-in-up">
+          <span className="text-xs font-medium text-orange-700">{selectedIds.size} seleccionados</span>
+          <select value={bulkAction} onChange={e => { setBulkAction(e.target.value); setBulkValue(""); }} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+            <option value="">Acción...</option>
+            <option value="estadoId">Cambiar estado</option>
+            <option value="espacioId">Mover a espacio</option>
+            <option value="asignadoIds">Asignar técnico</option>
+            <option value="equipoAsignado">Cambiar equipo</option>
+            <option value="provincia">Cambiar provincia</option>
+            <option value="ambito">Cambiar ámbito</option>
+            <option value="prioridad">Cambiar prioridad</option>
+          </select>
+          {bulkAction === "estadoId" && (
+            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+              <option value="">Estado...</option>
+              {estados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+            </select>
+          )}
+          {bulkAction === "espacioId" && (
+            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+              <option value="">Espacio...</option>
+              {allEspacios.map(e => <option key={e.id} value={e.id}>{"—".repeat(e._depth || 0)} {e.nombre}</option>)}
+            </select>
+          )}
+          {bulkAction === "asignadoIds" && (
+            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+              <option value="">Técnico...</option>
+              {allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+          )}
+          {bulkAction === "equipoAsignado" && (
+            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+              <option value="">Equipo...</option>
+              {Array.from({ length: 10 }, (_, i) => `TH${String(i + 1).padStart(2, "0")}`).map(th => <option key={th} value={th}>{th}</option>)}
+            </select>
+          )}
+          {(bulkAction === "provincia" || bulkAction === "ambito" || bulkAction === "prioridad") && (
+            <input value={bulkValue} onChange={e => setBulkValue(e.target.value)} placeholder="Valor..." className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none w-32" />
+          )}
+          <button
+            onClick={handleBulkAction}
+            disabled={!bulkAction || !bulkValue || bulkExecuting}
+            className="text-[11px] px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 font-medium transition-colors"
+          >
+            {bulkExecuting ? "Aplicando..." : "Aplicar"}
+          </button>
+          <button
+            onClick={() => { setSelectedIds(new Set()); setBulkAction(""); setBulkValue(""); }}
+            className="text-[11px] text-surface-400 hover:text-surface-600 ml-auto"
+          >
+            Cancelar
+          </button>
         </div>
       )}
 
@@ -971,15 +1225,24 @@ export default function EspacioTareasPage() {
 
           return (
             <div key={estado.id} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleSection(estado.id)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
-              >
-                <ChevronIcon expanded={isExpanded} className="w-3.5 h-3.5" />
-                <StatusIcon clave={estado.clave} color={estado.color} size={16} />
-                <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
-                <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
-              </button>
+              <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors">
+                <button onClick={() => toggleSection(estado.id)} className="flex items-center gap-2.5 flex-1 text-left">
+                  <ChevronIcon expanded={isExpanded} className="w-3.5 h-3.5" />
+                  <StatusIcon clave={estado.clave} color={estado.color} size={16} />
+                  <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
+                  <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
+                </button>
+                {isModOrAdmin && items.length > 0 && (
+                  <button
+                    onClick={() => { if (confirm(`¿Eliminar ${items.length} tareas de "${estado.nombre}"?`)) handleBulkDelete(estado.id); }}
+                    disabled={bulkDeleting && bulkDeleteGroup === estado.id}
+                    className="text-[10px] text-red-400 hover:text-red-600 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
+                    title="Eliminar todas en este estado"
+                  >
+                    {bulkDeleting && bulkDeleteGroup === estado.id ? "..." : <IconTrash className="w-3 h-3" />}
+                  </button>
+                )}
+              </div>
 
               {isExpanded && (
                 <div className="border-t border-surface-100">

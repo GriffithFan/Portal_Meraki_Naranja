@@ -68,3 +68,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }
+
+// Reordenar estados (array de IDs en nuevo orden)
+export async function PATCH(request: NextRequest) {
+  const session = await getSession();
+  if (!session || !isModOrAdmin(session.rol)) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const ids: string[] = body.ids;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'Se requiere array de IDs' }, { status: 400 });
+    }
+
+    await prisma.$transaction(
+      ids.map((id, index) =>
+        prisma.estadoConfig.update({
+          where: { id },
+          data: { orden: index },
+        })
+      )
+    );
+
+    const estados = await prisma.estadoConfig.findMany({
+      where: { activo: true },
+      orderBy: { orden: 'asc' },
+    });
+
+    return NextResponse.json({ estados });
+  } catch (error) {
+    console.error('Error reordenando estados:', error);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
+  }
+}
