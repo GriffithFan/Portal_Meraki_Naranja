@@ -182,7 +182,7 @@ export default function ImportarPage() {
         incidencias: ["incidencia", "incidencias", "ni", "ni-", "númerodeinci", "numerodeinci"],
         cue:       ["cue", "consolidadodecues", "consolidado"],
         ambito:    ["ambito", "ámbito", "predioambito"],
-        equipoAsignado: ["equipo", "team", "equipo_asignado", "equipoasignado"],
+        equipoAsignado: ["equipo", "team", "equipo_asignado", "equipoasignado", "tecnico", "técnico"],
         lacR:      ["lac", "lacr", "lac-r", "lac_r"],
         cuePredio: ["cue_predio", "cuepredioconsolidadodecues", "cuePredio"],
         gpsPredio: ["gps", "gps_predio", "gpspredio", "coordenadas", "coordenadasgps", "gpsdecimal"],
