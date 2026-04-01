@@ -124,6 +124,17 @@ const EQUIPO_TH_MAP: Record<string, string> = {
   ADOLFO: "TH04",
 };
 
+// Mapeo inverso TH → nombre (para display)
+const TH_NOMBRE_MAP: Record<string, string> = {
+  TH01: "DANIEL",
+  TH03: "JORGE",
+  TH04: "LUCIO",
+  TH07: "FEDE",
+};
+
+// Opciones TH disponibles
+const TH_OPTIONS = ["TH01", "TH02", "TH03", "TH04", "TH05", "TH06", "TH07", "TH08", "TH09", "TH10"];
+
 const GROUP_BY_OPTIONS = [
   { value: "estado", label: "Estado" },
   { value: "provincia", label: "Provincia" },
@@ -184,6 +195,7 @@ export default function EspacioTareasPage() {
 
   // Resize columnas
   const resizingCol = useRef<{ id: string; startX: number; startW: number } | null>(null);
+  const [resizeDelta, setResizeDelta] = useState<{ id: string; width: number } | null>(null);
   const handleResizeStart = (e: React.MouseEvent, colId: string, currentW: number) => {
     e.preventDefault();
     e.stopPropagation();
@@ -192,9 +204,18 @@ export default function EspacioTareasPage() {
       if (!resizingCol.current) return;
       const delta = ev.clientX - resizingCol.current.startX;
       const newW = Math.max(40, resizingCol.current.startW + delta);
-      setColumns(prev => prev.map(c => c.id === resizingCol.current!.id ? { ...c, width: newW } : c));
+      setResizeDelta({ id: resizingCol.current.id, width: newW });
     };
     const onUp = () => {
+      if (resizingCol.current) {
+        const ref = resizingCol.current;
+        setResizeDelta(prev => {
+          if (prev && prev.id === ref.id) {
+            setColumns(cols => cols.map(c => c.id === ref.id ? { ...c, width: prev.width } : c));
+          }
+          return null;
+        });
+      }
       resizingCol.current = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
@@ -202,6 +223,7 @@ export default function EspacioTareasPage() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   };
+  const getColWidth = (col: Column) => resizeDelta?.id === col.id ? resizeDelta.width : col.width;
 
   // Drag & drop estados (reordenar)
   const [dragEstadoId, setDragEstadoId] = useState<string | null>(null);
@@ -686,7 +708,30 @@ export default function EspacioTareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      // Si hay asignaciones reales, mostrarlas
+      // Derivar TH actual de equipoAsignado
+      const equipo = t.equipoAsignado?.toUpperCase();
+      const currentTH = equipo ? EQUIPO_TH_MAP[equipo] : "";
+      if (isModOrAdmin) {
+        return (
+          <select
+            value={currentTH}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              const th = e.target.value;
+              const nombre = TH_NOMBRE_MAP[th] || th;
+              saveCellField(t.id, "equipoAsignado", nombre);
+            }}
+            className="text-[10px] font-medium rounded px-1.5 py-0.5 border border-violet-200 bg-violet-50 text-violet-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-violet-300"
+          >
+            <option value="">Sin asignar</option>
+            {TH_OPTIONS.map(th => (
+              <option key={th} value={th}>{th}{TH_NOMBRE_MAP[th] ? ` (${TH_NOMBRE_MAP[th]})` : ""}</option>
+            ))}
+          </select>
+        );
+      }
+      // Para no-admin: mostrar badge
       if (asigns.length > 0) {
         return (
           <span className="flex items-center gap-1 flex-wrap">
@@ -694,17 +739,14 @@ export default function EspacioTareasPage() {
               <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
                 {a.usuario?.nombre?.split(" ")[0] || "?"}
               </span>
-          ))}
-        </span>
-      );
+            ))}
+          </span>
+        );
       }
-      // Fallback: derivar de equipoAsignado → THxx
-      const equipo = t.equipoAsignado?.toUpperCase();
-      const thCode = equipo ? EQUIPO_TH_MAP[equipo] : null;
-      if (thCode) {
+      if (currentTH) {
         return (
           <span className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium">
-            {thCode}
+            {currentTH}
           </span>
         );
       }
@@ -868,7 +910,7 @@ export default function EspacioTareasPage() {
                 onDragOver={(e) => handleColDragOver(e, col.id)}
                 onDrop={(e) => handleColDrop(e, col.id)}
                 onDragEnd={handleColDragEnd}
-                style={{ width: col.width, minWidth: 40 }}
+                style={{ width: getColWidth(col), minWidth: 40 }}
                 className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none relative ${
                   dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                 } ${dragColId === col.id ? "opacity-40" : ""}`}
@@ -881,7 +923,7 @@ export default function EspacioTareasPage() {
                 {/* Resize handle */}
                 <span
                   className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-surface-300/50 active:bg-surface-400/50"
-                  onMouseDown={(e) => handleResizeStart(e, col.id, col.width)}
+                  onMouseDown={(e) => handleResizeStart(e, col.id, getColWidth(col))}
                   onClick={(e) => e.stopPropagation()}
                   draggable={false}
                 />
@@ -912,7 +954,7 @@ export default function EspacioTareasPage() {
                 return (
                   <td
                     key={col.id}
-                    style={{ width: col.width, minWidth: 40, maxWidth: col.width }}
+                    style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
                     className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
                     title={cellTitle}
                   >
