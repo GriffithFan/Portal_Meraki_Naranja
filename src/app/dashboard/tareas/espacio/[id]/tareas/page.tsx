@@ -196,17 +196,23 @@ export default function EspacioTareasPage() {
   // Resize columnas
   const resizingCol = useRef<{ id: string; startX: number; startW: number } | null>(null);
   const [resizeDelta, setResizeDelta] = useState<{ id: string; width: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
   const handleResizeStart = (e: React.MouseEvent, colId: string, currentW: number) => {
     e.preventDefault();
     e.stopPropagation();
     resizingCol.current = { id: colId, startX: e.clientX, startW: currentW };
     const onMove = (ev: MouseEvent) => {
       if (!resizingCol.current) return;
-      const delta = ev.clientX - resizingCol.current.startX;
-      const newW = Math.max(40, resizingCol.current.startW + delta);
-      setResizeDelta({ id: resizingCol.current.id, width: newW });
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (!resizingCol.current) return;
+        const delta = ev.clientX - resizingCol.current.startX;
+        const newW = Math.max(40, resizingCol.current.startW + delta);
+        setResizeDelta({ id: resizingCol.current.id, width: newW });
+      });
     };
     const onUp = () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (resizingCol.current) {
         const ref = resizingCol.current;
         setResizeDelta(prev => {
@@ -851,8 +857,8 @@ export default function EspacioTareasPage() {
   // Suprimir warning de session no usada
   void session;
 
-  // Mobile cards
-  const MobileTaskList = ({ items: taskItems }: { items: any[] }) => (
+  // Mobile cards (render function, not component — avoids remount)
+  const renderMobileTaskList = (taskItems: any[]) => (
     <div className="md:hidden divide-y divide-surface-100">
       {taskItems.map((t) => (
         <button
@@ -885,10 +891,10 @@ export default function EspacioTareasPage() {
     </div>
   );
 
-  // Tabla reutilizable
-  const TaskTable = ({ items }: { items: any[] }) => (
+  // Tabla reutilizable (render function, not component — avoids remount on every parent re-render)
+  const renderTaskTable = (items: any[]) => (
     <div className="overflow-x-auto">
-      <MobileTaskList items={items} />
+      {renderMobileTaskList(items)}
       <table className="w-full min-w-max text-[11px] hidden md:table">
         <thead>
           <tr className="border-b border-surface-100">
@@ -936,7 +942,7 @@ export default function EspacioTareasPage() {
             <tr
               key={t.id}
               onClick={() => setSelectedTareaId(t.id)}
-              className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"} ${selectedIds.has(t.id) ? "bg-orange-50/60" : ""}`}
+              className={`cursor-pointer hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"} ${selectedIds.has(t.id) ? "bg-orange-50/60" : ""}`}
             >
               {isModOrAdmin && (
                 <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
@@ -1364,7 +1370,7 @@ export default function EspacioTareasPage() {
                       Sin tareas en este estado
                     </div>
                   ) : (
-                    <TaskTable items={items} />
+                    renderTaskTable(items)
                   )}
                 </div>
               )}
@@ -1390,7 +1396,7 @@ export default function EspacioTareasPage() {
             </button>
             {expandedSections.has("sin-estado") && (
               <div className="border-t border-surface-100">
-                <TaskTable items={groupedTareas["sin-estado"]} />
+                {renderTaskTable(groupedTareas["sin-estado"])}
               </div>
             )}
           </div>
@@ -1413,7 +1419,7 @@ export default function EspacioTareasPage() {
                 </button>
                 {isExpanded && (
                   <div className="border-t border-surface-100">
-                    <TaskTable items={items} />
+                    {renderTaskTable(items)}
                   </div>
                 )}
               </div>
