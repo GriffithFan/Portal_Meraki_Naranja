@@ -8,6 +8,14 @@ import { detectarProvincia } from "@/utils/provinciaUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// Mapeo inverso TH → nombres de equipoAsignado en la DB
+const TH_EQUIPO_NAMES: Record<string, string[]> = {
+  TH01: ["DANIEL", "DANI"],
+  TH03: ["JORGE"],
+  TH04: ["LUCIO", "ADOLFO"],
+  TH07: ["FEDE", "FEDERICO"],
+};
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -33,9 +41,15 @@ export async function GET(request: NextRequest) {
     });
     const idsVisibles = [session.userId, ...delegaciones.map(d => d.delegadorId)];
 
+    // Buscar también por equipoAsignado (nombres almacenados en la DB)
+    const equipoNames = TH_EQUIPO_NAMES[session.nombre.toUpperCase()] || [];
+
     where.OR = [
       { asignaciones: { some: { userId: { in: idsVisibles } } } },
       { creadorId: { in: idsVisibles } },
+      ...(equipoNames.length > 0
+        ? [{ equipoAsignado: { in: equipoNames, mode: "insensitive" } }]
+        : []),
     ];
   }
 
