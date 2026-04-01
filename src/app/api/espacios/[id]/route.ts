@@ -13,8 +13,6 @@ export async function GET(
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  if (!isModOrAdmin(session.rol))
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
   const espacio = await prisma.espacioTrabajo.findUnique({
     where: { id: params.id },

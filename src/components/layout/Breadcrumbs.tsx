@@ -23,6 +23,9 @@ const LABEL_MAP: Record<string, string> = {
   espacio: "Espacio",
 };
 
+// Segmentos intermedios sin página propia: redirigir al padre
+const SKIP_SEGMENTS = new Set(["espacio"]);
+
 // CUIDs: 25 chars alphanumeric starting with a letter
 const CUID_RE = /^[a-z][a-z0-9]{24}$/;
 
@@ -61,12 +64,14 @@ export default function Breadcrumbs() {
 
   if (segments.length <= 1) return null;
 
-  const crumbs = segments.map((seg, i) => {
-    const href = "/" + segments.slice(0, i + 1).join("/");
-    const label = LABEL_MAP[seg] || dynamicLabels[seg] || (CUID_RE.test(seg) ? "…" : decodeURIComponent(seg));
-    const isLast = i === segments.length - 1;
-    return { href, label, isLast };
-  });
+  const crumbs = segments
+    .map((seg, i) => {
+      const href = "/" + segments.slice(0, i + 1).join("/");
+      const label = LABEL_MAP[seg] || dynamicLabels[seg] || (CUID_RE.test(seg) ? "…" : decodeURIComponent(seg));
+      const isLast = i === segments.length - 1;
+      return { href, label, isLast, skip: SKIP_SEGMENTS.has(seg) };
+    })
+    .filter(c => !c.skip);
 
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-surface-400 mb-4">
