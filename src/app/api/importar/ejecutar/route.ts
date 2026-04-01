@@ -53,6 +53,7 @@ const PREDIO_FIELDS: Record<string, string> = {
   correo: "Correo",
   asignado: "Asignado (Técnico)",
   estado: "Estado (texto)",
+  orden: "Orden (nro)",
 };
 
 /* Auto-fill por prefijo de serial (4 primeros caracteres) */
@@ -246,14 +247,22 @@ export async function POST(request: NextRequest) {
         return match?.id || null;
       }
 
+      // Track codes created in this batch to handle within-batch duplicates
+      const batchCreatedCodes = new Map<string, string>(); // codigo → predioId
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         if (!row || !Array.isArray(row)) { skipped++; continue; }
 
         try {
           const nombre = safeGet(row, fieldMap.get("nombre"));
-          const codigo = safeGet(row, fieldMap.get("codigo"));
+          let codigo = safeGet(row, fieldMap.get("codigo"));
           if (!nombre && !codigo) { skipped++; continue; }
+
+          // Pad codigo to 6 digits if it's purely numeric
+          if (codigo && /^\d+$/.test(codigo)) {
+            codigo = codigo.padStart(6, "0");
+          }
 
           const data: Record<string, unknown> = {
             prioridad: defaultPrioridad || "MEDIA",
@@ -353,6 +362,8 @@ export async function POST(request: NextRequest) {
           if (nombreInstitucion) data.nombreInstitucion = nombreInstitucion;
           const correoVal = safeGet(row, fieldMap.get("correo"));
           if (correoVal) data.correo = correoVal;
+          const ordenVal = safeGet(row, fieldMap.get("orden"));
+          if (ordenVal) { const v = parseInt(ordenVal); if (!isNaN(v)) data.orden = v; }
 
           // Fechas
           const fechaDesde = parseDate(safeGet(row, fieldMap.get("fechaDesde")));
@@ -370,41 +381,63 @@ export async function POST(request: NextRequest) {
             if (Object.keys(extra).length > 0) data.camposExtra = extra;
           }
 
-          // Si tiene código y updateExisting, hacer upsert
-          if (codigo && updateExisting) {
+          // Helper: update existing predio (merge non-empty fields)
+          const updateExistingPredio = async (existingId: string, existingCamposExtra: unknown) => {
+            const updateData: Record<string, unknown> = {};
+            for (const [key, val] of Object.entries(data)) {
+              if (key === "creadorId" || key === "prioridad") continue;
+              if (val !== undefined && val !== null && val !== "") {
+                if (key === "camposExtra" && existingCamposExtra) {
+                  updateData.camposExtra = { ...(existingCamposExtra as Record<string, unknown>), ...(val as Record<string, unknown>) };
+                } else {
+                  updateData[key] = val;
+                }
+              }
+            }
+            if (Object.keys(updateData).length > 0) {
+              await prisma.predio.update({ where: { id: existingId }, data: updateData as any });
+            }
+            const asignadoVal = safeGet(row, fieldMap.get("asignado"));
+            if (asignadoVal) {
+              const userId = matchUser(asignadoVal);
+              if (userId) {
+                const exists = await prisma.asignacion.findFirst({ where: { userId, predioId: existingId } });
+                if (!exists) {
+                  await prisma.asignacion.create({ data: { tipo: "TECNICO", userId, predioId: existingId } });
+                }
+              }
+            }
+          };
+
+          // Check for within-batch duplicate first
+          if (codigo && batchCreatedCodes.has(codigo)) {
+            const existingId = batchCreatedCodes.get(codigo)!;
+            await updateExistingPredio(existingId, null);
+            updated++;
+            continue;
+          }
+
+          // Si tiene código, buscar existente en DB
+          if (codigo) {
             const existing = await prisma.predio.findUnique({ where: { codigo } });
             if (existing) {
-              // Solo actualizar campos que vienen en el Excel (no sobreescribir con vacíos)
-              const updateData: Record<string, unknown> = {};
-              for (const [key, val] of Object.entries(data)) {
-                if (key === "creadorId" || key === "prioridad") continue;
-                if (val !== undefined && val !== null && val !== "") {
-                  // Merge camposExtra en vez de sobreescribir
-                  if (key === "camposExtra" && existing.camposExtra) {
-                    updateData.camposExtra = { ...(existing.camposExtra as Record<string, unknown>), ...(val as Record<string, unknown>) };
-                  } else {
-                    updateData[key] = val;
-                  }
-                }
+              if (updateExisting) {
+                await updateExistingPredio(existing.id, existing.camposExtra);
+                batchCreatedCodes.set(codigo, existing.id);
+                updated++;
+                continue;
+              } else {
+                // Auto-update within batch (first occurrence already created)
+                errors.push(`Fila ${i + 2}: Código duplicado (activá "Actualizar existentes" para actualizar)`);
+                skipped++;
+                continue;
               }
-              await prisma.predio.update({ where: { codigo }, data: updateData as any });
-              // Match asignado y crear Asignacion si corresponde (sin duplicar)
-              const asignadoVal = safeGet(row, fieldMap.get("asignado"));
-              if (asignadoVal) {
-                const userId = matchUser(asignadoVal);
-                if (userId) {
-                  const exists = await prisma.asignacion.findFirst({ where: { userId, predioId: existing.id } });
-                  if (!exists) {
-                    await prisma.asignacion.create({ data: { tipo: "TECNICO", userId, predioId: existing.id } });
-                  }
-                }
-              }
-              updated++;
-              continue;
             }
           }
+
           const newPredio = await prisma.predio.create({ data: data as any });
-          // Match asignado y crear Asignacion tras crear el predio (sin duplicar)
+          if (codigo) batchCreatedCodes.set(codigo, newPredio.id);
+          // Match asignado y crear Asignacion tras crear el predio
           const asignadoVal = safeGet(row, fieldMap.get("asignado"));
           if (asignadoVal) {
             const userId = matchUser(asignadoVal);

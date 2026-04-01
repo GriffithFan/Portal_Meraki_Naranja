@@ -201,6 +201,7 @@ export default function ImportarPage() {
         correo: ["correo", "email", "mail", "e-mail", "correo_electronico"],
         asignado: ["asignado", "tecnico", "técnico", "responsable", "assigned", "asignado_a", "personaasignada"],
         estado: ["estado", "status", "state"],
+        orden: ["orden", "order", "nro_orden", "nroorden"],
       };
 
       const equipoAliases: Record<string, string[]> = {
@@ -242,7 +243,7 @@ export default function ImportarPage() {
     }
     setMappings(autoMappings);
     // Si hay código mapeado, activar "Actualizar existentes" automáticamente
-    if (usedFields.has("codigo") && !usedFields.has("nombre")) {
+    if (usedFields.has("codigo")) {
       setUpdateExisting(true);
     }
     setStep("map");

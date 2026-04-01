@@ -89,6 +89,7 @@ const DEFAULT_COLUMNS: Column[] = [
   { id: "lab", label: "LAB", field: "lab", width: 70, visible: false, editable: true, type: "text" },
   { id: "nombreInstitucion", label: "Institución", field: "nombreInstitucion", width: 140, visible: false, editable: true, type: "text" },
   { id: "correo", label: "Correo", field: "correo", width: 140, visible: false, editable: true, type: "text" },
+  { id: "orden", label: "Orden", field: "orden", width: 60, visible: false, editable: true, type: "text" },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -853,10 +854,11 @@ export default function TareasPage() {
     }
     // Para la columna "codigoPredio", mostrar icono estado + codigo + indicador notas
     if (col.id === "codigoPredio") {
+      const displayCode = t.codigo ? ((/^\d+$/.test(t.codigo)) ? t.codigo.padStart(6, "0") : t.codigo) : "\u2014";
       return (
         <span className="flex items-center gap-1 group/cell">
           {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />}
-          <span className="text-surface-800 font-medium truncate">{t.codigo || "\u2014"}</span>
+          <span className="text-surface-800 font-medium truncate">{displayCode}</span>
           <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
           <CopyBtn text={t.codigo || ""} />
         </span>
@@ -1111,8 +1113,16 @@ export default function TareasPage() {
                     className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-50 rounded transition-colors group"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-surface-400 text-[10px] w-5 flex-shrink-0">
-                        {col.type === "date" ? "📅" : col.type === "badge" ? "🏷️" : col.type === "select" ? "📋" : "T"}
+                      <span className="text-surface-400 w-4 h-4 flex items-center justify-center flex-shrink-0">
+                        {col.type === "date" ? (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                        ) : col.type === "badge" ? (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="10" /></svg>
+                        ) : col.type === "select" ? (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h12" /></svg>
+                        )}
                       </span>
                       <span className={`text-xs truncate ${col.visible ? "text-surface-700" : "text-surface-400"}`}>
                         {col.label}
@@ -1134,10 +1144,13 @@ export default function TareasPage() {
                       {/* Toggle switch */}
                       <button
                         onClick={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
-                        className={`relative w-8 h-4.5 rounded-full transition-colors ${col.visible ? "bg-primary-500" : "bg-surface-300"}`}
-                        style={{ minWidth: 32, height: 18 }}
+                        className="relative inline-flex flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
+                        style={{ width: 36, height: 20, backgroundColor: col.visible ? 'var(--color-primary-500, #3b82f6)' : '#cbd5e1' }}
                       >
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${col.visible ? "translate-x-[15px]" : "translate-x-0.5"}`} style={{ width: 14, height: 14 }} />
+                        <span
+                          className="pointer-events-none inline-block rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out"
+                          style={{ width: 16, height: 16, marginTop: 2, transform: col.visible ? 'translateX(18px)' : 'translateX(2px)' }}
+                        />
                       </button>
                     </div>
                   </div>
