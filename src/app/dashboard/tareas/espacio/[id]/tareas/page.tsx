@@ -113,6 +113,17 @@ const LS_COL_KEY = "pmn-espacio-col-config";
 const LS_EMPTY_KEY = "pmn-espacio-show-empty";
 const LS_HIDDEN_KEY = "pmn-espacio-hidden-estados";
 
+// Mapeo nombre visible → código TH de cuenta
+const EQUIPO_TH_MAP: Record<string, string> = {
+  DANIEL: "TH01",
+  DANI: "TH01",
+  JORGE: "TH03",
+  LUCIO: "TH04",
+  FEDE: "TH07",
+  FEDERICO: "TH07",
+  ADOLFO: "TH04",
+};
+
 const GROUP_BY_OPTIONS = [
   { value: "estado", label: "Estado" },
   { value: "provincia", label: "Provincia" },
@@ -171,6 +182,27 @@ export default function EspacioTareasPage() {
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const didDragRef = useRef(false);
 
+  // Resize columnas
+  const resizingCol = useRef<{ id: string; startX: number; startW: number } | null>(null);
+  const handleResizeStart = (e: React.MouseEvent, colId: string, currentW: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingCol.current = { id: colId, startX: e.clientX, startW: currentW };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingCol.current) return;
+      const delta = ev.clientX - resizingCol.current.startX;
+      const newW = Math.max(40, resizingCol.current.startW + delta);
+      setColumns(prev => prev.map(c => c.id === resizingCol.current!.id ? { ...c, width: newW } : c));
+    };
+    const onUp = () => {
+      resizingCol.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   // Drag & drop estados (reordenar)
   const [dragEstadoId, setDragEstadoId] = useState<string | null>(null);
   const [dragOverEstadoId, setDragOverEstadoId] = useState<string | null>(null);
@@ -184,13 +216,13 @@ export default function EspacioTareasPage() {
     try {
       const saved = localStorage.getItem(LS_COL_KEY);
       if (saved) {
-        const config: { id: string; visible: boolean; order: number }[] = JSON.parse(saved);
+        const config: { id: string; visible: boolean; order: number; width?: number }[] = JSON.parse(saved);
         setColumns(prev => {
-          const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i }]));
+          const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
           return [...prev]
             .map(col => {
               const cfg = orderMap.get(col.id);
-              return cfg ? { ...col, visible: cfg.visible } : col;
+              return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
             })
             .sort((a, b) => {
               const oa = orderMap.get(a.id)?.order ?? 999;
@@ -205,7 +237,7 @@ export default function EspacioTareasPage() {
 
   useEffect(() => {
     if (!colConfigLoaded.current) return;
-    const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i }));
+    const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i, width: c.width }));
     localStorage.setItem(LS_COL_KEY, JSON.stringify(config));
   }, [columns]);
 
@@ -686,7 +718,7 @@ export default function EspacioTareasPage() {
               "bg-surface-50 text-surface-400 border-surface-200"
             }`}
           >
-            <option value="">\u2014</option>
+            <option value="">Sin dato</option>
             <option value="SI">SI</option>
             <option value="NO">NO</option>
           </select>
@@ -733,9 +765,18 @@ export default function EspacioTareasPage() {
       const prov = autoDetected || "\u2014";
       return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{prov}</span><CopyBtn text={prov !== "\u2014" ? prov : ""} /></span>;
     }
+    // Equipo: mostrar NOMBRE-THxx
+    if (col.id === "equipoAsignado") {
+      const raw = t[col.field];
+      if (!raw) return <span className="text-surface-300">&mdash;</span>;
+      const upper = raw.toUpperCase();
+      const thCode = EQUIPO_TH_MAP[upper];
+      const display = thCode ? `${raw}-${thCode}` : raw;
+      return <span className="flex items-center group/cell" title={display}><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display} /></span>;
+    }
     const val = t[col.field];
     const display = val != null && val !== "" ? String(val) : "\u2014";
-    return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display !== "\u2014" ? display : ""} /></span>;
+    return <span className="flex items-center group/cell" title={display !== "\u2014" ? display : ""}><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display !== "\u2014" ? display : ""} /></span>;
   };
 
   // Columnas visibles
@@ -814,8 +855,8 @@ export default function EspacioTareasPage() {
                 onDragOver={(e) => handleColDragOver(e, col.id)}
                 onDrop={(e) => handleColDrop(e, col.id)}
                 onDragEnd={handleColDragEnd}
-                style={{ width: col.width, minWidth: col.width }}
-                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
+                style={{ width: col.width, minWidth: 40 }}
+                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none relative ${
                   dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                 } ${dragColId === col.id ? "opacity-40" : ""}`}
                 onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
@@ -824,6 +865,13 @@ export default function EspacioTareasPage() {
                   {col.label}
                   {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
                 </span>
+                {/* Resize handle */}
+                <span
+                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-surface-300/50 active:bg-surface-400/50"
+                  onMouseDown={(e) => handleResizeStart(e, col.id, col.width)}
+                  onClick={(e) => e.stopPropagation()}
+                  draggable={false}
+                />
               </th>
             ))}
           </tr>
@@ -845,15 +893,20 @@ export default function EspacioTareasPage() {
                   />
                 </td>
               )}
-              {visibleColumns.map((col) => (
-                <td
-                  key={col.id}
-                  style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-                  className="px-2.5 py-1.5 text-surface-600"
-                >
-                  {renderCell(t, col)}
-                </td>
-              ))}
+              {visibleColumns.map((col) => {
+                const raw = col.field.startsWith("_custom_") ? t.camposExtra?.[col.field.substring(8)] : t[col.field];
+                const cellTitle = raw != null && raw !== "" ? String(raw) : "";
+                return (
+                  <td
+                    key={col.id}
+                    style={{ width: col.width, minWidth: 40, maxWidth: col.width }}
+                    className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
+                    title={cellTitle}
+                  >
+                    {renderCell(t, col)}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
