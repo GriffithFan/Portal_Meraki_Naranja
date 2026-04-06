@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { espacioSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -19,15 +19,38 @@ export async function GET() {
     orderBy: [{ orden: "asc" }, { nombre: "asc" }],
   });
 
+  // Filtrar por acceso del usuario (ADMIN siempre ve todo)
+  let espaciosFiltrados = espacios;
+  if (!isAdmin(session.rol)) {
+    const accesos = await prisma.accesoEspacio.findMany({
+      where: { userId: session.userId },
+      select: { espacioId: true },
+    });
+
+    // Si el usuario tiene accesos configurados, filtrar; si no tiene ninguno, ve todo (compatibilidad)
+    if (accesos.length > 0) {
+      const idsPermitidos = new Set(accesos.map(a => a.espacioId));
+
+      // Incluir también los padres de los espacios permitidos para mantener el árbol
+      for (const e of espacios) {
+        if (idsPermitidos.has(e.id) && e.parentId) {
+          idsPermitidos.add(e.parentId);
+        }
+      }
+
+      espaciosFiltrados = espacios.filter(e => idsPermitidos.has(e.id));
+    }
+  }
+
   // Construir árbol
   const map = new Map<string, any>();
   const roots: any[] = [];
 
-  for (const e of espacios) {
+  for (const e of espaciosFiltrados) {
     map.set(e.id, { ...e, children: [] });
   }
 
-  for (const e of espacios) {
+  for (const e of espaciosFiltrados) {
     const node = map.get(e.id);
     if (e.parentId && map.has(e.parentId)) {
       map.get(e.parentId).children.push(node);

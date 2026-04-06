@@ -20,6 +20,21 @@ interface Delegacion {
   createdAt: string;
 }
 
+interface EspacioSimple {
+  id: string;
+  nombre: string;
+  parentId: string | null;
+  children?: EspacioSimple[];
+}
+
+interface AccesoEspacio {
+  id: string;
+  userId: string;
+  espacioId: string;
+  user: { id: string; nombre: string; email: string; rol: string };
+  espacio: { id: string; nombre: string; parentId: string | null };
+}
+
 const ROL_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
   ADMIN: { color: "bg-primary-600", bg: "bg-primary-50 text-primary-700 border-primary-200", label: "Admin" },
   MODERADOR: { color: "bg-amber-500", bg: "bg-amber-50 text-amber-700 border-amber-200", label: "Moderador" },
@@ -51,6 +66,15 @@ export default function UsuariosPage() {
   const [savingDeleg, setSavingDeleg] = useState(false);
   const [delegError, setDelegError] = useState<string | null>(null);
 
+  // Acceso a Espacios
+  const [accesos, setAccesos] = useState<AccesoEspacio[]>([]);
+  const [espacios, setEspacios] = useState<EspacioSimple[]>([]);
+  const [showAccesoModal, setShowAccesoModal] = useState(false);
+  const [accesoUserId, setAccesoUserId] = useState("");
+  const [accesoEspacioIds, setAccesoEspacioIds] = useState<Set<string>>(new Set());
+  const [savingAcceso, setSavingAcceso] = useState(false);
+  const [accesoError, setAccesoError] = useState<string | null>(null);
+
   const cargarDelegaciones = async () => {
     setLoadingDeleg(true);
     try {
@@ -60,6 +84,31 @@ export default function UsuariosPage() {
     setLoadingDeleg(false);
   };
 
+  const cargarAccesos = async () => {
+    try {
+      const r = await fetch("/api/accesos-espacio", { credentials: "include" });
+      if (r.ok) setAccesos(await r.json());
+    } catch { /* ignore */ }
+  };
+
+  const cargarEspacios = async () => {
+    try {
+      const r = await fetch("/api/espacios", { credentials: "include" });
+      if (r.ok) {
+        const data = await r.json();
+        const flatten = (nodes: EspacioSimple[]): EspacioSimple[] => {
+          const result: EspacioSimple[] = [];
+          for (const n of nodes) {
+            result.push(n);
+            if (n.children) result.push(...flatten(n.children));
+          }
+          return result;
+        };
+        setEspacios(flatten(data.espacios || []));
+      }
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     fetch("/api/usuarios", { credentials: "include" })
       .then(r => r.ok ? r.json() : [])
@@ -67,6 +116,8 @@ export default function UsuariosPage() {
       .catch(() => setUsuarios([]))
       .finally(() => setLoading(false));
     cargarDelegaciones();
+    cargarAccesos();
+    cargarEspacios();
   }, []);
 
   const abrirEdicion = (u: Usuario) => {
@@ -138,6 +189,63 @@ export default function UsuariosPage() {
       await cargarDelegaciones();
     } catch { /* ignore */ }
   };
+
+  const abrirAccesoModal = (u: Usuario) => {
+    setAccesoUserId(u.id);
+    const espaciosDelUsuario = accesos.filter(a => a.userId === u.id).map(a => a.espacioId);
+    setAccesoEspacioIds(new Set(espaciosDelUsuario));
+    setAccesoError(null);
+    setShowAccesoModal(true);
+  };
+
+  const toggleEspacioAcceso = (espacioId: string) => {
+    setAccesoEspacioIds(prev => {
+      const next = new Set(prev);
+      if (next.has(espacioId)) next.delete(espacioId);
+      else next.add(espacioId);
+      return next;
+    });
+  };
+
+  const guardarAccesos = async () => {
+    setSavingAcceso(true);
+    setAccesoError(null);
+    try {
+      const res = await fetch("/api/accesos-espacio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId: accesoUserId, espacioIds: Array.from(accesoEspacioIds) }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Error al guardar");
+      }
+      setShowAccesoModal(false);
+      await cargarAccesos();
+    } catch (e) {
+      setAccesoError(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setSavingAcceso(false);
+    }
+  };
+
+  const quitarRestricciones = async (userId: string) => {
+    try {
+      await fetch(`/api/accesos-espacio?userId=${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      await cargarAccesos();
+    } catch { /* ignore */ }
+  };
+
+  // Agrupar accesos por usuario
+  const accesosPorUsuario = accesos.reduce<Record<string, AccesoEspacio[]>>((acc, a) => {
+    if (!acc[a.userId]) acc[a.userId] = [];
+    acc[a.userId].push(a);
+    return acc;
+  }, {});
 
   return (
     <div className="animate-fade-in-up">
@@ -290,6 +398,151 @@ export default function UsuariosPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Sección Acceso a Espacios (solo admin) */}
+      {isAdmin && (
+        <div className="bg-white rounded-lg border border-surface-200 p-3 sm:p-6 mt-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-surface-800">Acceso a espacios</h2>
+              <p className="text-[10px] text-surface-400 mt-0.5">Controla qué listas de tareas puede ver cada usuario. Sin restricción = ve todo.</p>
+            </div>
+            <button
+              onClick={() => { setAccesoUserId(""); setAccesoEspacioIds(new Set()); setAccesoError(null); setShowAccesoModal(true); }}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+            >
+              + Configurar
+            </button>
+          </div>
+
+          {Object.keys(accesosPorUsuario).length === 0 ? (
+            <p className="text-xs text-surface-400 text-center py-6">Todos los usuarios ven todos los espacios (sin restricciones).</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {Object.entries(accesosPorUsuario).map(([uid, userAccesos]) => {
+                const u = userAccesos[0]?.user;
+                if (!u) return null;
+                const cfg = ROL_CONFIG[u.rol] || ROL_CONFIG.TECNICO;
+                return (
+                  <div key={uid} className="flex items-center gap-3 p-3 rounded-lg border border-surface-150 bg-surface-50">
+                    <div className={`${cfg.color} w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shrink-0`}>
+                      {getIniciales(u.nombre)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap text-sm">
+                        <span className="font-medium text-surface-800">{u.nombre}</span>
+                        <span className="text-surface-400">solo ve:</span>
+                        {userAccesos.map(a => (
+                          <span key={a.espacioId} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            {a.espacio.nombre}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => abrirAccesoModal({ id: uid, nombre: u.nombre, email: u.email, rol: u.rol as Usuario["rol"] })}
+                        className="p-1.5 rounded-md text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                        title="Editar accesos"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => quitarRestricciones(uid)}
+                        className="p-1.5 rounded-md text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Quitar restricciones (ve todo)"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal configurar acceso a espacios */}
+      {showAccesoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowAccesoModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl max-w-sm w-full p-5 animate-fade-in-up max-h-[80vh] overflow-y-auto">
+            <h3 className="text-base font-semibold text-surface-800 mb-1">Acceso a espacios</h3>
+            <p className="text-xs text-surface-400 mb-4">
+              Selecciona los espacios que el usuario podrá ver. Sin selección = ve todo.
+            </p>
+
+            <div className="flex flex-col gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Usuario</label>
+                <select
+                  value={accesoUserId}
+                  onChange={e => {
+                    setAccesoUserId(e.target.value);
+                    const userAcc = accesos.filter(a => a.userId === e.target.value).map(a => a.espacioId);
+                    setAccesoEspacioIds(new Set(userAcc));
+                  }}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none"
+                >
+                  <option value="">Seleccionar usuario...</option>
+                  {usuarios.filter(u => u.rol !== "ADMIN" && u.id !== session?.userId).map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>
+                  ))}
+                </select>
+              </div>
+
+              {accesoUserId && (
+                <div>
+                  <label className="block text-xs font-medium text-surface-600 mb-2">Espacios permitidos</label>
+                  <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto border border-surface-150 rounded-lg p-2">
+                    {espacios.map(esp => (
+                      <label key={esp.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-surface-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={accesoEspacioIds.has(esp.id)}
+                          onChange={() => toggleEspacioAcceso(esp.id)}
+                          className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className={`text-sm ${esp.parentId ? "ml-3 text-surface-600" : "font-medium text-surface-800"}`}>
+                          {esp.parentId ? "└ " : ""}{esp.nombre}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-surface-400 mt-1.5">
+                    {accesoEspacioIds.size === 0 ? "Sin selección: el usuario verá todos los espacios" : `${accesoEspacioIds.size} espacio(s) seleccionado(s)`}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {accesoError && (
+              <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2 mb-3">{accesoError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAccesoModal(false)}
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarAccesos}
+                disabled={savingAcceso || !accesoUserId}
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {savingAcceso ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

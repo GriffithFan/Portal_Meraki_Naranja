@@ -56,6 +56,7 @@ model User {
   equiposAsignados     Equipo[]           @relation("EquipoAsignado")
   permisosEstado       PermisoEstadoUsuario[]
   registrosAcceso      RegistroAcceso[]
+  accesosEspacio       AccesoEspacio[]
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -108,6 +109,7 @@ model EspacioTrabajo {
   creador     User     @relation("CreadorEspacio", fields: [creadorId], references: [id], onDelete: Cascade)
 
   predios     Predio[]
+  accesos     AccesoEspacio[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -594,6 +596,22 @@ model ChatMensaje {
 
   @@index([conversacionId, createdAt])
   @@index([autorId])
+}
+
+// ─── ACCESO POR USUARIO A ESPACIOS DE TRABAJO ──────
+model AccesoEspacio {
+  id         String   @id @default(cuid())
+  userId     String
+  espacioId  String
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  espacio    EspacioTrabajo @relation(fields: [espacioId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, espacioId])
+  @@index([userId])
+  @@index([espacioId])
 }
 
 // ─── REGISTRO DE ACCESOS (AUDITORÍA) ────────────────

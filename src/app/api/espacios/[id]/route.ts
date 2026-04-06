@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, espacioUpdateSchema } from "@/lib/validation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -13,6 +13,26 @@ export async function GET(
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+
+  // Validar acceso al espacio (ADMIN siempre tiene acceso)
+  if (!isAdmin(session.rol)) {
+    const accesos = await prisma.accesoEspacio.findMany({
+      where: { userId: session.userId },
+      select: { espacioId: true },
+    });
+    if (accesos.length > 0) {
+      const idsPermitidos = new Set(accesos.map(a => a.espacioId));
+      if (!idsPermitidos.has(params.id)) {
+        // Verificar si es un padre de un espacio permitido
+        const espacioCheck = await prisma.espacioTrabajo.findFirst({
+          where: { parentId: params.id, id: { in: Array.from(idsPermitidos) } },
+        });
+        if (!espacioCheck) {
+          return NextResponse.json({ error: "Sin acceso a este espacio" }, { status: 403 });
+        }
+      }
+    }
+  }
 
   const espacio = await prisma.espacioTrabajo.findUnique({
     where: { id: params.id },
