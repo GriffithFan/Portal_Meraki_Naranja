@@ -8,7 +8,21 @@ import {
 } from "@/lib/meraki";
 import { getFromCache, setInCache, getOrFetch } from "@/lib/merakiCache";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, TokenPayload } from "@/lib/auth";
+
+/** Registrar búsqueda Meraki en auditoría (fire-and-forget) */
+function registrarBusquedaMeraki(session: TokenPayload, request: NextRequest, query: string, resultCount: number) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  prisma.registroAcceso.create({
+    data: {
+      userId: session.userId,
+      accion: "CONSULTA_MERAKI",
+      detalle: `Búsqueda: ${query}`,
+      ip,
+      metadata: { query, resultados: resultCount },
+    },
+  }).catch(() => {});
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -154,7 +168,10 @@ export async function GET(request: NextRequest) {
             source: "db",
           }));
 
-        if (mapped.length > 0) return NextResponse.json(mapped);
+        if (mapped.length > 0) {
+          registrarBusquedaMeraki(session, request, q, mapped.length);
+          return NextResponse.json(mapped);
+        }
       }
     } catch (e) { console.error("[Search] DB query failed:", e); /* fallback to API */ }
 
@@ -203,6 +220,7 @@ export async function GET(request: NextRequest) {
             source: "legacy-backend",
           }));
           console.log(`[Search] ✓ "${q}" found ${mapped.length} via legacy backend`);
+          registrarBusquedaMeraki(session, request, q, mapped.length);
           return NextResponse.json(mapped.slice(0, 20));
         }
       }

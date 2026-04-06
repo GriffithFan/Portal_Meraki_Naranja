@@ -600,7 +600,7 @@ model ChatMensaje {
 model RegistroAcceso {
   id        String   @id @default(cuid())
   userId    String
-  accion    String   // LOGIN, CONSULTA_PREDIO
+  accion    String   // LOGIN, CONSULTA_PREDIO, CONSULTA_MERAKI
   detalle   String?  // Ej: nombre del predio, IP de login
   metadata  Json?    // Info extra: predioId, userAgent, etc.
   ip        String?

@@ -14,6 +14,7 @@ import { motion } from "framer-motion";
 const ACCION_CONF: Record<string, { label: string; color: string }> = {
   LOGIN: { label: "Inicio de sesión", color: "bg-emerald-500" },
   CONSULTA_PREDIO: { label: "Consulta predio", color: "bg-blue-500" },
+  CONSULTA_MERAKI: { label: "Consulta Meraki", color: "bg-violet-500" },
 };
 
 const PAGE_SIZE = 50;
@@ -120,6 +121,7 @@ export default function AuditoriaPage() {
                 <option value="">Todas</option>
                 <option value="LOGIN">Inicios de sesión</option>
                 <option value="CONSULTA_PREDIO">Consultas de predio</option>
+                <option value="CONSULTA_MERAKI">Consultas Meraki</option>
               </select>
             </div>
 

@@ -23,6 +23,7 @@ import {
 import { toGraphFromLinkLayer } from "@/lib/merakiTransformers";
 import { getFromCache, setInCache, getOrFetch, invalidateCache, TTL } from "@/lib/merakiCache";
 import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 const DEFAULT_WIRELESS_TIMESPAN = 3600;
 
@@ -137,6 +138,19 @@ export async function GET(
 
     result.elapsedMs = Date.now() - startTime;
     setInCache("section", cacheKey, result, TTL.SECTION);
+
+    // Registrar consulta Meraki (auditoría) — fire-and-forget
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    prisma.registroAcceso.create({
+      data: {
+        userId: session.userId,
+        accion: "CONSULTA_MERAKI",
+        detalle: `${sectionKey} — ${networkId}`,
+        ip,
+        metadata: { networkId, sectionKey },
+      },
+    }).catch(() => {});
+
     const response = NextResponse.json(result);
     // Cache en el browser: 60s fresh, sirve stale hasta 5min mientras revalida
     response.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=240");
