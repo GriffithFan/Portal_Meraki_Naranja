@@ -90,6 +90,18 @@ export async function GET(request: NextRequest) {
     prisma.predio.count({ where }),
   ]);
 
+  // Registrar consulta de predios (auditoría) — fire-and-forget
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  prisma.registroAcceso.create({
+    data: {
+      userId: session.userId,
+      accion: "CONSULTA_PREDIO",
+      detalle: espacioId ? `Espacio ${espacioId}` : "Vista general de tareas",
+      ip,
+      metadata: { espacioId: espacioId || null, total, buscar: buscar || null },
+    },
+  }).catch(() => {});
+
   return NextResponse.json({ predios, total, page, limit });
 }
 
