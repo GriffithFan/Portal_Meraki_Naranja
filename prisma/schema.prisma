@@ -523,6 +523,15 @@ model CampoPersonalizado {
   @@index([activo, orden])
 }
 
+// ─── CONFIGURACIÓN VISTA COMPARTIDA ─────────────────
+model ConfiguracionVista {
+  id        String   @id @default(cuid())
+  clave     String   @unique  // "col-config-tareas", "col-config-espacio"
+  config    Json                // Array de {id, visible, order, width}
+  updatedAt DateTime @updatedAt
+  updatedBy String?             // userId del último que modificó
+}
+
 // ─── HOSPEDAJES ─────────────────────────────────────
 model Hospedaje {
   id         String  @id @default(cuid())

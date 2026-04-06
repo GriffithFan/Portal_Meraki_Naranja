@@ -109,7 +109,6 @@ const DEFAULT_COLUMNS: Column[] = [
   { id: "correo", label: "Correo", field: "correo", width: 140, visible: false, editable: true, type: "text" },
 ];
 
-const LS_COL_KEY = "pmn-espacio-col-config";
 const LS_EMPTY_KEY = "pmn-espacio-show-empty";
 const LS_HIDDEN_KEY = "pmn-espacio-hidden-estados";
 
@@ -238,36 +237,56 @@ export default function EspacioTareasPage() {
   // Auto-ocultar columnas sin datos (una sola vez)
   const autoHideDone = useRef(false);
 
-  // Persistir columnas
+  // Persistir columnas — config compartida vía servidor
   const colConfigLoaded = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const COL_CONFIG_KEY = "col-config-espacio";
+
+  // Cargar config del servidor
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(LS_COL_KEY);
-      if (saved) {
-        const config: { id: string; visible: boolean; order: number; width?: number }[] = JSON.parse(saved);
-        setColumns(prev => {
-          const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
-          return [...prev]
-            .map(col => {
-              const cfg = orderMap.get(col.id);
-              return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
-            })
-            .sort((a, b) => {
-              const oa = orderMap.get(a.id)?.order ?? 999;
-              const ob = orderMap.get(b.id)?.order ?? 999;
-              return oa - ob;
+    (async () => {
+      try {
+        const res = await fetch(`/api/config-vista?clave=${COL_CONFIG_KEY}`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.config) {
+            const config: { id: string; visible: boolean; order: number; width?: number }[] = data.config;
+            setColumns(prev => {
+              const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
+              return [...prev]
+                .map(col => {
+                  const cfg = orderMap.get(col.id);
+                  return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
+                })
+                .sort((a, b) => {
+                  const oa = orderMap.get(a.id)?.order ?? 999;
+                  const ob = orderMap.get(b.id)?.order ?? 999;
+                  return oa - ob;
+                });
             });
-        });
-      }
-    } catch { /* ignore */ }
-    colConfigLoaded.current = true;
+          }
+        }
+      } catch { /* ignore */ }
+      colConfigLoaded.current = true;
+    })();
   }, []);
 
+  // Guardar config al servidor cuando ADMIN/MOD cambia columnas (debounced)
   useEffect(() => {
     if (!colConfigLoaded.current) return;
-    const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i, width: c.width }));
-    localStorage.setItem(LS_COL_KEY, JSON.stringify(config));
-  }, [columns]);
+    if (!isModOrAdmin) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i, width: c.width }));
+      fetch("/api/config-vista", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clave: COL_CONFIG_KEY, config }),
+      }).catch(() => {});
+    }, 800);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [columns, isModOrAdmin]);
 
   // Mostrar/ocultar estados vacíos
   const [showEmptyStates, setShowEmptyStates] = useState(false);

@@ -164,38 +164,58 @@ export default function TareasPage() {
   };
   const getColWidth = (col: any) => resizeDelta && resizeDelta.id === col.id ? resizeDelta.width : col.width;
 
-  // Persistir config de columnas en localStorage
+  // Persistir config de columnas — compartida vía servidor
   const colConfigLoaded = useRef(false);
   const hadSavedConfig = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const COL_CONFIG_KEY = "col-config-tareas";
+
+  // Cargar config del servidor (compartida) al montar
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("pmn-col-config");
-      if (saved) {
-        hadSavedConfig.current = true;
-        const config: { id: string; visible: boolean; order: number }[] = JSON.parse(saved);
-        setColumns(prev => {
-          const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i }]));
-          return [...prev]
-            .map(col => {
-              const cfg = orderMap.get(col.id);
-              return cfg ? { ...col, visible: cfg.visible } : col;
-            })
-            .sort((a, b) => {
-              const oa = orderMap.get(a.id)?.order ?? 999;
-              const ob = orderMap.get(b.id)?.order ?? 999;
-              return oa - ob;
+    (async () => {
+      try {
+        const res = await fetch(`/api/config-vista?clave=${COL_CONFIG_KEY}`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.config) {
+            hadSavedConfig.current = true;
+            const config: { id: string; visible: boolean; order: number; width?: number }[] = data.config;
+            setColumns(prev => {
+              const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
+              return [...prev]
+                .map(col => {
+                  const cfg = orderMap.get(col.id);
+                  return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
+                })
+                .sort((a, b) => {
+                  const oa = orderMap.get(a.id)?.order ?? 999;
+                  const ob = orderMap.get(b.id)?.order ?? 999;
+                  return oa - ob;
+                });
             });
-        });
-      }
-    } catch { /* ignore */ }
-    colConfigLoaded.current = true;
+          }
+        }
+      } catch { /* ignore — usará defaults */ }
+      colConfigLoaded.current = true;
+    })();
   }, []);
 
+  // Guardar config al servidor cuando ADMIN/MOD cambia columnas (debounced)
   useEffect(() => {
     if (!colConfigLoaded.current) return;
-    const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i }));
-    localStorage.setItem("pmn-col-config", JSON.stringify(config));
-  }, [columns]);
+    if (!isModOrAdmin) return; // Técnicos no guardan
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i, width: c.width }));
+      fetch("/api/config-vista", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clave: COL_CONFIG_KEY, config }),
+      }).catch(() => {});
+    }, 800);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [columns, isModOrAdmin]);
 
   // Confirmar eliminación
   const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: string; label: string } | null>(null);
