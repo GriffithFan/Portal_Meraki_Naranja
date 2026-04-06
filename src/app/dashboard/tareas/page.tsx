@@ -172,32 +172,8 @@ export default function TareasPage() {
 
   // Cargar config del servidor (compartida) al montar
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`/api/config-vista?clave=${COL_CONFIG_KEY}`, { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.config) {
-            hadSavedConfig.current = true;
-            const config: { id: string; visible: boolean; order: number; width?: number }[] = data.config;
-            setColumns(prev => {
-              const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
-              return [...prev]
-                .map(col => {
-                  const cfg = orderMap.get(col.id);
-                  return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
-                })
-                .sort((a, b) => {
-                  const oa = orderMap.get(a.id)?.order ?? 999;
-                  const ob = orderMap.get(b.id)?.order ?? 999;
-                  return oa - ob;
-                });
-            });
-          }
-        }
-      } catch { /* ignore — usará defaults */ }
-      colConfigLoaded.current = true;
-    })();
+    // Se carga dentro de fetchTareas para garantizar secuencia correcta
+    colConfigLoaded.current = true;
   }, []);
 
   // Guardar config al servidor cuando ADMIN/MOD cambia columnas (debounced)
@@ -281,14 +257,43 @@ export default function TareasPage() {
   const autoHideDone = useRef(false);
   const fetchTareas = useCallback(async () => {
     setLoading(true);
+
+    // Cargar config compartida del servidor ANTES de auto-hide
+    if (!colConfigLoaded.current) {
+      try {
+        const cfgRes = await fetch(`/api/config-vista?clave=${COL_CONFIG_KEY}`, { credentials: "include" });
+        if (cfgRes.ok) {
+          const cfgData = await cfgRes.json();
+          if (cfgData?.config) {
+            hadSavedConfig.current = true;
+            const config: { id: string; visible: boolean; order: number; width?: number }[] = cfgData.config;
+            setColumns(prev => {
+              const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
+              return [...prev]
+                .map(col => {
+                  const cfg = orderMap.get(col.id);
+                  return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
+                })
+                .sort((a, b) => {
+                  const oa = orderMap.get(a.id)?.order ?? 999;
+                  const ob = orderMap.get(b.id)?.order ?? 999;
+                  return oa - ob;
+                });
+            });
+          }
+        }
+      } catch { /* ignore */ }
+      colConfigLoaded.current = true;
+    }
+
     const res = await fetch("/api/tareas?limit=2000", { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
       const predios = data.predios || [];
       setTareas(predios);
 
-      // Auto-ocultar columnas sin datos (corre siempre en el primer load)
-      if (!autoHideDone.current && predios.length > 0) {
+      // Auto-ocultar columnas sin datos (solo si NO hay config guardada en servidor)
+      if (!autoHideDone.current && !hadSavedConfig.current && predios.length > 0) {
         autoHideDone.current = true;
         const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "lacR", "equipoAsignado", "asignados"]);
         setColumns(prev => prev.map(col => {

@@ -239,36 +239,13 @@ export default function EspacioTareasPage() {
 
   // Persistir columnas — config compartida vía servidor
   const colConfigLoaded = useRef(false);
+  const hadSavedConfig = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const COL_CONFIG_KEY = "col-config-espacio";
 
-  // Cargar config del servidor
+  // Cargar config del servidor — se hace dentro de fetchData para garantizar secuencia
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`/api/config-vista?clave=${COL_CONFIG_KEY}`, { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.config) {
-            const config: { id: string; visible: boolean; order: number; width?: number }[] = data.config;
-            setColumns(prev => {
-              const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
-              return [...prev]
-                .map(col => {
-                  const cfg = orderMap.get(col.id);
-                  return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
-                })
-                .sort((a, b) => {
-                  const oa = orderMap.get(a.id)?.order ?? 999;
-                  const ob = orderMap.get(b.id)?.order ?? 999;
-                  return oa - ob;
-                });
-            });
-          }
-        }
-      } catch { /* ignore */ }
-      colConfigLoaded.current = true;
-    })();
+    colConfigLoaded.current = true;
   }, []);
 
   // Guardar config al servidor cuando ADMIN/MOD cambia columnas (debounced)
@@ -385,6 +362,34 @@ export default function EspacioTareasPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
+    // Cargar config compartida del servidor ANTES del auto-hide
+    if (!colConfigLoaded.current) {
+      try {
+        const cfgRes = await fetch(`/api/config-vista?clave=${COL_CONFIG_KEY}`, { credentials: "include" });
+        if (cfgRes.ok) {
+          const cfgData = await cfgRes.json();
+          if (cfgData?.config) {
+            hadSavedConfig.current = true;
+            const config: { id: string; visible: boolean; order: number; width?: number }[] = cfgData.config;
+            setColumns(prev => {
+              const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
+              return [...prev]
+                .map(col => {
+                  const cfg = orderMap.get(col.id);
+                  return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
+                })
+                .sort((a, b) => {
+                  const oa = orderMap.get(a.id)?.order ?? 999;
+                  const ob = orderMap.get(b.id)?.order ?? 999;
+                  return oa - ob;
+                });
+            });
+          }
+        }
+      } catch { /* ignore */ }
+      colConfigLoaded.current = true;
+    }
+
     const [tareasRes, estadosRes, espacioRes] = await Promise.all([
       fetch(`/api/tareas?espacioId=${espacioId}&limit=2000`, { credentials: "include" }),
       fetch("/api/estados", { credentials: "include" }),
@@ -395,8 +400,8 @@ export default function EspacioTareasPage() {
       const d = await tareasRes.json();
       const predios = d.predios || [];
       setTareas(predios);
-      // Auto-ocultar columnas sin datos (solo la primera vez)
-      if (!autoHideDone.current && predios.length > 0) {
+      // Auto-ocultar columnas sin datos (solo la primera vez y si NO hay config guardada en servidor)
+      if (!autoHideDone.current && !hadSavedConfig.current && predios.length > 0) {
         autoHideDone.current = true;
         const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "lacR", "equipoAsignado", "asignados"]);
         setColumns(prev => prev.map(col => {
