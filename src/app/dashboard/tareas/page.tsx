@@ -831,7 +831,7 @@ export default function TareasPage() {
     >
       <span className="inline-flex items-center gap-0.5">
         {col.label}
-        {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
+        {sortConfig && sortConfig.field === col.field && <IconSort dir={sortConfig.dir} />}
       </span>
       <span
         className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-surface-300/50 active:bg-surface-400/50"
