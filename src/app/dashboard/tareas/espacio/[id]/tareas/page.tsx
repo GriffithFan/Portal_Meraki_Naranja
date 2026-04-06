@@ -937,7 +937,7 @@ export default function EspacioTareasPage() {
               <th
                 key={col.id}
                 draggable={isModOrAdmin}
-                onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
+                onDragStart={isModOrAdmin ? (e) => { if (resizingCol.current) { e.preventDefault(); return; } handleColDragStart(e, col.id); } : undefined}
                 onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
                 onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
                 onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}

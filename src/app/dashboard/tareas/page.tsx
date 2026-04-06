@@ -126,6 +126,44 @@ export default function TareasPage() {
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const didDragRef = useRef(false);
 
+  // Resize columnas
+  const resizingCol = useRef<{ id: string; startX: number; startW: number } | null>(null);
+  const [resizeDelta, setResizeDelta] = useState<{ id: string; width: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const handleResizeStart = (e: React.MouseEvent, colId: string, currentW: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingCol.current = { id: colId, startX: e.clientX, startW: currentW };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingCol.current) return;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (!resizingCol.current) return;
+        const delta = ev.clientX - resizingCol.current.startX;
+        const newW = Math.max(40, resizingCol.current.startW + delta);
+        setResizeDelta({ id: resizingCol.current.id, width: newW });
+      });
+    };
+    const onUp = () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (resizingCol.current) {
+        const ref = resizingCol.current;
+        setResizeDelta(prev => {
+          if (prev && prev.id === ref.id) {
+            setColumns(cols => cols.map(c => c.id === ref.id ? { ...c, width: prev.width } : c));
+          }
+          return null;
+        });
+      }
+      resizingCol.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+  const getColWidth = (col: any) => resizeDelta?.id === col.id ? resizeDelta.width : col.width;
+
   // Persistir config de columnas en localStorage
   const colConfigLoaded = useRef(false);
   const hadSavedConfig = useRef(false);
@@ -776,6 +814,34 @@ export default function TareasPage() {
     setTimeout(() => { didDragRef.current = false; }, 0);
   }
 
+  // Helper: render column header con resize + drag + sort
+  const renderColHeader = (col: any) => (
+    <th
+      key={col.id}
+      draggable={isModOrAdmin}
+      onDragStart={isModOrAdmin ? (e: React.DragEvent) => { if (resizingCol.current) { e.preventDefault(); return; } handleColDragStart(e, col.id); } : undefined}
+      onDragOver={isModOrAdmin ? (e: React.DragEvent) => handleColDragOver(e, col.id) : undefined}
+      onDrop={isModOrAdmin ? (e: React.DragEvent) => handleColDrop(e, col.id) : undefined}
+      onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
+      style={{ width: getColWidth(col), minWidth: 40 }}
+      className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none relative ${
+        dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
+      } ${dragColId === col.id ? "opacity-40" : ""}`}
+      onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
+    >
+      <span className="inline-flex items-center gap-0.5">
+        {col.label}
+        {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
+      </span>
+      <span
+        className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-surface-300/50 active:bg-surface-400/50"
+        onMouseDown={(e) => handleResizeStart(e, col.id, getColWidth(col))}
+        onClick={(e) => e.stopPropagation()}
+        draggable={false}
+      />
+    </th>
+  );
+
   // Helpers
   const toggleSection = (id: string) => {
     setExpandedSections(prev => {
@@ -1402,26 +1468,7 @@ export default function TareasPage() {
                           <thead>
                             <tr className="border-b border-surface-100">
                               {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
-                              {visibleColumns.map((col) => (
-                                <th
-                                  key={col.id}
-                                  draggable={isModOrAdmin}
-                                  onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
-                                  onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
-                                  onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
-                                  onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
-                                  style={{ width: col.width, minWidth: col.width }}
-                                  className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
-                                    dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
-                                  } ${dragColId === col.id ? "opacity-40" : ""}`}
-                                  onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
-                                >
-                                  <span className="inline-flex items-center gap-0.5">
-                                    {col.label}
-                                    {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
-                                  </span>
-                                </th>
-                              ))}
+                              {visibleColumns.map(renderColHeader)}
                             </tr>
                           </thead>
                           <tbody>
@@ -1435,8 +1482,8 @@ export default function TareasPage() {
                                 {visibleColumns.map((col) => (
                                   <td
                                     key={col.id}
-                                    style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-                                    className="px-2.5 py-1.5 text-surface-600"
+                                    style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
+                                    className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
                                   >
                                     {renderCell(t, col)}
                                   </td>
@@ -1505,26 +1552,7 @@ export default function TareasPage() {
                     <thead>
                       <tr className="border-b border-surface-100">
                         {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={groupedTareas["sin-estado"].length > 0 && groupedTareas["sin-estado"].every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(groupedTareas["sin-estado"])} className="accent-primary-600 cursor-pointer" /></th>}
-                        {visibleColumns.map((col) => (
-                          <th
-                            key={col.id}
-                            draggable={isModOrAdmin}
-                            onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
-                            onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
-                            onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
-                            onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
-                            style={{ width: col.width, minWidth: col.width }}
-                            className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
-                              dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
-                            } ${dragColId === col.id ? "opacity-40" : ""}`}
-                            onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
-                          >
-                            <span className="inline-flex items-center gap-0.5">
-                              {col.label}
-                              {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
-                            </span>
-                          </th>
-                        ))}
+                        {visibleColumns.map(renderColHeader)}
                       </tr>
                     </thead>
                     <tbody>
@@ -1538,8 +1566,8 @@ export default function TareasPage() {
                           {visibleColumns.map((col) => (
                             <td
                               key={col.id}
-                              style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-                              className="px-2.5 py-1.5 text-surface-600"
+                              style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
+                              className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
                             >
                               {renderCell(t, col)}
                             </td>
@@ -1575,26 +1603,7 @@ export default function TareasPage() {
                         <thead>
                           <tr className="border-b border-surface-100">
                             {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
-                            {visibleColumns.map((col) => (
-                              <th
-                                key={col.id}
-                                draggable={isModOrAdmin}
-                                onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
-                                onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
-                                onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
-                                onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
-                                style={{ width: col.width, minWidth: col.width }}
-                                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
-                                  dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
-                                } ${dragColId === col.id ? "opacity-40" : ""}`}
-                                onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
-                              >
-                                <span className="inline-flex items-center gap-0.5">
-                                  {col.label}
-                                  {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
-                                </span>
-                              </th>
-                            ))}
+                            {visibleColumns.map(renderColHeader)}
                           </tr>
                         </thead>
                         <tbody>
@@ -1608,8 +1617,8 @@ export default function TareasPage() {
                               {visibleColumns.map((col) => (
                                 <td
                                   key={col.id}
-                                  style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-                                  className="px-2.5 py-1.5 text-surface-600"
+                                  style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
+                                  className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
                                 >
                                   {renderCell(t, col)}
                                 </td>
@@ -1639,26 +1648,7 @@ export default function TareasPage() {
                   <thead>
                     <tr className="border-b border-surface-100">
                       {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={tareas.length > 0 && tareas.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(tareas)} className="accent-primary-600 cursor-pointer" /></th>}
-                      {visibleColumns.map((col) => (
-                        <th
-                          key={col.id}
-                          draggable={isModOrAdmin}
-                          onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
-                          onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
-                          onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
-                          onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
-                          style={{ width: col.width, minWidth: col.width }}
-                          className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
-                            dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
-                          } ${dragColId === col.id ? "opacity-40" : ""}`}
-                          onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
-                        >
-                          <span className="inline-flex items-center gap-0.5">
-                            {col.label}
-                            {sortConfig?.field === col.field && <IconSort dir={sortConfig.dir} />}
-                          </span>
-                        </th>
-                      ))}
+                      {visibleColumns.map(renderColHeader)}
                     </tr>
                   </thead>
                   <tbody>
@@ -1677,8 +1667,8 @@ export default function TareasPage() {
                         {visibleColumns.map((col) => (
                           <td
                             key={col.id}
-                            style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-                            className="px-2.5 py-1.5 text-surface-600"
+                            style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
+                            className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
                           >
                             {renderCell(t, col)}
                           </td>
