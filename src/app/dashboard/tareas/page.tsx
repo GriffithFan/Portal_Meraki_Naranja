@@ -162,7 +162,7 @@ export default function TareasPage() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   };
-  const getColWidth = (col: any) => resizeDelta?.id === col.id ? resizeDelta.width : col.width;
+  const getColWidth = (col: any) => resizeDelta && resizeDelta.id === col.id ? resizeDelta.width : col.width;
 
   // Persistir config de columnas en localStorage
   const colConfigLoaded = useRef(false);
