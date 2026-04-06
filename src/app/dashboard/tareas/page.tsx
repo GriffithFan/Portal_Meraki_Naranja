@@ -261,13 +261,23 @@ export default function TareasPage() {
     // Cargar permisos de visibilidad de estados
     if (session?.rol && session.rol !== "ADMIN") {
       fetch("/api/permisos/estados", { credentials: "include" })
-        .then(r => r.ok ? r.json() : { permisos: [] })
+        .then(r => r.ok ? r.json() : { permisos: [], permisosUsuario: [] })
         .then(d => {
           const perms = d.permisos || [];
+          const permsUsuario = d.permisosUsuario || [];
           const hidden = new Set<string>();
+          // Ocultar por rol
           for (const p of perms) {
             if (p.rol === session.rol && !p.visible) {
               hidden.add(p.estadoId);
+            }
+          }
+          // Ocultar por usuario individual (tiene prioridad)
+          for (const p of permsUsuario) {
+            if (p.userId === session.userId && !p.visible) {
+              hidden.add(p.estadoId);
+            } else if (p.userId === session.userId && p.visible) {
+              hidden.delete(p.estadoId);
             }
           }
           setHiddenEstadoIds(hidden);
@@ -994,13 +1004,15 @@ export default function TareasPage() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
-          <button
-            onClick={() => setShowColumnConfig(!showColumnConfig)}
-            className={`p-1.5 rounded-md transition-colors ${showColumnConfig ? "bg-surface-200 text-surface-700" : "text-surface-400 hover:bg-surface-100 hover:text-surface-600"}`}
-            title="Configuración"
-          >
-            <IconSettings className="w-4 h-4" />
-          </button>
+          {isModOrAdmin && (
+            <button
+              onClick={() => setShowColumnConfig(!showColumnConfig)}
+              className={`p-1.5 rounded-md transition-colors ${showColumnConfig ? "bg-surface-200 text-surface-700" : "text-surface-400 hover:bg-surface-100 hover:text-surface-600"}`}
+              title="Configuración"
+            >
+              <IconSettings className="w-4 h-4" />
+            </button>
+          )}
           {isModOrAdmin && (
             <button
               onClick={() => setShowModal(true)}
@@ -1104,12 +1116,14 @@ export default function TareasPage() {
               {/* Mostrados header */}
               <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                 <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Campos mostrados</span>
+                {isModOrAdmin && (
                 <button
                   onClick={() => setColumns(prev => prev.map(c => ({ ...c, visible: false })))}
                   className="text-[11px] text-surface-400 hover:text-surface-600 transition-colors"
                 >
                   Ocultar todo
                 </button>
+                )}
               </div>
               <div className="px-2 pb-2">
                 {columns
@@ -1148,7 +1162,8 @@ export default function TareasPage() {
                           <IconTrash className="w-3 h-3" />
                         </button>
                       )}
-                      {/* Toggle switch */}
+                      {/* Toggle switch — solo mod/admin */}
+                      {isModOrAdmin ? (
                       <button
                         onClick={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
                         className="relative inline-flex flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
@@ -1159,6 +1174,9 @@ export default function TareasPage() {
                           style={{ width: 16, height: 16, marginTop: 2, transform: col.visible ? 'translateX(18px)' : 'translateX(2px)' }}
                         />
                       </button>
+                      ) : (
+                        <span className={`text-[10px] font-medium ${col.visible ? 'text-emerald-500' : 'text-surface-300'}`}>{col.visible ? 'Visible' : 'Oculto'}</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1387,13 +1405,13 @@ export default function TareasPage() {
                               {visibleColumns.map((col) => (
                                 <th
                                   key={col.id}
-                                  draggable
-                                  onDragStart={(e) => handleColDragStart(e, col.id)}
-                                  onDragOver={(e) => handleColDragOver(e, col.id)}
-                                  onDrop={(e) => handleColDrop(e, col.id)}
-                                  onDragEnd={handleColDragEnd}
+                                  draggable={isModOrAdmin}
+                                  onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
+                                  onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
+                                  onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
+                                  onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
                                   style={{ width: col.width, minWidth: col.width }}
-                                  className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
+                                  className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
                                     dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                                   } ${dragColId === col.id ? "opacity-40" : ""}`}
                                   onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
@@ -1490,13 +1508,13 @@ export default function TareasPage() {
                         {visibleColumns.map((col) => (
                           <th
                             key={col.id}
-                            draggable
-                            onDragStart={(e) => handleColDragStart(e, col.id)}
-                            onDragOver={(e) => handleColDragOver(e, col.id)}
-                            onDrop={(e) => handleColDrop(e, col.id)}
-                            onDragEnd={handleColDragEnd}
+                            draggable={isModOrAdmin}
+                            onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
+                            onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
+                            onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
+                            onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
                             style={{ width: col.width, minWidth: col.width }}
-                            className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
+                            className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
                               dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                             } ${dragColId === col.id ? "opacity-40" : ""}`}
                             onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
@@ -1560,13 +1578,13 @@ export default function TareasPage() {
                             {visibleColumns.map((col) => (
                               <th
                                 key={col.id}
-                                draggable
-                                onDragStart={(e) => handleColDragStart(e, col.id)}
-                                onDragOver={(e) => handleColDragOver(e, col.id)}
-                                onDrop={(e) => handleColDrop(e, col.id)}
-                                onDragEnd={handleColDragEnd}
+                                draggable={isModOrAdmin}
+                                onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
+                                onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
+                                onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
+                                onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
                                 style={{ width: col.width, minWidth: col.width }}
-                                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
+                                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
                                   dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                                 } ${dragColId === col.id ? "opacity-40" : ""}`}
                                 onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
@@ -1624,13 +1642,13 @@ export default function TareasPage() {
                       {visibleColumns.map((col) => (
                         <th
                           key={col.id}
-                          draggable
-                          onDragStart={(e) => handleColDragStart(e, col.id)}
-                          onDragOver={(e) => handleColDragOver(e, col.id)}
-                          onDrop={(e) => handleColDrop(e, col.id)}
-                          onDragEnd={handleColDragEnd}
+                          draggable={isModOrAdmin}
+                          onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
+                          onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
+                          onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
+                          onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
                           style={{ width: col.width, minWidth: col.width }}
-                          className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none ${
+                          className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none ${
                             dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                           } ${dragColId === col.id ? "opacity-40" : ""}`}
                           onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}

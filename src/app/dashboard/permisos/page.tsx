@@ -22,6 +22,12 @@ interface PermisoEstado {
   visible: boolean;
 }
 
+interface PermisoEstadoUsuario {
+  estadoId: string;
+  userId: string;
+  visible: boolean;
+}
+
 const CAMPOS = ["ver", "crear", "editar", "eliminar", "exportar"] as const;
 type CampoPermiso = (typeof CAMPOS)[number];
 
@@ -73,12 +79,19 @@ export default function PermisosPage() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [tab, setTab] = useState<"secciones" | "estados">("secciones");
+  const [tab, setTab] = useState<"secciones" | "estados" | "usuarios">("secciones");
 
   const [estados, setEstados] = useState<any[]>([]);
   const [permisosEstado, setPermisosEstado] = useState<PermisoEstado[]>([]);
   const [dirtyEstados, setDirtyEstados] = useState(false);
   const [savingEstados, setSavingEstados] = useState(false);
+
+  // Per-user estado visibility
+  const [tecnicos, setTecnicos] = useState<{ id: string; nombre: string }[]>([]);
+  const [permisosUsuario, setPermisosUsuario] = useState<PermisoEstadoUsuario[]>([]);
+  const [dirtyUsuarios, setDirtyUsuarios] = useState(false);
+  const [savingUsuarios, setSavingUsuarios] = useState(false);
+  const [selectedTecnico, setSelectedTecnico] = useState<string>("");
 
   const fetchPermisos = useCallback(async () => {
     setLoading(true);
@@ -96,10 +109,15 @@ export default function PermisosPage() {
     if (!isAdmin) return;
     Promise.all([
       fetch("/api/estados", { credentials: "include" }).then(r => r.ok ? r.json() : { estados: [] }),
-      fetch("/api/permisos/estados", { credentials: "include" }).then(r => r.ok ? r.json() : { permisos: [] }),
-    ]).then(([estData, permData]) => {
+      fetch("/api/permisos/estados", { credentials: "include" }).then(r => r.ok ? r.json() : { permisos: [], permisosUsuario: [] }),
+      fetch("/api/usuarios", { credentials: "include" }).then(r => r.ok ? r.json() : []),
+    ]).then(([estData, permData, usersData]) => {
       setEstados(estData.estados || []);
       setPermisosEstado(permData.permisos || []);
+      setPermisosUsuario(permData.permisosUsuario || []);
+      const tecList = (usersData as any[]).filter((u: any) => u.rol === "TECNICO").map((u: any) => ({ id: u.id, nombre: u.nombre }));
+      setTecnicos(tecList);
+      if (tecList.length > 0) setSelectedTecnico(tecList[0].id);
     });
   }, [isAdmin]);
 
@@ -208,6 +226,44 @@ export default function PermisosPage() {
     setSavingEstados(false);
   };
 
+  // ── Per-user estado helpers ──
+  const getPermisoUsuario = (estadoId: string, userId: string): boolean => {
+    const found = permisosUsuario.find((p) => p.estadoId === estadoId && p.userId === userId);
+    return found ? found.visible : true;
+  };
+
+  const togglePermisoUsuario = (estadoId: string, userId: string) => {
+    setDirtyUsuarios(true);
+    setPermisosUsuario((prev) => {
+      const idx = prev.findIndex((p) => p.estadoId === estadoId && p.userId === userId);
+      const current = getPermisoUsuario(estadoId, userId);
+      const updated: PermisoEstadoUsuario = { estadoId, userId, visible: !current };
+      if (idx >= 0) { const copy = [...prev]; copy[idx] = updated; return copy; }
+      return [...prev, updated];
+    });
+  };
+
+  const guardarEstadosUsuario = async () => {
+    setSavingUsuarios(true);
+    const payload = tecnicos.flatMap((tec) =>
+      estados.map((e: any) => ({ estadoId: e.id, userId: tec.id, visible: getPermisoUsuario(e.id, tec.id) }))
+    );
+    const res = await fetch("/api/permisos/estados", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ permisosUsuario: payload }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setPermisosUsuario(data.permisosUsuario || []);
+      setDirtyUsuarios(false);
+      setToast("Visibilidad por usuario guardada");
+      setTimeout(() => setToast(null), 3000);
+    }
+    setSavingUsuarios(false);
+  };
+
   if (!isAdmin) {
     return (
       <div className="animate-fade-in-up flex items-center justify-center py-20">
@@ -281,6 +337,7 @@ export default function PermisosPage() {
             Secciones
           </button>
           {estados.length > 0 && (
+            <>
             <button
               onClick={() => setTab("estados")}
               className={clsx(
@@ -292,20 +349,32 @@ export default function PermisosPage() {
             >
               Estados
             </button>
+            <button
+              onClick={() => setTab("usuarios")}
+              className={clsx(
+                "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                tab === "usuarios"
+                  ? "bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 shadow-sm"
+                  : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
+              )}
+            >
+              Por usuario
+            </button>
+            </>
           )}
         </div>
         <button
-          onClick={tab === "estados" ? guardarEstados : guardar}
-          disabled={tab === "estados" ? !dirtyEstados || savingEstados : !dirty || saving}
+          onClick={tab === "estados" ? guardarEstados : tab === "usuarios" ? guardarEstadosUsuario : guardar}
+          disabled={tab === "estados" ? !dirtyEstados || savingEstados : tab === "usuarios" ? !dirtyUsuarios || savingUsuarios : !dirty || saving}
           className={clsx(
             "px-4 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5",
-            (tab === "estados" ? dirtyEstados : dirty)
+            (tab === "estados" ? dirtyEstados : tab === "usuarios" ? dirtyUsuarios : dirty)
               ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
               : "bg-surface-200 dark:bg-surface-700 text-surface-400 cursor-not-allowed"
           )}
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-          {(tab === "estados" ? savingEstados : saving) ? "Guardando..." : "Guardar"}
+          {(tab === "estados" ? savingEstados : tab === "usuarios" ? savingUsuarios : saving) ? "Guardando..." : "Guardar"}
         </button>
       </div>
 
@@ -405,7 +474,7 @@ export default function PermisosPage() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : tab === "estados" ? (
         /* ── Tab: Estados ── */
         <div>
           <p className="text-xs text-surface-400 dark:text-surface-500 mb-4">
@@ -497,7 +566,67 @@ export default function PermisosPage() {
             Los estados desmarcados no serán visibles para ese rol en el Cronograma. Admin siempre ve todos.
           </p>
         </div>
-      )}
+      ) : tab === "usuarios" ? (
+        /* ── Tab: Por usuario ── */
+        <div>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mb-4">
+            Controla qué estados puede ver cada técnico individualmente. Tiene prioridad sobre los permisos por rol.
+          </p>
+
+          {tecnicos.length === 0 ? (
+            <p className="text-xs text-surface-400 py-8 text-center">No hay técnicos registrados.</p>
+          ) : (
+            <>
+              {/* Selector de técnico */}
+              <div className="flex items-center gap-3 mb-4">
+                <label className="text-xs font-medium text-surface-600 dark:text-surface-300">Técnico:</label>
+                <select
+                  value={selectedTecnico}
+                  onChange={(e) => setSelectedTecnico(e.target.value)}
+                  className="text-xs border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500 outline-none"
+                >
+                  {tecnicos.map((tec) => (
+                    <option key={tec.id} value={tec.id}>{tec.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Grilla estados para el técnico seleccionado */}
+              <div className="bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 overflow-hidden">
+                <div className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                  {estados.map((estado: any) => {
+                    const visible = getPermisoUsuario(estado.id, selectedTecnico);
+                    return (
+                      <div key={estado.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-700/50">
+                        <span className="inline-flex items-center gap-2 text-xs text-surface-700 dark:text-surface-300 font-medium">
+                          <span className="w-3 h-3 rounded" style={{ backgroundColor: estado.color }} />
+                          {estado.nombre}
+                        </span>
+                        <button
+                          onClick={() => togglePermisoUsuario(estado.id, selectedTecnico)}
+                          className={clsx(
+                            "w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center",
+                            visible
+                              ? "bg-blue-600 border-blue-600 text-white"
+                              : "bg-white dark:bg-surface-700 border-surface-300 dark:border-surface-600 hover:border-surface-400"
+                          )}
+                        >
+                          {visible && (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <p className="text-[10px] text-surface-400 dark:text-surface-500 mt-3 px-1">
+                Los estados desmarcados quedan ocultos para este técnico. Admin y moderadores siempre ven todos.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

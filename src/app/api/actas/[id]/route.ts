@@ -34,7 +34,9 @@ export async function GET(
 
   try {
     const uploadsDir = path.resolve(process.cwd(), "uploads");
-    const filePath = path.resolve(process.cwd(), acta.archivoRuta);
+    // Strip leading slash so path.resolve treats it as relative to cwd
+    const relativePath = acta.archivoRuta.replace(/^\/+/, "");
+    const filePath = path.resolve(process.cwd(), relativePath);
     if (!filePath.startsWith(uploadsDir)) {
       return NextResponse.json({ error: "Ruta no permitida" }, { status: 403 });
     }
@@ -79,7 +81,8 @@ export async function DELETE(
 
   // Borrar archivo del disco
   try {
-    const filePath = path.resolve(process.cwd(), acta.archivoRuta);
+    const relativePath = acta.archivoRuta.replace(/^\/+/, "");
+    const filePath = path.resolve(process.cwd(), relativePath);
     const uploadsDir = path.resolve(process.cwd(), "uploads");
     if (filePath.startsWith(uploadsDir)) {
       await unlink(filePath).catch(() => {});

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { SwitchPortsGrid } from "./SwitchComponents";
 import { SummaryChip } from "./DashboardHelpers";
 import { SortableHeader } from "./SortableHeader";
@@ -148,8 +148,176 @@ function SwitchTooltipContent({ sw, isExpanded }: { sw: any; isExpanded: boolean
   );
 }
 
+/* ── Cable Test Panel ──────────────────────────────────── */
+
+interface CableTestResult {
+  port: string;
+  status: string;
+  speedMbps?: number;
+  error?: string;
+  pairs?: { index: number; status: string; lengthMeters: number }[];
+}
+
+function CableTestPanel({ serial, onClose }: { serial: string; onClose: () => void }) {
+  const [portsInput, setPortsInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<CableTestResult[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const parsePorts = useCallback((input: string): string[] => {
+    const ports: string[] = [];
+    const parts = input.split(",").map(s => s.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (part.includes("-")) {
+        const [startStr, endStr] = part.split("-").map(s => s.trim());
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        if (!isNaN(start) && !isNaN(end) && start > 0 && end > 0 && end >= start && end <= 48) {
+          for (let i = start; i <= end; i++) ports.push(String(i));
+        }
+      } else {
+        const num = parseInt(part, 10);
+        if (!isNaN(num) && num > 0 && num <= 48) ports.push(String(num));
+      }
+    }
+    return Array.from(new Set(ports));
+  }, []);
+
+  const runTest = useCallback(async () => {
+    const ports = parsePorts(portsInput);
+    if (ports.length === 0) { setError("Ingresá puertos válidos, ej: 1-9 o 1,5,8"); return; }
+    setLoading(true);
+    setError(null);
+    setResults(null);
+    try {
+      const res = await fetch(`/api/meraki/devices/${encodeURIComponent(serial)}/cable-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ports }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Error al iniciar test"); }
+      const job = await res.json();
+      const cableTestId = job.cableTestId;
+      // Poll until complete (max 30s)
+      for (let attempt = 0; attempt < 15; attempt++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const pollRes = await fetch(`/api/meraki/devices/${encodeURIComponent(serial)}/cable-test?id=${encodeURIComponent(cableTestId)}`, { credentials: "include" });
+        if (!pollRes.ok) continue;
+        const pollData = await pollRes.json();
+        if (pollData.status === "complete") {
+          setResults(pollData.results || []);
+          setLoading(false);
+          return;
+        }
+        if (pollData.error) { throw new Error(pollData.error); }
+      }
+      throw new Error("Timeout: el test no completó en 30 segundos");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error desconocido");
+    } finally {
+      setLoading(false);
+    }
+  }, [serial, portsInput, parsePorts]);
+
+  const STATUS_COLOR: Record<string, string> = { ok: "text-green-600", abnormal: "text-red-600", open: "text-amber-600", short: "text-red-600", unknown: "text-surface-400" };
+  const PORT_STATUS_COLOR: Record<string, string> = { up: "text-green-600 font-bold", down: "text-red-600", unknown: "text-surface-400" };
+
+  return (
+    <div className="mt-4 border border-surface-200 rounded-lg bg-white overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-surface-50 border-b border-surface-200">
+        <h5 className="m-0 text-sm font-semibold text-surface-800 flex items-center gap-2">
+          <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
+          </svg>
+          Cable Test
+        </h5>
+        <button onClick={onClose} className="text-surface-400 hover:text-surface-600 transition-colors" title="Cerrar">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2 mb-1">
+          <input
+            type="text"
+            value={portsInput}
+            onChange={e => setPortsInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !loading) runTest(); }}
+            placeholder="Ej: 1-9  o  1,5,8"
+            className="flex-1 text-sm border border-surface-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            disabled={loading}
+          />
+          <button
+            onClick={runTest}
+            disabled={loading || !portsInput.trim()}
+            className="px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-surface-300 disabled:text-surface-500 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            {loading ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Testeando...
+              </>
+            ) : "Run cable test"}
+          </button>
+        </div>
+        <p className="text-[11px] text-surface-400 mb-0">
+          Usá &quot;-&quot; para rangos (1-9) y &quot;,&quot; para puertos individuales (1,5,8). Se pueden combinar: 1-4,7,10-12
+        </p>
+
+        {error && (
+          <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">{error}</div>
+        )}
+
+        {results && results.length > 0 && (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b-2 border-surface-200 text-surface-600">
+                  <th className="text-left px-2 py-2 font-semibold">Port</th>
+                  <th className="text-left px-2 py-2 font-semibold">Link</th>
+                  <th className="text-left px-2 py-2 font-semibold">Length</th>
+                  <th className="text-left px-2 py-2 font-semibold">Status</th>
+                  <th className="text-center px-2 py-2 font-semibold">Pair 1</th>
+                  <th className="text-center px-2 py-2 font-semibold">Pair 2</th>
+                  <th className="text-center px-2 py-2 font-semibold">Pair 3</th>
+                  <th className="text-center px-2 py-2 font-semibold">Pair 4</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((r, i) => {
+                  const pairs = r.pairs || [];
+                  const maxLen = pairs.length > 0 ? Math.max(...pairs.map(p => p.lengthMeters || 0)) : 0;
+                  const speed = r.speedMbps ? (r.speedMbps >= 1000 ? `${r.speedMbps / 1000}Gfdx` : `${r.speedMbps}fdx`) : "—";
+                  return (
+                    <tr key={i} className="border-b border-surface-100 hover:bg-surface-50">
+                      <td className="px-2 py-1.5 text-blue-600 font-medium">{r.port}</td>
+                      <td className="px-2 py-1.5 text-surface-600">{speed}</td>
+                      <td className="px-2 py-1.5 text-surface-600">{maxLen > 0 ? `${maxLen} m` : "—"}</td>
+                      <td className={`px-2 py-1.5 font-bold ${PORT_STATUS_COLOR[r.status] || "text-surface-600"}`}>{r.status === "up" ? "OK" : r.status?.toUpperCase()}</td>
+                      {[0, 1, 2, 3].map(idx => {
+                        const pair = pairs.find(p => p.index === idx);
+                        const st = pair?.status || "-";
+                        return <td key={idx} className={`text-center px-2 py-1.5 ${STATUS_COLOR[st] || "text-surface-500"}`}>{st}</td>;
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {results && results.length === 0 && (
+          <div className="mt-3 text-xs text-surface-400 text-center py-2">Sin resultados</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SwitchesSection({ switchesDetailed, sortData, sortConfig, handleSort }: SwitchesSectionProps) {
   const [expandedSwitch, setExpandedSwitch] = useState<string | null>(null);
+  const [cableTestSerial, setCableTestSerial] = useState<string | null>(null);
   const switchesData = Array.isArray(switchesDetailed) ? switchesDetailed : [];
 
   if (!switchesData.length) return <div className="p-3 text-surface-500">No hay switches para esta red</div>;
@@ -229,13 +397,27 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
               {/* Expanded: port grid with horizontal scroll */}
               {isExpanded && (
                 <div className="border-t border-surface-200 bg-surface-50 px-3 py-3">
-                  <h4 className="m-0 mb-2 text-sm text-surface-800 font-semibold">Ports</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="m-0 text-sm text-surface-800 font-semibold">Ports</h4>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setCableTestSerial(cableTestSerial === sw.serial ? null : sw.serial); }}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
+                      </svg>
+                      Cable Test
+                    </button>
+                  </div>
                   {ports.length > 0 ? (
                     <div className="overflow-x-auto -mx-1 px-1 pb-1">
                       <SwitchPortsGrid ports={ports} />
                     </div>
                   ) : (
                     <div className="text-surface-400 text-xs">Sin información de puertos.</div>
+                  )}
+                  {cableTestSerial === sw.serial && (
+                    <CableTestPanel serial={sw.serial} onClose={() => setCableTestSerial(null)} />
                   )}
                 </div>
               )}
@@ -332,11 +514,25 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
                       {isExpanded && (
                         <tr>
                           <td colSpan={7} className="px-6 py-4 bg-surface-50 border-t border-surface-200">
-                            <h4 className="m-0 mb-3 text-base text-surface-800 font-semibold">Ports</h4>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="m-0 text-base text-surface-800 font-semibold">Ports</h4>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setCableTestSerial(cableTestSerial === sw.serial ? null : sw.serial); }}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1.5 transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
+                                </svg>
+                                Cable Test
+                              </button>
+                            </div>
                             {ports.length > 0 ? (
                               <SwitchPortsGrid ports={ports} />
                             ) : (
                               <div className="text-surface-400 text-[13px]">No hay información de puertos disponible para este switch.</div>
+                            )}
+                            {cableTestSerial === sw.serial && (
+                              <CableTestPanel serial={sw.serial} onClose={() => setCableTestSerial(null)} />
                             )}
                           </td>
                         </tr>

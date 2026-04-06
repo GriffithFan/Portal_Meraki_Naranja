@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// GET /api/permisos/estados — obtener visibilidad de estados por rol
+// GET /api/permisos/estados — obtener visibilidad de estados por rol + por usuario
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -14,7 +14,16 @@ export async function GET() {
     orderBy: [{ estadoId: "asc" }, { rol: "asc" }],
   });
 
-  return NextResponse.json({ permisos });
+  // Permisos por usuario individual
+  const permisosUsuario = await prisma.permisoEstadoUsuario.findMany({
+    include: {
+      estado: { select: { id: true, nombre: true, color: true, clave: true } },
+      user: { select: { id: true, nombre: true } },
+    },
+    orderBy: [{ userId: "asc" }, { estadoId: "asc" }],
+  });
+
+  return NextResponse.json({ permisos, permisosUsuario });
 }
 
 // PUT /api/permisos/estados — actualizar visibilidad (solo ADMIN)
@@ -31,29 +40,59 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
-  const { permisos } = body;
-  if (!Array.isArray(permisos)) {
-    return NextResponse.json({ error: "Se espera un array de permisos" }, { status: 400 });
+  const { permisos, permisosUsuario } = body;
+
+  // Permisos por rol (existente)
+  if (Array.isArray(permisos)) {
+    const ROLES_VALIDOS = ["MODERADOR", "TECNICO"];
+    const results = [];
+
+    for (const p of permisos) {
+      if (!p.estadoId || !ROLES_VALIDOS.includes(p.rol)) continue;
+      if (typeof p.visible !== "boolean") continue;
+
+      const result = await prisma.permisoEstado.upsert({
+        where: { estadoId_rol: { estadoId: p.estadoId, rol: p.rol as "MODERADOR" | "TECNICO" } },
+        update: { visible: p.visible },
+        create: {
+          estadoId: p.estadoId,
+          rol: p.rol as "MODERADOR" | "TECNICO",
+          visible: p.visible,
+        },
+      });
+      results.push(result);
+    }
   }
 
-  const ROLES_VALIDOS = ["MODERADOR", "TECNICO"];
-  const results = [];
+  // Permisos por usuario individual (nuevo)
+  if (Array.isArray(permisosUsuario)) {
+    for (const p of permisosUsuario) {
+      if (!p.estadoId || !p.userId || typeof p.visible !== "boolean") continue;
 
-  for (const p of permisos) {
-    if (!p.estadoId || !ROLES_VALIDOS.includes(p.rol)) continue;
-    if (typeof p.visible !== "boolean") continue;
-
-    const result = await prisma.permisoEstado.upsert({
-      where: { estadoId_rol: { estadoId: p.estadoId, rol: p.rol as "MODERADOR" | "TECNICO" } },
-      update: { visible: p.visible },
-      create: {
-        estadoId: p.estadoId,
-        rol: p.rol as "MODERADOR" | "TECNICO",
-        visible: p.visible,
-      },
-    });
-    results.push(result);
+      await prisma.permisoEstadoUsuario.upsert({
+        where: { estadoId_userId: { estadoId: p.estadoId, userId: p.userId } },
+        update: { visible: p.visible },
+        create: {
+          estadoId: p.estadoId,
+          userId: p.userId,
+          visible: p.visible,
+        },
+      });
+    }
   }
 
-  return NextResponse.json({ permisos: results });
+  // Devolver todos los permisos actualizados
+  const allPermisos = await prisma.permisoEstado.findMany({
+    include: { estado: { select: { id: true, nombre: true, color: true, clave: true } } },
+    orderBy: [{ estadoId: "asc" }, { rol: "asc" }],
+  });
+  const allPermisosUsuario = await prisma.permisoEstadoUsuario.findMany({
+    include: {
+      estado: { select: { id: true, nombre: true, color: true, clave: true } },
+      user: { select: { id: true, nombre: true } },
+    },
+    orderBy: [{ userId: "asc" }, { estadoId: "asc" }],
+  });
+
+  return NextResponse.json({ permisos: allPermisos, permisosUsuario: allPermisosUsuario });
 }

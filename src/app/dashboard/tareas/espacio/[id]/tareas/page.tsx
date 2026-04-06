@@ -273,6 +273,8 @@ export default function EspacioTareasPage() {
   const [showEmptyStates, setShowEmptyStates] = useState(false);
   // Estados ocultos por el usuario
   const [userHiddenEstados, setUserHiddenEstados] = useState<Set<string>>(new Set());
+  // Estados ocultos por admin (permisos por rol + por usuario)
+  const [adminHiddenEstados, setAdminHiddenEstados] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -290,6 +292,27 @@ export default function EspacioTareasPage() {
   useEffect(() => {
     localStorage.setItem(LS_HIDDEN_KEY, JSON.stringify(Array.from(userHiddenEstados)));
   }, [userHiddenEstados]);
+
+  // Cargar permisos de visibilidad de estados (por rol + por usuario)
+  useEffect(() => {
+    if (!session?.rol || session.rol === "ADMIN") return;
+    fetch("/api/permisos/estados", { credentials: "include" })
+      .then(r => r.ok ? r.json() : { permisos: [], permisosUsuario: [] })
+      .then(d => {
+        const perms = d.permisos || [];
+        const permsUsuario = d.permisosUsuario || [];
+        const hidden = new Set<string>();
+        for (const p of perms) {
+          if (p.rol === session.rol && !p.visible) hidden.add(p.estadoId);
+        }
+        for (const p of permsUsuario) {
+          if (p.userId === session.userId && !p.visible) hidden.add(p.estadoId);
+          else if (p.userId === session.userId && p.visible) hidden.delete(p.estadoId);
+        }
+        setAdminHiddenEstados(hidden);
+      })
+      .catch(() => {});
+  }, [session]);
 
   // Cargar campos personalizados como columnas
   useEffect(() => {
@@ -911,13 +934,13 @@ export default function EspacioTareasPage() {
             {visibleColumns.map((col) => (
               <th
                 key={col.id}
-                draggable
-                onDragStart={(e) => handleColDragStart(e, col.id)}
-                onDragOver={(e) => handleColDragOver(e, col.id)}
-                onDrop={(e) => handleColDrop(e, col.id)}
-                onDragEnd={handleColDragEnd}
+                draggable={isModOrAdmin}
+                onDragStart={isModOrAdmin ? (e) => handleColDragStart(e, col.id) : undefined}
+                onDragOver={isModOrAdmin ? (e) => handleColDragOver(e, col.id) : undefined}
+                onDrop={isModOrAdmin ? (e) => handleColDrop(e, col.id) : undefined}
+                onDragEnd={isModOrAdmin ? handleColDragEnd : undefined}
                 style={{ width: getColWidth(col), minWidth: 40 }}
-                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider cursor-grab active:cursor-grabbing hover:text-surface-600 transition-colors select-none relative ${
+                className={`text-left px-2.5 py-1.5 font-medium text-surface-400 uppercase text-[10px] tracking-wider ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} hover:text-surface-600 transition-colors select-none relative ${
                   dragOverColId === col.id ? "border-l-2 border-surface-400" : ""
                 } ${dragColId === col.id ? "opacity-40" : ""}`}
                 onClick={() => { if (!didDragRef.current) toggleSort(col.field); }}
@@ -1034,13 +1057,15 @@ export default function EspacioTareasPage() {
           >
             {GROUP_BY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <button
-            onClick={() => setShowColumnConfig(!showColumnConfig)}
-            className={`p-1.5 rounded-md transition-colors ${showColumnConfig ? "bg-surface-200 text-surface-700" : "text-surface-400 hover:bg-surface-100 hover:text-surface-600"}`}
-            title="Configuración"
-          >
-            <IconSettings className="w-4 h-4" />
-          </button>
+          {isModOrAdmin && (
+            <button
+              onClick={() => setShowColumnConfig(!showColumnConfig)}
+              className={`p-1.5 rounded-md transition-colors ${showColumnConfig ? "bg-surface-200 text-surface-700" : "text-surface-400 hover:bg-surface-100 hover:text-surface-600"}`}
+              title="Configuración"
+            >
+              <IconSettings className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1147,12 +1172,14 @@ export default function EspacioTareasPage() {
             <div className="flex-1 overflow-y-auto">
               <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                 <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Campos mostrados</span>
+                {isModOrAdmin && (
                 <button
                   onClick={() => setColumns(prev => prev.map(c => ({ ...c, visible: false })))}
                   className="text-[11px] text-surface-400 hover:text-surface-600 transition-colors"
                 >
                   Ocultar todo
                 </button>
+                )}
               </div>
               <div className="px-2 pb-2">
                 {columns
@@ -1191,6 +1218,7 @@ export default function EspacioTareasPage() {
                           <IconTrash className="w-3 h-3" />
                         </button>
                       )}
+                      {isModOrAdmin ? (
                       <button
                         onClick={() => setColumns(prev => prev.map(c => c.id === col.id ? { ...c, visible: !c.visible } : c))}
                         className="relative inline-flex flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
@@ -1201,6 +1229,9 @@ export default function EspacioTareasPage() {
                           style={{ width: 16, height: 16, marginTop: 2, transform: col.visible ? 'translateX(18px)' : 'translateX(2px)' }}
                         />
                       </button>
+                      ) : (
+                        <span className={`text-[10px] font-medium ${col.visible ? 'text-emerald-500' : 'text-surface-300'}`}>{col.visible ? 'Visible' : 'Oculto'}</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1211,29 +1242,32 @@ export default function EspacioTareasPage() {
             {estados.length > 0 && (
               <div className="px-4 py-3 border-t border-surface-100">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Estados (arrastrar para reordenar)</span>
+                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">{isModOrAdmin ? 'Estados (arrastrar para reordenar)' : 'Estados'}</span>
                   {isModOrAdmin && <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium">+ Nuevo</button>}
                 </div>
                 <div className="space-y-1">
-                  {estados.map(e => {
+                  {estados.filter(e => isModOrAdmin || !adminHiddenEstados.has(e.id)).map(e => {
                     const isHidden = userHiddenEstados.has(e.id);
                     return (
                       <div
                         key={e.id}
-                        draggable
-                        onDragStart={() => setDragEstadoId(e.id)}
-                        onDragOver={(ev) => { ev.preventDefault(); setDragOverEstadoId(e.id); }}
-                        onDrop={(ev) => { ev.preventDefault(); handleEstadoDrop(e.id); }}
-                        onDragEnd={() => { setDragEstadoId(null); setDragOverEstadoId(null); }}
-                        className={`flex items-center gap-2 px-2 py-1.5 rounded border group cursor-grab active:cursor-grabbing transition-all ${
+                        draggable={isModOrAdmin}
+                        onDragStart={isModOrAdmin ? () => setDragEstadoId(e.id) : undefined}
+                        onDragOver={isModOrAdmin ? (ev) => { ev.preventDefault(); setDragOverEstadoId(e.id); } : undefined}
+                        onDrop={isModOrAdmin ? (ev) => { ev.preventDefault(); handleEstadoDrop(e.id); } : undefined}
+                        onDragEnd={isModOrAdmin ? () => { setDragEstadoId(null); setDragOverEstadoId(null); } : undefined}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded border group transition-all ${
                           isHidden ? "opacity-40 bg-surface-50 border-surface-200" : "bg-white border-surface-200 hover:border-surface-300"
-                        } ${dragOverEstadoId === e.id ? "border-primary-400 bg-primary-50/30" : ""} ${dragEstadoId === e.id ? "opacity-40" : ""}`}
+                        } ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : ''} ${dragOverEstadoId === e.id ? "border-primary-400 bg-primary-50/30" : ""} ${dragEstadoId === e.id ? "opacity-40" : ""}`}
                       >
+                        {isModOrAdmin && (
                         <span className="text-surface-300 cursor-grab">
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4 8h16M4 16h16" /></svg>
                         </span>
+                        )}
                         <StatusIcon clave={e.clave} color={e.color} size={12} />
                         <span className={`text-xs flex-1 truncate ${isHidden ? "text-surface-400" : "text-surface-700"}`}>{e.nombre}</span>
+                        {isModOrAdmin && (
                         <button
                           onClick={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })}
                           className="relative inline-flex flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
@@ -1241,6 +1275,7 @@ export default function EspacioTareasPage() {
                         >
                           <span className="pointer-events-none inline-block rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out" style={{ width: 12, height: 12, marginTop: 2, transform: !isHidden ? 'translateX(14px)' : 'translateX(2px)' }} />
                         </button>
+                        )}
                         {isModOrAdmin && (
                           <button onClick={() => setConfirmDelete({ type: "estado", id: e.id, label: e.nombre })}
                             className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all p-0.5" title="Eliminar estado">
@@ -1335,7 +1370,7 @@ export default function EspacioTareasPage() {
           const isExpanded = expandedSections.has(estado.id);
 
           if (items.length === 0 && !showEmptyStates) return null;
-          if (userHiddenEstados.has(estado.id)) return null;
+          if (userHiddenEstados.has(estado.id) || adminHiddenEstados.has(estado.id)) return null;
 
           return (
             <div key={estado.id} className="bg-white border border-surface-200 rounded-lg overflow-hidden">

@@ -54,6 +54,7 @@ model User {
   chatsAtendidos       ChatConversacion[] @relation("AgenteChat")
   mensajesChat         ChatMensaje[]
   equiposAsignados     Equipo[]           @relation("EquipoAsignado")
+  permisosEstado       PermisoEstadoUsuario[]
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -83,8 +84,9 @@ model EstadoConfig {
   entidad String  @default("PREDIO")
   activo  Boolean @default(true)
 
-  predios  Predio[]
-  permisos PermisoEstado[]
+  predios         Predio[]
+  permisos        PermisoEstado[]
+  permisosUsuario PermisoEstadoUsuario[]
 }
 
 // ─── ESPACIOS DE TRABAJO ────────────────────────────
@@ -485,6 +487,21 @@ model PermisoEstado {
   @@unique([estadoId, rol])
   @@index([estadoId])
   @@index([rol])
+}
+
+// ─── VISIBILIDAD DE ESTADOS POR USUARIO ─────────────
+model PermisoEstadoUsuario {
+  id        String  @id @default(cuid())
+  estadoId  String
+  userId    String
+  visible   Boolean @default(true)
+
+  estado    EstadoConfig @relation(fields: [estadoId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([estadoId, userId])
+  @@index([userId])
+  @@index([estadoId])
 }
 
 // ─── CAMPOS PERSONALIZADOS ─────────────────────────
