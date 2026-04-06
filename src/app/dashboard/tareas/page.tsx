@@ -170,12 +170,6 @@ export default function TareasPage() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const COL_CONFIG_KEY = "col-config-tareas";
 
-  // Cargar config del servidor (compartida) al montar
-  useEffect(() => {
-    // Se carga dentro de fetchTareas para garantizar secuencia correcta
-    colConfigLoaded.current = true;
-  }, []);
-
   // Guardar config al servidor cuando ADMIN/MOD cambia columnas (debounced)
   useEffect(() => {
     if (!colConfigLoaded.current) return;

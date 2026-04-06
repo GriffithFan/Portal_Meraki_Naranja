@@ -243,11 +243,6 @@ export default function EspacioTareasPage() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const COL_CONFIG_KEY = "col-config-espacio";
 
-  // Cargar config del servidor — se hace dentro de fetchData para garantizar secuencia
-  useEffect(() => {
-    colConfigLoaded.current = true;
-  }, []);
-
   // Guardar config al servidor cuando ADMIN/MOD cambia columnas (debounced)
   useEffect(() => {
     if (!colConfigLoaded.current) return;
