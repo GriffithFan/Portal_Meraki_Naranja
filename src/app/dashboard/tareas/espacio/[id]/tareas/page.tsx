@@ -737,9 +737,11 @@ export default function EspacioTareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      // Derivar TH actual de equipoAsignado
+      // Derivar TH actual de equipoAsignado (puede ser nombre o ya un código TH)
       const equipo = t.equipoAsignado?.toUpperCase();
-      const currentTH = equipo ? EQUIPO_TH_MAP[equipo] : "";
+      const currentTH = equipo
+        ? (equipo.match(/^TH\d+$/) ? equipo : (EQUIPO_TH_MAP[equipo] || ""))
+        : "";
       if (isModOrAdmin) {
         return (
           <select
@@ -854,8 +856,8 @@ export default function EspacioTareasPage() {
       const raw = t[col.field];
       if (!raw) return <span className="text-surface-300">&mdash;</span>;
       const upper = raw.toUpperCase();
-      const thCode = EQUIPO_TH_MAP[upper];
-      const display = thCode ? `${raw}-${thCode}` : raw;
+      const thCode = upper.match(/^TH\d+$/) ? upper : EQUIPO_TH_MAP[upper];
+      const display = thCode ? (upper === thCode ? raw : `${raw}-${thCode}`) : raw;
       return <span className="flex items-center group/cell" title={display}><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display} /></span>;
     }
     const val = t[col.field];
