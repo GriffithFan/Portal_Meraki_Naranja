@@ -78,6 +78,17 @@ export async function POST(request: NextRequest) {
     await setTokenCookie(token);
     clearRateLimit(ip);
 
+    // Registrar acceso (auditoría) — fire-and-forget
+    prisma.registroAcceso.create({
+      data: {
+        userId: user.id,
+        accion: "LOGIN",
+        detalle: `Login exitoso desde ${ip}`,
+        ip,
+        metadata: { userAgent: request.headers.get("user-agent") || "" },
+      },
+    }).catch(() => {});
+
     return NextResponse.json({
       user: {
         id: user.id,

@@ -7,7 +7,7 @@ import { parseBody, isErrorResponse, espacioUpdateSchema } from "@/lib/validatio
 
 // GET /api/espacios/[id] — Detalle + stats del espacio
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const session = await getSession();
@@ -90,6 +90,18 @@ export async function GET(
     const sid = p.espacioId || espacio.id;
     bySubEspacio[sid] = (bySubEspacio[sid] || 0) + 1;
   }
+
+  // Registrar consulta de predio/espacio (auditoría) — fire-and-forget
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  prisma.registroAcceso.create({
+    data: {
+      userId: session.userId,
+      accion: "CONSULTA_PREDIO",
+      detalle: espacio.nombre || params.id,
+      ip,
+      metadata: { espacioId: params.id, totalPredios },
+    },
+  }).catch(() => {});
 
   return NextResponse.json({
     espacio,

@@ -55,6 +55,7 @@ model User {
   mensajesChat         ChatMensaje[]
   equiposAsignados     Equipo[]           @relation("EquipoAsignado")
   permisosEstado       PermisoEstadoUsuario[]
+  registrosAcceso      RegistroAcceso[]
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -593,4 +594,22 @@ model ChatMensaje {
 
   @@index([conversacionId, createdAt])
   @@index([autorId])
+}
+
+// ─── REGISTRO DE ACCESOS (AUDITORÍA) ────────────────
+model RegistroAcceso {
+  id        String   @id @default(cuid())
+  userId    String
+  accion    String   // LOGIN, CONSULTA_PREDIO
+  detalle   String?  // Ej: nombre del predio, IP de login
+  metadata  Json?    // Info extra: predioId, userAgent, etc.
+  ip        String?
+
+  usuario   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([accion, createdAt])
+  @@index([createdAt])
 }

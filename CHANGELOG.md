@@ -2,6 +2,32 @@
 
 ---
 
+## [2026-04-06] — Auditoría de accesos, Cable Test (desactivado)
+
+### Auditoría de accesos (nuevo)
+- **Modelo `RegistroAcceso`** — Tabla de auditoría: logins y consultas de predios por usuario.
+- **Registro automático** — Se registran logins exitosos y cada consulta de detalle de predio/espacio.
+- **Página `/dashboard/auditoria`** — Visible solo para ADMIN (configurable). Filtros por usuario, tipo de acción, rango de fechas.
+- **Sidebar** — Nuevo enlace "Auditoría" en la sección Administración (solo ADMIN).
+
+### Cable Test — DESACTIVADO (requiere API key con escritura)
+- **Motivo**: La API key de Meraki actual es read-only. El endpoint `POST /devices/{serial}/liveTools/cableTest` requiere scope `dashboard:general:config:write`.
+- **Componente**: `CableTestPanel` en `SwitchesSection.tsx` — comentado, no eliminado.
+- **API Route**: `src/app/api/meraki/devices/[serial]/cable-test/route.ts` — conservada.
+- **Para reactivar**:
+  1. Generar una nueva API key con permisos full en Meraki Dashboard → Perfil → API keys
+  2. Actualizar `MERAKI_API_KEY` en `/var/www/carrot/.env`
+  3. Descomentar el bloque `CableTestPanel` en `SwitchesSection.tsx` (buscar "Cable Test Panel — DESACTIVADO")
+  4. Restaurar los botones "Cable Test" en las vistas mobile y desktop (ver git diff de este commit)
+  5. `pm2 restart carrot`
+
+### Otros
+- **Fix descarga de actas** — Corregido error "Ruta no permitida" al descargar actas (strip leading slash).
+- **Restricciones columnas** — Drawer de columnas y drag-and-drop solo para admin/mod.
+- **Permisos estados por usuario** — Nuevo modelo `PermisoEstadoUsuario`, tab "Por usuario" en permisos.
+
+---
+
 ## [2026-03-28] — Stock: Reestructuración columnas, Asignado, Etiquetas, Carga total, Importación inteligente
 
 ### Stock — Reestructuración de columnas
