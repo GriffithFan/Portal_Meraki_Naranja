@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
       ip,
       metadata: { espacioId: espacioId || null, total, buscar: buscar || null },
     },
-  }).catch(() => {});
+  }).catch((e) => console.error("[Auditoria] Error registrando consulta:", e.message));
 
   return NextResponse.json({ predios, total, page, limit });
 }
