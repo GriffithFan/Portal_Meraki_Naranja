@@ -27,8 +27,8 @@ export async function GET() {
       select: { espacioId: true },
     });
 
-    // Si el usuario tiene accesos configurados, filtrar; si no tiene ninguno, ve todo (compatibilidad)
     if (accesos.length > 0) {
+      // Whitelist explícita (configurada por admin)
       const idsPermitidos = new Set(accesos.map(a => a.espacioId));
 
       // Incluir también los padres de los espacios permitidos para mantener el árbol
@@ -39,7 +39,38 @@ export async function GET() {
       }
 
       espaciosFiltrados = espacios.filter(e => idsPermitidos.has(e.id));
+    } else if (!isModOrAdmin(session.rol)) {
+      // TECNICOs sin whitelist: solo ven espacios donde tienen predios asignados
+      const thCode = session.nombre?.toUpperCase() || "";
+      const equipoFilter = /^TH\d+$/.test(thCode)
+        ? [{ equipoAsignado: { equals: thCode, mode: "insensitive" as const } }]
+        : [];
+
+      const prediosAsignados = await prisma.predio.findMany({
+        where: {
+          OR: [
+            { asignaciones: { some: { userId: session.userId } } },
+            ...equipoFilter,
+          ],
+        },
+        select: { espacioId: true },
+        distinct: ["espacioId"],
+      });
+
+      const idsConPredios = new Set(
+        prediosAsignados.map(p => p.espacioId).filter(Boolean) as string[]
+      );
+
+      // Incluir padres para mantener el árbol
+      for (const e of espacios) {
+        if (idsConPredios.has(e.id) && e.parentId) {
+          idsConPredios.add(e.parentId);
+        }
+      }
+
+      espaciosFiltrados = espacios.filter(e => idsConPredios.has(e.id));
     }
+    // MODERADORs sin whitelist: ven todo (no se filtra)
   }
 
   // Construir árbol

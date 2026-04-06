@@ -43,12 +43,18 @@ export async function GET(request: NextRequest) {
 
     // Buscar también por equipoAsignado (nombres almacenados en la DB)
     const equipoNames = TH_EQUIPO_NAMES[session.nombre.toUpperCase()] || [];
+    // Si el nombre del usuario es un código TH (TH01, TH05...), también buscar directamente
+    const thCode = session.nombre.toUpperCase();
+    const equipoMatch = [...equipoNames];
+    if (/^TH\d+$/.test(thCode) && !equipoMatch.includes(thCode)) {
+      equipoMatch.push(thCode);
+    }
 
     where.OR = [
       { asignaciones: { some: { userId: { in: idsVisibles } } } },
       { creadorId: { in: idsVisibles } },
-      ...(equipoNames.length > 0
-        ? [{ equipoAsignado: { in: equipoNames, mode: "insensitive" } }]
+      ...(equipoMatch.length > 0
+        ? [{ equipoAsignado: { in: equipoMatch, mode: "insensitive" } }]
         : []),
     ];
   }

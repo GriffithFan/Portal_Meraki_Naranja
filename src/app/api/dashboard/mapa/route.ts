@@ -46,9 +46,14 @@ export async function GET(request: NextRequest) {
   // Usuarios normales (no mod/admin): solo ver predios de su equipo o asignados
   if (!isModOrAdmin(session.rol)) {
     const equipoNames = TH_EQUIPO_NAMES[session.nombre.toUpperCase()] || [];
+    const thCode = session.nombre.toUpperCase();
+    const equipoMatch = [...equipoNames];
+    if (/^TH\d+$/.test(thCode) && !equipoMatch.includes(thCode)) {
+      equipoMatch.push(thCode);
+    }
     where.OR = [
-      ...(equipoNames.length > 0
-        ? [{ equipoAsignado: { in: equipoNames, mode: "insensitive" } }]
+      ...(equipoMatch.length > 0
+        ? [{ equipoAsignado: { in: equipoMatch, mode: "insensitive" } }]
         : [{ equipoAsignado: session.nombre }]),
       { asignaciones: { some: { userId: session.userId } } },
     ];
