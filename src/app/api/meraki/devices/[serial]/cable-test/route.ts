@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { createDeviceLiveToolsCableTest, getDeviceLiveToolsCableTest } from "@/lib/meraki";
+import { AxiosError } from "axios";
+
+function merakiErrorMsg(err: unknown, fallback: string): { msg: string; status: number } {
+  if (err instanceof AxiosError && err.response) {
+    const s = err.response.status;
+    if (s === 403)
+      return { msg: "La API key de Meraki no tiene permisos de escritura. Verificá los permisos en Dashboard → Organization → API Access.", status: 403 };
+    if (s === 404)
+      return { msg: "Dispositivo no encontrado o no soporta cable test.", status: 404 };
+    if (s === 429)
+      return { msg: "Rate limit de Meraki alcanzado. Esperá unos segundos e intentá de nuevo.", status: 429 };
+    const body = err.response.data;
+    const detail = typeof body === "object" && body?.errors ? (body.errors as string[]).join("; ") : "";
+    return { msg: detail || `Meraki respondió ${s}`, status: s };
+  }
+  return { msg: err instanceof Error ? err.message : fallback, status: 502 };
+}
 
 /* POST — Launch cable test */
 export async function POST(
@@ -37,8 +54,8 @@ export async function POST(
     const result = await createDeviceLiveToolsCableTest(serial, body.ports);
     return NextResponse.json(result);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Error al iniciar cable test";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    const { msg, status } = merakiErrorMsg(err, "Error al iniciar cable test");
+    return NextResponse.json({ error: msg }, { status });
   }
 }
 
@@ -64,7 +81,7 @@ export async function GET(
     const result = await getDeviceLiveToolsCableTest(serial, cableTestId);
     return NextResponse.json(result);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Error al consultar cable test";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    const { msg, status } = merakiErrorMsg(err, "Error al consultar cable test");
+    return NextResponse.json({ error: msg }, { status });
   }
 }
