@@ -60,7 +60,7 @@ const EDITABLE_FIELDS = [
 ];
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
@@ -103,6 +103,18 @@ export async function GET(
       return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
     }
   }
+
+  // Registrar consulta de predio individual (auditoría) — fire-and-forget
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  prisma.registroAcceso.create({
+    data: {
+      userId: session.userId,
+      accion: "CONSULTA_PREDIO",
+      detalle: predio.nombre || predio.codigo || id,
+      ip,
+      metadata: { predioId: id, codigo: predio.codigo, espacioId: predio.espacioId },
+    },
+  }).catch(() => {});
 
   return NextResponse.json(predio);
 }

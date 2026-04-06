@@ -92,7 +92,6 @@ export async function GET(request: NextRequest) {
 
   // Registrar consulta de predios (auditoría) — fire-and-forget
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  console.log("[Auditoria] Intentando registrar CONSULTA_PREDIO para", session.userId, "ip:", ip);
   prisma.registroAcceso.create({
     data: {
       userId: session.userId,
@@ -101,8 +100,7 @@ export async function GET(request: NextRequest) {
       ip,
       metadata: { espacioId: espacioId || null, total, buscar: buscar || null },
     },
-  }).then(() => console.log("[Auditoria] ✓ CONSULTA_PREDIO registrada"))
-    .catch((e) => console.error("[Auditoria] Error registrando consulta:", e.message));
+  }).catch(() => {});
 
   return NextResponse.json({ predios, total, page, limit });
 }
