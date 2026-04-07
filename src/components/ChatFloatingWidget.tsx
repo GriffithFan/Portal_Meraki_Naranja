@@ -86,6 +86,7 @@ export default function ChatFloatingWidget() {
   const [grabando, setGrabando] = useState(false);
   const [grabSegundos, setGrabSegundos] = useState(0);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const prevMsgCountRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -152,7 +153,10 @@ export default function ChatFloatingWidget() {
   }, [open, conversacion?.id]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (mensajes.length > prevMsgCountRef.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevMsgCountRef.current = mensajes.length;
   }, [mensajes]);
 
   const handleOpen = async () => {
@@ -428,12 +432,8 @@ export default function ChatFloatingWidget() {
                   )}
                   <input
                     type="text"
-                    placeholder={
-                      conversacion?.estado === "ABIERTA"
-                        ? "Esperando agente..."
-                        : "Escribí tu consulta..."
-                    }
-                    disabled={conversacion?.estado === "ABIERTA"}
+                    placeholder="Escribí tu consulta..."
+                    disabled={false}
                     value={nuevoMensaje}
                     onChange={(e) => setNuevoMensaje(e.target.value)}
                     maxLength={2000}
@@ -441,7 +441,7 @@ export default function ChatFloatingWidget() {
                   />
                   <button
                     type="submit"
-                    disabled={!nuevoMensaje.trim() || enviando || conversacion?.estado === "ABIERTA"}
+                    disabled={!nuevoMensaje.trim() || enviando}
                     className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

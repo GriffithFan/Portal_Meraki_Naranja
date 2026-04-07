@@ -98,6 +98,7 @@ export default function ChatPage() {
   const [orden, setOrden] = useState<"recientes" | "antiguas">("recientes");
   const [busqueda, setBusqueda] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const prevMsgCountRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -140,9 +141,12 @@ export default function ChatPage() {
     return () => clearInterval(pollRef.current);
   }, [seleccionada?.id, cargarConversaciones, cargarMensajes]);
 
-  // Scroll al último mensaje
+  // Scroll al último mensaje solo cuando llegan mensajes nuevos
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (mensajes.length > prevMsgCountRef.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevMsgCountRef.current = mensajes.length;
   }, [mensajes]);
 
   const seleccionarConv = (conv: any) => {
@@ -650,12 +654,8 @@ export default function ChatPage() {
                         </button>
                         <input
                           type="text"
-                          placeholder={
-                            seleccionada.estado === "ABIERTA" && !isMesa
-                              ? "Esperando que Mesa tome tu consulta..."
-                              : "Escribí un mensaje..."
-                          }
-                          disabled={seleccionada.estado === "ABIERTA" && !isMesa}
+                          placeholder="Escribí un mensaje..."
+                          disabled={false}
                           value={nuevoMensaje}
                           onChange={(e) => setNuevoMensaje(e.target.value)}
                           maxLength={2000}
@@ -663,7 +663,7 @@ export default function ChatPage() {
                         />
                         <button
                           type="submit"
-                          disabled={!nuevoMensaje.trim() || enviando || (seleccionada.estado === "ABIERTA" && !isMesa)}
+                          disabled={!nuevoMensaje.trim() || enviando}
                           className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
                         >
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
