@@ -50,12 +50,6 @@ export async function GET(
       dispositionHeaders["Content-Disposition"] = `attachment; filename="${encodeURIComponent(filename)}"`;
     }
 
-    // Permitir embedding en iframe para PDFs (override X-Frame-Options: DENY)
-    const isPdf = ext === ".pdf";
-    if (isPdf) {
-      dispositionHeaders["X-Frame-Options"] = "SAMEORIGIN";
-    }
-
     // Soporte para Range requests (seek en video)
     const range = request.headers.get("range");
 
