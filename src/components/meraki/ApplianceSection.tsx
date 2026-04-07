@@ -28,7 +28,14 @@ export default function ApplianceSection({ networkId, summaryData, loadedSection
   if (sectionLoading === "appliance_status" || !loadedSections.has("appliance_status")) return <LoadingSpinner section="appliance_status" />;
 
   const applianceStatus = summaryData?.applianceStatus || {};
-  const devices: any[] = applianceStatus.devices || [];
+  // Deduplicate by serial to prevent Meraki API returning the same device twice
+  const rawDevices: any[] = applianceStatus.devices || [];
+  const seen = new Set<string>();
+  const devices: any[] = rawDevices.filter((d: any) => {
+    if (!d.serial || seen.has(d.serial)) return false;
+    seen.add(d.serial);
+    return true;
+  });
   const topology = applianceStatus.topology || summaryData?.topology;
   const uplinks: any[] = applianceStatus.uplinks || [];
 

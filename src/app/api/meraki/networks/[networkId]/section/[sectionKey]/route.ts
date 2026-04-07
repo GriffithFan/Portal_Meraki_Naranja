@@ -757,7 +757,14 @@ async function buildApplianceSection(
   statusMap: Map<string, any>,
 ) {
   const result: any = {};
-  const appliances = devices.filter((d) => /^mx|^z[13]/i.test(d.model));
+  // Deduplicate appliances by serial (Meraki API can return duplicates on some networks)
+  const seenSerials = new Set<string>();
+  const appliances = devices.filter((d) => {
+    if (!/^mx|^z[13]/i.test(d.model)) return false;
+    if (seenSerials.has(d.serial)) return false;
+    seenSerials.add(d.serial);
+    return true;
+  });
 
   // Uplink statuses de la organización filtrado por esta red
   let uplinks: any[] = [];
