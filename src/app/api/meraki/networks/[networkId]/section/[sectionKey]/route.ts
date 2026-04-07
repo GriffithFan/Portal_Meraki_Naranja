@@ -910,11 +910,22 @@ async function buildApplianceSection(
       const enrichedPorts = ports.map((port) => {
         const portNumber = (port.number || port.portId || "").toString();
 
+        // Determine if the physical port actually has carrier/link
+        // Meraki port status API returns: "Connected", "Disconnected", "disabled", etc.
+        // Also may return a `carrier` or `speed` field when link is up.
+        // LLDP data can be stale (cached from previous connections), so we ONLY
+        // use LLDP enrichment when port status doesn't explicitly say "Disconnected".
+        const rawStatus = (port.status || "").toLowerCase();
+        const portIsPhysicallyDown =
+          rawStatus === "disconnected" ||
+          (rawStatus !== "connected" && port.carrier === false) ||
+          (rawStatus !== "connected" && port.speed === null && !port.hasCarrier);
+
         // 1) Check switch LLDP: find any switch whose uplinkPortOnRemote matches this port
         const matchedSwitch = Object.values(switchLldpMap).find(
           (s) => s.uplinkPortOnRemote === portNumber
         );
-        if (matchedSwitch) {
+        if (matchedSwitch && !portIsPhysicallyDown) {
           return {
             ...port,
             connectedTo: matchedSwitch.name,
@@ -935,8 +946,9 @@ async function buildApplianceSection(
           };
         }
         // 2) Check appliance's own LLDP: the appliance sees what's connected to each port
+        // Only trust LLDP if port isn't physically disconnected (avoid ghost devices)
         const lldpPeer = applianceLldpMap[portNumber];
-        if (lldpPeer) {
+        if (lldpPeer && !portIsPhysicallyDown) {
           return {
             ...port,
             connectedTo: lldpPeer.deviceName,
