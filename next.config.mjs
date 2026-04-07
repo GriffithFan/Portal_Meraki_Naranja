@@ -29,6 +29,8 @@ const nextConfig = {
               "media-src 'self' blob:",
               "font-src 'self' data:",
               `connect-src 'self' https://*.tile.openstreetmap.org${isDev ? " ws://localhost:3000" : ""}`,
+              "frame-src 'self' https://www.youtube-nocookie.com",
+              "object-src 'self'",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
