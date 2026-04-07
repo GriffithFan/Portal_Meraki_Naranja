@@ -353,18 +353,18 @@ export default function InstructivoPage() {
 
                 {/* Visor de PDF */}
                 {getPdfSrc(selected) && (
-                  <div className="p-4 bg-surface-50">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <div className="p-2 sm:p-4 bg-surface-50">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <svg className="w-5 h-5 text-rose-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                         </svg>
-                        <span className="text-sm font-medium text-surface-700">{selected.pdfNombre}</span>
-                        <span className="text-[10px] text-surface-400">{formatFileSize(selected.pdfSize)}</span>
+                        <span className="text-sm font-medium text-surface-700 truncate">{selected.pdfNombre}</span>
+                        <span className="text-[10px] text-surface-400 flex-shrink-0">{formatFileSize(selected.pdfSize)}</span>
                       </div>
                       <a
                         href={`${getPdfSrc(selected)}?download=1`}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-medium hover:bg-rose-700 transition-colors"
+                        className="flex items-center justify-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-medium hover:bg-rose-700 transition-colors flex-shrink-0"
                         download
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -375,8 +375,7 @@ export default function InstructivoPage() {
                     </div>
                     <iframe
                       src={getPdfSrc(selected)!}
-                      className="w-full rounded-lg border border-surface-200"
-                      style={{ height: "600px" }}
+                      className="w-full rounded-lg border border-surface-200 h-[70vh] sm:h-[80vh]"
                       title={`PDF: ${selected.titulo}`}
                     />
                   </div>
