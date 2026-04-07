@@ -158,11 +158,17 @@ function buildCaptureLayout(
 
   // Inject document stylesheets into the shell so html-to-image can resolve
   // CSS-defined styles (e.g. .NodePort polygon { fill }, backgrounds, etc.)
+  // Strip responsive media queries so mobile captures render as desktop.
   const styleTag = document.createElement("style");
   const cssRules: string[] = [];
   for (const sheet of Array.from(document.styleSheets)) {
     try {
       for (const rule of Array.from(sheet.cssRules)) {
+        // Skip @media rules with max-width (mobile overrides) so the
+        // capture always renders the desktop layout.
+        if (rule instanceof CSSMediaRule && /max-width/i.test(rule.conditionText)) {
+          continue;
+        }
         cssRules.push(rule.cssText);
       }
     } catch {
@@ -172,6 +178,13 @@ function buildCaptureLayout(
   styleTag.textContent = cssRules.join("\n");
   // Force uppercase table headers in capture (match Meraki original)
   styleTag.textContent += "\n[data-capture-content] th { text-transform: uppercase !important; font-size: 11px !important; font-weight: 600 !important; color: #64748b !important; letter-spacing: 0.5px !important; }";
+  // Force desktop visibility — undo Tailwind responsive hidden/table-cell etc.
+  styleTag.textContent += "\n[data-capture-content] .hidden { display: revert !important; }";
+  styleTag.textContent += "\n[data-capture-content] table { display: table !important; }";
+  styleTag.textContent += "\n[data-capture-content] thead { display: table-header-group !important; }";
+  styleTag.textContent += "\n[data-capture-content] tbody { display: table-row-group !important; }";
+  styleTag.textContent += "\n[data-capture-content] tr { display: table-row !important; }";
+  styleTag.textContent += "\n[data-capture-content] th, [data-capture-content] td { display: table-cell !important; }";
   shell.prepend(styleTag);
 
   document.body.appendChild(shell);
