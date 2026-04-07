@@ -867,14 +867,16 @@ async function buildApplianceSection(
 
       // If device-level statuses are empty, use network-level config as base
       // Note: config only tells if port is enabled, NOT if something is connected
-      // enabled + no status data → "Disconnected" (no carrier info available)
+      // Use "unknown" status so LLDP enrichment can still set connected status.
       // Track if we're using config fallback (no real port status data)
-      if ((!ports || ports.length === 0) && networkPortConfigs.length > 0) {
+      const usingConfigFallback = (!ports || ports.length === 0) && networkPortConfigs.length > 0;
+      if (usingConfigFallback) {
         ports = networkPortConfigs.map((cfg: any) => ({
           portId: String(cfg.number),
           number: cfg.number,
           enabled: cfg.enabled ?? true,
-          status: cfg.enabled ? "Disconnected" : "disabled",
+          status: cfg.enabled ? "unknown" : "disabled",
+          _fromConfig: true,
           type: cfg.type || "access",
           vlan: cfg.vlan ?? null,
           allowedVlans: cfg.allowedVlans ?? null,
@@ -1010,6 +1012,17 @@ async function buildApplianceSection(
                 },
               };
             }
+          }
+        }
+      }
+
+      // Normalize: ports that came from config fallback and were not enriched
+      // by LLDP/topology should show as "Disconnected" (not "unknown")
+      if (usingConfigFallback) {
+        for (let i = 0; i < enrichedPorts.length; i++) {
+          const p = enrichedPorts[i];
+          if ((p.status || "").toLowerCase() === "unknown" && !p.connectedTo) {
+            enrichedPorts[i] = { ...p, status: "Disconnected", statusNormalized: "disconnected" };
           }
         }
       }
