@@ -70,7 +70,7 @@ export async function GET(
     const orgId = (network as any)?.organizationId;
 
     // Cargar devices y statuses en paralelo (no dependen entre sí)
-    const [devices, statusesRaw] = await Promise.all([
+    const [rawDevices, statusesRaw] = await Promise.all([
       getOrFetch<any[]>("networkById", `devices:${networkId}`, () => getNetworkDevices(networkId), TTL.SLOW),
       orgId
         ? getOrFetch<any[]>("networkById", `statuses:${networkId}`, () =>
@@ -79,6 +79,14 @@ export async function GET(
           )
         : Promise.resolve([] as any[]),
     ]);
+
+    // Deduplicate devices by serial (Meraki API can return duplicates)
+    const seenDevSerial = new Set<string>();
+    const devices = (rawDevices || []).filter((d: any) => {
+      if (!d.serial || seenDevSerial.has(d.serial)) return false;
+      seenDevSerial.add(d.serial);
+      return true;
+    });
 
     const statusMap = new Map<string, any>();
     (statusesRaw || []).forEach((s) => statusMap.set(s.serial, s));

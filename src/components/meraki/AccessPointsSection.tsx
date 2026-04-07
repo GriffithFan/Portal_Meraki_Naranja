@@ -266,7 +266,14 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
 
   if (sectionLoading === "access_points" || !loadedSections.has("access_points")) return <LoadingSpinner section="access_points" />;
 
-  const accessPoints: any[] = summaryData?.accessPoints || [];
+  // Deduplicate by serial to prevent Meraki API returning the same AP twice
+  const rawAPs: any[] = summaryData?.accessPoints || [];
+  const seenAP = new Set<string>();
+  const accessPoints: any[] = rawAPs.filter((ap: any) => {
+    if (!ap.serial || seenAP.has(ap.serial)) return false;
+    seenAP.add(ap.serial);
+    return true;
+  });
 
   if (accessPoints.length === 0) {
     return <div className="empty-section-message">No hay puntos de acceso disponibles para esta red.</div>;
