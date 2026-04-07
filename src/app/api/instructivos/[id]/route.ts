@@ -21,6 +21,10 @@ const ALLOWED_IMAGE_TYPES = [
 const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif)$/i;
 const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
 
+const ALLOWED_PDF_TYPES = ["application/pdf"];
+const ALLOWED_PDF_EXT = /\.pdf$/i;
+const MAX_PDF_SIZE = 50 * 1024 * 1024;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,8 +70,10 @@ export async function PUT(
     const orden = parseInt(formData.get("orden") as string) || existing.orden;
     const video = formData.get("video") as File | null;
     const imagen = formData.get("imagen") as File | null;
+    const pdf = formData.get("pdf") as File | null;
     const removeVideo = formData.get("removeVideo") === "true";
     const removeImagen = formData.get("removeImagen") === "true";
+    const removePdf = formData.get("removePdf") === "true";
     const youtubeUrl = (formData.get("youtubeUrl") as string)?.trim() || null;
 
     if (!titulo) {
@@ -169,6 +175,47 @@ export async function PUT(
       updateData.imagenSize = null;
     }
 
+    // Manejo de PDF
+    if (pdf && pdf.size > 0) {
+      if (!ALLOWED_PDF_TYPES.includes(pdf.type) || !pdf.name.match(ALLOWED_PDF_EXT)) {
+        return NextResponse.json(
+          { error: "Solo se permiten archivos PDF" },
+          { status: 400 }
+        );
+      }
+
+      if (pdf.size > MAX_PDF_SIZE) {
+        return NextResponse.json(
+          { error: "El PDF no puede superar 50MB" },
+          { status: 400 }
+        );
+      }
+
+      if (existing.pdfRuta) {
+        await deleteUploadFile(existing.pdfRuta);
+      }
+
+      const pdfDir = path.join(process.cwd(), "uploads", "instructivos");
+      await mkdir(pdfDir, { recursive: true });
+
+      const pdfSafeName = `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`;
+      const pdfPath = path.join(pdfDir, pdfSafeName);
+
+      const pdfBuffer = Buffer.from(await pdf.arrayBuffer());
+      await writeFile(pdfPath, pdfBuffer);
+
+      updateData.pdfNombre = pdf.name;
+      updateData.pdfRuta = `/uploads/instructivos/${pdfSafeName}`;
+      updateData.pdfTipo = pdf.type;
+      updateData.pdfSize = pdf.size;
+    } else if (removePdf && existing.pdfRuta) {
+      await deleteUploadFile(existing.pdfRuta);
+      updateData.pdfNombre = null;
+      updateData.pdfRuta = null;
+      updateData.pdfTipo = null;
+      updateData.pdfSize = null;
+    }
+
     const instructivo = await prisma.instructivo.update({
       where: { id },
       data: updateData,
@@ -211,6 +258,11 @@ export async function DELETE(
   // Eliminar imagen del filesystem
   if (existing.imagenRuta) {
     await deleteUploadFile(existing.imagenRuta);
+  }
+
+  // Eliminar PDF del filesystem
+  if (existing.pdfRuta) {
+    await deleteUploadFile(existing.pdfRuta);
   }
 
   await prisma.instructivo.delete({ where: { id } });

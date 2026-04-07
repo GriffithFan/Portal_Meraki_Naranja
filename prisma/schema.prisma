@@ -370,6 +370,10 @@ model Instructivo {
   imagenRuta   String?
   imagenTipo   String?
   imagenSize   Int?
+  pdfNombre    String?
+  pdfRuta      String?
+  pdfTipo      String?
+  pdfSize      Int?
   categoria    String  @default("General")
   orden        Int     @default(0)
   activo       Boolean @default(true)

@@ -12,6 +12,7 @@ const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
   ".gif": "image/gif",
+  ".pdf": "application/pdf",
 };
 
 export async function GET(
@@ -42,6 +43,13 @@ export async function GET(
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
     const fileSize = fileStat.size;
 
+    // Soporte descarga forzada via ?download=1
+    const download = request.nextUrl.searchParams.get("download") === "1";
+    const dispositionHeaders: Record<string, string> = {};
+    if (download) {
+      dispositionHeaders["Content-Disposition"] = `attachment; filename="${encodeURIComponent(filename)}"`;
+    }
+
     // Soporte para Range requests (seek en video)
     const range = request.headers.get("range");
 
@@ -71,6 +79,7 @@ export async function GET(
           "Content-Length": String(chunkSize),
           "Content-Type": contentType,
           "Cache-Control": "private, max-age=3600",
+          ...dispositionHeaders,
         },
       });
     }
@@ -87,6 +96,7 @@ export async function GET(
         "Content-Type": contentType,
         "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=3600",
+        ...dispositionHeaders,
       },
     });
   } catch {

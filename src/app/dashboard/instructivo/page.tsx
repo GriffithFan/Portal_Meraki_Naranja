@@ -17,6 +17,10 @@ interface Instructivo {
   imagenRuta: string | null;
   imagenTipo: string | null;
   imagenSize: number | null;
+  pdfNombre: string | null;
+  pdfRuta: string | null;
+  pdfTipo: string | null;
+  pdfSize: number | null;
   categoria: string;
   orden: number;
   activo: boolean;
@@ -131,6 +135,14 @@ export default function InstructivoPage() {
     return null;
   };
 
+  const getPdfSrc = (inst: Instructivo) => {
+    if (inst.pdfRuta) {
+      const filename = inst.pdfRuta.split("/").pop();
+      return `/api/instructivos/video/${filename}`;
+    }
+    return null;
+  };
+
   return (
     <div className="animate-fade-in-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
@@ -207,11 +219,15 @@ export default function InstructivoPage() {
               >
                 <div className="flex items-start gap-2">
                   <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    inst.videoRuta || inst.videoUrl ? "bg-orange-100 text-orange-600" : inst.imagenRuta ? "bg-emerald-100 text-emerald-600" : "bg-blue-100 text-blue-600"
+                    inst.videoRuta || inst.videoUrl ? "bg-orange-100 text-orange-600" : inst.pdfRuta ? "bg-rose-100 text-rose-600" : inst.imagenRuta ? "bg-emerald-100 text-emerald-600" : "bg-blue-100 text-blue-600"
                   }`}>
                     {inst.videoRuta || inst.videoUrl ? (
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
+                      </svg>
+                    ) : inst.pdfRuta ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                       </svg>
                     ) : inst.imagenRuta ? (
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -235,6 +251,11 @@ export default function InstructivoPage() {
                       {inst.imagenRuta && (
                         <span className="text-[10px] text-emerald-500">
                           {formatFileSize(inst.imagenSize)}
+                        </span>
+                      )}
+                      {inst.pdfRuta && (
+                        <span className="text-[10px] text-rose-500">
+                          PDF · {formatFileSize(inst.pdfSize)}
                         </span>
                       )}
                     </div>
@@ -330,6 +351,37 @@ export default function InstructivoPage() {
                   </div>
                 )}
 
+                {/* Visor de PDF */}
+                {getPdfSrc(selected) && (
+                  <div className="p-4 bg-surface-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                        </svg>
+                        <span className="text-sm font-medium text-surface-700">{selected.pdfNombre}</span>
+                        <span className="text-[10px] text-surface-400">{formatFileSize(selected.pdfSize)}</span>
+                      </div>
+                      <a
+                        href={`${getPdfSrc(selected)}?download=1`}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-medium hover:bg-rose-700 transition-colors"
+                        download
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Descargar PDF
+                      </a>
+                    </div>
+                    <iframe
+                      src={getPdfSrc(selected)!}
+                      className="w-full rounded-lg border border-surface-200"
+                      style={{ height: "600px" }}
+                      title={`PDF: ${selected.titulo}`}
+                    />
+                  </div>
+                )}
+
                 {/* Contenido de texto */}
                 {selected.contenido && (
                   <div className="p-4">
@@ -340,7 +392,7 @@ export default function InstructivoPage() {
                 )}
 
                 {/* Si no tiene ni video, ni imagen, ni contenido */}
-                {!getVideoSrc(selected) && !isYouTubeUrl(selected.videoUrl) && !getImagenSrc(selected) && !selected.contenido && (
+                {!getVideoSrc(selected) && !isYouTubeUrl(selected.videoUrl) && !getImagenSrc(selected) && !getPdfSrc(selected) && !selected.contenido && (
                   <div className="p-8 text-center text-surface-400">
                     <p className="text-sm">Este instructivo aún no tiene contenido.</p>
                   </div>
@@ -406,14 +458,17 @@ function InstructivoForm({
   const [orden, setOrden] = useState(editando?.orden || 0);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [imagenFile, setImagenFile] = useState<File | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState(editando?.videoUrl && isYouTubeUrl(editando.videoUrl) ? editando.videoUrl : "");
   const [removeVideo, setRemoveVideo] = useState(false);
   const [removeImagen, setRemoveImagen] = useState(false);
+  const [removePdf, setRemovePdf] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imagenInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -429,8 +484,10 @@ function InstructivoForm({
     formData.append("orden", String(orden));
     if (videoFile) formData.append("video", videoFile);
     if (imagenFile) formData.append("imagen", imagenFile);
+    if (pdfFile) formData.append("pdf", pdfFile);
     if (removeVideo) formData.append("removeVideo", "true");
     if (removeImagen) formData.append("removeImagen", "true");
+    if (removePdf) formData.append("removePdf", "true");
     if (youtubeUrl.trim()) formData.append("youtubeUrl", youtubeUrl.trim());
 
     try {
@@ -512,6 +569,25 @@ function InstructivoForm({
 
     setImagenFile(file);
     setRemoveImagen(false);
+    setError("");
+  };
+
+  const handlePdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 50 * 1024 * 1024) {
+      setError("El PDF no puede superar 50MB");
+      return;
+    }
+
+    if (!/\.pdf$/i.test(file.name)) {
+      setError("Solo se permiten archivos PDF");
+      return;
+    }
+
+    setPdfFile(file);
+    setRemovePdf(false);
     setError("");
   };
 
@@ -747,6 +823,65 @@ function InstructivoForm({
                   <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" />
                 </svg>
                 {imagenFile ? "Cambiar imagen" : "Seleccionar imagen"}
+              </span>
+            </button>
+          </div>
+
+          {/* Upload de PDF */}
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">Documento PDF (máx 50MB)</label>
+            
+            {/* PDF actual si existe */}
+            {editando?.pdfRuta && !removePdf && !pdfFile && (
+              <div className="flex items-center gap-2 p-2 bg-surface-50 rounded-lg mb-2">
+                <svg className="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+                <span className="text-xs text-surface-600 truncate flex-1">{editando.pdfNombre}</span>
+                <button
+                  type="button"
+                  onClick={() => setRemovePdf(true)}
+                  className="text-xs text-red-500 hover:text-red-700"
+                >
+                  Eliminar
+                </button>
+              </div>
+            )}
+
+            {/* Nuevo PDF seleccionado */}
+            {pdfFile && (
+              <div className="flex items-center gap-2 p-2 bg-rose-50 rounded-lg mb-2">
+                <svg className="w-4 h-4 text-rose-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <span className="text-xs text-rose-700 truncate flex-1">{pdfFile.name} ({formatFileSize(pdfFile.size)})</span>
+                <button
+                  type="button"
+                  onClick={() => { setPdfFile(null); if (pdfInputRef.current) pdfInputRef.current.value = ""; }}
+                  className="text-xs text-red-500 hover:text-red-700"
+                >
+                  Quitar
+                </button>
+              </div>
+            )}
+
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={handlePdfSelect}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => pdfInputRef.current?.click()}
+              className="w-full py-3 border-2 border-dashed border-surface-300 rounded-lg text-xs text-surface-500 hover:border-rose-400 hover:text-rose-600 hover:bg-rose-50/30 transition-colors"
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+                {pdfFile ? "Cambiar PDF" : "Seleccionar PDF"}
               </span>
             </button>
           </div>

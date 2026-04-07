@@ -25,6 +25,10 @@ const ALLOWED_IMAGE_TYPES = [
 const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif)$/i;
 const MAX_IMAGE_SIZE = 25 * 1024 * 1024; // 25MB
 
+const ALLOWED_PDF_TYPES = ["application/pdf"];
+const ALLOWED_PDF_EXT = /\.pdf$/i;
+const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50MB
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -60,6 +64,7 @@ export async function POST(request: NextRequest) {
     const orden = parseInt(formData.get("orden") as string) || 0;
     const video = formData.get("video") as File | null;
     const imagen = formData.get("imagen") as File | null;
+    const pdf = formData.get("pdf") as File | null;
     const youtubeUrl = (formData.get("youtubeUrl") as string)?.trim() || null;
 
     if (!titulo) {
@@ -146,6 +151,45 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    let pdfData: {
+      pdfNombre?: string;
+      pdfRuta?: string;
+      pdfTipo?: string;
+      pdfSize?: number;
+    } = {};
+
+    if (pdf && pdf.size > 0) {
+      if (!ALLOWED_PDF_TYPES.includes(pdf.type) || !pdf.name.match(ALLOWED_PDF_EXT)) {
+        return NextResponse.json(
+          { error: "Solo se permiten archivos PDF" },
+          { status: 400 }
+        );
+      }
+
+      if (pdf.size > MAX_PDF_SIZE) {
+        return NextResponse.json(
+          { error: "El PDF no puede superar 50MB" },
+          { status: 400 }
+        );
+      }
+
+      const pdfDir = path.join(process.cwd(), "uploads", "instructivos");
+      await mkdir(pdfDir, { recursive: true });
+
+      const pdfSafeName = `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`;
+      const pdfPath = path.join(pdfDir, pdfSafeName);
+
+      const pdfBuffer = Buffer.from(await pdf.arrayBuffer());
+      await writeFile(pdfPath, pdfBuffer);
+
+      pdfData = {
+        pdfNombre: pdf.name,
+        pdfRuta: `/uploads/instructivos/${pdfSafeName}`,
+        pdfTipo: pdf.type,
+        pdfSize: pdf.size,
+      };
+    }
+
     const instructivo = await prisma.instructivo.create({
       data: {
         titulo,
@@ -156,6 +200,7 @@ export async function POST(request: NextRequest) {
         videoUrl: youtubeUrl || null,
         ...videoData,
         ...imagenData,
+        ...pdfData,
       },
       include: {
         creador: { select: { id: true, nombre: true } },
