@@ -32,7 +32,8 @@ export const deriveConnectedPortsFromTopology = (applianceSerial: string, topolo
     const status = (p.status || "").toLowerCase();
     const speedNum = Number(p.speed);
     const hasSpeed = Number.isFinite(speedNum) && speedNum > 0;
-    const isConnected = /(connected|active|up|ready)/.test(status) || hasSpeed;
+    const isExplicitlyDown = status === "disconnected" || status === "disabled";
+    const isConnected = /(connected|active|up|ready)/.test(status) || hasSpeed || !isExplicitlyDown;
     if (isConnected) portsWithCarrier.add(num);
   });
 
