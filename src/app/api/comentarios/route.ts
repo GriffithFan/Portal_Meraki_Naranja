@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { comentarioSchema, parseBody, isErrorResponse } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
@@ -29,11 +29,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-
-  // Solo admins y mods pueden crear comentarios
-  if (!isModOrAdmin(session.rol)) {
-    return NextResponse.json({ error: "Sin permisos para comentar" }, { status: 403 });
-  }
 
   try {
     const data = await parseBody(request, comentarioSchema);
