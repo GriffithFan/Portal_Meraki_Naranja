@@ -142,6 +142,22 @@ function buildCaptureLayout(
   const clone = contentEl.cloneNode(true) as HTMLElement;
   clone.querySelectorAll("[data-export-buttons]").forEach((el) => el.remove());
 
+  // Force desktop layout in clone: remove mobile-only elements, show desktop-only
+  clone.querySelectorAll("[class]").forEach((el) => {
+    const cls = el.className;
+    if (typeof cls !== "string") return;
+    // Remove mobile-only containers (md:hidden, lg:hidden, sm:hidden)
+    if (/\b(md|lg|sm|xl):hidden\b/.test(cls)) {
+      el.remove();
+      return;
+    }
+    // Show desktop-only containers (hidden md:block, hidden lg:block, etc.)
+    if (/\bhidden\b/.test(cls) && /\b(md|lg|sm|xl):(block|table|flex|grid|inline)\b/.test(cls)) {
+      (el as HTMLElement).style.display = "";
+      el.classList.remove("hidden");
+    }
+  });
+
   // Override section title for capture (match Meraki original naming)
   const CAPTURE_TITLES: Record<string, string> = { "Access Points en Gigas": "Wireless" };
   const h1 = clone.querySelector("h1");
@@ -178,8 +194,7 @@ function buildCaptureLayout(
   styleTag.textContent = cssRules.join("\n");
   // Force uppercase table headers in capture (match Meraki original)
   styleTag.textContent += "\n[data-capture-content] th { text-transform: uppercase !important; font-size: 11px !important; font-weight: 600 !important; color: #64748b !important; letter-spacing: 0.5px !important; }";
-  // Force desktop visibility — undo Tailwind responsive hidden/table-cell etc.
-  styleTag.textContent += "\n[data-capture-content] .hidden { display: revert !important; }";
+  // Force desktop table display
   styleTag.textContent += "\n[data-capture-content] table { display: table !important; }";
   styleTag.textContent += "\n[data-capture-content] thead { display: table-header-group !important; }";
   styleTag.textContent += "\n[data-capture-content] tbody { display: table-row-group !important; }";
