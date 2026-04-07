@@ -138,48 +138,24 @@ function buildCaptureLayout(
   const clone = contentEl.cloneNode(true) as HTMLElement;
   clone.querySelectorAll("[data-export-buttons]").forEach((el) => el.remove());
 
-  // Inline computed styles on SVG elements so html-to-image captures colors correctly.
-  // html-to-image sometimes fails to resolve CSS-defined fills on SVG polygons/paths.
-  const originalSVGs = contentEl.querySelectorAll("svg");
-  const clonedSVGs = clone.querySelectorAll("svg");
-  originalSVGs.forEach((origSvg, i) => {
-    const cloneSvg = clonedSVGs[i];
-    if (!cloneSvg) return;
-    const origClass = origSvg.getAttribute("class");
-    if (origClass) cloneSvg.setAttribute("class", origClass);
-    const svgStyles = window.getComputedStyle(origSvg);
-    cloneSvg.style.width = svgStyles.width;
-    cloneSvg.style.height = svgStyles.height;
-    // Inline fills on shapes (polygon, path, rect, circle)
-    const shapes = origSvg.querySelectorAll("polygon, path, rect, circle, line");
-    const cloneShapes = cloneSvg.querySelectorAll("polygon, path, rect, circle, line");
-    shapes.forEach((shape, j) => {
-      const cloneShape = cloneShapes[j] as SVGElement | undefined;
-      if (!cloneShape) return;
-      const cs = window.getComputedStyle(shape);
-      if (cs.fill && cs.fill !== "none") cloneShape.setAttribute("fill", cs.fill);
-      if (cs.stroke && cs.stroke !== "none") cloneShape.setAttribute("stroke", cs.stroke);
-    });
-  });
-
-  // Inline computed styles on key elements (port containers, tables, badges, cards)
-  // so html-to-image renders them with correct colors/backgrounds
-  const styledSelectors = ".NodePort, .NodePortTable, .PortMatrixWrapper, .status-badge, .modern-card, .SwitchBadge, .PoEInline";
-  const origStyled = contentEl.querySelectorAll(styledSelectors);
-  const cloneStyled = clone.querySelectorAll(styledSelectors);
-  origStyled.forEach((origEl, i) => {
-    const cloneEl = cloneStyled[i] as HTMLElement | undefined;
-    if (!cloneEl) return;
-    const cs = window.getComputedStyle(origEl);
-    cloneEl.style.backgroundColor = cs.backgroundColor;
-    cloneEl.style.background = cs.background;
-    cloneEl.style.border = cs.border;
-    cloneEl.style.borderRadius = cs.borderRadius;
-    cloneEl.style.color = cs.color;
-  });
-
   const contentArea = shell.querySelector("[data-capture-content]");
   if (contentArea) contentArea.appendChild(clone);
+
+  // Inject document stylesheets into the shell so html-to-image can resolve
+  // CSS-defined styles (e.g. .NodePort polygon { fill }, backgrounds, etc.)
+  const styleTag = document.createElement("style");
+  const cssRules: string[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      for (const rule of Array.from(sheet.cssRules)) {
+        cssRules.push(rule.cssText);
+      }
+    } catch {
+      // Cross-origin stylesheets throw SecurityError — skip them
+    }
+  }
+  styleTag.textContent = cssRules.join("\n");
+  shell.prepend(styleTag);
 
   document.body.appendChild(shell);
   return shell;
