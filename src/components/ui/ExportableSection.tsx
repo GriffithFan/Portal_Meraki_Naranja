@@ -32,8 +32,8 @@ function locationIconSVG(c = "#94a3b8") {
 const NAV_ITEMS = [
   { label: "Topología", key: "Topologia", iconFn: topologyIconSVG },
   { label: "Switches", key: "Switches", iconFn: switchIconSVG },
-  { label: "Access Points", key: "Access Points en Gigas", iconFn: wifiIconSVG },
-  { label: "Appliance Status", key: "Appliance Status", iconFn: serverIconSVG },
+  { label: "Puntos de acceso", key: "Access Points en Gigas", iconFn: wifiIconSVG },
+  { label: "Estado (appliances)", key: "Appliance Status", iconFn: serverIconSVG },
 ];
 
 /**
@@ -59,12 +59,15 @@ function buildCaptureLayout(
   const gpsMatch = sidebarText.match(/([\-]?\d+\.\d+),\s*([\-]?\d+\.\d+)/);
   const gpsText = gpsMatch ? `${gpsMatch[1]}, ${gpsMatch[2]}` : "";
 
-  // Nav — estilos idénticos a .sidebar-menu-item de SidebarTopBar.details.jsx
+  // Nav — pill-style matching Meraki original
   const navHTML = NAV_ITEMS.map((item) => {
     const active = item.key === sectionName;
-    const iconColor = active ? "#2563eb" : "#475569";
+    const iconColor = active ? "#fff" : "#475569";
     const icon = item.iconFn(iconColor);
-    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;color:${active ? "#2563eb" : "#475569"};border-left:3px solid ${active ? "#2563eb" : "transparent"};font-size:13px;font-weight:500;${active ? "background:#eff6ff;" : ""}">
+    const activeStyle = active
+      ? "background:#2563eb;border-radius:8px;color:#fff;font-weight:600;"
+      : "color:#475569;font-weight:500;";
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;margin:2px 8px;font-size:13px;${activeStyle}">
       <span style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;flex-shrink:0;">${icon}</span>
       <span>${item.label}</span></div>`;
   }).join("");
@@ -82,19 +85,19 @@ function buildCaptureLayout(
   // Shell — posicionado VISIBLE para que html-to-image lo capture correctamente
   const shell = document.createElement("div");
   shell.style.cssText =
-    "position:fixed;top:0;left:0;z-index:99999;width:1500px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#fff;";
+    "position:fixed;top:0;left:0;z-index:99999;width:1500px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;";
 
   shell.innerHTML = `
     <!-- TopBar — compacto, matching captura original -->
-    <div style="height:48px;background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);color:#fff;display:flex;align-items:center;padding:0 16px;gap:12px;box-shadow:0 2px 8px rgba(15,23,42,0.12);border-bottom:1px solid rgba(255,255,255,0.1);">
+    <div style="height:48px;background:#1e2d3d;color:#fff;display:flex;align-items:center;padding:0 16px;gap:12px;box-shadow:0 2px 8px rgba(15,23,42,0.12);">
       <div style="display:flex;align-items:center;gap:8px;min-width:fit-content;">
         <div style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;">M</div>
         <div style="font-size:14px;font-weight:700;color:#fff;">Portal</div>
       </div>
-      <div style="flex:1;min-width:200px;">
-        <div style="display:flex;align-items:center;background:rgba(255,255,255,0.15);border-radius:6px;padding:0 10px;border:1px solid rgba(255,255,255,0.2);">
-          <div style="flex:1;padding:7px 6px;font-size:12px;color:rgba(255,255,255,0.6);">${predioCode}</div>
-          <div style="padding:4px;display:flex;align-items:center;opacity:0.8;">
+      <div style="flex:0 1 300px;">
+        <div style="display:flex;align-items:center;background:rgba(255,255,255,0.1);border-radius:8px;padding:0 4px 0 12px;border:1px solid rgba(255,255,255,0.15);">
+          <div style="flex:1;padding:6px 0;font-size:13px;color:rgba(255,255,255,0.7);">${predioCode}</div>
+          <div style="width:30px;height:30px;border-radius:50%;background:#2563eb;display:flex;align-items:center;justify-content:center;margin:2px 0;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
           </div>
         </div>
@@ -110,9 +113,9 @@ function buildCaptureLayout(
       </div>
     </div>
     <!-- Body: Sidebar + Content -->
-    <div style="display:flex;min-height:600px;">
+    <div style="display:flex;min-height:600px;padding:16px;gap:16px;">
       <!-- Sidebar — idéntico a .sidebar de SidebarTopBar.details.jsx (280px) -->
-      <div style="width:280px;background:#ffffff;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;flex-shrink:0;">
+      <div style="width:260px;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);display:flex;flex-direction:column;flex-shrink:0;">
         <div style="padding:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #e2e8f0;min-height:80px;">
           <div style="flex:1;margin-right:8px;">
             <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Predio</div>
@@ -130,13 +133,24 @@ function buildCaptureLayout(
           ${gpsBlock}
         </div>
       </div>
-      <div style="flex:1;padding:24px 28px;overflow:hidden;" data-capture-content></div>
+      <div style="flex:1;padding:24px 28px;overflow:hidden;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);" data-capture-content></div>
     </div>
   `;
 
   // Clonar contenido y limpiar botones de export
   const clone = contentEl.cloneNode(true) as HTMLElement;
   clone.querySelectorAll("[data-export-buttons]").forEach((el) => el.remove());
+
+  // Override section title for capture (match Meraki original naming)
+  const CAPTURE_TITLES: Record<string, string> = { "Access Points en Gigas": "Wireless" };
+  const h1 = clone.querySelector("h1");
+  if (h1) {
+    const capTitle = CAPTURE_TITLES[sectionName];
+    if (capTitle) h1.textContent = capTitle;
+    // Remove subtitle in capture
+    const nextP = h1.nextElementSibling;
+    if (nextP?.tagName === "P") nextP.remove();
+  }
 
   const contentArea = shell.querySelector("[data-capture-content]");
   if (contentArea) contentArea.appendChild(clone);
@@ -155,6 +169,8 @@ function buildCaptureLayout(
     }
   }
   styleTag.textContent = cssRules.join("\n");
+  // Force uppercase table headers in capture (match Meraki original)
+  styleTag.textContent += "\n[data-capture-content] th { text-transform: uppercase !important; font-size: 11px !important; font-weight: 600 !important; color: #64748b !important; letter-spacing: 0.5px !important; }";
   shell.prepend(styleTag);
 
   document.body.appendChild(shell);
@@ -186,7 +202,7 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
     try {
       const raw = await toCanvas(shell, {
         pixelRatio: 2,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#f0f2f5",
         cacheBust: true,
       });
 
