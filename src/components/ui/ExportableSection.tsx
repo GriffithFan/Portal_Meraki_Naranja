@@ -94,7 +94,7 @@ function buildCaptureLayout(
         <div style="width:28px;height:28px;border-radius:6px;background:#4085CE;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;">M</div>
         <div style="font-size:14px;font-weight:700;color:#fff;">Portal</div>
       </div>
-      <div style="flex:0 1 300px;">
+      <div style="flex:0 1 360px;">
         <div style="display:flex;align-items:center;background:#344D67;border-radius:50px;padding:0 4px 0 14px;border:1px solid rgba(255,255,255,0.25);">
           <div style="flex:1;padding:6px 0;font-size:13px;color:rgba(255,255,255,0.7);">${predioCode}</div>
           <div style="width:30px;height:30px;border-radius:50%;background:#2B6CEE;display:flex;align-items:center;justify-content:center;margin:2px 0;">
@@ -114,7 +114,7 @@ function buildCaptureLayout(
       </div>
     </div>
     <!-- Body: Sidebar + Content -->
-    <div style="display:flex;min-height:600px;padding:16px;gap:16px;">
+    <div style="display:flex;min-height:600px;padding:16px;gap:16px;align-items:flex-start;">
       <!-- Sidebar — idéntico a .sidebar de SidebarTopBar.details.jsx (280px) -->
       <div style="width:260px;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);display:flex;flex-direction:column;flex-shrink:0;">
         <div style="padding:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #e2e8f0;min-height:80px;">
