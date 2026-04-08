@@ -150,6 +150,9 @@ export default function EspacioTareasPage() {
   const { session, isModOrAdmin } = useSession();
   const [selectedTareaId, setSelectedTareaId] = useState<string | null>(null);
 
+  // Read URL ?open= param on mount
+  const urlOpenRef = useRef<string | null>(typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("open") : null);
+
   const [espacio, setEspacio] = useState<any>(null);
   const [tareas, setTareas] = useState<any[]>([]);
   const [estados, setEstados] = useState<any[]>([]);
@@ -423,6 +426,18 @@ export default function EspacioTareasPage() {
 
     setLoading(false);
   }, [espacioId]);
+
+  // Auto-open predio detail from URL ?open=CODIGO
+  const openHandled = useRef(false);
+  useEffect(() => {
+    if (openHandled.current || loading || tareas.length === 0) return;
+    const openCode = urlOpenRef.current;
+    if (!openCode) return;
+    openHandled.current = true;
+    const tarea = tareas.find(t => t.codigo === openCode);
+    if (tarea) setSelectedTareaId(tarea.id);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [loading, tareas]);
 
   useEffect(() => {
     fetchData();
