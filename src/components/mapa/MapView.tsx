@@ -219,7 +219,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
             ${p.ambito ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Ámbito</td><td>${escapeHtml(p.ambito)}</td></tr>` : ""}
           </table>
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0">
-            <a href="/dashboard/tareas?search=${encodeURIComponent(p.codigo)}" style="color:#6366f1;text-decoration:none;font-size:11px">Ver en tareas →</a>
+            <a href="/dashboard/tareas?search=${encodeURIComponent(p.codigo)}&open=${encodeURIComponent(p.codigo)}" style="color:#6366f1;text-decoration:none;font-size:11px">Ver en tareas →</a>
           </div>
         </div>`,
         { maxWidth: 280 }
