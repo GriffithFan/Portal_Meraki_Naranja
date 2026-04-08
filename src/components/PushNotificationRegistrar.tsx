@@ -45,7 +45,7 @@ async function subscribeToPush(registration: ServiceWorkerRegistration) {
 
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: key,
+      applicationServerKey: key.buffer as ArrayBuffer,
     });
 
     await sendSubscription(subscription);
