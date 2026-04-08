@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
             enlace: "/dashboard/chat",
             entidad: "CHAT",
             entidadId: conversacion.id,
+            tag: `chat-${conversacion.id}`,
           })
         )
       );

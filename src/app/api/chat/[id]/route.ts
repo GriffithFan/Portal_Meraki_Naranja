@@ -135,18 +135,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     // Notificar a la otra parte
-    const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
-    if (destinatarioId) {
-      const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
-      const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
-      await enviarPushYBandeja(destinatarioId, {
-        tipo: "CHAT",
-        titulo: "Nuevo mensaje en chat",
-        mensaje: `${remitente}: ${mensaje.trim().slice(0, 80)}`,
-        enlace: "/dashboard/chat",
-        entidad: "CHAT",
-        entidadId: id,
+    const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
+    const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
+    const pushPayload = {
+      tipo: "CHAT",
+      titulo: "Nuevo mensaje en chat",
+      mensaje: `${remitente}: ${mensaje.trim().slice(0, 80)}`,
+      enlace: "/dashboard/chat",
+      entidad: "CHAT",
+      entidadId: id,
+      tag: `chat-${id}`,
+    };
+
+    if (esCreador && !conversacion.agenteId) {
+      // Conversación ABIERTA sin agente — notificar a todos los usuarios Mesa
+      const usuariosMesa = await prisma.user.findMany({
+        where: { esMesa: true, activo: true, id: { not: session.userId } },
+        select: { id: true },
       });
+      await Promise.allSettled(
+        usuariosMesa.map((u) => enviarPushYBandeja(u.id, pushPayload))
+      );
+    } else {
+      const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
+      if (destinatarioId) {
+        await enviarPushYBandeja(destinatarioId, pushPayload);
+      }
     }
 
     return NextResponse.json(nuevoMensaje, { status: 201 });
@@ -206,6 +220,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         enlace: "/dashboard/chat",
         entidad: "CHAT",
         entidadId: id,
+        tag: `chat-${id}`,
       });
 
       return NextResponse.json(updated);
@@ -230,6 +245,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         enlace: "/dashboard/chat",
         entidad: "CHAT",
         entidadId: id,
+        tag: `chat-${id}`,
       });
 
       return NextResponse.json(updated);

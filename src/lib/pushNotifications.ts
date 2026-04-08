@@ -77,13 +77,15 @@ export async function enviarPushYBandeja(
     )
   );
 
-  // Limpiar suscripciones inválidas (410 Gone o 404)
+  // Limpiar suscripciones inválidas (410 Gone, 404, 401/403 bad VAPID)
   const toDelete: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "rejected") {
       const statusCode = (r.reason as { statusCode?: number })?.statusCode;
-      if (statusCode === 410 || statusCode === 404) {
+      if (statusCode === 410 || statusCode === 404 || statusCode === 401 || statusCode === 403) {
         toDelete.push(subs[i].id);
+      } else {
+        console.warn(`[Push] Error enviando a ${subs[i].endpoint.slice(0, 60)}...: status=${statusCode}`, (r.reason as Error)?.message);
       }
     }
   });

@@ -15,20 +15,37 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 async function subscribeToPush(registration: ServiceWorkerRegistration) {
   try {
+    const key = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     const existing = await registration.pushManager.getSubscription();
+
     if (existing) {
-      // Ya suscrito, enviar al backend por si cambió
-      await sendSubscription(existing);
-      return;
+      // Verify the subscription's applicationServerKey matches current VAPID key
+      const existingKey = existing.options?.applicationServerKey;
+      let keyMismatch = false;
+      if (existingKey) {
+        const existingArr = new Uint8Array(existingKey);
+        if (existingArr.length !== key.length || existingArr.some((b, i) => b !== key[i])) {
+          keyMismatch = true;
+        }
+      }
+
+      if (keyMismatch) {
+        // VAPID key changed — unsubscribe old and re-subscribe
+        console.warn("[Push] VAPID key mismatch, re-subscribing...");
+        await existing.unsubscribe();
+      } else {
+        // Key matches, just sync with backend
+        await sendSubscription(existing);
+        return;
+      }
     }
 
     const permission = await Notification.requestPermission();
     if (permission !== "granted") return;
 
-    const key = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: key.buffer as ArrayBuffer,
+      applicationServerKey: key,
     });
 
     await sendSubscription(subscription);

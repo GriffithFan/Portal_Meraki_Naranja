@@ -121,25 +121,39 @@ export async function POST(request: NextRequest) {
     });
 
     // Notificar
-    const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
-    if (destinatarioId) {
-      const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
-      const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
-      const tipoArchivo = file.type.startsWith("image/")
-        ? "📷 Imagen"
-        : file.type.startsWith("video/")
-        ? "🎬 Video"
-        : file.type.startsWith("audio/")
-        ? "🎙️ Audio"
-        : "📎 Archivo";
-      await enviarPushYBandeja(destinatarioId, {
-        tipo: "CHAT",
-        titulo: "Nuevo archivo en chat",
-        mensaje: `${remitente}: ${tipoArchivo}`,
-        enlace: "/dashboard/chat",
-        entidad: "CHAT",
-        entidadId: conversacionId,
+    const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
+    const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
+    const tipoArchivo = file.type.startsWith("image/")
+      ? "📷 Imagen"
+      : file.type.startsWith("video/")
+      ? "🎬 Video"
+      : file.type.startsWith("audio/")
+      ? "🎙️ Audio"
+      : "📎 Archivo";
+    const pushPayload = {
+      tipo: "CHAT",
+      titulo: "Nuevo archivo en chat",
+      mensaje: `${remitente}: ${tipoArchivo}`,
+      enlace: "/dashboard/chat",
+      entidad: "CHAT",
+      entidadId: conversacionId,
+      tag: `chat-${conversacionId}`,
+    };
+
+    if (esCreador && !conversacion.agenteId) {
+      // Conversación ABIERTA sin agente — notificar a Mesa
+      const usuariosMesa = await prisma.user.findMany({
+        where: { esMesa: true, activo: true, id: { not: session.userId } },
+        select: { id: true },
       });
+      await Promise.allSettled(
+        usuariosMesa.map((u) => enviarPushYBandeja(u.id, pushPayload))
+      );
+    } else {
+      const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
+      if (destinatarioId) {
+        await enviarPushYBandeja(destinatarioId, pushPayload);
+      }
     }
 
     return NextResponse.json(nuevoMensaje, { status: 201 });
