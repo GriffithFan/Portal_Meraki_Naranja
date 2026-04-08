@@ -89,6 +89,12 @@ export default function PushNotificationRegistrar() {
         if (registration.active) {
           subscribeToPush(registration);
         }
+
+        // Re-verificar suscripción cada 30 min (puede expirar en background)
+        const interval = setInterval(() => {
+          if (registration.active) subscribeToPush(registration);
+        }, 30 * 60 * 1000);
+        return () => clearInterval(interval);
       })
       .catch((err) => console.error("[SW] Registration failed:", err));
   }, []);

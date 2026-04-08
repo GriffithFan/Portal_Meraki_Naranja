@@ -134,34 +134,38 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: { updatedAt: new Date() },
     });
 
-    // Notificar a la otra parte
-    const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
-    const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
-    const pushPayload = {
-      tipo: "CHAT",
-      titulo: "Nuevo mensaje en chat",
-      mensaje: `${remitente}: ${mensaje.trim().slice(0, 80)}`,
-      enlace: "/dashboard/chat",
-      entidad: "CHAT",
-      entidadId: id,
-      tag: `chat-${id}`,
-    };
+    // Notificar a la otra parte (fire-and-forget: no debe bloquear la respuesta)
+    import("@/lib/pushNotifications").then(async ({ enviarPushYBandeja }) => {
+      try {
+        const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
+        const pushPayload = {
+          tipo: "CHAT",
+          titulo: "Nuevo mensaje en chat",
+          mensaje: `${remitente}: ${mensaje.trim().slice(0, 80)}`,
+          enlace: "/dashboard/chat",
+          entidad: "CHAT",
+          entidadId: id,
+          tag: `chat-msg-${id}-${Date.now()}`,
+        };
 
-    if (esCreador && !conversacion.agenteId) {
-      // Conversación ABIERTA sin agente — notificar a todos los usuarios Mesa
-      const usuariosMesa = await prisma.user.findMany({
-        where: { esMesa: true, activo: true, id: { not: session.userId } },
-        select: { id: true },
-      });
-      await Promise.allSettled(
-        usuariosMesa.map((u) => enviarPushYBandeja(u.id, pushPayload))
-      );
-    } else {
-      const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
-      if (destinatarioId) {
-        await enviarPushYBandeja(destinatarioId, pushPayload);
+        if (esCreador && !conversacion.agenteId) {
+          const usuariosMesa = await prisma.user.findMany({
+            where: { esMesa: true, activo: true, id: { not: session.userId } },
+            select: { id: true },
+          });
+          await Promise.allSettled(
+            usuariosMesa.map((u) => enviarPushYBandeja(u.id, pushPayload))
+          );
+        } else {
+          const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
+          if (destinatarioId) {
+            await enviarPushYBandeja(destinatarioId, pushPayload);
+          }
+        }
+      } catch (e) {
+        console.error("[Chat] Error enviando notificación push:", e);
       }
-    }
+    });
 
     return NextResponse.json(nuevoMensaje, { status: 201 });
   } catch {
@@ -211,17 +215,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         data: { agenteId: session.userId, estado: "EN_CURSO" },
       });
 
-      // Notificar al técnico
-      const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
-      await enviarPushYBandeja(conversacion.creadorId, {
-        tipo: "CHAT",
-        titulo: "Tu consulta fue tomada",
-        mensaje: "Mesa de Ayuda está atendiendo tu consulta.",
-        enlace: "/dashboard/chat",
-        entidad: "CHAT",
-        entidadId: id,
-        tag: `chat-${id}`,
-      });
+      // Notificar al t\u00e9cnico (fire-and-forget)
+      import("@/lib/pushNotifications").then(({ enviarPushYBandeja }) =>
+        enviarPushYBandeja(conversacion.creadorId, {
+          tipo: "CHAT",
+          titulo: "Tu consulta fue tomada",
+          mensaje: "Mesa de Ayuda est\u00e1 atendiendo tu consulta.",
+          enlace: "/dashboard/chat",
+          entidad: "CHAT",
+          entidadId: id,
+          tag: `chat-taken-${id}`,
+        }).catch((e) => console.error("[Chat] Error notificando tomar:", e))
+      );
 
       return NextResponse.json(updated);
     }
@@ -236,17 +241,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         data: { estado: "CERRADA", cerradoAt: new Date() },
       });
 
-      // Notificar al técnico
-      const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
-      await enviarPushYBandeja(conversacion.creadorId, {
-        tipo: "CHAT",
-        titulo: "Consulta cerrada",
-        mensaje: "Mesa de Ayuda cerró tu consulta. Podés crear una nueva si lo necesitás.",
-        enlace: "/dashboard/chat",
-        entidad: "CHAT",
-        entidadId: id,
-        tag: `chat-${id}`,
-      });
+      // Notificar al t\u00e9cnico (fire-and-forget)
+      import("@/lib/pushNotifications").then(({ enviarPushYBandeja }) =>
+        enviarPushYBandeja(conversacion.creadorId, {
+          tipo: "CHAT",
+          titulo: "Consulta cerrada",
+          mensaje: "Mesa de Ayuda cerr\u00f3 tu consulta. Pod\u00e9s crear una nueva si lo necesit\u00e1s.",
+          enlace: "/dashboard/chat",
+          entidad: "CHAT",
+          entidadId: id,
+          tag: `chat-closed-${id}`,
+        }).catch((e) => console.error("[Chat] Error notificando cerrar:", e))
+      );
 
       return NextResponse.json(updated);
     }

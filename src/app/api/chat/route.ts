@@ -112,20 +112,26 @@ export async function POST(request: NextRequest) {
     });
 
     if (usuariosMesa.length > 0) {
-      const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
-      await Promise.allSettled(
-        usuariosMesa.map((u) =>
-          enviarPushYBandeja(u.id, {
-            tipo: "CHAT",
-            titulo: "Nueva consulta en Mesa de Ayuda",
-            mensaje: `${session.nombre}: ${mensaje.trim().slice(0, 80)}`,
-            enlace: "/dashboard/chat",
-            entidad: "CHAT",
-            entidadId: conversacion.id,
-            tag: `chat-${conversacion.id}`,
-          })
-        )
-      );
+      // Fire-and-forget: no bloquear respuesta
+      import("@/lib/pushNotifications").then(async ({ enviarPushYBandeja }) => {
+        try {
+          await Promise.allSettled(
+            usuariosMesa.map((u) =>
+              enviarPushYBandeja(u.id, {
+                tipo: "CHAT",
+                titulo: "Nueva consulta en Mesa de Ayuda",
+                mensaje: `${session.nombre}: ${mensaje.trim().slice(0, 80)}`,
+                enlace: "/dashboard/chat",
+                entidad: "CHAT",
+                entidadId: conversacion.id,
+                tag: `chat-new-${conversacion.id}`,
+              })
+            )
+          );
+        } catch (e) {
+          console.error("[Chat] Error enviando notificaci\u00f3n nueva consulta:", e);
+        }
+      });
     }
 
     return NextResponse.json(conversacion, { status: 201 });

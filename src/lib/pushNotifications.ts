@@ -48,11 +48,19 @@ export async function enviarPushYBandeja(
   });
 
   // 2. Enviar push a todas las suscripciones del usuario
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    console.warn("[Push] VAPID keys not configured, skipping push for user", userId);
+    return;
+  }
 
   const subs = await prisma.pushSubscription.findMany({
     where: { userId },
   });
+
+  if (subs.length === 0) {
+    console.info(`[Push] No subscriptions found for user ${userId}`);
+    return;
+  }
 
   const payload: PushPayload = {
     title: opts.titulo,

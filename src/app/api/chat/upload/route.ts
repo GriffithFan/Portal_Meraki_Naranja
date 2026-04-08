@@ -120,41 +120,45 @@ export async function POST(request: NextRequest) {
       data: { updatedAt: new Date() },
     });
 
-    // Notificar
-    const { enviarPushYBandeja } = await import("@/lib/pushNotifications");
-    const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
-    const tipoArchivo = file.type.startsWith("image/")
-      ? "📷 Imagen"
-      : file.type.startsWith("video/")
-      ? "🎬 Video"
-      : file.type.startsWith("audio/")
-      ? "🎙️ Audio"
-      : "📎 Archivo";
-    const pushPayload = {
-      tipo: "CHAT",
-      titulo: "Nuevo archivo en chat",
-      mensaje: `${remitente}: ${tipoArchivo}`,
-      enlace: "/dashboard/chat",
-      entidad: "CHAT",
-      entidadId: conversacionId,
-      tag: `chat-${conversacionId}`,
-    };
+    // Notificar (fire-and-forget: no debe bloquear la respuesta)
+    import("@/lib/pushNotifications").then(async ({ enviarPushYBandeja }) => {
+      try {
+        const remitente = esCreador ? session.nombre : "Mesa de Ayuda";
+        const tipoArchivo = file.type.startsWith("image/")
+          ? "📷 Imagen"
+          : file.type.startsWith("video/")
+          ? "🎬 Video"
+          : file.type.startsWith("audio/")
+          ? "🎙️ Audio"
+          : "📎 Archivo";
+        const pushPayload = {
+          tipo: "CHAT",
+          titulo: "Nuevo archivo en chat",
+          mensaje: `${remitente}: ${tipoArchivo}`,
+          enlace: "/dashboard/chat",
+          entidad: "CHAT",
+          entidadId: conversacionId,
+          tag: `chat-msg-${conversacionId}-${Date.now()}`,
+        };
 
-    if (esCreador && !conversacion.agenteId) {
-      // Conversación ABIERTA sin agente — notificar a Mesa
-      const usuariosMesa = await prisma.user.findMany({
-        where: { esMesa: true, activo: true, id: { not: session.userId } },
-        select: { id: true },
-      });
-      await Promise.allSettled(
-        usuariosMesa.map((u) => enviarPushYBandeja(u.id, pushPayload))
-      );
-    } else {
-      const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
-      if (destinatarioId) {
-        await enviarPushYBandeja(destinatarioId, pushPayload);
+        if (esCreador && !conversacion.agenteId) {
+          const usuariosMesa = await prisma.user.findMany({
+            where: { esMesa: true, activo: true, id: { not: session.userId } },
+            select: { id: true },
+          });
+          await Promise.allSettled(
+            usuariosMesa.map((u) => enviarPushYBandeja(u.id, pushPayload))
+          );
+        } else {
+          const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
+          if (destinatarioId) {
+            await enviarPushYBandeja(destinatarioId, pushPayload);
+          }
+        }
+      } catch (e) {
+        console.error("[Chat/Upload] Error enviando notificación push:", e);
       }
-    }
+    });
 
     return NextResponse.json(nuevoMensaje, { status: 201 });
   } catch (error) {
