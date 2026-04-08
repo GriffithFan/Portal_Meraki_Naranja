@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
       tipo: true,
       equipoAsignado: true,
       ambito: true,
+      nombreInstitucion: true,
       estado: { select: { id: true, nombre: true, color: true } },
     },
     take: 5000,

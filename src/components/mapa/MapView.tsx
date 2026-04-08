@@ -17,6 +17,7 @@ interface PredioMapa {
   tipo: string | null;
   equipoAsignado: string | null;
   ambito: string | null;
+  nombreInstitucion: string | null;
   estado: { id: string; nombre: string; color: string } | null;
 }
 
@@ -178,6 +179,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
           <div style="font-weight:600;font-size:13px;margin-bottom:2px">${escapeHtml(p.nombre)}</div>
           <div style="color:#64748b;margin-bottom:6px;font-size:11px">${escapeHtml(p.codigo)}</div>
           ${prov ? `<div style="display:inline-flex;align-items:center;gap:4px;background:${provColor}15;border:1px solid ${provColor}40;color:${provColor};padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;margin-bottom:8px"><span style="width:6px;height:6px;border-radius:50%;background:${provColor}"></span>${escapeHtml(prov)}</div>` : ""}
+          ${p.nombreInstitucion ? `<div style="color:#475569;font-size:11px;margin-bottom:6px;font-style:italic">${escapeHtml(p.nombreInstitucion)}</div>` : ""}
           <table style="width:100%;border-collapse:collapse">
             <tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Estado</td><td>${estadoLabel}</td></tr>
             ${p.equipoAsignado ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Equipo</td><td>${escapeHtml(p.equipoAsignado)}</td></tr>` : ""}

@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       { creadorId: { in: idsVisibles } },
       ...(equipoMatch.length > 0
         ? [{ equipoAsignado: { in: equipoMatch, mode: "insensitive" } }]
-        : []),
+        : [{ equipoAsignado: { equals: session.nombre, mode: "insensitive" } }]),
     ];
   }
 
