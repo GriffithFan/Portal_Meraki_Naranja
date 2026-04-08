@@ -121,6 +121,7 @@ const EQUIPO_TH_MAP: Record<string, string> = {
   FEDE: "TH07",
   FEDERICO: "TH07",
   ADOLFO: "TH04",
+  GUSTAVO: "Gustavo",
 };
 
 // Mapeo inverso TH → nombre (para display)
@@ -129,10 +130,11 @@ const TH_NOMBRE_MAP: Record<string, string> = {
   TH03: "JORGE",
   TH04: "LUCIO",
   TH07: "FEDE",
+  Gustavo: "GUSTAVO",
 };
 
 // Opciones TH disponibles
-const TH_OPTIONS = ["TH01", "TH02", "TH03", "TH04", "TH05", "TH06", "TH07", "TH08", "TH09", "TH10"];
+const TH_OPTIONS = ["TH01", "TH02", "TH03", "TH04", "Gustavo", "TH06", "TH07", "TH08", "TH09", "TH10"];
 
 const GROUP_BY_OPTIONS = [
   { value: "estado", label: "Estado" },
@@ -893,7 +895,7 @@ export default function EspacioTareasPage() {
       if (!raw) return <span className="text-surface-300">&mdash;</span>;
       const upper = raw.toUpperCase();
       const thCode = upper.match(/^TH\d+$/) ? upper : EQUIPO_TH_MAP[upper];
-      const display = thCode ? (upper === thCode ? raw : `${raw}-${thCode}`) : raw;
+      const display = thCode && thCode !== raw ? `${raw}-${thCode}` : raw;
       return <span className="flex items-center group/cell" title={display}><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display} /></span>;
     }
     const val = t[col.field];
