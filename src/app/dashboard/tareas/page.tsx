@@ -1878,6 +1878,7 @@ export default function TareasPage() {
                               >
                                 <option value="">—</option>
                                 <option value="SI">SI</option>
+                                <option value="PEDIDO">Pedido</option>
                                 <option value="NO">NO</option>
                               </select>
                             ) : f.type === "date" ? (
