@@ -21,6 +21,7 @@ interface PredioMapa {
   tipo: string | null;
   equipoAsignado: string | null;
   ambito: string | null;
+  nombreInstitucion: string | null;
   estado: { id: string; nombre: string; color: string } | null;
 }
 
