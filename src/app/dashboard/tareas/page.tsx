@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
@@ -99,11 +98,16 @@ const DEFAULT_COLUMNS: Column[] = [
 export default function TareasPage() {
   const { session, isModOrAdmin } = useSession();
   const { headerSearch } = useSearchContext();
-  const urlParams = useSearchParams();
   const [tareas, setTareas] = useState<any[]>([]);
   const [estados, setEstados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState(urlParams.get("search") || "");
+
+  // Read URL params on mount (client-side only)
+  const urlParamsRef = useRef<URLSearchParams | null>(null);
+  if (typeof window !== "undefined" && !urlParamsRef.current) {
+    urlParamsRef.current = new URLSearchParams(window.location.search);
+  }
+  const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
 
   // Sincronizar búsqueda del Header global
   useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
@@ -395,14 +399,14 @@ export default function TareasPage() {
   const openHandled = useRef(false);
   useEffect(() => {
     if (openHandled.current || loading || tareas.length === 0) return;
-    const openCode = urlParams.get("open");
+    const openCode = urlParamsRef.current?.get("open");
     if (!openCode) return;
     openHandled.current = true;
     const tarea = tareas.find(t => t.codigo === openCode);
     if (tarea) openDetail(tarea);
     // Clean URL params without reload
     window.history.replaceState({}, "", window.location.pathname);
-  }, [loading, tareas, urlParams]);
+  }, [loading, tareas]);
 
   // Agrupar tareas
   const groupedTareas = useMemo(() => {
