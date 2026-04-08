@@ -132,7 +132,38 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
     markersRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
+    // ── User location tracking ──
+    const userMarkerRef: { marker: L.Marker | null; circle: L.Circle | null } = { marker: null, circle: null };
+
+    const userIcon = L.divIcon({
+      html: `<div style="position:relative;width:18px;height:18px">
+        <div style="position:absolute;inset:0;background:#3b82f6;border:2.5px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(59,130,246,.5)"></div>
+        <div style="position:absolute;inset:-6px;border-radius:50%;background:rgba(59,130,246,.2);animation:pulse-loc 2s ease-out infinite"></div>
+      </div>
+      <style>@keyframes pulse-loc{0%{transform:scale(.8);opacity:.8}100%{transform:scale(2.2);opacity:0}}</style>`,
+      className: "",
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+
+    map.on("locationfound", (e: L.LocationEvent) => {
+      const { lat, lng } = e.latlng;
+      const radius = e.accuracy / 2;
+      if (userMarkerRef.marker) {
+        userMarkerRef.marker.setLatLng([lat, lng]);
+        userMarkerRef.circle?.setLatLng([lat, lng]).setRadius(radius);
+      } else {
+        userMarkerRef.circle = L.circle([lat, lng], { radius, color: "#3b82f6", fillColor: "#3b82f680", fillOpacity: 0.15, weight: 1 }).addTo(map);
+        userMarkerRef.marker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 })
+          .bindPopup(`<div style="font-family:system-ui;font-size:12px;text-align:center"><b>Tu ubicación</b><br/><span style="color:#64748b;font-size:10px">±${Math.round(radius)}m</span></div>`)
+          .addTo(map);
+      }
+    });
+
+    map.locate({ watch: true, enableHighAccuracy: true, maxZoom: 16 });
+
     return () => {
+      map.stopLocate();
       map.remove();
       mapRef.current = null;
       markersRef.current = null;
