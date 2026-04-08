@@ -70,7 +70,7 @@ const DEFAULT_COLUMNS: Column[] = [
   { id: "codigoPredio", label: "Predio", field: "codigo", width: 100, visible: true, editable: false, type: "text" },
   { id: "predio", label: "Incidencia", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
   { id: "fechaActualizacion", label: "Fecha de actualización", field: "updatedAt", width: 110, visible: true, editable: false, type: "date" },
-  { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO"] },
+  { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO", "PEDIDO"] },
   { id: "cue", label: "CUE", field: "cue", width: 100, visible: true, editable: true, type: "text" },
   { id: "fechaDesde", label: "DESDE", field: "fechaDesde", width: 90, visible: true, editable: true, type: "date" },
   { id: "fechaHasta", label: "HASTA", field: "fechaHasta", width: 90, visible: true, editable: true, type: "date" },
@@ -944,17 +944,19 @@ export default function TareasPage() {
             className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border cursor-pointer focus:outline-none focus:ring-1 focus:ring-surface-300 ${
               val === "SI" ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
               val === "NO" ? "bg-red-50 text-red-500 border-red-200" :
+              val === "PEDIDO" ? "bg-amber-50 text-amber-600 border-amber-200" :
               "bg-surface-50 text-surface-400 border-surface-200"
             }`}
           >
-            <option value="">—</option>
+            <option value="">Sin dato</option>
             <option value="SI">SI</option>
+            <option value="PEDIDO">Pedido</option>
             <option value="NO">NO</option>
           </select>
         );
       }
       return val ? (
-        <span className={`px-1.5 py-px rounded text-[10px] font-semibold ${val === "SI" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
+        <span className={`px-1.5 py-px rounded text-[10px] font-semibold ${val === "SI" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : val === "PEDIDO" ? "bg-amber-50 text-amber-600 border border-amber-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
           {val}
         </span>
       ) : <span className="text-surface-300">&mdash;</span>;
