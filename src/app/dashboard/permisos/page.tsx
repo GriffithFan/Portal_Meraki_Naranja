@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
+import { usePermisos } from "@/hooks/usePermisos";
 import clsx from "clsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -26,6 +27,16 @@ interface PermisoEstadoUsuario {
   estadoId: string;
   userId: string;
   visible: boolean;
+}
+
+interface PermisoSeccionUsuario {
+  seccion: string;
+  userId: string;
+  ver: boolean;
+  crear: boolean;
+  editar: boolean;
+  eliminar: boolean;
+  exportar: boolean;
 }
 
 const CAMPOS = ["ver", "crear", "editar", "eliminar", "exportar"] as const;
@@ -55,6 +66,9 @@ const SECCIONES = [
   { clave: "facturacion", label: "Facturación",  grupo: "Recursos",       icono: "M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" },
   { clave: "kpis",        label: "KPIs",         grupo: "Administración", icono: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" },
   { clave: "usuarios",    label: "Usuarios",     grupo: "Administración", icono: "M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" },
+  { clave: "permisos",    label: "Permisos",     grupo: "Administración", icono: "M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" },
+  { clave: "auditoria",   label: "Auditoría",    grupo: "Administración", icono: "M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM12 10.5h.008v.008H12V10.5zm0 3h.008v.008H12V13.5z" },
+  { clave: "papelera",    label: "Papelera",     grupo: "Administración", icono: "m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" },
 ];
 
 const ROLES_EDITABLES = ["MODERADOR", "TECNICO"] as const;
@@ -74,12 +88,13 @@ function getDefaults(seccion: string, rol: string): Permiso {
 
 export default function PermisosPage() {
   const { isAdmin } = useSession();
+  const { puedeVer } = usePermisos();
   const [permisos, setPermisos] = useState<Permiso[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [tab, setTab] = useState<"secciones" | "estados" | "usuarios">("secciones");
+  const [tab, setTab] = useState<"secciones" | "estados" | "usuarios" | "seccionesUsuario">("secciones");
 
   const [estados, setEstados] = useState<any[]>([]);
   const [permisosEstado, setPermisosEstado] = useState<PermisoEstado[]>([]);
@@ -87,11 +102,18 @@ export default function PermisosPage() {
   const [savingEstados, setSavingEstados] = useState(false);
 
   // Per-user estado visibility
+  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
   const [tecnicos, setTecnicos] = useState<{ id: string; nombre: string }[]>([]);
   const [permisosUsuario, setPermisosUsuario] = useState<PermisoEstadoUsuario[]>([]);
   const [dirtyUsuarios, setDirtyUsuarios] = useState(false);
   const [savingUsuarios, setSavingUsuarios] = useState(false);
   const [selectedTecnico, setSelectedTecnico] = useState<string>("");
+
+  // Per-user section permissions
+  const [permisosSeccionUsuario, setPermisosSeccionUsuario] = useState<PermisoSeccionUsuario[]>([]);
+  const [dirtySeccionUsuario, setDirtySeccionUsuario] = useState(false);
+  const [savingSeccionUsuario, setSavingSeccionUsuario] = useState(false);
+  const [selectedUserSeccion, setSelectedUserSeccion] = useState<string>("");
 
   const fetchPermisos = useCallback(async () => {
     setLoading(true);
@@ -99,6 +121,7 @@ export default function PermisosPage() {
     if (res.ok) {
       const data = await res.json();
       setPermisos(data.permisos || []);
+      setPermisosSeccionUsuario(data.permisosSeccionUsuario || []);
     }
     setLoading(false);
   }, []);
@@ -115,9 +138,12 @@ export default function PermisosPage() {
       setEstados(estData.estados || []);
       setPermisosEstado(permData.permisos || []);
       setPermisosUsuario(permData.permisosUsuario || []);
-      const tecList = (usersData as any[]).filter((u: any) => u.rol === "TECNICO").map((u: any) => ({ id: u.id, nombre: u.nombre }));
+      const usersList = (usersData as any[]).filter((u: any) => u.rol !== "ADMIN").map((u: any) => ({ id: u.id, nombre: u.nombre, rol: u.rol }));
+      setAllUsers(usersList);
+      const tecList = usersList.filter((u) => u.rol === "TECNICO").map((u) => ({ id: u.id, nombre: u.nombre }));
       setTecnicos(tecList);
       if (tecList.length > 0) setSelectedTecnico(tecList[0].id);
+      if (usersList.length > 0) setSelectedUserSeccion(usersList[0].id);
     });
   }, [isAdmin]);
 
@@ -264,7 +290,94 @@ export default function PermisosPage() {
     setSavingUsuarios(false);
   };
 
-  if (!isAdmin) {
+  // ── Per-user section permission helpers ──
+  const getPermisoSeccionUsuario = (seccion: string, userId: string, campo: CampoPermiso): boolean => {
+    const found = permisosSeccionUsuario.find((p) => p.seccion === seccion && p.userId === userId);
+    if (!found) {
+      // Default: use role defaults
+      const user = allUsers.find((u) => u.id === userId);
+      if (!user) return false;
+      return getDefaults(seccion, user.rol)[campo] as boolean;
+    }
+    return (found as any)[campo] as boolean;
+  };
+
+  const togglePermisoSeccionUsuario = (seccion: string, userId: string, campo: CampoPermiso) => {
+    setDirtySeccionUsuario(true);
+    setPermisosSeccionUsuario((prev) => {
+      const idx = prev.findIndex((p) => p.seccion === seccion && p.userId === userId);
+      const current = getPermisoSeccionUsuario(seccion, userId, campo);
+      if (idx >= 0) {
+        const copy = [...prev];
+        const updated = { ...copy[idx] };
+        if (campo === "ver") {
+          updated.ver = !current;
+          if (!updated.ver) { updated.crear = false; updated.editar = false; updated.eliminar = false; updated.exportar = false; }
+        } else {
+          (updated as any)[campo] = !current;
+          if (!current) updated.ver = true;
+        }
+        copy[idx] = updated;
+        return copy;
+      }
+      // Create new entry with defaults
+      const user = allUsers.find((u) => u.id === userId);
+      const defaults = getDefaults(seccion, user?.rol || "TECNICO");
+      const newEntry: PermisoSeccionUsuario = {
+        seccion, userId,
+        ver: defaults.ver, crear: defaults.crear, editar: defaults.editar, eliminar: defaults.eliminar, exportar: defaults.exportar,
+      };
+      if (campo === "ver") {
+        newEntry.ver = !current;
+        if (!newEntry.ver) { newEntry.crear = false; newEntry.editar = false; newEntry.eliminar = false; newEntry.exportar = false; }
+      } else {
+        (newEntry as any)[campo] = !current;
+        if ((newEntry as any)[campo]) newEntry.ver = true;
+      }
+      return [...prev, newEntry];
+    });
+  };
+
+  const toggleAllSeccionUsuario = (userId: string, value: boolean) => {
+    setDirtySeccionUsuario(true);
+    setPermisosSeccionUsuario((prev) => {
+      const map = new Map(prev.map((p) => [`${p.seccion}-${p.userId}`, p]));
+      for (const sec of SECCIONES) {
+        map.set(`${sec.clave}-${userId}`, { seccion: sec.clave, userId, ver: value, crear: value, editar: value, eliminar: value, exportar: value });
+      }
+      return Array.from(map.values());
+    });
+  };
+
+  const guardarSeccionUsuario = async () => {
+    setSavingSeccionUsuario(true);
+    // Send only entries for the selected user to avoid huge payloads
+    const payload = SECCIONES.map((s) => ({
+      seccion: s.clave,
+      userId: selectedUserSeccion,
+      ver: getPermisoSeccionUsuario(s.clave, selectedUserSeccion, "ver"),
+      crear: getPermisoSeccionUsuario(s.clave, selectedUserSeccion, "crear"),
+      editar: getPermisoSeccionUsuario(s.clave, selectedUserSeccion, "editar"),
+      eliminar: getPermisoSeccionUsuario(s.clave, selectedUserSeccion, "eliminar"),
+      exportar: getPermisoSeccionUsuario(s.clave, selectedUserSeccion, "exportar"),
+    }));
+    const res = await fetch("/api/permisos", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ permisosSeccionUsuario: payload }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setPermisosSeccionUsuario(data.permisosSeccionUsuario || []);
+      setDirtySeccionUsuario(false);
+      setToast("Permisos por usuario guardados");
+      setTimeout(() => setToast(null), 3000);
+    }
+    setSavingSeccionUsuario(false);
+  };
+
+  if (!isAdmin || !puedeVer("permisos")) {
     return (
       <div className="animate-fade-in-up flex items-center justify-center py-20">
         <p className="text-sm text-surface-400">Solo administradores pueden gestionar permisos.</p>
@@ -323,8 +436,8 @@ export default function PermisosPage() {
       )}
 
       {/* Tabs + Save */}
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <div className="flex bg-surface-100 dark:bg-surface-700 rounded-lg p-0.5">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div className="flex bg-surface-100 dark:bg-surface-700 rounded-lg p-0.5 flex-wrap">
           <button
             onClick={() => setTab("secciones")}
             className={clsx(
@@ -335,6 +448,17 @@ export default function PermisosPage() {
             )}
           >
             Secciones
+          </button>
+          <button
+            onClick={() => setTab("seccionesUsuario")}
+            className={clsx(
+              "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+              tab === "seccionesUsuario"
+                ? "bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 shadow-sm"
+                : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
+            )}
+          >
+            Secciones × Usuario
           </button>
           {estados.length > 0 && (
             <>
@@ -358,23 +482,28 @@ export default function PermisosPage() {
                   : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
               )}
             >
-              Por usuario
+              Estados × Usuario
             </button>
             </>
           )}
         </div>
         <button
-          onClick={tab === "estados" ? guardarEstados : tab === "usuarios" ? guardarEstadosUsuario : guardar}
-          disabled={tab === "estados" ? !dirtyEstados || savingEstados : tab === "usuarios" ? !dirtyUsuarios || savingUsuarios : !dirty || saving}
+          onClick={tab === "estados" ? guardarEstados : tab === "usuarios" ? guardarEstadosUsuario : tab === "seccionesUsuario" ? guardarSeccionUsuario : guardar}
+          disabled={
+            tab === "estados" ? !dirtyEstados || savingEstados :
+            tab === "usuarios" ? !dirtyUsuarios || savingUsuarios :
+            tab === "seccionesUsuario" ? !dirtySeccionUsuario || savingSeccionUsuario :
+            !dirty || saving
+          }
           className={clsx(
             "px-4 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5",
-            (tab === "estados" ? dirtyEstados : tab === "usuarios" ? dirtyUsuarios : dirty)
+            (tab === "estados" ? dirtyEstados : tab === "usuarios" ? dirtyUsuarios : tab === "seccionesUsuario" ? dirtySeccionUsuario : dirty)
               ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
               : "bg-surface-200 dark:bg-surface-700 text-surface-400 cursor-not-allowed"
           )}
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-          {(tab === "estados" ? savingEstados : tab === "usuarios" ? savingUsuarios : saving) ? "Guardando..." : "Guardar"}
+          {(tab === "estados" ? savingEstados : tab === "usuarios" ? savingUsuarios : tab === "seccionesUsuario" ? savingSeccionUsuario : saving) ? "Guardando..." : "Guardar"}
         </button>
       </div>
 
@@ -622,6 +751,89 @@ export default function PermisosPage() {
               </div>
               <p className="text-[10px] text-surface-400 dark:text-surface-500 mt-3 px-1">
                 Los estados desmarcados quedan ocultos para este técnico. Admin y moderadores siempre ven todos.
+              </p>
+            </>
+          )}
+        </div>
+      ) : tab === "seccionesUsuario" ? (
+        /* ── Tab: Secciones × Usuario ── */
+        <div>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mb-4">
+            Controla permisos de cada sección por usuario individual. Tiene prioridad sobre los permisos por rol.
+          </p>
+
+          {allUsers.length === 0 ? (
+            <p className="text-xs text-surface-400 py-8 text-center">No hay usuarios registrados.</p>
+          ) : (
+            <>
+              {/* Selector de usuario */}
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <label className="text-xs font-medium text-surface-600 dark:text-surface-300">Usuario:</label>
+                <select
+                  value={selectedUserSeccion}
+                  onChange={(e) => setSelectedUserSeccion(e.target.value)}
+                  className="text-xs border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500 outline-none"
+                >
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1 ml-auto">
+                  <button onClick={() => toggleAllSeccionUsuario(selectedUserSeccion, true)} className="px-2 py-0.5 rounded text-[9px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition">Todo</button>
+                  <button onClick={() => toggleAllSeccionUsuario(selectedUserSeccion, false)} className="px-2 py-0.5 rounded text-[9px] font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition">Nada</button>
+                </div>
+              </div>
+
+              {/* Secciones del usuario seleccionado */}
+              <div className="space-y-2">
+                {grupos.map((grupo) => (
+                  <div key={grupo}>
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500 mb-2 px-1">{grupo}</h3>
+                    <div className="space-y-1.5">
+                      {SECCIONES.filter((s) => s.grupo === grupo).map((sec) => (
+                        <div key={sec.clave} className="bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 px-4 py-2.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg bg-surface-100 dark:bg-surface-700 flex items-center justify-center shrink-0">
+                              <svg className="w-4 h-4 text-surface-500 dark:text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d={sec.icono} />
+                              </svg>
+                            </div>
+                            <span className="text-sm font-semibold text-surface-800 dark:text-surface-100 w-28 shrink-0">{sec.label}</span>
+                            <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                              {CAMPOS.map((campo) => {
+                                const active = getPermisoSeccionUsuario(sec.clave, selectedUserSeccion, campo);
+                                const meta = CAMPO_META[campo];
+                                return (
+                                  <button
+                                    key={campo}
+                                    onClick={() => togglePermisoSeccionUsuario(sec.clave, selectedUserSeccion, campo)}
+                                    title={meta.desc}
+                                    className={clsx(
+                                      "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border transition-all",
+                                      active
+                                        ? campo === "eliminar"
+                                          ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
+                                          : "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                                        : "bg-surface-50 dark:bg-surface-700/50 text-surface-400 dark:text-surface-500 border-surface-200 dark:border-surface-600 hover:border-surface-300 dark:hover:border-surface-500"
+                                    )}
+                                  >
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d={meta.icon} />
+                                    </svg>
+                                    {meta.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-surface-400 dark:text-surface-500 mt-3 px-1">
+                Los permisos individuales tienen prioridad sobre los permisos por rol. Admin siempre tiene acceso total.
               </p>
             </>
           )}

@@ -55,6 +55,7 @@ model User {
   mensajesChat         ChatMensaje[]
   equiposAsignados     Equipo[]           @relation("EquipoAsignado")
   permisosEstado       PermisoEstadoUsuario[]
+  permisosSeccion      PermisoSeccionUsuario[]
   registrosAcceso      RegistroAcceso[]
   accesosEspacio       AccesoEspacio[]
 }
@@ -494,6 +495,24 @@ model PermisoEstado {
   @@unique([estadoId, rol])
   @@index([estadoId])
   @@index([rol])
+}
+
+// ─── PERMISOS DE SECCIÓN POR USUARIO ─────────────────
+model PermisoSeccionUsuario {
+  id        String  @id @default(cuid())
+  seccion   String
+  userId    String
+  ver       Boolean @default(true)
+  crear     Boolean @default(false)
+  editar    Boolean @default(false)
+  eliminar  Boolean @default(false)
+  exportar  Boolean @default(false)
+
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([seccion, userId])
+  @@index([userId])
+  @@index([seccion])
 }
 
 // ─── VISIBILIDAD DE ESTADOS POR USUARIO ─────────────
