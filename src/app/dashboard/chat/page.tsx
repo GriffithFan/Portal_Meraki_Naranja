@@ -157,7 +157,8 @@ export default function ChatPage() {
 
   const enviarMensaje = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nuevoMensaje.trim() || enviando) return;
+    const texto = nuevoMensaje.trim();
+    if (!texto || enviando) return;
 
     // Si no hay conversación seleccionada y no es Mesa, crear nueva
     if (!seleccionada && !isMesa) {
@@ -173,7 +174,7 @@ export default function ChatPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ mensaje: nuevoMensaje.trim() }),
+        body: JSON.stringify({ mensaje: texto }),
       });
       if (res.ok) {
         setNuevoMensaje("");
@@ -182,8 +183,9 @@ export default function ChatPage() {
         const err = await res.json().catch(() => ({}));
         alert(err.error || "Error al enviar mensaje");
       }
-    } catch (err) { console.error("[Chat] Error enviando mensaje:", err); alert("Error de conexión"); }
-    setEnviando(false);
+    } catch (err) { console.error("[Chat] Error enviando mensaje:", err); alert("Error de conexión"); } finally {
+      setEnviando(false);
+    }
   };
 
   const crearConsulta = async (primerMensaje: string) => {
@@ -204,8 +206,9 @@ export default function ChatPage() {
         const err = await res.json();
         alert(err.error || "Error al crear consulta");
       }
-    } catch { /* silenciar */ }
-    setEnviando(false);
+    } catch { /* silenciar */ } finally {
+      setEnviando(false);
+    }
   };
 
   const tomarConversacion = async (id: string) => {
@@ -497,7 +500,7 @@ export default function ChatPage() {
                 </p>
               </div>
               {!isMesa && !soloLectura && !tieneActiva && (
-                <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700">
+                <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700 touch-manipulation">
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -510,7 +513,8 @@ export default function ChatPage() {
                     <button
                       type="submit"
                       disabled={!nuevoMensaje.trim() || enviando}
-                      className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                      onMouseDown={(e) => e.preventDefault()}
+                      className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition touch-manipulation"
                     >
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
@@ -639,7 +643,7 @@ export default function ChatPage() {
                         <span className="text-sm text-surface-500">Subiendo archivo...</span>
                       </div>
                     ) : (
-                      <form onSubmit={enviarMensaje} className="flex items-center gap-2">
+                      <form onSubmit={enviarMensaje} className="flex items-center gap-2 touch-manipulation">
                         {/* Adjuntar archivo */}
                         <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo (foto, video, audio, zip)">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -664,7 +668,8 @@ export default function ChatPage() {
                         <button
                           type="submit"
                           disabled={!nuevoMensaje.trim() || enviando}
-                          className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                          onMouseDown={(e) => e.preventDefault()}
+                          className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition touch-manipulation"
                         >
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
