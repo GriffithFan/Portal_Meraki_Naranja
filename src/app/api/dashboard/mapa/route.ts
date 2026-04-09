@@ -43,6 +43,38 @@ export async function GET(request: NextRequest) {
   if (provincia) where.provincia = provincia;
   if (estadoId) where.estadoId = estadoId;
 
+  // Filtrar por estados ocultos según permisos del usuario (admin ve todo)
+  if (session.rol !== "ADMIN") {
+    const [permsRol, permsUsuario] = await Promise.all([
+      prisma.permisoEstado.findMany({
+        where: { rol: session.rol as any, visible: false },
+        select: { estadoId: true },
+      }),
+      prisma.permisoEstadoUsuario.findMany({
+        where: { userId: session.userId },
+        select: { estadoId: true, visible: true },
+      }),
+    ]);
+
+    const hidden = new Set(permsRol.map((p) => p.estadoId));
+    // Permisos por usuario tienen prioridad
+    for (const p of permsUsuario) {
+      if (!p.visible) hidden.add(p.estadoId);
+      else hidden.delete(p.estadoId);
+    }
+    if (hidden.size > 0) {
+      const notIn = Array.from(hidden);
+      if (estadoId) {
+        // Si ya hay filtro de estadoId específico, verificar que no esté oculto
+        if (hidden.has(estadoId)) {
+          return NextResponse.json([]); // Estado solicitado está oculto para este usuario
+        }
+      } else {
+        where.estadoId = { notIn };
+      }
+    }
+  }
+
   // Usuarios normales (no mod/admin): solo ver predios de su equipo o asignados
   if (!isModOrAdmin(session.rol)) {
     const equipoNames = TH_EQUIPO_NAMES[session.nombre.toUpperCase()] || [];

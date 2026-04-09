@@ -149,6 +149,15 @@ export default function ChatPage() {
     prevMsgCountRef.current = mensajes.length;
   }, [mensajes]);
 
+  // Para técnicos: auto-deseleccionar conversación cuando se cierra → muestra vista nueva consulta
+  useEffect(() => {
+    if (seleccionada?.estado === "CERRADA" && !isMesa && !soloLectura) {
+      setSeleccionada(null);
+      setMensajes([]);
+      setVistaMovil("lista");
+    }
+  }, [seleccionada?.estado, isMesa, soloLectura]);
+
   const seleccionarConv = (conv: any) => {
     setSeleccionada(conv);
     cargarMensajes(conv.id);
@@ -564,7 +573,7 @@ export default function ChatPage() {
                       Tomar
                     </button>
                   )}
-                  {isMesa && seleccionada.estado === "EN_CURSO" && seleccionada.agenteId === session?.userId && (
+                  {isMesa && seleccionada.estado === "EN_CURSO" && (
                     <button
                       onClick={() => cerrarConversacion(seleccionada.id)}
                       className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium hover:bg-red-600 transition"
@@ -623,7 +632,7 @@ export default function ChatPage() {
 
               {/* Input de mensaje */}
               {seleccionada.estado !== "CERRADA" && !soloLectura && (
-                (isMesa ? seleccionada.agenteId === session?.userId : true) ? (
+                (isMesa ? seleccionada.estado === "EN_CURSO" : true) ? (
                   <div className="p-3 border-t border-surface-200 dark:border-surface-700">
                     <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} className="hidden" onChange={handleFileSelect} />
 

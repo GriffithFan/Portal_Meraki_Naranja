@@ -109,11 +109,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Esta conversación ya está cerrada" }, { status: 400 });
     }
 
-    // Verificar acceso
+    // Verificar acceso: creador, agente, o cualquier usuario Mesa en conversación EN_CURSO
     const esCreador = conversacion.creadorId === session.userId;
     const esAgente = conversacion.agenteId === session.userId;
 
-    if (!esCreador && !esAgente) {
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { esMesa: true },
+    });
+    const esMesaUser = user?.esMesa === true;
+
+    // Mesa puede participar en cualquier conversación EN_CURSO
+    if (!esCreador && !esAgente && !(esMesaUser && conversacion.estado === "EN_CURSO")) {
       return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
     }
 
@@ -149,6 +156,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         };
 
         if (esCreador && !conversacion.agenteId) {
+          // Sin agente: notificar a todos los Mesa
           const usuariosMesa = await prisma.user.findMany({
             where: { esMesa: true, activo: true, id: { not: session.userId } },
             select: { id: true },
@@ -156,10 +164,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           await Promise.allSettled(
             usuariosMesa.map((u) => enviarPushYBandeja(u.id, pushPayload))
           );
+        } else if (esCreador) {
+          // Creador envía: notificar agente
+          if (conversacion.agenteId) {
+            await enviarPushYBandeja(conversacion.agenteId, pushPayload);
+          }
         } else {
-          const destinatarioId = esCreador ? conversacion.agenteId : conversacion.creadorId;
-          if (destinatarioId) {
-            await enviarPushYBandeja(destinatarioId, pushPayload);
+          // Mesa envía: notificar al creador + al agente original si es otro Mesa
+          await enviarPushYBandeja(conversacion.creadorId, pushPayload);
+          if (conversacion.agenteId && conversacion.agenteId !== session.userId) {
+            await enviarPushYBandeja(conversacion.agenteId, pushPayload).catch(() => {});
           }
         }
       } catch (e) {
@@ -232,8 +246,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     if (accion === "cerrar") {
-      if (conversacion.agenteId !== session.userId) {
-        return NextResponse.json({ error: "Solo el agente asignado puede cerrar" }, { status: 403 });
+      if (conversacion.estado !== "EN_CURSO") {
+        return NextResponse.json({ error: "Solo se pueden cerrar conversaciones en curso" }, { status: 400 });
       }
 
       const updated = await prisma.chatConversacion.update({

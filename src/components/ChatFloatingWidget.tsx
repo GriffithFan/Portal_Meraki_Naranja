@@ -74,7 +74,7 @@ function ChatArchivo({ msg }: { msg: any }) {
 }
 
 export default function ChatFloatingWidget() {
-  const { session, loading, isMesa } = useSession();
+  const { session, loading, isMesa, isModOrAdmin } = useSession();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -144,7 +144,9 @@ export default function ChatFloatingWidget() {
           const data = await res.json();
           setMensajes(data.mensajes || []);
           if (data.estado === "CERRADA") {
-            setConversacion(data);
+            // Auto-limpiar: mostrar vista de nueva consulta
+            setConversacion(null);
+            setMensajes([]);
           }
         }
       } catch { /* silenciar */ }
@@ -291,8 +293,8 @@ export default function ChatFloatingWidget() {
 
   if (loading || !session) return null;
 
-  // Para Mesa, el widget solo muestra badge y link a la página completa
-  if (isMesa) {
+  // Para Mesa o Mod/Admin sin esMesa, el widget solo muestra badge y link a la página completa
+  if (isMesa || (isModOrAdmin && !isMesa)) {
     return (
       <div className="fixed bottom-5 right-5 z-50">
         <a
