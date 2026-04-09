@@ -70,8 +70,8 @@ export function usePermisos(): PermisosResult {
   // Buscar permiso per-user (override) para una sección + campo
   const getPermisoUsuario = useCallback(
     (seccion: string, campo: "ver" | "crear" | "editar" | "eliminar" | "exportar"): boolean | null => {
-      if (!session?.id) return null;
-      const p = permisosUsuario.find((x) => x.seccion === seccion && x.userId === session.id);
+      if (!session?.userId) return null;
+      const p = permisosUsuario.find((x) => x.seccion === seccion && x.userId === session.userId);
       if (!p) return null; // No hay override per-user
       return p[campo];
     },
