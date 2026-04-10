@@ -82,8 +82,8 @@ const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
 
 export default function ChatPage() {
   const { session, isMesa, isModOrAdmin } = useSession();
-  // Admin/Mod sin esMesa pueden ver todo pero no responder
-  const soloLectura = isModOrAdmin && !isMesa;
+  // Admin/Mod sin esMesa: ven todos los chats, pueden crear propias consultas
+  const esVistaGlobal = isMesa || isModOrAdmin;
   const [conversaciones, setConversaciones] = useState<any[]>([]);
   const [seleccionada, setSeleccionada] = useState<any>(null);
   const [mensajes, setMensajes] = useState<any[]>([]);
@@ -104,6 +104,10 @@ export default function ChatPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
+
+  // soloLectura se calcula por conversación: MOD puede escribir en las suyas
+  const esMiConversacion = seleccionada?.creadorId === session?.userId;
+  const soloLectura = seleccionada ? !(esMiConversacion || isMesa) : false;
 
   // Cargar conversaciones
   const cargarConversaciones = useCallback(async () => {
@@ -369,13 +373,13 @@ export default function ChatPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-surface-800 dark:text-surface-100">
-            {isMesa ? "Mesa de Ayuda" : soloLectura ? "Chat de Ayuda — Vista" : "Chat de Ayuda"}
+            {isMesa ? "Mesa de Ayuda" : "Chat de Ayuda"}
           </h1>
           <p className="text-sm text-surface-500 dark:text-surface-400">
             {isMesa
               ? "Consultá y respondé las dudas de los técnicos"
-              : soloLectura
-                ? "Solo lectura — Solo usuarios con rol Mesa pueden responder"
+              : isModOrAdmin
+                ? "Consultá a Mesa o revisá los chats de los técnicos"
                 : "Enviá tus consultas a Mesa de Ayuda"}
           </p>
         </div>
@@ -391,7 +395,7 @@ export default function ChatPage() {
           <div className="p-3 border-b border-surface-200 dark:border-surface-700 space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-surface-600 dark:text-surface-300">
-                {isMesa || soloLectura ? "Consultas" : "Mis consultas"}
+                {esVistaGlobal ? "Consultas" : "Mis consultas"}
               </h2>
               <select
                 value={orden}
@@ -439,7 +443,7 @@ export default function ChatPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
                 </svg>
                 <p className="text-sm">
-                  {isMesa || soloLectura ? "No hay consultas pendientes" : "No tenés consultas aún"}
+                  {esVistaGlobal ? "No hay consultas pendientes" : "No tenés consultas aún"}
                 </p>
               </div>
             ) : convsFiltradas.length === 0 ? (
@@ -459,7 +463,7 @@ export default function ChatPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-surface-800 dark:text-surface-100 truncate">
-                        {isMesa || soloLectura ? conv.creador?.nombre : "Mesa de Ayuda"}
+                        {esVistaGlobal ? conv.creador?.nombre : "Mesa de Ayuda"}
                       </p>
                       <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
                         {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: es })}
@@ -508,7 +512,7 @@ export default function ChatPage() {
                   {isMesa || soloLectura ? "Seleccioná una conversación" : !tieneActiva ? "Escribí tu primer mensaje para iniciar" : "Seleccioná tu conversación"}
                 </p>
               </div>
-              {!isMesa && !soloLectura && !tieneActiva && (
+              {!isMesa && !tieneActiva && (
                 <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700 touch-manipulation">
                   <div className="flex gap-2">
                     <input
