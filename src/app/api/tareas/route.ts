@@ -345,6 +345,16 @@ export async function PATCH(request: NextRequest) {
           count++;
         }
       }
+    } else if (action === "enFacturacion") {
+      // Solo ADMIN puede marcar/desmarcar facturación
+      if (session.rol !== "ADMIN") {
+        return NextResponse.json({ error: "Solo ADMIN puede mover a facturación" }, { status: 403 });
+      }
+      const result = await prisma.predio.updateMany({
+        where: { id: { in: safeIds } },
+        data: { enFacturacion: value === true || value === "true" },
+      });
+      count = result.count;
     } else if (["estadoId", "espacioId", "equipoAsignado", "provincia", "prioridad", "ambito"].includes(action)) {
       // Actualización directa de un campo
       const result = await prisma.predio.updateMany({

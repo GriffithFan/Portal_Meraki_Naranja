@@ -738,14 +738,16 @@ export default function EspacioTareasPage() {
 
   // Acción masiva
   const handleBulkAction = async () => {
-    if (!bulkAction || !bulkValue || selectedIds.size === 0) return;
+    if (!bulkAction || selectedIds.size === 0) return;
+    if (bulkAction !== "enFacturacion" && !bulkValue) return;
     setBulkExecuting(true);
     try {
+      const actionValue = bulkAction === "enFacturacion" ? true : bulkValue;
       const res = await fetch("/api/tareas", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ids: Array.from(selectedIds), action: bulkAction, value: bulkValue }),
+        body: JSON.stringify({ ids: Array.from(selectedIds), action: bulkAction, value: actionValue }),
       });
       if (res.ok) {
         setSelectedIds(new Set());
@@ -1384,6 +1386,7 @@ export default function EspacioTareasPage() {
             <option value="provincia">Cambiar provincia</option>
             <option value="ambito">Cambiar ámbito</option>
             <option value="prioridad">Cambiar prioridad</option>
+            {session?.rol === "ADMIN" && <option value="enFacturacion">Mover a facturación</option>}
           </select>
           {bulkAction === "estadoId" && (
             <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
@@ -1414,7 +1417,7 @@ export default function EspacioTareasPage() {
           )}
           <button
             onClick={handleBulkAction}
-            disabled={!bulkAction || !bulkValue || bulkExecuting}
+            disabled={!bulkAction || (bulkAction !== "enFacturacion" && !bulkValue) || bulkExecuting}
             className="text-[11px] px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 font-medium transition-colors"
           >
             {bulkExecuting ? "Aplicando..." : "Aplicar"}

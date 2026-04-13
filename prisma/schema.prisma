@@ -155,6 +155,7 @@ model Predio {
   correo            String?   // Correo electrónico
   fechaActualizacion DateTime? // Última actualización del registro
   camposExtra       Json?     // Campos dinámicos adicionales
+  enFacturacion     Boolean   @default(false) // Marcado para facturación manual
 
   merakiNetworkId   String?
   merakiOrgId       String?
@@ -187,6 +188,7 @@ model Predio {
   @@index([espacioId])
   @@index([estadoId, fechaActualizacion])
   @@index([creadorId])
+  @@index([enFacturacion])
 }
 
 // ─── EQUIPOS (STOCK) ────────────────────────────────

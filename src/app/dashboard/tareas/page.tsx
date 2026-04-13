@@ -765,6 +765,10 @@ export default function TareasPage() {
       if (bulkAction === "asignadoIds") {
         actionValue = bulkValue ? [bulkValue] : [];
       }
+      // Marcar para facturación
+      if (bulkAction === "enFacturacion") {
+        actionValue = true;
+      }
 
       const res = await fetch("/api/tareas", {
         method: "PATCH",
@@ -1376,6 +1380,7 @@ export default function TareasPage() {
             <option value="prioridad">Cambiar prioridad</option>
             <option value="autoProvince">Auto-detectar provincia</option>
             <option value="autoGPS">Auto-parsear GPS → lat/lng</option>
+            {session?.rol === "ADMIN" && <option value="enFacturacion">Mover a facturación</option>}
           </select>
           {bulkAction === "estadoId" && (
             <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
