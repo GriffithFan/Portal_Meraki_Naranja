@@ -245,6 +245,15 @@ export default function TareasPage() {
   const [comentarios, setComentarios] = useState<any[]>([]);
   const [nuevoComentario, setNuevoComentario] = useState("");
   const [estadoDropdown, setEstadoDropdown] = useState(false);
+  const [inlineEstadoId, setInlineEstadoId] = useState<string | null>(null);
+
+  // Cerrar dropdown inline al click fuera
+  useEffect(() => {
+    if (!inlineEstadoId) return;
+    const handler = () => setInlineEstadoId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [inlineEstadoId]);
 
   // Form para nueva tarea
   const [form, setForm] = useState({
@@ -535,6 +544,7 @@ export default function TareasPage() {
       fetchTareas();
     }
     setEstadoDropdown(false);
+    setInlineEstadoId(null);
   }
 
   // Guardar comentario
@@ -992,7 +1002,24 @@ export default function TareasPage() {
       const displayCode = t.codigo || "\u2014";
       return (
         <span className="flex items-center gap-1 group/cell">
-          {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />}
+          {t.estado && isModOrAdmin ? (
+            <span className="relative" onClick={(e) => { e.stopPropagation(); setInlineEstadoId(inlineEstadoId === t.id ? null : t.id); }}>
+              <span className="cursor-pointer hover:opacity-70 transition-opacity"><StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} /></span>
+              {inlineEstadoId === t.id && (
+                <div className="absolute top-full left-0 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg py-1 min-w-[160px] z-50 animate-fade-in-up">
+                  <div className="max-h-48 overflow-y-auto">
+                    {estados.map(e => (
+                      <button key={e.id} onClick={(ev) => { ev.stopPropagation(); changeEstado(t.id, e.id); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left">
+                        <StatusIcon clave={e.clave} color={e.color} size={14} />
+                        <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
+                        {t.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </span>
+          ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} /> : null}
           <span className="text-surface-800 font-medium truncate">{displayCode}</span>
           <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
           <CopyBtn text={t.codigo || ""} />
@@ -1033,13 +1060,30 @@ export default function TareasPage() {
   const MobileTaskList = ({ items: taskItems }: { items: any[] }) => (
     <div className="md:hidden divide-y divide-surface-100">
       {taskItems.map((t) => (
-        <button
+        <div
           key={t.id}
           onClick={() => openDetail(t)}
-          className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors"
+          className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors cursor-pointer"
         >
           <div className="flex items-center gap-2">
-            {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />}
+            {t.estado && isModOrAdmin ? (
+              <span className="relative" onClick={(e) => { e.stopPropagation(); setInlineEstadoId(inlineEstadoId === t.id ? null : t.id); }}>
+                <span className="cursor-pointer active:opacity-60"><StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} /></span>
+                {inlineEstadoId === t.id && (
+                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg py-1 min-w-[160px] z-50 animate-fade-in-up">
+                    <div className="max-h-48 overflow-y-auto">
+                      {estados.map(e => (
+                        <button key={e.id} onClick={(ev) => { ev.stopPropagation(); changeEstado(t.id, e.id); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left">
+                          <StatusIcon clave={e.clave} color={e.color} size={14} />
+                          <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
+                          {t.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </span>
+            ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} /> : null}
             {t.codigo && <span className="text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
             <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
             <p className="text-sm font-medium text-surface-700 truncate">
@@ -1066,7 +1110,7 @@ export default function TareasPage() {
             )}
             {t.provincia && <span className="text-surface-400">{t.provincia}</span>}
           </div>
-        </button>
+        </div>
       ))}
     </div>
   );
