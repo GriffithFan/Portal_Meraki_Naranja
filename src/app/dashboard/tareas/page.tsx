@@ -396,15 +396,17 @@ export default function TareasPage() {
         .catch(() => {});
       fetch("/api/espacios", { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
-        .then((data: any[]) => {
+        .then((data: any) => {
           const flat: any[] = [];
+          const roots = Array.isArray(data) ? data : (data.espacios || []);
           const walk = (arr: any[], depth: number) => {
             for (const e of arr) {
               flat.push({ ...e, _depth: depth });
-              if (e.hijos?.length) walk(e.hijos, depth + 1);
+              if (e.children?.length) walk(e.children, depth + 1);
+              else if (e.hijos?.length) walk(e.hijos, depth + 1);
             }
           };
-          walk(data, 0);
+          walk(roots, 0);
           setEspacios(flat);
         })
         .catch(() => {});
