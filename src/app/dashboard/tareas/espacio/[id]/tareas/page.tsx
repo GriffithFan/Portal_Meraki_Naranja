@@ -239,6 +239,37 @@ export default function EspacioTareasPage() {
   const [dragEstadoId, setDragEstadoId] = useState<string | null>(null);
   const [dragOverEstadoId, setDragOverEstadoId] = useState<string | null>(null);
 
+  // Dropdown inline de estado en la lista
+  const [inlineEstado, setInlineEstado] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!inlineEstado) return;
+    const handler = () => setInlineEstado(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [inlineEstado]);
+
+  const abrirInlineEstado = (e: React.MouseEvent, tareaId: string) => {
+    e.stopPropagation();
+    if (inlineEstado?.id === tareaId) { setInlineEstado(null); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setInlineEstado({ id: tareaId, x: rect.left, y: rect.bottom + 4 });
+  };
+
+  async function changeEstadoInline(tareaId: string, estadoId: string) {
+    const newEstado = estados.find(e => e.id === estadoId);
+    const res = await fetch(`/api/tareas/${tareaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ estadoId }),
+    });
+    if (res.ok) {
+      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, estadoId, estado: newEstado } : t));
+    }
+    setInlineEstado(null);
+  }
+
   // Auto-ocultar columnas sin datos (una sola vez)
   const autoHideDone = useRef(false);
 
@@ -864,7 +895,11 @@ export default function EspacioTareasPage() {
     if (col.id === "codigoPredio") {
       return (
         <span className="flex items-center gap-1 group/cell">
-          {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />}
+          {t.estado && isModOrAdmin ? (
+            <span className="cursor-pointer hover:opacity-70 transition-opacity" onClick={(e) => abrirInlineEstado(e, t.id)}>
+              <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />
+            </span>
+          ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} /> : null}
           <span className="text-surface-800 font-medium truncate">{t.codigo || "\u2014"}</span>
           <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
           <CopyBtn text={t.codigo || ""} />
@@ -924,13 +959,17 @@ export default function EspacioTareasPage() {
   const renderMobileTaskList = (taskItems: any[]) => (
     <div className="md:hidden divide-y divide-surface-100">
       {taskItems.map((t) => (
-        <button
+        <div
           key={t.id}
           onClick={() => setSelectedTareaId(t.id)}
-          className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors"
+          className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors cursor-pointer"
         >
           <div className="flex items-center gap-2">
-            {t.estado && <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />}
+            {t.estado && isModOrAdmin ? (
+              <span className="cursor-pointer active:opacity-60" onClick={(e) => abrirInlineEstado(e, t.id)}>
+                <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />
+              </span>
+            ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} /> : null}
             {t.codigo && <span className="text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
             <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
             <p className="text-sm font-medium text-surface-700 truncate">
@@ -949,7 +988,7 @@ export default function EspacioTareasPage() {
             )}
             {t.provincia && <span className="text-surface-400">{t.provincia}</span>}
           </div>
-        </button>
+        </div>
       ))}
     </div>
   );
@@ -1592,6 +1631,29 @@ export default function EspacioTareasPage() {
           </div>
         </div>
       )}
+
+      {/* Dropdown inline de estado (fixed, fuera de tablas) */}
+      {inlineEstado && (() => {
+        const tarea = tareas.find(t => t.id === inlineEstado.id);
+        if (!tarea) return null;
+        return (
+          <div
+            className="fixed z-[9999] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-xl py-1 min-w-[170px] animate-fade-in-up"
+            style={{ left: inlineEstado.x, top: inlineEstado.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="max-h-56 overflow-y-auto">
+              {estados.map(e => (
+                <button key={e.id} onClick={() => changeEstadoInline(tarea.id, e.id)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left">
+                  <StatusIcon clave={e.clave} color={e.color} size={14} />
+                  <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
+                  {tarea.estadoId === e.id && <svg className="w-3.5 h-3.5 text-surface-500 ml-auto" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
