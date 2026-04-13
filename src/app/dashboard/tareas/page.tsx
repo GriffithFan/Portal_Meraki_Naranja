@@ -245,15 +245,22 @@ export default function TareasPage() {
   const [comentarios, setComentarios] = useState<any[]>([]);
   const [nuevoComentario, setNuevoComentario] = useState("");
   const [estadoDropdown, setEstadoDropdown] = useState(false);
-  const [inlineEstadoId, setInlineEstadoId] = useState<string | null>(null);
+  const [inlineEstado, setInlineEstado] = useState<{ id: string; x: number; y: number } | null>(null);
 
   // Cerrar dropdown inline al click fuera
   useEffect(() => {
-    if (!inlineEstadoId) return;
-    const handler = () => setInlineEstadoId(null);
+    if (!inlineEstado) return;
+    const handler = () => setInlineEstado(null);
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
-  }, [inlineEstadoId]);
+  }, [inlineEstado]);
+
+  const abrirInlineEstado = (e: React.MouseEvent, tareaId: string) => {
+    e.stopPropagation();
+    if (inlineEstado?.id === tareaId) { setInlineEstado(null); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setInlineEstado({ id: tareaId, x: rect.left, y: rect.bottom + 4 });
+  };
 
   // Form para nueva tarea
   const [form, setForm] = useState({
@@ -544,7 +551,7 @@ export default function TareasPage() {
       fetchTareas();
     }
     setEstadoDropdown(false);
-    setInlineEstadoId(null);
+    setInlineEstado(null);
   }
 
   // Guardar comentario
@@ -1003,21 +1010,8 @@ export default function TareasPage() {
       return (
         <span className="flex items-center gap-1 group/cell">
           {t.estado && isModOrAdmin ? (
-            <span className="relative" onClick={(e) => { e.stopPropagation(); setInlineEstadoId(inlineEstadoId === t.id ? null : t.id); }}>
-              <span className="cursor-pointer hover:opacity-70 transition-opacity"><StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} /></span>
-              {inlineEstadoId === t.id && (
-                <div className="absolute top-full left-0 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg py-1 min-w-[160px] z-50 animate-fade-in-up">
-                  <div className="max-h-48 overflow-y-auto">
-                    {estados.map(e => (
-                      <button key={e.id} onClick={(ev) => { ev.stopPropagation(); changeEstado(t.id, e.id); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left">
-                        <StatusIcon clave={e.clave} color={e.color} size={14} />
-                        <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
-                        {t.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <span className="cursor-pointer hover:opacity-70 transition-opacity" onClick={(e) => abrirInlineEstado(e, t.id)}>
+              <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />
             </span>
           ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} /> : null}
           <span className="text-surface-800 font-medium truncate">{displayCode}</span>
@@ -1067,21 +1061,8 @@ export default function TareasPage() {
         >
           <div className="flex items-center gap-2">
             {t.estado && isModOrAdmin ? (
-              <span className="relative" onClick={(e) => { e.stopPropagation(); setInlineEstadoId(inlineEstadoId === t.id ? null : t.id); }}>
-                <span className="cursor-pointer active:opacity-60"><StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} /></span>
-                {inlineEstadoId === t.id && (
-                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg py-1 min-w-[160px] z-50 animate-fade-in-up">
-                    <div className="max-h-48 overflow-y-auto">
-                      {estados.map(e => (
-                        <button key={e.id} onClick={(ev) => { ev.stopPropagation(); changeEstado(t.id, e.id); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left">
-                          <StatusIcon clave={e.clave} color={e.color} size={14} />
-                          <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
-                          {t.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+              <span className="cursor-pointer active:opacity-60" onClick={(e) => abrirInlineEstado(e, t.id)}>
+                <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />
               </span>
             ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} /> : null}
             {t.codigo && <span className="text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
@@ -2235,6 +2216,29 @@ export default function TareasPage() {
           </div>
         </div>
       )}
+
+      {/* Dropdown inline de estado (fixed, fuera de tablas) */}
+      {inlineEstado && (() => {
+        const tarea = tareas.find(t => t.id === inlineEstado.id);
+        if (!tarea) return null;
+        return (
+          <div
+            className="fixed z-[9999] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-xl py-1 min-w-[170px] animate-fade-in-up"
+            style={{ left: inlineEstado.x, top: inlineEstado.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="max-h-56 overflow-y-auto">
+              {estados.map(e => (
+                <button key={e.id} onClick={() => changeEstado(tarea.id, e.id)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left">
+                  <StatusIcon clave={e.clave} color={e.color} size={14} />
+                  <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
+                  {tarea.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
