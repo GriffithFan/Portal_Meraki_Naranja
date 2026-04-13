@@ -43,6 +43,16 @@ const ETIQUETA_COLORS = [
   "#3b82f6", "#8b5cf6", "#ec4899", "#6b7280", "#1e293b",
 ];
 
+const FILTER_COLUMNS = [
+  { field: "nombre", label: "Equipo" },
+  { field: "modelo", label: "Modelo" },
+  { field: "estado", label: "Estado" },
+  { field: "ubicacion", label: "Ubicación" },
+  { field: "asignado", label: "Asignado" },
+  { field: "etiqueta", label: "Etiqueta" },
+  { field: "numeroSerie", label: "N/S" },
+];
+
 /* ── Auto-fill por prefijo de serial ── */
 const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
   Q2PD: { nombre: "AP", modelo: "MR33" },
@@ -72,12 +82,14 @@ export default function StockPage() {
   const { headerSearch } = useSearchContext();
   const [equipos, setEquipos] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
-  const [categorias, setCategorias] = useState<string[]>([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
-  const [filtroEstado, setFiltroEstado] = useState("");
-  const [filtroCat, setFiltroCat] = useState("");
+  const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [filterMenuField, setFilterMenuField] = useState<string | null>(null);
+  const [filterSearch, setFilterSearch] = useState("");
+  const filterMenuRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
@@ -131,6 +143,64 @@ export default function StockPage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   }, [columns]);
 
+  /* ── Filter helpers ── */
+  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0);
+
+  function addFilter(field: string, value: string) {
+    setActiveFilters(prev => {
+      const current = prev[field] || [];
+      if (current.includes(value)) {
+        const next = current.filter(v => v !== value);
+        if (next.length === 0) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { [field]: _, ...rest } = prev; return rest;
+        }
+        return { ...prev, [field]: next };
+      }
+      return { ...prev, [field]: [...current, value] };
+    });
+  }
+
+  function removeFilterGroup(field: string) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    setActiveFilters(prev => { const { [field]: _, ...rest } = prev; return rest; });
+  }
+
+  function clearAllFilters() { setActiveFilters({}); }
+
+  // Close filter menu on click outside
+  useEffect(() => {
+    if (!showFilterMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
+        setShowFilterMenu(false); setFilterMenuField(null); setFilterSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showFilterMenu]);
+
+  // Extract unique values per filterable column
+  const filterOptions = useMemo(() => {
+    const opts: Record<string, string[]> = {};
+    const sets: Record<string, Set<string>> = {};
+    FILTER_COLUMNS.forEach(fc => { sets[fc.field] = new Set(); });
+    equipos.forEach((eq: any) => {
+      FILTER_COLUMNS.forEach(fc => {
+        let val: string;
+        if (fc.field === "asignado") val = eq.asignado?.nombre || "";
+        else if (fc.field === "ubicacion") val = eq.ubicacion || eq.predio?.nombre || "";
+        else if (fc.field === "estado") val = (eq.estado || "").replace(/_/g, " ");
+        else val = eq[fc.field] || "";
+        if (val) sets[fc.field].add(val);
+      });
+    });
+    FILTER_COLUMNS.forEach(fc => {
+      opts[fc.field] = Array.from(sets[fc.field]).sort((a, b) => a.localeCompare(b, "es"));
+    });
+    return opts;
+  }, [equipos]);
+
   /* ── Sorting ── */
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
 
@@ -142,14 +212,27 @@ export default function StockPage() {
   }
 
   const sortedEquipos = useMemo(() => {
-    if (!sortConfig) return equipos;
-    return [...equipos].sort((a, b) => {
+    let filtered = equipos;
+    // Apply active multi-column filters
+    Object.entries(activeFilters).forEach(([field, values]) => {
+      if (values.length === 0) return;
+      filtered = filtered.filter((eq: any) => {
+        let eqVal: string;
+        if (field === "asignado") eqVal = eq.asignado?.nombre || "";
+        else if (field === "ubicacion") eqVal = eq.ubicacion || eq.predio?.nombre || "";
+        else if (field === "estado") eqVal = (eq.estado || "").replace(/_/g, " ");
+        else eqVal = eq[field] || "";
+        return values.includes(eqVal);
+      });
+    });
+    if (!sortConfig) return filtered;
+    return [...filtered].sort((a, b) => {
       const aVal = a[sortConfig.field] ?? "";
       const bVal = b[sortConfig.field] ?? "";
       const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
       return sortConfig.dir === "asc" ? cmp : -cmp;
     });
-  }, [equipos, sortConfig]);
+  }, [equipos, activeFilters, sortConfig]);
 
   /* ── Drag & Drop columns ── */
   const [dragColId, setDragColId] = useState<string | null>(null);
@@ -232,17 +315,14 @@ export default function StockPage() {
     const params = new URLSearchParams();
     params.set("limit", "5000");
     if (search) params.set("buscar", search);
-    if (filtroEstado) params.set("estado", filtroEstado);
-    if (filtroCat) params.set("categoria", filtroCat);
     const res = await fetch(`/api/stock?${params}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
       setEquipos(data.equipos || []);
       setTotal(data.total || 0);
-      setCategorias(data.categorias || []);
     }
     setLoading(false);
-  }, [search, filtroEstado, filtroCat]);
+  }, [search]);
 
   useEffect(() => { fetchEquipos(); }, [fetchEquipos]);
 
@@ -754,7 +834,7 @@ export default function StockPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Stock</h1>
-          <p className="text-xs text-surface-400">Inventario de equipos · {total} registros</p>
+          <p className="text-xs text-surface-400">Inventario de equipos · {hasActiveFilters ? `${sortedEquipos.length} de ${total}` : `${total}`} registros</p>
         </div>
         <div className="flex items-center gap-1.5">
           <SectionSettings seccion="stock">
@@ -833,20 +913,117 @@ export default function StockPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4">
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar equipo..." className="flex-1 min-w-0 px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400" />
-        <div className="flex gap-2">
-        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400">
-          <option value="">Todos los estados</option>
-          {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
-        </select>
-        {categorias.length > 0 && (
-          <select value={filtroCat} onChange={(e) => setFiltroCat(e.target.value)} className="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400">
-            <option value="">Todas las categorías</option>
-            {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        )}
+      <div className="flex flex-col gap-2 mb-4">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar equipo..." className="flex-1 min-w-0 px-3 py-2 sm:py-1.5 border border-surface-200 rounded-lg sm:rounded-md text-sm sm:text-xs focus:outline-none focus:border-surface-400" />
+          <div className="relative" ref={filterMenuRef}>
+            <button
+              onClick={() => { setShowFilterMenu(!showFilterMenu); setFilterMenuField(null); setFilterSearch(""); }}
+              className={`px-3 py-2 sm:py-1.5 border rounded-lg sm:rounded-md text-sm sm:text-xs font-medium transition-colors flex items-center gap-1.5 ${hasActiveFilters ? "border-primary-300 bg-primary-50 text-primary-700" : "border-surface-200 text-surface-600 hover:bg-surface-50"}`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>
+              Filtros{hasActiveFilters && ` (${Object.values(activeFilters).reduce((s, v) => s + v.length, 0)})`}
+            </button>
+            {showFilterMenu && (
+              <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-1 z-50 bg-white border border-surface-200 rounded-lg shadow-xl overflow-hidden w-64">
+                {!filterMenuField ? (
+                  <>
+                    <div className="px-3 py-2 border-b border-surface-100">
+                      <p className="text-[10px] font-semibold text-surface-400 uppercase tracking-wider">Filtrar por</p>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {FILTER_COLUMNS.map(fc => {
+                        const count = (activeFilters[fc.field] || []).length;
+                        return (
+                          <button
+                            key={fc.field}
+                            onClick={() => { setFilterMenuField(fc.field); setFilterSearch(""); }}
+                            className="w-full px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50 flex items-center justify-between transition-colors"
+                          >
+                            <span>{fc.label}</span>
+                            <span className="flex items-center gap-1.5">
+                              {count > 0 && <span className="bg-primary-100 text-primary-700 text-[10px] font-medium px-1.5 py-0.5 rounded-full">{count}</span>}
+                              <svg className="w-3.5 h-3.5 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {hasActiveFilters && (
+                      <div className="border-t border-surface-100 px-3 py-2">
+                        <button onClick={() => { clearAllFilters(); setShowFilterMenu(false); }} className="text-[10px] text-red-500 hover:text-red-600 font-medium">
+                          Limpiar todos los filtros
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="px-3 py-2 border-b border-surface-100 flex items-center gap-2">
+                      <button onClick={() => { setFilterMenuField(null); setFilterSearch(""); }} className="p-0.5 hover:bg-surface-100 rounded text-surface-400">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+                      </button>
+                      <p className="text-xs font-semibold text-surface-700">{FILTER_COLUMNS.find(fc => fc.field === filterMenuField)?.label}</p>
+                    </div>
+                    <div className="px-2 py-1.5 border-b border-surface-100">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={filterSearch}
+                        onChange={(e) => setFilterSearch(e.target.value)}
+                        placeholder="Buscar valor..."
+                        className="w-full px-2 py-1 border border-surface-200 rounded text-xs focus:outline-none focus:border-primary-400"
+                      />
+                    </div>
+                    <div className="max-h-56 overflow-y-auto">
+                      {(filterOptions[filterMenuField] || [])
+                        .filter(v => !filterSearch || v.toLowerCase().includes(filterSearch.toLowerCase()))
+                        .map(val => {
+                          const isActive = (activeFilters[filterMenuField] || []).includes(val);
+                          return (
+                            <button
+                              key={val}
+                              onClick={() => addFilter(filterMenuField, val)}
+                              className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 transition-colors ${isActive ? "bg-primary-50 text-primary-700" : "text-surface-600 hover:bg-surface-50"}`}
+                            >
+                              <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${isActive ? "bg-primary-600 border-primary-600" : "border-surface-300"}`}>
+                                {isActive && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>}
+                              </span>
+                              {val}
+                            </button>
+                          );
+                        })}
+                      {(filterOptions[filterMenuField] || []).filter(v => !filterSearch || v.toLowerCase().includes(filterSearch.toLowerCase())).length === 0 && (
+                        <p className="px-3 py-3 text-xs text-surface-400 text-center">Sin valores</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+        {/* Active filter chips */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {Object.entries(activeFilters).map(([field, values]) => {
+              if (values.length === 0) return null;
+              const label = FILTER_COLUMNS.find(fc => fc.field === field)?.label || field;
+              return (
+                <div key={field} className="inline-flex items-center gap-1 px-2 py-1 bg-primary-50 border border-primary-200 rounded-md text-[11px] text-primary-700">
+                  <span className="font-medium">{label}:</span>
+                  <span>{values.length <= 2 ? values.join(", ") : `${values.length} seleccionados`}</span>
+                  <button onClick={() => removeFilterGroup(field)} className="ml-0.5 p-0.5 hover:bg-primary-100 rounded text-primary-400 hover:text-primary-600">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              );
+            })}
+            <button onClick={clearAllFilters} className="text-[10px] text-surface-400 hover:text-red-500 px-1 transition-colors">
+              Limpiar todo
+            </button>
+          </div>
+        )}
       </div>
 
       {isModOrAdmin && (
@@ -861,12 +1038,12 @@ export default function StockPage() {
         <CardContent className="p-0 overflow-x-auto">
         {loading ? (
           <TableSkeleton rows={6} cols={visibleColumns.length || 6} />
-        ) : equipos.length === 0 ? (
+        ) : sortedEquipos.length === 0 ? (
           <div className="text-center py-16 text-surface-400">
             <svg className="w-10 h-10 mx-auto mb-3 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
             <p className="text-sm font-medium mb-1">Sin equipos</p>
-            <p className="text-xs mb-4">{search || filtroEstado ? "No se encontraron resultados" : "Agrega tu primer equipo al inventario"}</p>
-            {!search && !filtroEstado && isModOrAdmin && (
+            <p className="text-xs mb-4">{search || hasActiveFilters ? "No se encontraron resultados" : "Agrega tu primer equipo al inventario"}</p>
+            {!search && !hasActiveFilters && isModOrAdmin && (
               <Link
                 href="/dashboard/importar"
                 className="inline-flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-surface-300 rounded-lg text-xs text-surface-500 hover:border-surface-400 hover:text-surface-600 hover:bg-surface-50 transition-colors"
