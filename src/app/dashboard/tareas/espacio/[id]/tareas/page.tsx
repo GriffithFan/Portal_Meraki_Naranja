@@ -897,11 +897,11 @@ export default function EspacioTareasPage() {
     if (col.id === "codigoPredio") {
       return (
         <span className="flex items-center gap-1 group/cell">
-          {t.estado && isModOrAdmin ? (
+          {t.estado ? (
             <span className="cursor-pointer hover:opacity-70 transition-opacity" onClick={(e) => abrirInlineEstado(e, t.id)}>
               <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />
             </span>
-          ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} /> : null}
+          ) : null}
           <span className="text-surface-800 font-medium truncate">{t.codigo || "\u2014"}</span>
           <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
           <CopyBtn text={t.codigo || ""} />
@@ -967,11 +967,11 @@ export default function EspacioTareasPage() {
           className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors cursor-pointer"
         >
           <div className="flex items-center gap-2">
-            {t.estado && isModOrAdmin ? (
+            {t.estado ? (
               <span className="cursor-pointer active:opacity-60" onClick={(e) => abrirInlineEstado(e, t.id)}>
                 <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />
               </span>
-            ) : t.estado ? <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} /> : null}
+            ) : null}
             {t.codigo && <span className="text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
             <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
             <p className="text-sm font-medium text-surface-700 truncate">

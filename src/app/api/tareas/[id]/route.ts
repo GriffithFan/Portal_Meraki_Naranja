@@ -125,8 +125,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
-  if (!session || !isModOrAdmin(session.rol)) {
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  if (!session) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
 
   const { id } = await params;
@@ -140,6 +140,17 @@ export async function PATCH(
     const body = await parseBody(request, tareaUpdateSchema);
     if (isErrorResponse(body)) return body;
     const bodyAny = body as Record<string, unknown>;
+
+    // Usuarios normales solo pueden cambiar estadoId
+    if (!isModOrAdmin(session.rol)) {
+      const allowedFields = ["estadoId"];
+      const requestedFields = Object.keys(bodyAny).filter(k => bodyAny[k] !== undefined);
+      const forbidden = requestedFields.filter(f => !allowedFields.includes(f));
+      if (forbidden.length > 0) {
+        return NextResponse.json({ error: "Sin permisos para editar estos campos" }, { status: 403 });
+      }
+    }
+
     const data: any = {
       fechaActualizacion: new Date(),
     };
