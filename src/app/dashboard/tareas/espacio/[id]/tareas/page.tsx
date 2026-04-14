@@ -107,6 +107,7 @@ const DEFAULT_COLUMNS: Column[] = [
   { id: "lab", label: "LAB", field: "lab", width: 70, visible: false, editable: true, type: "text" },
   { id: "nombreInstitucion", label: "Institución", field: "nombreInstitucion", width: 140, visible: false, editable: true, type: "text" },
   { id: "correo", label: "Correo", field: "correo", width: 140, visible: false, editable: true, type: "text" },
+  { id: "ciudad", label: "Departamento", field: "ciudad", width: 120, visible: false, editable: true, type: "text" },
 ];
 
 const LS_EMPTY_KEY = "pmn-espacio-show-empty";
