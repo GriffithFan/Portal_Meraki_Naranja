@@ -239,17 +239,7 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
         throw new Error(`Canvas vacío (${raw?.width}x${raw?.height})`);
       }
 
-      // Agregar padding blanco
-      const pad = 48;
-      const padded = document.createElement("canvas");
-      padded.width = raw.width + pad * 2;
-      padded.height = raw.height + pad * 2;
-      const ctx = padded.getContext("2d");
-      if (!ctx) throw new Error("No se pudo crear contexto 2D");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, padded.width, padded.height);
-      ctx.drawImage(raw, pad, pad);
-      return padded;
+      return raw;
     } finally {
       document.body.removeChild(shell);
     }
