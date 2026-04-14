@@ -14,6 +14,8 @@ const TH_EQUIPO_NAMES: Record<string, string[]> = {
   TH03: ["JORGE"],
   TH04: ["LUCIO", "ADOLFO"],
   TH07: ["FEDE", "FEDERICO"],
+  Ariel: ["ARIEL", "ARIEL MAIOLI", "A. MAIOLI", "A.MAIOLI", "MAIOLI"],
+  Julian: ["JULIAN", "JULIÁN"],
 };
 
 export async function GET(request: NextRequest) {
@@ -42,7 +44,14 @@ export async function GET(request: NextRequest) {
     const idsVisibles = [session.userId, ...delegaciones.map(d => d.delegadorId)];
 
     // Buscar también por equipoAsignado (nombres almacenados en la DB)
-    const equipoNames = TH_EQUIPO_NAMES[session.nombre.toUpperCase()] || [];
+    const findEquipoNames = (name: string) => {
+      const upper = name.toUpperCase();
+      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
+        if (key.toUpperCase() === upper) return vals;
+      }
+      return [];
+    };
+    const equipoNames = findEquipoNames(session.nombre);
     // Si el nombre del usuario es un código TH (TH01, TH05...), también buscar directamente
     const thCode = session.nombre.toUpperCase();
     const equipoMatch = [...equipoNames];

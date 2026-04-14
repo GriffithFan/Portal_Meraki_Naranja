@@ -197,6 +197,8 @@ export async function POST(request: NextRequest) {
         lucio: "TH02",
         jorge: "TH03",
         federico: "TH07", fede: "TH07",
+        ariel: "Ariel", "ariel maioli": "Ariel", maioli: "Ariel", "a. maioli": "Ariel", "a.maioli": "Ariel",
+        julian: "Julian", "julián": "Julian",
       };
 
       /** Detectar equipo a partir de un nombre de técnico */

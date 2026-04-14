@@ -123,6 +123,13 @@ const EQUIPO_TH_MAP: Record<string, string> = {
   FEDERICO: "TH07",
   ADOLFO: "TH04",
   GUSTAVO: "Gustavo",
+  ARIEL: "Ariel",
+  "ARIEL MAIOLI": "Ariel",
+  "A. MAIOLI": "Ariel",
+  "A.MAIOLI": "Ariel",
+  MAIOLI: "Ariel",
+  JULIAN: "Julian",
+  "JULIÁN": "Julian",
 };
 
 // Mapeo inverso TH → nombre (para display)
@@ -132,10 +139,12 @@ const TH_NOMBRE_MAP: Record<string, string> = {
   TH04: "LUCIO",
   TH07: "FEDE",
   Gustavo: "GUSTAVO",
+  Ariel: "ARIEL MAIOLI",
+  Julian: "JULIAN",
 };
 
 // Opciones TH disponibles
-const TH_OPTIONS = ["TH01", "TH02", "TH03", "TH04", "Gustavo", "TH06", "TH07", "TH08", "TH09", "TH10"];
+const TH_OPTIONS = ["TH01", "TH02", "TH03", "TH04", "Gustavo", "TH06", "TH07", "TH08", "TH09", "TH10", "Ariel", "Julian"];
 
 const GROUP_BY_OPTIONS = [
   { value: "estado", label: "Estado" },

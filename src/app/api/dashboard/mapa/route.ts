@@ -10,6 +10,8 @@ const TH_EQUIPO_NAMES: Record<string, string[]> = {
   TH03: ["JORGE"],
   TH04: ["LUCIO", "ADOLFO"],
   TH07: ["FEDE", "FEDERICO"],
+  Ariel: ["ARIEL", "ARIEL MAIOLI", "A. MAIOLI", "A.MAIOLI", "MAIOLI"],
+  Julian: ["JULIAN", "JULIÁN"],
 };
 
 export async function GET(request: NextRequest) {
@@ -32,7 +34,8 @@ export async function GET(request: NextRequest) {
 
   // Mapear código TH a nombres reales de la DB si corresponde
   if (equipoParam) {
-    const mapped = TH_EQUIPO_NAMES[equipoParam.toUpperCase()];
+    const upper = equipoParam.toUpperCase();
+    const mapped = Object.entries(TH_EQUIPO_NAMES).find(([k]) => k.toUpperCase() === upper)?.[1];
     if (mapped) {
       where.equipoAsignado = { in: mapped, mode: "insensitive" };
     } else {
