@@ -58,7 +58,13 @@ export async function GET(request: NextRequest) {
           return NextResponse.json([]); // Estado solicitado está oculto para este usuario
         }
       } else {
-        where.estadoId = { notIn };
+        // notIn excluye NULLs en SQL — incluirlos explícitamente para no ocultar predios sin estado
+        where.AND = [...(where.AND || []), {
+          OR: [
+            { estadoId: { notIn } },
+            { estadoId: null },
+          ],
+        }];
       }
     }
   }
