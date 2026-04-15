@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, importarEjecutarSchema } from "@/lib/validation";
 import { detectarProvincia } from "@/utils/provinciaUtils";
+import { resolveEquipoKey } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -191,28 +192,13 @@ export async function POST(request: NextRequest) {
 
       const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[\s_-]+/g, " ");
 
-      // Mapeo de nombres/alias de técnicos → código de equipo (TH01, TH02, etc.)
-      const TECH_NAME_TO_EQUIPO: Record<string, string> = {
-        daniel: "TH01", dani: "TH01", "daniel c01": "TH01",
-        lucio: "TH02",
-        jorge: "TH03",
-        federico: "TH07", fede: "TH07",
-        ariel: "Ariel", "ariel maioli": "Ariel", maioli: "Ariel", "a. maioli": "Ariel", "a.maioli": "Ariel",
-        julian: "Julian", "julián": "Julian",
-      };
+      // Mapeo de nombres/alias de t\u00e9cnicos → código de equipo (TH01, TH02, etc.)
+      // Usa el módulo centralizado equipoUtils
 
       /** Detectar equipo a partir de un nombre de técnico */
       const detectEquipoFromName = (val: string): string | null => {
         if (!val) return null;
-        const needle = norm(val);
-        // Intentar match exacto sobre todas las variantes
-        for (const [alias, equipo] of Object.entries(TECH_NAME_TO_EQUIPO)) {
-          if (needle === alias || needle.startsWith(alias + " ") || needle.includes(alias)) return equipo;
-        }
-        // Intentar por patrón THxx directo
-        const thMatch = needle.match(/\b(th\d{1,2})\b/i);
-        if (thMatch) return thMatch[1].toUpperCase();
-        return null;
+        return resolveEquipoKey(val);
       };
 
       /** Match usuario por nombre, email o alias (ej: "Daniel c01" → th01@thnet.com) */

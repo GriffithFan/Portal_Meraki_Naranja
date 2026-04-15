@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { equipoFilter, getAllEquipoVariants } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-// Mapeo inverso TH → nombres de equipoAsignado en la DB
-const TH_EQUIPO_NAMES: Record<string, string[]> = {
-  TH01: ["DANIEL", "DANI"],
-  TH03: ["JORGE"],
-  TH04: ["LUCIO", "ADOLFO"],
-  TH07: ["FEDE", "FEDERICO"],
-  Ariel: ["ARIEL", "ARIEL MAIOLI", "A. MAIOLI", "A.MAIOLI", "MAIOLI"],
-  Julian: ["JULIAN", "JULIÁN"],
-};
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -34,14 +25,7 @@ export async function GET(request: NextRequest) {
 
   // Mapear código TH a nombres reales de la DB si corresponde
   if (equipoParam) {
-    const upper = equipoParam.toUpperCase();
-    const entry = Object.entries(TH_EQUIPO_NAMES).find(([k]) => k.toUpperCase() === upper);
-    if (entry) {
-      const [key, aliases] = entry;
-      where.equipoAsignado = { in: [key, ...aliases], mode: "insensitive" };
-    } else {
-      where.equipoAsignado = { equals: equipoParam, mode: "insensitive" };
-    }
+    where.equipoAsignado = equipoFilter(equipoParam);
   }
 
   if (provincia) where.provincia = provincia;
@@ -81,26 +65,11 @@ export async function GET(request: NextRequest) {
 
   // Usuarios normales (no mod/admin): solo ver predios de su equipo o asignados
   if (!isModOrAdmin(session.rol)) {
-    // Buscar por key (case-insensitive) O por valor (reverse lookup)
-    const findEquipoForUser = (name: string): string[] => {
-      const upper = name.toUpperCase();
-      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
-        if (key.toUpperCase() === upper) return [key, ...vals];
-      }
-      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
-        if (vals.some(v => v.toUpperCase() === upper)) return [key, ...vals];
-      }
-      return [];
-    };
-    const equipoMatch = findEquipoForUser(session.nombre);
-    const thCode = session.nombre.toUpperCase();
-    if (/^TH\d+$/.test(thCode) && !equipoMatch.includes(thCode)) {
-      equipoMatch.push(thCode);
-    }
+    const variants = getAllEquipoVariants(session.nombre);
     where.OR = [
-      ...(equipoMatch.length > 0
-        ? [{ equipoAsignado: { in: equipoMatch, mode: "insensitive" } }]
-        : [{ equipoAsignado: { equals: session.nombre, mode: "insensitive" } }]),
+      { equipoAsignado: variants.length > 0
+        ? { in: variants, mode: "insensitive" }
+        : { equals: session.nombre, mode: "insensitive" } },
       { asignaciones: { some: { userId: session.userId } } },
     ];
   }

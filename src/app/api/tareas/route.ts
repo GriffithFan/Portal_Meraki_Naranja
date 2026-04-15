@@ -5,18 +5,9 @@ import { sanitizeSearch } from "@/lib/sanitize";
 import { parseBody, isErrorResponse, tareaCreateSchema } from "@/lib/validation";
 import { registrarEnPapelera } from "@/lib/papelera";
 import { detectarProvincia } from "@/utils/provinciaUtils";
+import { getAllEquipoVariants } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-// Mapeo inverso TH → nombres de equipoAsignado en la DB
-const TH_EQUIPO_NAMES: Record<string, string[]> = {
-  TH01: ["DANIEL", "DANI"],
-  TH03: ["JORGE"],
-  TH04: ["LUCIO", "ADOLFO"],
-  TH07: ["FEDE", "FEDERICO"],
-  Ariel: ["ARIEL", "ARIEL MAIOLI", "A. MAIOLI", "A.MAIOLI", "MAIOLI"],
-  Julian: ["JULIAN", "JULIÁN"],
-};
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -44,30 +35,14 @@ export async function GET(request: NextRequest) {
     const idsVisibles = [session.userId, ...delegaciones.map(d => d.delegadorId)];
 
     // Buscar también por equipoAsignado (nombres almacenados en la DB)
-    // Buscar por key (case-insensitive) O por valor (reverse lookup)
-    const findEquipoForUser = (name: string): string[] => {
-      const upper = name.toUpperCase();
-      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
-        if (key.toUpperCase() === upper) return [key, ...vals];
-      }
-      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
-        if (vals.some(v => v.toUpperCase() === upper)) return [key, ...vals];
-      }
-      return [];
-    };
-    const equipoMatch = findEquipoForUser(session.nombre);
-    // Si el nombre del usuario es un código TH (TH01, TH05...), también buscar directamente
-    const thCode = session.nombre.toUpperCase();
-    if (/^TH\d+$/.test(thCode) && !equipoMatch.includes(thCode)) {
-      equipoMatch.push(thCode);
-    }
+    const equipoMatch = getAllEquipoVariants(session.nombre);
 
     where.OR = [
       { asignaciones: { some: { userId: { in: idsVisibles } } } },
       { creadorId: { in: idsVisibles } },
-      ...(equipoMatch.length > 0
-        ? [{ equipoAsignado: { in: equipoMatch, mode: "insensitive" } }]
-        : [{ equipoAsignado: { equals: session.nombre, mode: "insensitive" } }]),
+      { equipoAsignado: equipoMatch.length > 0
+        ? { in: equipoMatch, mode: "insensitive" }
+        : { equals: session.nombre, mode: "insensitive" } },
     ];
   }
 

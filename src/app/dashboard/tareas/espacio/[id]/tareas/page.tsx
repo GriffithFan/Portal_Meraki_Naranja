@@ -7,6 +7,7 @@ import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import StatusIcon from "@/components/StatusIcon";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
+import { aliasToKey, keyToDisplay, EQUIPO_OPTIONS } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -113,38 +114,10 @@ const DEFAULT_COLUMNS: Column[] = [
 const LS_EMPTY_KEY = "pmn-espacio-show-empty";
 const LS_HIDDEN_KEY = "pmn-espacio-hidden-estados";
 
-// Mapeo nombre visible → código TH de cuenta
-const EQUIPO_TH_MAP: Record<string, string> = {
-  DANIEL: "TH01",
-  DANI: "TH01",
-  JORGE: "TH03",
-  LUCIO: "TH04",
-  FEDE: "TH07",
-  FEDERICO: "TH07",
-  ADOLFO: "TH04",
-  GUSTAVO: "Gustavo",
-  ARIEL: "Ariel",
-  "ARIEL MAIOLI": "Ariel",
-  "A. MAIOLI": "Ariel",
-  "A.MAIOLI": "Ariel",
-  MAIOLI: "Ariel",
-  JULIAN: "Julian",
-  "JULIÁN": "Julian",
-};
-
-// Mapeo inverso TH → nombre (para display)
-const TH_NOMBRE_MAP: Record<string, string> = {
-  TH01: "DANIEL",
-  TH03: "JORGE",
-  TH04: "LUCIO",
-  TH07: "FEDE",
-  Gustavo: "GUSTAVO",
-  Ariel: "ARIEL MAIOLI",
-  Julian: "JULIAN",
-};
-
-// Opciones TH disponibles
-const TH_OPTIONS = ["TH01", "TH02", "TH03", "TH04", "Gustavo", "TH06", "TH07", "TH08", "TH09", "TH10", "Ariel", "Julian"];
+// Mapeos derivados del módulo centralizado equipoUtils
+const EQUIPO_TH_MAP_FN = aliasToKey;
+const TH_NOMBRE_MAP_FN = keyToDisplay;
+const TH_OPTIONS = EQUIPO_OPTIONS;
 
 const GROUP_BY_OPTIONS = [
   { value: "estado", label: "Estado" },
@@ -819,7 +792,7 @@ export default function EspacioTareasPage() {
       // Derivar TH actual de equipoAsignado (puede ser nombre o ya un código TH)
       const equipo = t.equipoAsignado?.toUpperCase();
       const currentTH = equipo
-        ? (equipo.match(/^TH\d+$/) ? equipo : (EQUIPO_TH_MAP[equipo] || ""))
+        ? (equipo.match(/^TH\d+$/) ? equipo : (EQUIPO_TH_MAP_FN(equipo) || ""))
         : "";
       if (isModOrAdmin) {
         return (
@@ -829,15 +802,16 @@ export default function EspacioTareasPage() {
             onChange={(e) => {
               e.stopPropagation();
               const th = e.target.value;
-              const nombre = TH_NOMBRE_MAP[th] || th;
+              const nombre = TH_NOMBRE_MAP_FN(th);
               saveCellField(t.id, "equipoAsignado", nombre);
             }}
             className="text-[10px] font-medium rounded px-1.5 py-0.5 border border-violet-200 bg-violet-50 text-violet-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-violet-300"
           >
             <option value="">Sin asignar</option>
-            {TH_OPTIONS.map(th => (
-              <option key={th} value={th}>{th}{TH_NOMBRE_MAP[th] ? ` (${TH_NOMBRE_MAP[th]})` : ""}</option>
-            ))}
+            {TH_OPTIONS.map(th => {
+              const dn = TH_NOMBRE_MAP_FN(th);
+              return <option key={th} value={th}>{th}{dn !== th ? ` (${dn})` : ""}</option>;
+            })}
           </select>
         );
       }
@@ -941,7 +915,7 @@ export default function EspacioTareasPage() {
       const raw = t[col.field];
       if (!raw) return <span className="text-surface-300">&mdash;</span>;
       const upper = raw.toUpperCase();
-      const thCode = upper.match(/^TH\d+$/) ? upper : EQUIPO_TH_MAP[upper];
+      const thCode = upper.match(/^TH\d+$/) ? upper : EQUIPO_TH_MAP_FN(upper);
       const display = thCode && thCode !== raw ? `${raw}-${thCode}` : raw;
       return <span className="flex items-center group/cell" title={display}><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display} /></span>;
     }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { espacioSchema, parseBody, isErrorResponse } from "@/lib/validation";
+import { equipoFilter } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,16 +42,11 @@ export async function GET() {
       espaciosFiltrados = espacios.filter(e => idsPermitidos.has(e.id));
     } else if (!isModOrAdmin(session.rol)) {
       // TECNICOs sin whitelist: solo ven espacios donde tienen predios asignados
-      const thCode = session.nombre?.toUpperCase() || "";
-      const equipoFilter = /^TH\d+$/.test(thCode)
-        ? [{ equipoAsignado: { equals: thCode, mode: "insensitive" as const } }]
-        : [];
-
       const prediosAsignados = await prisma.predio.findMany({
         where: {
           OR: [
             { asignaciones: { some: { userId: session.userId } } },
-            ...equipoFilter,
+            { equipoAsignado: equipoFilter(session.nombre) },
           ],
         },
         select: { espacioId: true },
