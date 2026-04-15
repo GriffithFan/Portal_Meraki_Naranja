@@ -80,16 +80,26 @@ export async function GET(request: NextRequest) {
 
   // Usuarios normales (no mod/admin): solo ver predios de su equipo o asignados
   if (!isModOrAdmin(session.rol)) {
-    const equipoNames = TH_EQUIPO_NAMES[session.nombre.toUpperCase()] || [];
+    // Buscar por key (case-insensitive) O por valor (reverse lookup)
+    const findEquipoForUser = (name: string): string[] => {
+      const upper = name.toUpperCase();
+      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
+        if (key.toUpperCase() === upper) return [key, ...vals];
+      }
+      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
+        if (vals.some(v => v.toUpperCase() === upper)) return [key, ...vals];
+      }
+      return [];
+    };
+    const equipoMatch = findEquipoForUser(session.nombre);
     const thCode = session.nombre.toUpperCase();
-    const equipoMatch = [...equipoNames];
     if (/^TH\d+$/.test(thCode) && !equipoMatch.includes(thCode)) {
       equipoMatch.push(thCode);
     }
     where.OR = [
       ...(equipoMatch.length > 0
         ? [{ equipoAsignado: { in: equipoMatch, mode: "insensitive" } }]
-        : [{ equipoAsignado: session.nombre }]),
+        : [{ equipoAsignado: { equals: session.nombre, mode: "insensitive" } }]),
       { asignaciones: { some: { userId: session.userId } } },
     ];
   }

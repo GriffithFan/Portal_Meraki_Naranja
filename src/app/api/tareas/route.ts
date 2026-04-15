@@ -44,17 +44,20 @@ export async function GET(request: NextRequest) {
     const idsVisibles = [session.userId, ...delegaciones.map(d => d.delegadorId)];
 
     // Buscar también por equipoAsignado (nombres almacenados en la DB)
-    const findEquipoNames = (name: string) => {
+    // Buscar por key (case-insensitive) O por valor (reverse lookup)
+    const findEquipoForUser = (name: string): string[] => {
       const upper = name.toUpperCase();
       for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
-        if (key.toUpperCase() === upper) return vals;
+        if (key.toUpperCase() === upper) return [key, ...vals];
+      }
+      for (const [key, vals] of Object.entries(TH_EQUIPO_NAMES)) {
+        if (vals.some(v => v.toUpperCase() === upper)) return [key, ...vals];
       }
       return [];
     };
-    const equipoNames = findEquipoNames(session.nombre);
+    const equipoMatch = findEquipoForUser(session.nombre);
     // Si el nombre del usuario es un código TH (TH01, TH05...), también buscar directamente
     const thCode = session.nombre.toUpperCase();
-    const equipoMatch = [...equipoNames];
     if (/^TH\d+$/.test(thCode) && !equipoMatch.includes(thCode)) {
       equipoMatch.push(thCode);
     }
