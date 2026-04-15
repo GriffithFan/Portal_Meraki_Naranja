@@ -35,9 +35,10 @@ export async function GET(request: NextRequest) {
   // Mapear código TH a nombres reales de la DB si corresponde
   if (equipoParam) {
     const upper = equipoParam.toUpperCase();
-    const mapped = Object.entries(TH_EQUIPO_NAMES).find(([k]) => k.toUpperCase() === upper)?.[1];
-    if (mapped) {
-      where.equipoAsignado = { in: mapped, mode: "insensitive" };
+    const entry = Object.entries(TH_EQUIPO_NAMES).find(([k]) => k.toUpperCase() === upper);
+    if (entry) {
+      const [key, aliases] = entry;
+      where.equipoAsignado = { in: [key, ...aliases], mode: "insensitive" };
     } else {
       where.equipoAsignado = { equals: equipoParam, mode: "insensitive" };
     }
