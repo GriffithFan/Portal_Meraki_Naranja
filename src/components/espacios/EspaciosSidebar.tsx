@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
@@ -148,6 +148,7 @@ function SpaceNode({
   onDelete,
   onClear,
   onDropPredios,
+  onRename,
 }: {
   node: any;
   depth: number;
@@ -158,9 +159,13 @@ function SpaceNode({
   onDelete: (id: string, nombre: string) => void;
   onClear: (id: string, nombre: string) => void;
   onDropPredios: (espacioId: string, nombre: string) => void;
+  onRename: (id: string, nuevoNombre: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [dragOver, setDragOver] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(node.nombre);
+  const inputRef = useRef<HTMLInputElement>(null);
   const hasChildren = node.children?.length > 0;
   const taskCount = node._count?.predios || 0;
   const isFacturado = node.nombre === "Facturado" && !node.parentId;
@@ -218,14 +223,41 @@ function SpaceNode({
           <span className="w-[18px] shrink-0" />
         )}
 
-        {/* Link al espacio */}
-        <Link
-          href={`/dashboard/tareas/espacio/${node.id}/tareas`}
-          className="flex-1 flex items-center gap-1.5 min-w-0 text-xs"
-        >
-          <EspacioIcon icono={node.icono} color={isActive || isParentActive ? node.color : "#64748b"} />
-          <span className={`truncate ${isActive ? "font-medium" : ""}`}>{node.nombre}</span>
-        </Link>
+        {/* Link al espacio / edición inline */}
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={() => {
+              const trimmed = editName.trim();
+              if (trimmed && trimmed !== node.nombre) onRename(node.id, trimmed);
+              else setEditName(node.nombre);
+              setEditing(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.currentTarget.blur(); }
+              if (e.key === "Escape") { setEditName(node.nombre); setEditing(false); }
+            }}
+            className="flex-1 min-w-0 text-xs border border-primary-400 rounded px-1.5 py-0.5 focus:outline-none bg-white"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <Link
+            href={`/dashboard/tareas/espacio/${node.id}/tareas`}
+            className="flex-1 flex items-center gap-1.5 min-w-0 text-xs"
+            onDoubleClick={(e) => {
+              if (!isModOrAdmin) return;
+              e.preventDefault();
+              setEditName(node.nombre);
+              setEditing(true);
+              setTimeout(() => inputRef.current?.select(), 0);
+            }}
+          >
+            <EspacioIcon icono={node.icono} color={isActive || isParentActive ? node.color : "#64748b"} />
+            <span className={`truncate ${isActive ? "font-medium" : ""}`}>{node.nombre}</span>
+          </Link>
+        )}
 
         {/* Count badge */}
         {totalCount > 0 && (
@@ -279,6 +311,7 @@ function SpaceNode({
               onDelete={onDelete}
               onClear={onClear}
               onDropPredios={onDropPredios}
+              onRename={onRename}
             />
           ))}
         </div>
@@ -298,6 +331,52 @@ export default function EspaciosSidebar() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; nombre: string } | null>(null);
   const [clearConfirm, setClearConfirm] = useState<{ id: string; nombre: string } | null>(null);
   const [dropNotice, setDropNotice] = useState<string | null>(null);
+
+  // ── Resize sidebar ──
+  const SIDEBAR_MIN = 180;
+  const SIDEBAR_MAX = 400;
+  const SIDEBAR_DEFAULT = 224; // w-56 = 14rem = 224px
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const resizing = useRef(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("espacios-sidebar-w");
+    if (saved) setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, parseInt(saved))));
+  }, []);
+
+  function handleResizeStart(e: React.MouseEvent) {
+    e.preventDefault();
+    resizing.current = true;
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    let lastW = startW;
+    function onMove(ev: MouseEvent) {
+      if (!resizing.current) return;
+      lastW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + ev.clientX - startX));
+      setSidebarWidth(lastW);
+    }
+    function onUp() {
+      resizing.current = false;
+      localStorage.setItem("espacios-sidebar-w", String(lastW));
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  // ── Rename espacio ──
+  async function handleRenameEspacio(id: string, nuevoNombre: string) {
+    try {
+      const res = await fetch(`/api/espacios/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ nombre: nuevoNombre }),
+      });
+      if (res.ok) fetchEspacios();
+    } catch { /* ignore */ }
+  }
 
   async function handleDeleteEspacio() {
     if (!deleteConfirm) return;
@@ -416,6 +495,7 @@ export default function EspaciosSidebar() {
                   onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
                   onClear={(id, nombre) => setClearConfirm({ id, nombre })}
                   onDropPredios={handleDropPredios}
+                  onRename={handleRenameEspacio}
                 />
               ))}
             </div>
@@ -430,7 +510,10 @@ export default function EspaciosSidebar() {
       </div>
 
       {/* ── Desktop: full sidebar ── */}
-      <aside className="hidden md:flex w-56 shrink-0 border-r border-surface-200 bg-white flex-col h-full overflow-hidden">
+      <aside
+        className="hidden md:flex shrink-0 border-r border-surface-200 bg-white flex-col h-full overflow-hidden relative"
+        style={{ width: sidebarWidth }}
+      >
         {/* Header */}
         <div className="px-3 pt-3 pb-2 border-b border-surface-100">
           <div className="flex items-center justify-between mb-1">
@@ -494,10 +577,17 @@ export default function EspaciosSidebar() {
                 onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
                 onClear={(id, nombre) => setClearConfirm({ id, nombre })}
                 onDropPredios={handleDropPredios}
+                onRename={handleRenameEspacio}
               />
             ))
           )}
         </nav>
+
+        {/* Resize handle */}
+        <div
+          onMouseDown={handleResizeStart}
+          className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize hover:bg-primary-400/40 active:bg-primary-400/60 transition-colors z-10"
+        />
       </aside>
 
       {/* Toast de drop exitoso */}
