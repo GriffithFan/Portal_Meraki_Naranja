@@ -6,6 +6,7 @@ import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
+import { buildEquipoOptions } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -241,6 +242,7 @@ export default function TareasPage() {
 
   // Usuarios para asignación
   const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
+  const equipoOpts = useMemo(() => buildEquipoOptions(allUsers), [allUsers]);
   const [espacios, setEspacios] = useState<any[]>([]);
   const [showUserPicker, setShowUserPicker] = useState(false);
 
@@ -1442,8 +1444,13 @@ export default function TareasPage() {
             </select>
           )}
           {bulkAction === "equipoAsignado" && (
-            <input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder="Ej: TH01"
-              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500 w-24" />
+            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
+              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
+              <option value="">— Equipo —</option>
+              {equipoOpts.map(opt => (
+                <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+              ))}
+            </select>
           )}
           {bulkAction === "provincia" && (
             <input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder="Ej: BUENOS AIRES"
@@ -2207,7 +2214,12 @@ export default function TareasPage() {
                   <option value="Urbano">Urbano</option>
                   <option value="Rural">Rural</option>
                 </select>
-                <input value={form.equipoAsignado} onChange={(e) => setForm({ ...form, equipoAsignado: e.target.value.toUpperCase() })} placeholder="Equipo (TH01-TH10)" className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
+                <select value={form.equipoAsignado} onChange={(e) => setForm({ ...form, equipoAsignado: e.target.value })} className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs text-surface-600">
+                  <option value="">Equipo</option>
+                  {equipoOpts.map(opt => (
+                    <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

@@ -7,7 +7,7 @@ import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import StatusIcon from "@/components/StatusIcon";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
-import { aliasToKey, keyToDisplay, EQUIPO_OPTIONS } from "@/utils/equipoUtils";
+import { aliasToKey, keyToDisplay, EQUIPO_OPTIONS, buildEquipoOptions } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -117,7 +117,7 @@ const LS_HIDDEN_KEY = "pmn-espacio-hidden-estados";
 // Mapeos derivados del módulo centralizado equipoUtils
 const EQUIPO_TH_MAP_FN = aliasToKey;
 const TH_NOMBRE_MAP_FN = keyToDisplay;
-const TH_OPTIONS = EQUIPO_OPTIONS;
+// TH_OPTIONS ahora se genera dinámicamente dentro del componente
 
 const GROUP_BY_OPTIONS = [
   { value: "estado", label: "Estado" },
@@ -174,6 +174,9 @@ export default function EspacioTareasPage() {
   // Usuarios y espacios (para acciones masivas)
   const [allUsers, setAllUsers] = useState<{ id: string; nombre: string }[]>([]);
   const [allEspacios, setAllEspacios] = useState<any[]>([]);
+
+  // Opciones de equipo dinámicas: EQUIPOS estáticos + usuarios activos
+  const equipoOpts = useMemo(() => buildEquipoOptions(allUsers), [allUsers]);
 
   // Drag & drop columnas
   const [dragColId, setDragColId] = useState<string | null>(null);
@@ -829,16 +832,16 @@ export default function EspacioTareasPage() {
             onChange={(e) => {
               e.stopPropagation();
               const th = e.target.value;
-              const nombre = TH_NOMBRE_MAP_FN(th);
+              const opt = equipoOpts.find(o => o.key === th);
+              const nombre = opt?.display || TH_NOMBRE_MAP_FN(th);
               saveCellField(t.id, "equipoAsignado", nombre);
             }}
             className="text-[10px] font-medium rounded px-1.5 py-0.5 border border-violet-200 bg-violet-50 text-violet-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-violet-300"
           >
             <option value="">Sin asignar</option>
-            {TH_OPTIONS.map(th => {
-              const dn = TH_NOMBRE_MAP_FN(th);
-              return <option key={th} value={th}>{th}{dn !== th ? ` (${dn})` : ""}</option>;
-            })}
+            {equipoOpts.map(opt => (
+              <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+            ))}
           </select>
         );
       }
@@ -1594,6 +1597,7 @@ export default function EspacioTareasPage() {
           isModOrAdmin={isModOrAdmin}
           onClose={() => setSelectedTareaId(null)}
           onUpdated={fetchData}
+          equipoOptions={equipoOpts}
         />
       )}
 

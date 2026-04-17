@@ -119,3 +119,28 @@ export const EQUIPO_OPTIONS: string[] = EQUIPOS.map(e => e.key);
 
 /** Acceso directo a todas las entradas (para iteración avanzada). */
 export const EQUIPO_ENTRIES: readonly EquipoEntry[] = EQUIPOS;
+
+/**
+ * Genera opciones dinámicas de equipo: entradas estáticas de EQUIPOS +
+ * usuarios activos de la DB que no están ya representados.
+ * Útil para que el dropdown incluya automáticamente a todo usuario nuevo.
+ */
+export function buildEquipoOptions(
+  dbUsers: { nombre: string }[]
+): { key: string; display: string }[] {
+  const options = EQUIPOS.map(e => ({ key: e.key, display: e.display }));
+  const knownNorms = new Set<string>();
+  for (const e of EQUIPOS) {
+    knownNorms.add(norm(e.key));
+    for (const a of e.aliases) knownNorms.add(norm(a));
+  }
+  for (const u of dbUsers) {
+    if (!u.nombre) continue;
+    const n = norm(u.nombre);
+    if (!knownNorms.has(n)) {
+      options.push({ key: u.nombre, display: u.nombre.toUpperCase() });
+      knownNorms.add(n);
+    }
+  }
+  return options;
+}

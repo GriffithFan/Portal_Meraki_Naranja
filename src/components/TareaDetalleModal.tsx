@@ -33,6 +33,7 @@ interface TareaDetalleModalProps {
   isModOrAdmin: boolean;
   onClose: () => void;
   onUpdated?: () => void; // callback para refrescar la lista
+  equipoOptions?: { key: string; display: string }[];
 }
 
 export default function TareaDetalleModal({
@@ -41,6 +42,7 @@ export default function TareaDetalleModal({
   isModOrAdmin,
   onClose,
   onUpdated,
+  equipoOptions,
 }: TareaDetalleModalProps) {
   const [tarea, setTarea] = useState<any>(null);
   const [actividades, setActividades] = useState<any[]>([]);
@@ -273,7 +275,18 @@ export default function TareaDetalleModal({
                           <span className="text-[11px] text-surface-400 w-24 shrink-0">{f.label}</span>
                           <div className="flex items-center flex-1 min-w-0">
                           {isModOrAdmin && f.editable ? (
-                            f.type === "badge" ? (
+                            f.field === "equipoAsignado" && equipoOptions ? (
+                              <select
+                                value={tarea[f.field] || ""}
+                                onChange={(e) => saveField(f.field, e.target.value)}
+                                className="flex-1 text-xs border-0 bg-transparent focus:ring-0 p-0 cursor-pointer text-surface-700"
+                              >
+                                <option value="">—</option>
+                                {equipoOptions.map(opt => (
+                                  <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+                                ))}
+                              </select>
+                            ) : f.type === "badge" ? (
                               <select
                                 value={tarea[f.field] || ""}
                                 onChange={(e) => saveField(f.field, e.target.value)}
