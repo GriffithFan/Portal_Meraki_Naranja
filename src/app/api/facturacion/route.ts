@@ -128,9 +128,11 @@ export async function POST() {
 
       const tecnicos = predio.asignaciones.map((a) => a.usuario);
       if (tecnicos.length === 0) {
-        const key = "SIN_ASIGNAR";
+        // Fallback: usar equipoAsignado si no hay asignaciones formales
+        const key = predio.equipoAsignado || "SIN_ASIGNAR";
+        const label = predio.equipoAsignado || "Sin asignar";
         if (!porTecnico[key]) {
-          porTecnico[key] = { tecnicoId: "SIN_ASIGNAR", tecnicoNombre: "Sin asignar", cantidad: 0, tareas: [] };
+          porTecnico[key] = { tecnicoId: key, tecnicoNombre: label, cantidad: 0, tareas: [] };
         }
         porTecnico[key].cantidad++;
         porTecnico[key].tareas.push(tareaData);
