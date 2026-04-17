@@ -746,6 +746,10 @@ export default function EspacioTareasPage() {
     try {
       let actionKey = bulkAction;
       let actionValue: any = bulkAction === "enFacturacion" ? true : bulkValue;
+      // Para asignaciones, la API espera un array de IDs
+      if (bulkAction === "asignadoIds") {
+        actionValue = bulkValue ? [bulkValue] : [];
+      }
       if (bulkAction === "moverFacturado") {
         const facturadoEsp = allEspacios.find((e: any) => e.nombre === "Facturado" && !e.parentId);
         if (!facturadoEsp) {
@@ -1452,7 +1456,7 @@ export default function EspacioTareasPage() {
           {bulkAction === "equipoAsignado" && (
             <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
               <option value="">Equipo...</option>
-              {Array.from({ length: 10 }, (_, i) => `TH${String(i + 1).padStart(2, "0")}`).map(th => <option key={th} value={th}>{th}</option>)}
+              {equipoOpts.map(opt => <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>)}
             </select>
           )}
           {(bulkAction === "provincia" || bulkAction === "ambito" || bulkAction === "prioridad") && (
