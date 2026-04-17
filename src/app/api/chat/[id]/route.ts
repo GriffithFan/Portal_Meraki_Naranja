@@ -39,6 +39,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
           archivoTipo: true,
           archivoTamanio: true,
           createdAt: true,
+          editadoAt: true,
           autor: { select: { id: true, nombre: true, esMesa: true } },
         },
       },
@@ -60,6 +61,13 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
   }
 
+  // Marcar como leído (fire-and-forget)
+  if (esCreador) {
+    prisma.chatConversacion.update({ where: { id }, data: { leidoPorCreadorAt: new Date() } }).catch(() => {});
+  } else if (esMesa || esAdminOMod) {
+    prisma.chatConversacion.update({ where: { id }, data: { leidoPorMesaAt: new Date() } }).catch(() => {});
+  }
+
   // Para técnicos: anonimizar los nombres de Mesa (admin/mod ven todo)
   if (!esMesa && !esAdminOMod) {
     const anonimizado = {
@@ -75,7 +83,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(anonimizado);
   }
 
-  return NextResponse.json(conversacion);
+  // Para mesa: incluir timestamps de lectura
+  return NextResponse.json({
+    ...conversacion,
+    leidoPorCreadorAt: conversacion.leidoPorCreadorAt,
+    leidoPorMesaAt: conversacion.leidoPorMesaAt,
+  });
 }
 
 /**

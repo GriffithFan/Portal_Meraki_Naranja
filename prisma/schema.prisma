@@ -604,9 +604,11 @@ model ChatConversacion {
   agente      User?     @relation("AgenteChat", fields: [agenteId], references: [id], onDelete: SetNull)
   mensajes    ChatMensaje[]
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  cerradoAt   DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  cerradoAt          DateTime?
+  leidoPorCreadorAt  DateTime? // Última lectura del creador (técnico)
+  leidoPorMesaAt     DateTime? // Última lectura de mesa
 
   @@index([creadorId])
   @@index([agenteId])
@@ -627,6 +629,7 @@ model ChatMensaje {
   autor           User @relation(fields: [autorId], references: [id], onDelete: Cascade)
 
   createdAt       DateTime @default(now())
+  editadoAt       DateTime? // Se setea al editar el mensaje
 
   @@index([conversacionId, createdAt])
   @@index([autorId])

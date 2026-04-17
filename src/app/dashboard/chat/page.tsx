@@ -97,6 +97,8 @@ export default function ChatPage() {
   const [filtroEstado, setFiltroEstado] = useState<string>("TODAS");
   const [orden, setOrden] = useState<"recientes" | "antiguas">("recientes");
   const [busqueda, setBusqueda] = useState("");
+  const [editandoMsgId, setEditandoMsgId] = useState<string | null>(null);
+  const [editandoTxt, setEditandoTxt] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCountRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
@@ -359,6 +361,68 @@ export default function ChatPage() {
 
   const detenerGrabacion = () => { mediaRecorderRef.current?.stop(); };
 
+  // ── Pegar archivos/imágenes desde portapapeles ──
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items || !seleccionada?.id) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) subirArchivo(file);
+        return;
+      }
+    }
+  };
+
+  // ── Editar mensaje ──
+  const iniciarEdicion = (msg: any) => {
+    setEditandoMsgId(msg.id);
+    setEditandoTxt(msg.contenido || "");
+  };
+
+  const cancelarEdicion = () => {
+    setEditandoMsgId(null);
+    setEditandoTxt("");
+  };
+
+  const guardarEdicion = async () => {
+    if (!editandoMsgId || !editandoTxt.trim()) return;
+    try {
+      const res = await fetch(`/api/chat/mensaje/${editandoMsgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ contenido: editandoTxt.trim() }),
+      });
+      if (res.ok) {
+        cancelarEdicion();
+        if (seleccionada?.id) await cargarMensajes(seleccionada.id);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Error al editar mensaje");
+      }
+    } catch { alert("Error de conexión"); }
+  };
+
+  // ── Eliminar mensaje ──
+  const eliminarMensaje = async (msgId: string) => {
+    if (!confirm("¿Eliminar este mensaje?")) return;
+    try {
+      const res = await fetch(`/api/chat/mensaje/${msgId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        if (seleccionada?.id) await cargarMensajes(seleccionada.id);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Error al eliminar mensaje");
+      }
+    } catch { alert("Error de conexión"); }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -603,8 +667,26 @@ export default function ChatPage() {
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {mensajes.map((msg) => {
                   const esMio = msg.autorId === session?.userId;
+                  // Para mesa: mostrar confirmación de lectura en mensajes propios
+                  const leidoPorCreador = isMesa && esMio && seleccionada.leidoPorCreadorAt
+                    ? new Date(msg.createdAt) <= new Date(seleccionada.leidoPorCreadorAt)
+                    : false;
+                  const editando = editandoMsgId === msg.id;
                   return (
-                    <div key={msg.id} className={clsx("flex", esMio ? "justify-end" : "justify-start")}>
+                    <div key={msg.id} className={clsx("group/msg flex", esMio ? "justify-end" : "justify-start")}>
+                      {/* Botones de acción (hover) — lado izquierdo para mensajes míos */}
+                      {esMio && !editando && seleccionada.estado !== "CERRADA" && (
+                        <div className="flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
+                          {!msg.archivoUrl && (
+                            <button onClick={() => iniciarEdicion(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Editar">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+                            </button>
+                          )}
+                          <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                          </button>
+                        </div>
+                      )}
                       <div className={clsx(
                         "max-w-[80%] rounded-2xl px-4 py-2.5",
                         esMio
@@ -619,15 +701,60 @@ export default function ChatPage() {
                             {isMesa || soloLectura ? msg.autor?.nombre : "Mesa de Ayuda"}
                           </p>
                         )}
-                        {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
-                        <ChatArchivo msg={msg} esMio={esMio} />
-                        <p className={clsx(
-                          "text-[10px] mt-1",
-                          esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500"
-                        )}>
-                          {new Date(msg.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                        </p>
+                        {editando ? (
+                          <div className="space-y-1.5">
+                            <input
+                              type="text"
+                              value={editandoTxt}
+                              onChange={(e) => setEditandoTxt(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") guardarEdicion(); if (e.key === "Escape") cancelarEdicion(); }}
+                              maxLength={2000}
+                              autoFocus
+                              className="w-full px-2 py-1 rounded border border-blue-300 bg-white text-surface-800 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                            />
+                            <div className="flex gap-1">
+                              <button onClick={guardarEdicion} className="px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition">Guardar</button>
+                              <button onClick={cancelarEdicion} className="px-2 py-0.5 bg-white/10 hover:bg-white/20 rounded text-[10px] transition">Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
+                            <ChatArchivo msg={msg} esMio={esMio} />
+                          </>
+                        )}
+                        <div className={clsx("flex items-center gap-1 mt-1", esMio ? "justify-end" : "")}>
+                          <span className={clsx(
+                            "text-[10px]",
+                            esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500"
+                          )}>
+                            {new Date(msg.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          {msg.editadoAt && (
+                            <span className={clsx("text-[9px] italic", esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500")}>
+                              (editado)
+                            </span>
+                          )}
+                          {/* Confirmación de lectura: solo visible para Mesa */}
+                          {isMesa && esMio && (
+                            <svg className={clsx("w-3.5 h-3.5 ml-0.5", leidoPorCreador ? "text-cyan-300" : "text-blue-300/60")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              {leidoPorCreador ? (
+                                <><path strokeLinecap="round" strokeLinejoin="round" d="M1 13l5 5L17 7" /><path strokeLinecap="round" strokeLinejoin="round" d="M7 13l5 5L23 7" /></>
+                              ) : (
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              )}
+                            </svg>
+                          )}
+                        </div>
                       </div>
+                      {/* Botones de acción (hover) — lado derecho para mensajes ajenos (solo Mesa/Admin) */}
+                      {!esMio && (isMesa || session?.rol === "ADMIN") && !editando && seleccionada.estado !== "CERRADA" && (
+                        <div className="flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
+                          <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -675,6 +802,7 @@ export default function ChatPage() {
                           disabled={false}
                           value={nuevoMensaje}
                           onChange={(e) => setNuevoMensaje(e.target.value)}
+                          onPaste={handlePaste}
                           maxLength={2000}
                           className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
                         />
