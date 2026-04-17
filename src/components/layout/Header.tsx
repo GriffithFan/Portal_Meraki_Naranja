@@ -193,6 +193,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     } else {
       // Propagar búsqueda a la página activa via contexto
       setHeaderSearch(query);
+      // Si está en subpágina de tareas (espacio), navegar a la vista global para buscar entre todas
+      if (query && pathname.startsWith("/dashboard/tareas/espacio")) {
+        router.push("/dashboard/tareas");
+      }
     }
   }, [query, search, isMonitoring, setHeaderSearch]);
 

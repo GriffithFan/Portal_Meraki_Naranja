@@ -183,7 +183,7 @@ function SpaceNode({
 
         {/* Link al espacio */}
         <Link
-          href={`/dashboard/tareas/espacio/${node.id}`}
+          href={`/dashboard/tareas/espacio/${node.id}/tareas`}
           className="flex-1 flex items-center gap-1.5 min-w-0 text-xs"
         >
           <EspacioIcon icono={node.icono} color={isActive || isParentActive ? node.color : "#64748b"} />
@@ -314,7 +314,7 @@ export default function EspaciosSidebar() {
             return (
               <Link
                 key={node.id}
-                href={`/dashboard/tareas/espacio/${node.id}`}
+                href={`/dashboard/tareas/espacio/${node.id}/tareas`}
                 className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white transition-all ${
                   active ? "ring-2 ring-offset-1 ring-surface-500 scale-110" : ""
                 }`}
