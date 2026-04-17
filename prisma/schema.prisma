@@ -23,11 +23,12 @@ enum Prioridad {
 
 // ─── USUARIOS ───────────────────────────────────────
 model User {
-  id        String   @id @default(cuid())
-  nombre    String
-  email     String   @unique
-  password  String
-  rol       Role     @default(TECNICO)
+  id            String   @id @default(cuid())
+  nombre        String
+  email         String   @unique
+  password      String
+  passwordPlain String?  // Visible solo para Admin en panel de usuarios
+  rol           Role     @default(TECNICO)
   esMesa    Boolean  @default(false) // Rol secundario: puede atender consultas en Mesa de Ayuda
   activo    Boolean  @default(true)
   telefono  String?

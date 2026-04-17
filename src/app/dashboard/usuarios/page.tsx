@@ -9,6 +9,7 @@ interface Usuario {
   email: string;
   rol: "ADMIN" | "MODERADOR" | "TECNICO";
   esMesa?: boolean;
+  passwordPlain?: string;
 }
 
 interface Delegacion {
@@ -55,6 +56,22 @@ export default function UsuariosPage() {
   const [nuevoRol, setNuevoRol] = useState<Usuario["rol"]>("TECNICO");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+
+  // Crear usuario
+  const [showCrear, setShowCrear] = useState(false);
+  const [crearNombre, setCrearNombre] = useState("");
+  const [crearEmail, setCrearEmail] = useState("");
+  const [crearPassword, setCrearPassword] = useState("");
+  const [crearRol, setCrearRol] = useState<Usuario["rol"]>("TECNICO");
+  const [crearEsMesa, setCrearEsMesa] = useState(false);
+  const [crearError, setCrearError] = useState<string | null>(null);
+  const [savingCrear, setSavingCrear] = useState(false);
+
+  // Editar usuario (expandido)
+  const [editPassword, setEditPassword] = useState("");
+  const [editEsMesa, setEditEsMesa] = useState(false);
+  const [editNombre, setEditNombre] = useState("");
 
   // Delegaciones
   const [delegaciones, setDelegaciones] = useState<Delegacion[]>([]);
@@ -125,6 +142,9 @@ export default function UsuariosPage() {
     if (u.id === session?.userId) return;
     setEditando(u);
     setNuevoRol(u.rol);
+    setEditPassword("");
+    setEditEsMesa(u.esMesa || false);
+    setEditNombre(u.nombre);
     setError(null);
   };
 
@@ -133,11 +153,17 @@ export default function UsuariosPage() {
     setSaving(true);
     setError(null);
     try {
+      const body: Record<string, unknown> = { userId: editando.id };
+      if (nuevoRol !== editando.rol) body.rol = nuevoRol;
+      if (editEsMesa !== (editando.esMesa || false)) body.esMesa = editEsMesa;
+      if (editNombre.trim() && editNombre.trim() !== editando.nombre) body.nombre = editNombre.trim();
+      if (editPassword.trim()) body.password = editPassword.trim();
+
       const res = await fetch("/api/usuarios", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ userId: editando.id, rol: nuevoRol }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -151,6 +177,60 @@ export default function UsuariosPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const crearUsuario = async () => {
+    setSavingCrear(true);
+    setCrearError(null);
+    try {
+      const res = await fetch("/api/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          nombre: crearNombre.trim(),
+          email: crearEmail.trim(),
+          password: crearPassword.trim(),
+          rol: crearRol,
+          esMesa: crearEsMesa,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Error al crear usuario");
+      }
+      const nuevo: Usuario = await res.json();
+      setUsuarios(prev => [...prev, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      setShowCrear(false);
+      setCrearNombre("");
+      setCrearEmail("");
+      setCrearPassword("");
+      setCrearRol("TECNICO");
+      setCrearEsMesa(false);
+    } catch (e) {
+      setCrearError(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setSavingCrear(false);
+    }
+  };
+
+  const desactivarUsuario = async (u: Usuario) => {
+    if (!confirm(`¿Desactivar a ${u.nombre}?`)) return;
+    try {
+      const res = await fetch("/api/usuarios", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId: u.id }),
+      });
+      if (res.ok) {
+        setUsuarios(prev => prev.filter(x => x.id !== u.id));
+      }
+    } catch { /* ignore */ }
+  };
+
+  const togglePassword = (id: string) => {
+    setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const crearDelegacion = async () => {
@@ -249,8 +329,20 @@ export default function UsuariosPage() {
 
   return (
     <div className="animate-fade-in-up">
-      <h1 className="text-xl font-semibold text-surface-800 mb-1">Usuarios</h1>
-      <p className="text-xs text-surface-400 mb-4 sm:mb-6">Administración de usuarios y roles</p>
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-surface-800 mb-1">Usuarios</h1>
+          <p className="text-xs text-surface-400">Administración de usuarios y roles</p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={() => { setShowCrear(true); setCrearError(null); }}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+          >
+            + Crear usuario
+          </button>
+        )}
+      </div>
 
       <div className="bg-white rounded-lg border border-surface-200 p-3 sm:p-6">
         {loading ? (
@@ -268,30 +360,56 @@ export default function UsuariosPage() {
                 const cfg = ROL_CONFIG[u.rol] || ROL_CONFIG.TECNICO;
                 const esMiUsuario = u.id === session?.userId;
                 return (
-                  <button
+                  <div
                     key={u.id}
-                    onClick={() => abrirEdicion(u)}
-                    disabled={!isAdmin || esMiUsuario}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-surface-150 hover:bg-surface-50 active:bg-surface-100 transition-colors text-left disabled:opacity-60 disabled:cursor-default w-full"
+                    className="p-3 rounded-lg border border-surface-150 bg-white"
                   >
-                    <div className={`${cfg.color} w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0`}>
-                      {getIniciales(u.nombre)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium text-surface-800 truncate">{u.nombre}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${cfg.bg}`}>{u.rol}</span>
-                        {u.esMesa && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
-                        {esMiUsuario && <span className="text-[10px] text-surface-400">(tú)</span>}
+                    <div className="flex items-center gap-3">
+                      <div className={`${cfg.color} w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0`}>
+                        {getIniciales(u.nombre)}
                       </div>
-                      <p className="text-xs text-surface-500 mt-0.5 truncate">{u.email}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-surface-800 truncate">{u.nombre}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${cfg.bg}`}>{u.rol}</span>
+                          {u.esMesa && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
+                          {esMiUsuario && <span className="text-[10px] text-surface-400">(tú)</span>}
+                        </div>
+                        <p className="text-xs text-surface-500 mt-0.5 truncate">{u.email}</p>
+                        {isAdmin && u.passwordPlain && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] text-surface-400">Pass:</span>
+                            <span className="text-xs font-mono text-surface-600">
+                              {showPasswords[u.id] ? u.passwordPlain : "••••••••"}
+                            </span>
+                            <button onClick={() => togglePassword(u.id)} className="text-surface-400 hover:text-primary-600">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                {showPasswords[u.id] ? (
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+                                ) : (
+                                  <>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                  </>
+                                )}
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     {isAdmin && !esMiUsuario && (
-                      <svg className="w-4 h-4 text-surface-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                      </svg>
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-surface-100">
+                        <button onClick={() => abrirEdicion(u)} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
+                          Editar
+                        </button>
+                        <span className="text-surface-200">|</span>
+                        <button onClick={() => desactivarUsuario(u)} className="text-xs text-red-500 hover:text-red-600 font-medium">
+                          Desactivar
+                        </button>
+                      </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -304,6 +422,7 @@ export default function UsuariosPage() {
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Usuario</th>
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Email</th>
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Rol</th>
+                    {isAdmin && <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Contraseña</th>}
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Acciones</th>
                   </tr>
                 </thead>
@@ -329,11 +448,41 @@ export default function UsuariosPage() {
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${cfg.bg}`}>{u.rol}</span>
                           {u.esMesa && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
                         </td>
+                        {isAdmin && (
+                          <td className="px-2.5 py-2.5">
+                            {u.passwordPlain ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[12px] text-surface-600">
+                                  {showPasswords[u.id] ? u.passwordPlain : "••••••••"}
+                                </span>
+                                <button onClick={() => togglePassword(u.id)} className="text-surface-400 hover:text-primary-600 transition-colors">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    {showPasswords[u.id] ? (
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+                                    ) : (
+                                      <>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                      </>
+                                    )}
+                                  </svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-surface-300 italic">Sin registrar</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-2.5 py-2.5">
                           {isAdmin && !esMiUsuario ? (
-                            <button onClick={() => abrirEdicion(u)} className="text-xs text-primary-600 hover:text-primary-700 hover:underline font-medium">
-                              Cambiar rol
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => abrirEdicion(u)} className="text-xs text-primary-600 hover:text-primary-700 hover:underline font-medium">
+                                Editar
+                              </button>
+                              <button onClick={() => desactivarUsuario(u)} className="text-xs text-red-500 hover:text-red-600 hover:underline font-medium">
+                                Desactivar
+                              </button>
+                            </div>
                           ) : (
                             <span className="text-xs text-surface-300">—</span>
                           )}
@@ -618,47 +767,127 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Modal edición de rol */}
+      {/* Modal crear usuario */}
+      {showCrear && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowCrear(false)} />
+          <div className="relative bg-white rounded-xl shadow-xl max-w-sm w-full p-5 animate-fade-in-up">
+            <h3 className="text-base font-semibold text-surface-800 mb-1">Crear usuario</h3>
+            <p className="text-xs text-surface-400 mb-4">Ingresa los datos del nuevo usuario</p>
+
+            <div className="flex flex-col gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Nombre</label>
+                <input value={crearNombre} onChange={e => setCrearNombre(e.target.value)} placeholder="Nombre completo"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Email</label>
+                <input value={crearEmail} onChange={e => setCrearEmail(e.target.value)} placeholder="email@thnet.com" type="email"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Contraseña</label>
+                <input value={crearPassword} onChange={e => setCrearPassword(e.target.value)} placeholder="Mínimo 6 caracteres"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none font-mono" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Rol</label>
+                <select value={crearRol} onChange={e => setCrearRol(e.target.value as Usuario["rol"])}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none">
+                  {ROLES.map(r => <option key={r} value={r}>{ROL_CONFIG[r].label}</option>)}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={crearEsMesa} onChange={e => setCrearEsMesa(e.target.checked)}
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
+                <span className="text-sm text-surface-700">Es Mesa de ayuda</span>
+              </label>
+            </div>
+
+            {crearError && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2 mb-3">{crearError}</p>}
+
+            <div className="flex gap-2">
+              <button onClick={() => setShowCrear(false)}
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-50 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={crearUsuario} disabled={savingCrear || !crearNombre.trim() || !crearEmail.trim() || !crearPassword.trim()}
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium">
+                {savingCrear ? "Creando..." : "Crear"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal edición de usuario */}
       {editando && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setEditando(null)} />
-          <div className="relative bg-white rounded-xl shadow-xl max-w-sm w-full p-5 animate-fade-in-up">
-            <h3 className="text-base font-semibold text-surface-800 mb-1">Cambiar rol</h3>
+          <div className="relative bg-white rounded-xl shadow-xl max-w-sm w-full p-5 animate-fade-in-up max-h-[85vh] overflow-y-auto">
+            <h3 className="text-base font-semibold text-surface-800 mb-1">Editar usuario</h3>
             <p className="text-xs text-surface-400 mb-4">
-              Cambiando rol de <strong className="text-surface-600">{editando.nombre}</strong>
+              Editando a <strong className="text-surface-600">{editando.nombre}</strong>
             </p>
 
-            <div className="flex flex-col gap-2 mb-4">
-              {ROLES.map(rol => {
-                const cfg = ROL_CONFIG[rol];
-                const selected = nuevoRol === rol;
-                return (
-                  <button
-                    key={rol}
-                    onClick={() => setNuevoRol(rol)}
-                    className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
-                      selected ? "border-primary-500 bg-primary-50" : "border-surface-200 hover:border-surface-300"
-                    }`}
-                  >
-                    <div className={`${cfg.color} w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0`}>
-                      {rol[0]}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-surface-800">{cfg.label}</div>
-                      <div className="text-[10px] text-surface-400">
-                        {rol === "ADMIN" && "Acceso total al sistema"}
-                        {rol === "MODERADOR" && "Gestión sin configuración"}
-                        {rol === "TECNICO" && "Operaciones de campo"}
-                      </div>
-                    </div>
-                    {selected && (
-                      <svg className="w-5 h-5 text-primary-600 ml-auto shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-                      </svg>
-                    )}
-                  </button>
-                );
-              })}
+            <div className="flex flex-col gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Nombre</label>
+                <input value={editNombre} onChange={e => setEditNombre(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Nueva contraseña <span className="text-surface-400 font-normal">(dejar vacío para no cambiar)</span></label>
+                <input value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="Nueva contraseña..."
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none font-mono" />
+                {editando.passwordPlain && (
+                  <p className="text-[10px] text-surface-400 mt-1">Actual: <span className="font-mono">{editando.passwordPlain}</span></p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-2">Rol</label>
+                <div className="flex flex-col gap-2">
+                  {ROLES.map(rol => {
+                    const cfg = ROL_CONFIG[rol];
+                    const selected = nuevoRol === rol;
+                    return (
+                      <button
+                        key={rol}
+                        onClick={() => setNuevoRol(rol)}
+                        className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                          selected ? "border-primary-500 bg-primary-50" : "border-surface-200 hover:border-surface-300"
+                        }`}
+                      >
+                        <div className={`${cfg.color} w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0`}>
+                          {rol[0]}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-surface-800">{cfg.label}</div>
+                          <div className="text-[10px] text-surface-400">
+                            {rol === "ADMIN" && "Acceso total al sistema"}
+                            {rol === "MODERADOR" && "Gestión sin configuración"}
+                            {rol === "TECNICO" && "Operaciones de campo"}
+                          </div>
+                        </div>
+                        {selected && (
+                          <svg className="w-5 h-5 text-primary-600 ml-auto shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={editEsMesa} onChange={e => setEditEsMesa(e.target.checked)}
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
+                <span className="text-sm text-surface-700">Es Mesa de ayuda</span>
+              </label>
             </div>
 
             {error && (
@@ -674,7 +903,7 @@ export default function UsuariosPage() {
               </button>
               <button
                 onClick={guardarRol}
-                disabled={saving || nuevoRol === editando.rol}
+                disabled={saving}
                 className="flex-1 px-3 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 {saving ? "Guardando..." : "Guardar"}
