@@ -2032,7 +2032,21 @@ export default function TareasPage() {
                         <div key={f.field} className="flex items-center gap-3 px-3 py-2">
                           <span className="text-[11px] text-surface-400 w-24 flex-shrink-0">{f.label}</span>
                           {isModOrAdmin && f.editable ? (
-                            f.type === "badge" ? (
+                            f.field === "equipoAsignado" ? (
+                              <select
+                                value={selectedTarea[f.field] || ""}
+                                onChange={(e) => {
+                                  setSelectedTarea((p: any) => ({ ...p, [f.field]: e.target.value }));
+                                  saveField(f.field, e.target.value);
+                                }}
+                                className="flex-1 text-xs border-0 bg-transparent focus:ring-0 p-0 cursor-pointer text-surface-700"
+                              >
+                                <option value="">—</option>
+                                {equipoOpts.map(opt => (
+                                  <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+                                ))}
+                              </select>
+                            ) : f.type === "badge" ? (
                               <select
                                 value={selectedTarea[f.field] || ""}
                                 onChange={(e) => saveField(f.field, e.target.value)}
