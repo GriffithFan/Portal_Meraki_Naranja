@@ -310,7 +310,9 @@ export async function PATCH(request: NextRequest) {
       }
     } else if (action === "asignadoIds") {
       // Asignar usuarios a múltiples predios (sin duplicados)
+      console.log("[BULK ASSIGN] value:", JSON.stringify(value), "type:", typeof value, "isArray:", Array.isArray(value));
       if (!Array.isArray(value) || value.length === 0) {
+        console.log("[BULK ASSIGN] REJECTED — not array or empty");
         return NextResponse.json({ error: "IDs de usuarios requeridos" }, { status: 400 });
       }
       const validUsers = await prisma.user.findMany({

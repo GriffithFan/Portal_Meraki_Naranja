@@ -760,6 +760,7 @@ export default function EspacioTareasPage() {
         actionKey = "espacioId";
         actionValue = facturadoEsp.id;
       }
+      console.log("[BULK] action:", actionKey, "value:", actionValue, "ids:", Array.from(selectedIds).length);
       const res = await fetch("/api/tareas", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -767,12 +768,18 @@ export default function EspacioTareasPage() {
         body: JSON.stringify({ ids: Array.from(selectedIds), action: actionKey, value: actionValue }),
       });
       if (res.ok) {
+        const data = await res.json();
+        console.log("[BULK] success, count:", data.count);
         setSelectedIds(new Set());
         setBulkAction("");
         setBulkValue("");
         fetchData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error("[BULK] error:", res.status, err);
+        alert(`Error: ${err.error || res.statusText}`);
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error("[BULK] exception:", e); }
     setBulkExecuting(false);
   };
 
