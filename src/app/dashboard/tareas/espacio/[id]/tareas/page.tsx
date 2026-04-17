@@ -7,7 +7,7 @@ import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import StatusIcon from "@/components/StatusIcon";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
-import { aliasToKey, keyToDisplay, EQUIPO_OPTIONS, buildEquipoOptions } from "@/utils/equipoUtils";
+import { aliasToKey, keyToDisplay, buildEquipoOptions } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
