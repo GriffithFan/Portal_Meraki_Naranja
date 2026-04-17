@@ -459,6 +459,13 @@ export default function EspacioTareasPage() {
     fetchData();
   }, [fetchData]);
 
+  // Recargar tareas cuando el sidebar reporta un drop exitoso
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener("espacios-updated", handler);
+    return () => window.removeEventListener("espacios-updated", handler);
+  }, [fetchData]);
+
   // Agrupar tareas por estado o campo
   const groupedTareas = useMemo(() => {
     let filtered = tareas;
@@ -719,18 +726,38 @@ export default function EspacioTareasPage() {
     });
   };
 
+  // Drag & drop de filas hacia sidebar
+  function handleRowDragStart(e: React.DragEvent, tareaId: string) {
+    const ids = selectedIds.has(tareaId) && selectedIds.size > 1
+      ? Array.from(selectedIds) : [tareaId];
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/x-predio-ids", JSON.stringify(ids));
+    (window as any).__draggedPredioIds = ids;
+  }
+
   // Acción masiva
   const handleBulkAction = async () => {
     if (!bulkAction || selectedIds.size === 0) return;
-    if (bulkAction !== "enFacturacion" && !bulkValue) return;
+    if (bulkAction !== "enFacturacion" && bulkAction !== "moverFacturado" && !bulkValue) return;
     setBulkExecuting(true);
     try {
-      const actionValue = bulkAction === "enFacturacion" ? true : bulkValue;
+      let actionKey = bulkAction;
+      let actionValue: any = bulkAction === "enFacturacion" ? true : bulkValue;
+      if (bulkAction === "moverFacturado") {
+        const facturadoEsp = allEspacios.find((e: any) => e.nombre === "Facturado" && !e.parentId);
+        if (!facturadoEsp) {
+          alert("El espacio 'Facturado' no existe. Créalo primero.");
+          setBulkExecuting(false);
+          return;
+        }
+        actionKey = "espacioId";
+        actionValue = facturadoEsp.id;
+      }
       const res = await fetch("/api/tareas", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ids: Array.from(selectedIds), action: bulkAction, value: actionValue }),
+        body: JSON.stringify({ ids: Array.from(selectedIds), action: actionKey, value: actionValue }),
       });
       if (res.ok) {
         setSelectedIds(new Set());
@@ -979,8 +1006,17 @@ export default function EspacioTareasPage() {
     </div>
   );
 
+  // ── Renderizado progresivo ──────────────────────────────────
+  const ROWS_BATCH = 100;
+  const [renderLimits, setRenderLimits] = useState<Record<string, number>>({});
+  const showMore = (key: string) => setRenderLimits(prev => ({ ...prev, [key]: (prev[key] || ROWS_BATCH) + ROWS_BATCH }));
+
   // Tabla reutilizable (render function, not component — avoids remount on every parent re-render)
-  const renderTaskTable = (items: any[]) => (
+  const renderTaskTable = (items: any[], groupKey = "_default") => {
+    const limit = renderLimits[groupKey] || ROWS_BATCH;
+    const visible = items.slice(0, limit);
+    const hasMore = items.length > limit;
+    return (
     <div className="overflow-x-auto">
       {renderMobileTaskList(items)}
       <table className="w-full min-w-max text-[11px] hidden md:table">
@@ -1026,7 +1062,7 @@ export default function EspacioTareasPage() {
           </tr>
         </thead>
         <tbody>
-          {items.map((t, idx) => (
+          {visible.map((t, idx) => (
             <tr
               key={t.id}
               onClick={() => setSelectedTareaId(t.id)}
@@ -1034,12 +1070,22 @@ export default function EspacioTareasPage() {
             >
               {isModOrAdmin && (
                 <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(t.id)}
-                    onChange={() => toggleSelect(t.id)}
-                    className="accent-orange-500 w-3.5 h-3.5"
-                  />
+                  <div className="flex items-center gap-1">
+                    <span
+                      draggable
+                      onDragStart={(e) => handleRowDragStart(e, t.id)}
+                      className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
+                      title="Arrastrar a un espacio"
+                    >
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(t.id)}
+                      onChange={() => toggleSelect(t.id)}
+                      className="accent-orange-500 w-3.5 h-3.5"
+                    />
+                  </div>
                 </td>
               )}
               {visibleColumns.map((col) => {
@@ -1060,8 +1106,17 @@ export default function EspacioTareasPage() {
           ))}
         </tbody>
       </table>
+      {hasMore && (
+        <button
+          onClick={() => showMore(groupKey)}
+          className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium"
+        >
+          Mostrar más ({items.length - limit} restantes)
+        </button>
+      )}
     </div>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -1371,6 +1426,7 @@ export default function EspacioTareasPage() {
             <option value="ambito">Cambiar ámbito</option>
             <option value="prioridad">Cambiar prioridad</option>
             {session?.rol === "ADMIN" && <option value="enFacturacion">Mover a facturación</option>}
+            {session?.rol === "ADMIN" && <option value="moverFacturado">Mover a Facturado</option>}
           </select>
           {bulkAction === "estadoId" && (
             <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
@@ -1401,7 +1457,7 @@ export default function EspacioTareasPage() {
           )}
           <button
             onClick={handleBulkAction}
-            disabled={!bulkAction || (bulkAction !== "enFacturacion" && !bulkValue) || bulkExecuting}
+            disabled={bulkExecuting || !bulkAction || (!["enFacturacion", "moverFacturado"].includes(bulkAction) && !bulkValue)}
             className="text-[11px] px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 font-medium transition-colors"
           >
             {bulkExecuting ? "Aplicando..." : "Aplicar"}
@@ -1471,7 +1527,7 @@ export default function EspacioTareasPage() {
                       Sin tareas en este estado
                     </div>
                   ) : (
-                    renderTaskTable(items)
+                    renderTaskTable(items, estado.id)
                   )}
                 </div>
               )}
@@ -1497,7 +1553,7 @@ export default function EspacioTareasPage() {
             </button>
             {expandedSections.has("sin-estado") && (
               <div className="border-t border-surface-100">
-                {renderTaskTable(groupedTareas["sin-estado"])}
+                {renderTaskTable(groupedTareas["sin-estado"], "sin-estado")}
               </div>
             )}
           </div>
@@ -1520,7 +1576,7 @@ export default function EspacioTareasPage() {
                 </button>
                 {isExpanded && (
                   <div className="border-t border-surface-100">
-                    {renderTaskTable(items)}
+                    {renderTaskTable(items, groupKey)}
                   </div>
                 )}
               </div>

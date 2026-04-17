@@ -69,10 +69,10 @@ export async function GET(request: NextRequest) {
     prisma.predio.findMany({
       where,
       include: {
-        estado: true,
+        estado: { select: { id: true, nombre: true, clave: true, color: true, orden: true } },
         creador: { select: { id: true, nombre: true } },
         asignaciones: {
-          include: { usuario: { select: { id: true, nombre: true } } },
+          select: { id: true, usuario: { select: { id: true, nombre: true } } },
         },
         _count: { select: { comentarios: true, equipos: true } },
       },

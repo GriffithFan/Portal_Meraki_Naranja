@@ -133,6 +133,11 @@ export default function TareasPage() {
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const didDragRef = useRef(false);
 
+  // ── Renderizado progresivo ──────────────────────────────────
+  const ROWS_BATCH = 100;
+  const [renderLimits, setRenderLimits] = useState<Record<string, number>>({});
+  const showMore = (key: string) => setRenderLimits(prev => ({ ...prev, [key]: (prev[key] || ROWS_BATCH) + ROWS_BATCH }));
+
   // Resize columnas
   const resizingCol = useRef<{ id: string; startX: number; startW: number } | null>(null);
   const [resizeDelta, setResizeDelta] = useState<{ id: string; width: number } | null>(null);
@@ -1575,7 +1580,7 @@ export default function TareasPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {items.map((t, idx) => (
+                            {items.slice(0, renderLimits[estado.id] || ROWS_BATCH).map((t, idx) => (
                               <tr
                                 key={t.id}
                                 onClick={() => openDetail(t)}
@@ -1607,6 +1612,11 @@ export default function TareasPage() {
                             ))}
                           </tbody>
                         </table>
+                        {items.length > (renderLimits[estado.id] || ROWS_BATCH) && (
+                          <button onClick={() => showMore(estado.id)} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
+                            Mostrar más ({items.length - (renderLimits[estado.id] || ROWS_BATCH)} restantes)
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1671,7 +1681,7 @@ export default function TareasPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {groupedTareas["sin-estado"].map((t, idx) => (
+                      {groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH).map((t, idx) => (
                         <tr
                           key={t.id}
                           onClick={() => openDetail(t)}
@@ -1703,6 +1713,11 @@ export default function TareasPage() {
                       ))}
                     </tbody>
                   </table>
+                  {groupedTareas["sin-estado"].length > (renderLimits["sin-estado"] || ROWS_BATCH) && (
+                    <button onClick={() => showMore("sin-estado")} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
+                      Mostrar más ({groupedTareas["sin-estado"].length - (renderLimits["sin-estado"] || ROWS_BATCH)} restantes)
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1734,7 +1749,7 @@ export default function TareasPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {items.map((t: any, idx: number) => (
+                          {items.slice(0, renderLimits[groupKey] || ROWS_BATCH).map((t: any, idx: number) => (
                             <tr
                               key={t.id}
                               onClick={() => openDetail(t)}
@@ -1766,6 +1781,11 @@ export default function TareasPage() {
                           ))}
                         </tbody>
                       </table>
+                      {items.length > (renderLimits[groupKey] || ROWS_BATCH) && (
+                        <button onClick={() => showMore(groupKey)} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
+                          Mostrar más ({items.length - (renderLimits[groupKey] || ROWS_BATCH)} restantes)
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1796,7 +1816,7 @@ export default function TareasPage() {
                       const bVal = b[sortConfig.field] ?? "";
                       const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
                       return sortConfig.dir === "asc" ? cmp : -cmp;
-                    }) : tareas).map((t, idx) => (
+                    }) : tareas).slice(0, renderLimits["_all"] || ROWS_BATCH).map((t, idx) => (
                       <tr
                         key={t.id}
                         onClick={() => openDetail(t)}
@@ -1828,6 +1848,11 @@ export default function TareasPage() {
                     ))}
                   </tbody>
                 </table>
+                {tareas.length > (renderLimits["_all"] || ROWS_BATCH) && (
+                  <button onClick={() => showMore("_all")} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
+                    Mostrar más ({tareas.length - (renderLimits["_all"] || ROWS_BATCH)} restantes)
+                  </button>
+                )}
               </div>
             </div>
           )}
