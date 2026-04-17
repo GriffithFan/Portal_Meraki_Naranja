@@ -1578,12 +1578,22 @@ export default function TareasPage() {
                             {items.map((t, idx) => (
                               <tr
                                 key={t.id}
-                                draggable={isModOrAdmin}
-                                onDragStart={isModOrAdmin ? (e: React.DragEvent) => handleRowDragStart(e, t.id) : undefined}
                                 onClick={() => openDetail(t)}
                                 className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                               >
-                                {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
+                                {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-1">
+                                    <span
+                                      draggable
+                                      onDragStart={(e) => handleRowDragStart(e, t.id)}
+                                      className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
+                                      title="Arrastrar a un espacio"
+                                    >
+                                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+                                    </span>
+                                    <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                                  </div>
+                                </td>}
                                 {visibleColumns.map((col) => (
                                   <td
                                     key={col.id}
@@ -1664,12 +1674,22 @@ export default function TareasPage() {
                       {groupedTareas["sin-estado"].map((t, idx) => (
                         <tr
                           key={t.id}
-                          draggable={isModOrAdmin}
-                          onDragStart={isModOrAdmin ? (e: React.DragEvent) => handleRowDragStart(e, t.id) : undefined}
                           onClick={() => openDetail(t)}
                           className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                         >
-                          {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
+                          {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1">
+                              <span
+                                draggable
+                                onDragStart={(e) => handleRowDragStart(e, t.id)}
+                                className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
+                                title="Arrastrar a un espacio"
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+                              </span>
+                              <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                            </div>
+                          </td>}
                           {visibleColumns.map((col) => (
                             <td
                               key={col.id}
@@ -1717,12 +1737,22 @@ export default function TareasPage() {
                           {items.map((t: any, idx: number) => (
                             <tr
                               key={t.id}
-                              draggable={isModOrAdmin}
-                              onDragStart={isModOrAdmin ? (e: React.DragEvent) => handleRowDragStart(e, t.id) : undefined}
                               onClick={() => openDetail(t)}
                               className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                             >
-                              {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
+                              {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-1">
+                                  <span
+                                    draggable
+                                    onDragStart={(e) => handleRowDragStart(e, t.id)}
+                                    className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
+                                    title="Arrastrar a un espacio"
+                                  >
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+                                  </span>
+                                  <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                                </div>
+                              </td>}
                               {visibleColumns.map((col) => (
                                 <td
                                   key={col.id}
@@ -1772,7 +1802,19 @@ export default function TareasPage() {
                         onClick={() => openDetail(t)}
                         className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                       >
-                        {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" /></td>}
+                        {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-1">
+                            <span
+                              draggable
+                              onDragStart={(e) => handleRowDragStart(e, t.id)}
+                              className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
+                              title="Arrastrar a un espacio"
+                            >
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+                            </span>
+                            <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                          </div>
+                        </td>}
                         {visibleColumns.map((col) => (
                           <td
                             key={col.id}
