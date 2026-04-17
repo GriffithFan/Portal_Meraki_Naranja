@@ -143,21 +143,30 @@ function SpaceNode({
   depth,
   pathname,
   isModOrAdmin,
+  isAdmin,
   onAdd,
   onDelete,
   onClear,
+  onDropPredios,
 }: {
   node: any;
   depth: number;
   pathname: string;
   isModOrAdmin: boolean;
+  isAdmin: boolean;
   onAdd: (parentId: string, parentName: string) => void;
   onDelete: (id: string, nombre: string) => void;
   onClear: (id: string, nombre: string) => void;
+  onDropPredios: (espacioId: string, nombre: string) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [dragOver, setDragOver] = useState(false);
   const hasChildren = node.children?.length > 0;
   const taskCount = node._count?.predios || 0;
+  const isFacturado = node.nombre === "Facturado" && !node.parentId;
+
+  // Ocultar "Facturado" para no-admin
+  if (isFacturado && !isAdmin) return null;
 
   // Recursive count including children
   const totalCount = taskCount + (node.children || []).reduce((sum: number, c: any) => sum + (c._count?.predios || 0), 0);
@@ -165,11 +174,39 @@ function SpaceNode({
   const isActive = pathname === `/dashboard/tareas/espacio/${node.id}`;
   const isParentActive = pathname.startsWith(`/dashboard/tareas/espacio/${node.id}`);
 
+  function handleDragOver(e: React.DragEvent) {
+    if (!isModOrAdmin) return;
+    if (e.dataTransfer.types.includes("text/x-predio-ids")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDragOver(true);
+    }
+  }
+
+  function handleDragLeave() {
+    setDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (!isModOrAdmin) return;
+    const raw = e.dataTransfer.getData("text/x-predio-ids");
+    if (raw) {
+      onDropPredios(node.id, node.nombre);
+    }
+  }
+
   return (
     <div>
       <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className={`group flex items-center gap-1 py-1 pr-2 rounded-md cursor-pointer transition-colors
-          ${isActive ? "bg-primary-50 text-primary-700" : "hover:bg-surface-100 text-surface-600"}`}
+          ${dragOver ? "bg-primary-100 ring-2 ring-primary-400" : ""}
+          ${isActive ? "bg-primary-50 text-primary-700" : "hover:bg-surface-100 text-surface-600"}
+          ${isFacturado ? "border-l-2 border-emerald-400" : ""}`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
       >
         {/* Chevron */}
@@ -237,9 +274,11 @@ function SpaceNode({
               depth={depth + 1}
               pathname={pathname}
               isModOrAdmin={isModOrAdmin}
+              isAdmin={isAdmin}
               onAdd={onAdd}
               onDelete={onDelete}
               onClear={onClear}
+              onDropPredios={onDropPredios}
             />
           ))}
         </div>
@@ -251,12 +290,14 @@ function SpaceNode({
 // ─── Sidebar principal ────────────────────────────────
 export default function EspaciosSidebar() {
   const pathname = usePathname();
-  const { isModOrAdmin } = useSession();
+  const { isModOrAdmin, session } = useSession();
+  const isAdmin = session?.rol === "ADMIN";
   const [espacios, setEspacios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [createModal, setCreateModal] = useState<{ parentId: string | null; parentName: string | null } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; nombre: string } | null>(null);
   const [clearConfirm, setClearConfirm] = useState<{ id: string; nombre: string } | null>(null);
+  const [dropNotice, setDropNotice] = useState<string | null>(null);
 
   async function handleDeleteEspacio() {
     if (!deleteConfirm) return;
@@ -274,6 +315,30 @@ export default function EspaciosSidebar() {
       fetchEspacios();
     }
     setClearConfirm(null);
+  }
+
+  async function handleDropPredios(espacioId: string, nombre: string) {
+    // Leer IDs del dataTransfer guardado en window.__draggedPredioIds
+    const ids: string[] = (window as any).__draggedPredioIds || [];
+    if (ids.length === 0) return;
+
+    try {
+      const res = await fetch("/api/tareas", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids, action: "espacioId", value: espacioId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDropNotice(`${data.count || ids.length} tarea(s) movida(s) a "${nombre}"`);
+        setTimeout(() => setDropNotice(null), 3000);
+        fetchEspacios();
+        // Disparar evento para que la página de tareas se refresque
+        window.dispatchEvent(new CustomEvent("espacios-updated"));
+      }
+    } catch { /* ignore */ }
+    (window as any).__draggedPredioIds = null;
   }
 
   const fetchEspacios = useCallback(async () => {
@@ -346,9 +411,11 @@ export default function EspaciosSidebar() {
                   depth={0}
                   pathname={pathname}
                   isModOrAdmin={isModOrAdmin}
+                  isAdmin={isAdmin}
                   onAdd={(parentId, parentName) => setCreateModal({ parentId, parentName })}
                   onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
                   onClear={(id, nombre) => setClearConfirm({ id, nombre })}
+                  onDropPredios={handleDropPredios}
                 />
               ))}
             </div>
@@ -422,14 +489,23 @@ export default function EspaciosSidebar() {
                 depth={0}
                 pathname={pathname}
                 isModOrAdmin={isModOrAdmin}
+                isAdmin={isAdmin}
                 onAdd={(parentId, parentName) => setCreateModal({ parentId, parentName })}
                 onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
                 onClear={(id, nombre) => setClearConfirm({ id, nombre })}
+                onDropPredios={handleDropPredios}
               />
             ))
           )}
         </nav>
       </aside>
+
+      {/* Toast de drop exitoso */}
+      {dropNotice && (
+        <div className="fixed bottom-4 right-4 z-50 bg-emerald-600 text-white text-xs px-4 py-2 rounded-lg shadow-lg animate-fade-in-up">
+          {dropNotice}
+        </div>
+      )}
 
       {/* Modal */}
       {createModal && (

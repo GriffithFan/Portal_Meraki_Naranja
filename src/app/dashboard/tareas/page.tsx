@@ -414,6 +414,13 @@ export default function TareasPage() {
     }
   }, [fetchTareas, isModOrAdmin]);
 
+  // Recargar tareas cuando el sidebar reporta un drop exitoso
+  useEffect(() => {
+    const handler = () => fetchTareas();
+    window.addEventListener("espacios-updated", handler);
+    return () => window.removeEventListener("espacios-updated", handler);
+  }, [fetchTareas]);
+
   // Auto-open predio detail from URL ?open=CODIGO
   const openHandled = useRef(false);
   useEffect(() => {
@@ -759,7 +766,7 @@ export default function TareasPage() {
     setBulkExecuting(true);
     try {
       const ids = Array.from(selectedIds);
-      const actionKey = bulkAction;
+      let actionKey = bulkAction;
       let actionValue: any = bulkValue;
 
       // Para asignaciones, enviar como array de IDs
@@ -769,6 +776,18 @@ export default function TareasPage() {
       // Marcar para facturación
       if (bulkAction === "enFacturacion") {
         actionValue = true;
+      }
+      // Mover a espacio Facturado
+      if (bulkAction === "moverFacturado") {
+        // Buscar el espacio Facturado de la lista plana
+        const facturadoEsp = espacios.find((e: any) => e.nombre === "Facturado" && !e.parentId);
+        if (!facturadoEsp) {
+          alert("El espacio 'Facturado' no existe. Créalo primero.");
+          setBulkExecuting(false);
+          return;
+        }
+        actionKey = "espacioId";
+        actionValue = facturadoEsp.id;
       }
 
       const res = await fetch("/api/tareas", {
@@ -827,6 +846,16 @@ export default function TareasPage() {
   }
 
   // Drag & drop columnas
+
+  function handleRowDragStart(e: React.DragEvent, tareaId: string) {
+    // Si la fila está seleccionada, arrastrar todas las seleccionadas; si no, solo esta
+    const ids = selectedIds.has(tareaId) && selectedIds.size > 1
+      ? Array.from(selectedIds) : [tareaId];
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/x-predio-ids", JSON.stringify(ids));
+    // Guardar en window para que el sidebar pueda leerlos en el drop
+    (window as any).__draggedPredioIds = ids;
+  }
 
   function handleColDragStart(e: React.DragEvent, colId: string) {
     e.dataTransfer.effectAllowed = "move";
@@ -1382,6 +1411,7 @@ export default function TareasPage() {
             <option value="autoProvince">Auto-detectar provincia</option>
             <option value="autoGPS">Auto-parsear GPS → lat/lng</option>
             {session?.rol === "ADMIN" && <option value="enFacturacion">Mover a facturación</option>}
+            {session?.rol === "ADMIN" && <option value="moverFacturado">Mover a Facturado</option>}
           </select>
           {bulkAction === "estadoId" && (
             <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
@@ -1435,7 +1465,7 @@ export default function TareasPage() {
           )}
           <button
             onClick={handleBulkAction}
-            disabled={bulkExecuting || !bulkAction || (!["autoProvince", "autoGPS"].includes(bulkAction) && !bulkValue)}
+            disabled={bulkExecuting || !bulkAction || (!["autoProvince", "autoGPS", "enFacturacion", "moverFacturado"].includes(bulkAction) && !bulkValue)}
             className="px-3 py-1 bg-primary-600 text-white rounded text-xs font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             {bulkExecuting ? "Aplicando..." : "Aplicar"}
@@ -1548,6 +1578,8 @@ export default function TareasPage() {
                             {items.map((t, idx) => (
                               <tr
                                 key={t.id}
+                                draggable={isModOrAdmin}
+                                onDragStart={isModOrAdmin ? (e: React.DragEvent) => handleRowDragStart(e, t.id) : undefined}
                                 onClick={() => openDetail(t)}
                                 className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                               >
@@ -1632,6 +1664,8 @@ export default function TareasPage() {
                       {groupedTareas["sin-estado"].map((t, idx) => (
                         <tr
                           key={t.id}
+                          draggable={isModOrAdmin}
+                          onDragStart={isModOrAdmin ? (e: React.DragEvent) => handleRowDragStart(e, t.id) : undefined}
                           onClick={() => openDetail(t)}
                           className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                         >
@@ -1683,6 +1717,8 @@ export default function TareasPage() {
                           {items.map((t: any, idx: number) => (
                             <tr
                               key={t.id}
+                              draggable={isModOrAdmin}
+                              onDragStart={isModOrAdmin ? (e: React.DragEvent) => handleRowDragStart(e, t.id) : undefined}
                               onClick={() => openDetail(t)}
                               className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                             >

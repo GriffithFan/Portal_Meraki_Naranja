@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { parseBody, isErrorResponse, facturacionSchema } from "@/lib/validation";
+import * as XLSX from "xlsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -32,38 +32,28 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/facturacion — Genera reporte semanal de tareas CONFORME (solo ADMIN)
- * Body opcional: { fechaDesde?: string, fechaHasta?: string }
- * Si no se envía, usa los últimos 5 días (lunes a viernes de la semana actual)
+ *
+ * Lógica:
+ * - Solo cuenta predios movidos a CONFORME desde el lunes 00:00 de la semana actual.
+ * - Excluye predios que ya estén en el espacio "Facturado".
+ * - Genera CSV + XLSX con campos: Predio, Incidencia, Técnico, Fecha, Provincia.
  */
-export async function POST(request: NextRequest) {
+export async function POST() {
   const session = await getSession();
   if (!session || session.rol !== "ADMIN") {
     return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
   }
 
   try {
-    const body = await parseBody(request, facturacionSchema);
-    if (isErrorResponse(body)) return body;
-
-    // Calcular período
+    // Calcular período: lunes 00:00 de esta semana hasta ahora
     const ahora = new Date();
-    let desde: Date;
-    let hasta: Date;
-
-    if (body.fechaDesde && body.fechaHasta) {
-      desde = new Date(body.fechaDesde);
-      hasta = new Date(body.fechaHasta);
-      hasta.setHours(23, 59, 59, 999);
-    } else {
-      // Último lunes a hoy (viernes)
-      const day = ahora.getDay();
-      const diffToMonday = day === 0 ? 6 : day - 1;
-      desde = new Date(ahora);
-      desde.setDate(ahora.getDate() - diffToMonday);
-      desde.setHours(0, 0, 0, 0);
-      hasta = new Date(ahora);
-      hasta.setHours(23, 59, 59, 999);
-    }
+    const day = ahora.getDay();
+    const diffToMonday = day === 0 ? 6 : day - 1;
+    const desde = new Date(ahora);
+    desde.setDate(ahora.getDate() - diffToMonday);
+    desde.setHours(0, 0, 0, 0);
+    const hasta = new Date(ahora);
+    hasta.setHours(23, 59, 59, 999);
 
     // Calcular semana ISO
     const semana = getISOWeek(desde);
@@ -79,7 +69,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Buscar el estado "conforme" en EstadoConfig
+    // Buscar el estado "conforme"
     const estadoConforme = await prisma.estadoConfig.findFirst({
       where: { clave: "conforme", activo: true },
     });
@@ -90,21 +80,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Buscar predios que actualmente están en CONFORME y fueron actualizados en el período
+    // Buscar espacio "Facturado" para excluir
+    const espacioFacturado = await prisma.espacioTrabajo.findFirst({
+      where: { nombre: "Facturado", parentId: null },
+    });
+    const facturadoId = espacioFacturado?.id;
+
+    // Buscar predios CONFORME actualizados esta semana, excluyendo "Facturado"
     const prediosConforme = await prisma.predio.findMany({
       where: {
         estadoId: estadoConforme.id,
         fechaActualizacion: { gte: desde, lte: hasta },
+        ...(facturadoId ? { espacioId: { not: facturadoId } } : {}),
       },
       select: {
         id: true,
         nombre: true,
         codigo: true,
         provincia: true,
+        incidencias: true,
         equipoAsignado: true,
         fechaActualizacion: true,
         asignaciones: {
-          where: { tipo: "TAREA" },
+          where: { tipo: "TECNICO" },
           include: { usuario: { select: { id: true, nombre: true } } },
         },
       },
@@ -115,36 +113,34 @@ export async function POST(request: NextRequest) {
       tecnicoId: string;
       tecnicoNombre: string;
       cantidad: number;
-      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null }[];
+      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia: string | null; fecha: string | null }[];
     }> = {};
 
     for (const predio of prediosConforme) {
+      const tareaData = {
+        id: predio.id,
+        nombre: predio.nombre,
+        codigo: predio.codigo,
+        provincia: predio.provincia,
+        incidencia: predio.incidencias,
+        fecha: predio.fechaActualizacion ? predio.fechaActualizacion.toISOString() : null,
+      };
+
       const tecnicos = predio.asignaciones.map((a) => a.usuario);
       if (tecnicos.length === 0) {
-        // Tarea sin asignación
         const key = "SIN_ASIGNAR";
         if (!porTecnico[key]) {
           porTecnico[key] = { tecnicoId: "SIN_ASIGNAR", tecnicoNombre: "Sin asignar", cantidad: 0, tareas: [] };
         }
         porTecnico[key].cantidad++;
-        porTecnico[key].tareas.push({
-          id: predio.id,
-          nombre: predio.nombre,
-          codigo: predio.codigo,
-          provincia: predio.provincia,
-        });
+        porTecnico[key].tareas.push(tareaData);
       } else {
         for (const tec of tecnicos) {
           if (!porTecnico[tec.id]) {
             porTecnico[tec.id] = { tecnicoId: tec.id, tecnicoNombre: tec.nombre, cantidad: 0, tareas: [] };
           }
           porTecnico[tec.id].cantidad++;
-          porTecnico[tec.id].tareas.push({
-            id: predio.id,
-            nombre: predio.nombre,
-            codigo: predio.codigo,
-            provincia: predio.provincia,
-          });
+          porTecnico[tec.id].tareas.push(tareaData);
         }
       }
     }
@@ -152,26 +148,60 @@ export async function POST(request: NextRequest) {
     const resumen = Object.values(porTecnico);
     const totalTareas = prediosConforme.length;
 
-    // Generar CSV
+    // ── Generar CSV ──
     const csvLines = [
-      "Tecnico,Cantidad Tareas,Codigo Tarea,Nombre Tarea,Provincia",
+      "Predio,Incidencia,Técnico,Fecha,Provincia",
     ];
     for (const grupo of resumen) {
       for (const t of grupo.tareas) {
+        const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "";
         csvLines.push(
-          `"${grupo.tecnicoNombre}",${grupo.cantidad},"${t.codigo || ""}","${t.nombre.replace(/"/g, '""')}","${t.provincia || ""}"`
+          `"${t.nombre.replace(/"/g, '""')}","${t.incidencia || ""}","${grupo.tecnicoNombre}","${fecha}","${t.provincia || ""}"`
         );
       }
     }
     csvLines.push("");
-    csvLines.push(`"TOTAL",${totalTareas},"","",""`);
+    csvLines.push(`"TOTAL: ${totalTareas} predios","","","",""`);
 
     const csvContent = csvLines.join("\n");
-    const csvDir = path.join(process.cwd(), "uploads", "reportes");
-    await mkdir(csvDir, { recursive: true });
+    const reportDir = path.join(process.cwd(), "uploads", "reportes");
+    await mkdir(reportDir, { recursive: true });
     const csvFileName = `reporte-${semana}.csv`;
-    const csvPath = path.join(csvDir, csvFileName);
+    const csvPath = path.join(reportDir, csvFileName);
     await writeFile(csvPath, csvContent, "utf-8");
+
+    // ── Generar XLSX ──
+    const xlsxRows: any[] = [];
+    for (const grupo of resumen) {
+      for (const t of grupo.tareas) {
+        xlsxRows.push({
+          Predio: t.nombre,
+          Incidencia: t.incidencia || "",
+          "Técnico asignado": grupo.tecnicoNombre,
+          Fecha: t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "",
+          Provincia: t.provincia || "",
+        });
+      }
+    }
+    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "" });
+
+    const ws = XLSX.utils.json_to_sheet(xlsxRows);
+    // Auto-width columns
+    const colWidths = [
+      { wch: 30 }, // Predio
+      { wch: 18 }, // Incidencia
+      { wch: 20 }, // Técnico
+      { wch: 14 }, // Fecha
+      { wch: 18 }, // Provincia
+    ];
+    ws["!cols"] = colWidths;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Facturación");
+    const xlsxFileName = `reporte-${semana}.xlsx`;
+    const xlsxPath = path.join(reportDir, xlsxFileName);
+    const xlsxBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    await writeFile(xlsxPath, xlsxBuffer);
 
     // Crear reporte
     const reporte = await prisma.reporteFacturacion.create({
@@ -191,7 +221,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Notificar solo al admin que lo generó (bandeja interna, sin push externo)
+    // Notificar
     await prisma.notificacion.create({
       data: {
         tipo: "REPORTE_FACTURACION",

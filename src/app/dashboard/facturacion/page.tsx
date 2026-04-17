@@ -10,7 +10,7 @@ interface ReporteResumenItem {
   tecnicoId: string;
   tecnicoNombre: string;
   cantidad: number;
-  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null }[];
+  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia?: string | null; fecha?: string | null }[];
 }
 
 interface Reporte {
@@ -78,6 +78,10 @@ export default function FacturacionPage() {
     window.open(`/api/facturacion/${id}`, "_blank");
   };
 
+  const descargarExcel = (id: string) => {
+    window.open(`/api/facturacion/${id}?format=xlsx`, "_blank");
+  };
+
   const eliminar = async (id: string) => {
     toast("¿Eliminar este reporte permanentemente?", {
       action: {
@@ -122,10 +126,10 @@ export default function FacturacionPage() {
 
       {/* Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-700">
-        <p className="font-medium mb-1">Proceso automático</p>
+        <p className="font-medium mb-1">Facturación semanal</p>
         <p className="text-blue-600">
-          El sistema genera reportes automáticamente cada viernes a las 14:00.
-          Los reportes agrupan las tareas pasadas a estado CONFORME durante la semana (lunes a viernes), separadas por técnico asignado.
+          El reporte incluye únicamente predios movidos a CONFORME desde el lunes 00:00 de la semana en curso.
+          Al pasar la semana, los conformes anteriores dejan de contarse. Los predios movidos a la carpeta &quot;Facturado&quot; se excluyen automáticamente.
         </p>
       </div>
 
@@ -189,13 +193,22 @@ export default function FacturacionPage() {
                   {/* Actions */}
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     {r.csvNombre && (
-                      <button
-                        onClick={() => descargarCSV(r.id)}
-                        className="px-2.5 py-1 text-[11px] font-medium text-primary-600 hover:bg-primary-50 rounded transition-colors"
-                        title="Descargar CSV"
-                      >
-                        CSV
-                      </button>
+                      <>
+                        <button
+                          onClick={() => descargarCSV(r.id)}
+                          className="px-2.5 py-1 text-[11px] font-medium text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                          title="Descargar CSV"
+                        >
+                          CSV
+                        </button>
+                        <button
+                          onClick={() => descargarExcel(r.id)}
+                          className="px-2.5 py-1 text-[11px] font-medium text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                          title="Descargar Excel"
+                        >
+                          Excel
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => eliminar(r.id)}
@@ -236,9 +249,10 @@ export default function FacturacionPage() {
                             <div className="space-y-0.5">
                               {grupo.tareas.map((t) => (
                                 <div key={t.id} className="flex items-center gap-2 text-[11px] text-surface-500">
-                                  <span className="text-surface-400 font-mono">{t.codigo || "—"}</span>
-                                  <span className="truncate">{t.nombre}</span>
-                                  {t.provincia && <span className="text-surface-300 hidden sm:inline">{t.provincia}</span>}
+                                  <span className="text-surface-800 font-medium truncate max-w-[120px]">{t.nombre}</span>
+                                  {t.incidencia && <span className="text-surface-400 font-mono text-[10px]">{t.incidencia}</span>}
+                                  {t.fecha && <span className="text-surface-400 text-[10px]">{formatDate(t.fecha)}</span>}
+                                  {t.provincia && <span className="text-surface-300 hidden sm:inline text-[10px]">{t.provincia}</span>}
                                 </div>
                               ))}
                             </div>

@@ -5,10 +5,11 @@ import { readFile, unlink } from "fs/promises";
 import path from "path";
 
 /**
- * GET /api/facturacion/[id] — Descargar CSV del reporte (solo ADMIN)
+ * GET /api/facturacion/[id] — Descargar CSV o XLSX del reporte (solo ADMIN)
+ * Query: ?format=xlsx para Excel, por defecto CSV
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
@@ -17,14 +18,36 @@ export async function GET(
   }
 
   const { id } = await params;
+  const { searchParams } = new URL(request.url);
+  const format = searchParams.get("format") || "csv";
+
   const reporte = await prisma.reporteFacturacion.findUnique({ where: { id } });
   if (!reporte || !reporte.csvRuta) {
     return NextResponse.json({ error: "Reporte no encontrado" }, { status: 404 });
   }
 
   try {
-    const filePath = path.join(process.cwd(), reporte.csvRuta);
+    const baseName = reporte.csvNombre?.replace(".csv", "") || "reporte";
     const uploadsBase = path.join(process.cwd(), "uploads");
+
+    if (format === "xlsx") {
+      const xlsxPath = path.join(process.cwd(), "uploads", "reportes", `${baseName}.xlsx`);
+      if (!xlsxPath.startsWith(uploadsBase)) {
+        return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
+      }
+      const fileBuffer = await readFile(xlsxPath);
+      return new NextResponse(fileBuffer, {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(baseName + ".xlsx")}"`,
+          "Content-Length": String(fileBuffer.length),
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
+
+    // Default: CSV
+    const filePath = path.join(process.cwd(), reporte.csvRuta);
     if (!filePath.startsWith(uploadsBase)) {
       return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
     }
@@ -40,7 +63,7 @@ export async function GET(
       },
     });
   } catch {
-    return NextResponse.json({ error: "Archivo CSV no encontrado en disco" }, { status: 404 });
+    return NextResponse.json({ error: "Archivo no encontrado en disco" }, { status: 404 });
   }
 }
 
