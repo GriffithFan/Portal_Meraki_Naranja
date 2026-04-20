@@ -7,7 +7,7 @@ import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import StatusIcon from "@/components/StatusIcon";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
-import { aliasToKey, keyToDisplay, buildEquipoOptions } from "@/utils/equipoUtils";
+import { aliasToKey, buildEquipoOptions } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -114,11 +114,6 @@ const DEFAULT_COLUMNS: Column[] = [
 const LS_EMPTY_KEY = "pmn-espacio-show-empty";
 const LS_HIDDEN_KEY = "pmn-espacio-hidden-estados";
 
-// Mapeos derivados del módulo centralizado equipoUtils
-const EQUIPO_TH_MAP_FN = aliasToKey;
-const TH_NOMBRE_MAP_FN = keyToDisplay;
-// TH_OPTIONS ahora se genera dinámicamente dentro del componente
-
 const GROUP_BY_OPTIONS = [
   { value: "estado", label: "Estado" },
   { value: "provincia", label: "Provincia" },
@@ -177,6 +172,15 @@ export default function EspacioTareasPage() {
 
   // Opciones de equipo dinámicas: EQUIPOS estáticos + usuarios activos
   const equipoOpts = useMemo(() => buildEquipoOptions(allUsers), [allUsers]);
+
+  /** Resuelve un valor guardado de equipoAsignado al key canónico de equipoOpts */
+  const resolveEquipoKey = useCallback((val: string | null | undefined): string => {
+    if (!val) return "";
+    const byAlias = aliasToKey(val);
+    if (byAlias) return byAlias;
+    const match = equipoOpts.find(o => o.key.toUpperCase() === val.toUpperCase() || o.display.toUpperCase() === val.toUpperCase());
+    return match?.key || val;
+  }, [equipoOpts]);
 
   // Drag & drop columnas
   const [dragColId, setDragColId] = useState<string | null>(null);
@@ -828,11 +832,8 @@ export default function EspacioTareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      // Derivar TH actual de equipoAsignado (puede ser nombre o ya un código TH)
-      const equipo = t.equipoAsignado?.toUpperCase();
-      const currentTH = equipo
-        ? (equipo.match(/^TH\d+$/) ? equipo : (EQUIPO_TH_MAP_FN(equipo) || ""))
-        : "";
+      // Derivar key actual de equipoAsignado
+      const currentTH = resolveEquipoKey(t.equipoAsignado);
       if (isModOrAdmin) {
         return (
           <select
@@ -841,11 +842,9 @@ export default function EspacioTareasPage() {
             onChange={(e) => {
               e.stopPropagation();
               const th = e.target.value;
-              const opt = equipoOpts.find(o => o.key === th);
-              const nombre = opt?.display || TH_NOMBRE_MAP_FN(th);
-              saveCellField(t.id, "equipoAsignado", nombre);
+              saveCellField(t.id, "equipoAsignado", th);
             }}
-            className="text-[10px] font-medium rounded px-1.5 py-0.5 border border-violet-200 bg-violet-50 text-violet-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-violet-300"
+            className="text-[10px] font-medium rounded px-1.5 py-0.5 border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-600 dark:bg-violet-900/50 dark:text-violet-200 cursor-pointer focus:outline-none focus:ring-1 focus:ring-violet-300 [&>option]:bg-white [&>option]:text-surface-800 dark:[&>option]:bg-surface-800 dark:[&>option]:text-surface-100"
           >
             <option value="">Sin asignar</option>
             {equipoOpts.map(opt => (
@@ -855,6 +854,14 @@ export default function EspacioTareasPage() {
         );
       }
       // Para no-admin: mostrar badge
+      if (currentTH) {
+        const dispOpt = equipoOpts.find(o => o.key === currentTH);
+        return (
+          <span className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
+            {dispOpt ? (dispOpt.display !== dispOpt.key ? `${dispOpt.key} (${dispOpt.display})` : dispOpt.key) : currentTH}
+          </span>
+        );
+      }
       if (asigns.length > 0) {
         return (
           <span className="flex items-center gap-1 flex-wrap">
@@ -867,9 +874,10 @@ export default function EspacioTareasPage() {
         );
       }
       if (currentTH) {
+        const dispOpt = equipoOpts.find(o => o.key === currentTH);
         return (
-          <span className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium">
-            {currentTH}
+          <span className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
+            {dispOpt ? (dispOpt.display !== dispOpt.key ? `${dispOpt.key} (${dispOpt.display})` : dispOpt.key) : currentTH}
           </span>
         );
       }
@@ -949,13 +957,13 @@ export default function EspacioTareasPage() {
       const prov = autoDetected || "\u2014";
       return <span className="flex items-center group/cell"><span className="text-surface-700 truncate">{prov}</span><CopyBtn text={prov !== "\u2014" ? prov : ""} /></span>;
     }
-    // Equipo: mostrar NOMBRE-THxx
+    // Equipo: mostrar KEY (DISPLAY)
     if (col.id === "equipoAsignado") {
       const raw = t[col.field];
       if (!raw) return <span className="text-surface-300">&mdash;</span>;
-      const upper = raw.toUpperCase();
-      const thCode = upper.match(/^TH\d+$/) ? upper : EQUIPO_TH_MAP_FN(upper);
-      const display = thCode && thCode !== raw ? `${raw}-${thCode}` : raw;
+      const key = resolveEquipoKey(raw);
+      const opt = equipoOpts.find(o => o.key === key);
+      const display = opt ? (opt.display !== opt.key ? `${opt.key} (${opt.display})` : opt.key) : raw;
       return <span className="flex items-center group/cell" title={display}><span className="text-surface-700 truncate">{display}</span><CopyBtn text={display} /></span>;
     }
     const val = t[col.field];
@@ -1426,9 +1434,9 @@ export default function EspacioTareasPage() {
 
       {/* Barra acciones masivas */}
       {isModOrAdmin && selectedIds.size > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mb-2 flex flex-wrap items-center gap-2 animate-fade-in-up">
-          <span className="text-xs font-medium text-orange-700">{selectedIds.size} seleccionados</span>
-          <select value={bulkAction} onChange={e => { setBulkAction(e.target.value); setBulkValue(""); }} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+        <div className="bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800 rounded-lg px-3 py-2 mb-2 flex flex-wrap items-center gap-2 animate-fade-in-up">
+          <span className="text-xs font-medium text-orange-700 dark:text-orange-300">{selectedIds.size} seleccionados</span>
+          <select value={bulkAction} onChange={e => { setBulkAction(e.target.value); setBulkValue(""); }} className="text-[11px] border border-orange-200 dark:border-orange-700 rounded px-2 py-1 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 focus:outline-none [&>option]:bg-white [&>option]:text-surface-800 dark:[&>option]:bg-surface-800 dark:[&>option]:text-surface-100">
             <option value="">Acción...</option>
             <option value="estadoId">Cambiar estado</option>
             <option value="espacioId">Mover a espacio</option>
@@ -1440,25 +1448,25 @@ export default function EspacioTareasPage() {
             {session?.rol === "ADMIN" && <option value="moverFacturado">Mover a Facturado</option>}
           </select>
           {bulkAction === "estadoId" && (
-            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 dark:border-orange-700 rounded px-2 py-1 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 focus:outline-none [&>option]:bg-white [&>option]:text-surface-800 dark:[&>option]:bg-surface-800 dark:[&>option]:text-surface-100">
               <option value="">Estado...</option>
               {estados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
             </select>
           )}
           {bulkAction === "espacioId" && (
-            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 dark:border-orange-700 rounded px-2 py-1 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 focus:outline-none [&>option]:bg-white [&>option]:text-surface-800 dark:[&>option]:bg-surface-800 dark:[&>option]:text-surface-100">
               <option value="">Espacio...</option>
               {allEspacios.map(e => <option key={e.id} value={e.id}>{"—".repeat(e._depth || 0)} {e.nombre}</option>)}
             </select>
           )}
           {bulkAction === "equipoAsignado" && (
-            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
+            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 dark:border-orange-700 rounded px-2 py-1 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 focus:outline-none [&>option]:bg-white [&>option]:text-surface-800 dark:[&>option]:bg-surface-800 dark:[&>option]:text-surface-100">
               <option value="">Equipo...</option>
-              {equipoOpts.map(opt => <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>)}
+              {equipoOpts.map(opt => <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>)}
             </select>
           )}
           {(bulkAction === "provincia" || bulkAction === "ambito" || bulkAction === "prioridad") && (
-            <input value={bulkValue} onChange={e => setBulkValue(e.target.value)} placeholder="Valor..." className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none w-32" />
+            <input value={bulkValue} onChange={e => setBulkValue(e.target.value)} placeholder="Valor..." className="text-[11px] border border-orange-200 dark:border-orange-700 rounded px-2 py-1 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 focus:outline-none w-32" />
           )}
           <button
             onClick={handleBulkAction}

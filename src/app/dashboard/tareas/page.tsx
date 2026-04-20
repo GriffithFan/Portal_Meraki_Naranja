@@ -6,7 +6,7 @@ import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
-import { buildEquipoOptions } from "@/utils/equipoUtils";
+import { buildEquipoOptions, aliasToKey } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -243,6 +243,16 @@ export default function TareasPage() {
   // Usuarios para asignación
   const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
   const equipoOpts = useMemo(() => buildEquipoOptions(allUsers), [allUsers]);
+
+  /** Resuelve un valor guardado de equipoAsignado al key canónico de equipoOpts */
+  const resolveEquipoKey = useCallback((val: string | null | undefined): string => {
+    if (!val) return "";
+    const byAlias = aliasToKey(val);
+    if (byAlias) return byAlias;
+    const match = equipoOpts.find(o => o.key.toUpperCase() === val.toUpperCase() || o.display.toUpperCase() === val.toUpperCase());
+    return match?.key || val;
+  }, [equipoOpts]);
+
   const [espacios, setEspacios] = useState<any[]>([]);
   const [showUserPicker, setShowUserPicker] = useState(false);
 
@@ -1436,7 +1446,7 @@ export default function TareasPage() {
               className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
               <option value="">— Equipo —</option>
               {equipoOpts.map(opt => (
-                <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+                <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
               ))}
             </select>
           )}
@@ -2022,7 +2032,7 @@ export default function TareasPage() {
                           {isModOrAdmin && f.editable ? (
                             f.field === "equipoAsignado" ? (
                               <select
-                                value={selectedTarea[f.field] || ""}
+                                value={resolveEquipoKey(selectedTarea[f.field])}
                                 onChange={(e) => {
                                   setSelectedTarea((p: any) => ({ ...p, [f.field]: e.target.value }));
                                   saveField(f.field, e.target.value);
@@ -2031,7 +2041,7 @@ export default function TareasPage() {
                               >
                                 <option value="">—</option>
                                 {equipoOpts.map(opt => (
-                                  <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+                                  <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
                                 ))}
                               </select>
                             ) : f.type === "badge" ? (
@@ -2219,7 +2229,7 @@ export default function TareasPage() {
                 <select value={form.equipoAsignado} onChange={(e) => setForm({ ...form, equipoAsignado: e.target.value })} className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs text-surface-600">
                   <option value="">Equipo</option>
                   {equipoOpts.map(opt => (
-                    <option key={opt.key} value={opt.display}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
+                    <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
                   ))}
                 </select>
               </div>
