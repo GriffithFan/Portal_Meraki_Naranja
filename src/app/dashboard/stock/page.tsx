@@ -94,6 +94,7 @@ export default function StockPage() {
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingEquipo, setEditingEquipo] = useState<any>(null);
   const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "", proveedor: "" });
 
   /* ── Técnicos (para columna Asignado) ── */
@@ -327,6 +328,46 @@ export default function StockPage() {
   }, [search]);
 
   useEffect(() => { fetchEquipos(); }, [fetchEquipos]);
+
+  function openEditModal(eq: any) {
+    setEditingEquipo(eq);
+    setDuplicateEquipo(null);
+    setForm({
+      nombre: eq.nombre || "",
+      descripcion: eq.descripcion || "",
+      numeroSerie: eq.numeroSerie || "",
+      modelo: eq.modelo || "",
+      estado: eq.estado || "DISPONIBLE",
+      ubicacion: eq.ubicacion || "",
+      notas: eq.notas || "",
+      asignadoId: eq.asignadoId || "",
+      fecha: eq.fecha || "",
+      proveedor: eq.proveedor || "",
+    });
+    setShowModal(true);
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingEquipo) return;
+    const nombre = form.nombre.trim();
+    if (!nombre) return;
+    const res = await fetch(`/api/stock/${editingEquipo.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ ...form, nombre }),
+    });
+    if (res.ok) {
+      setShowModal(false);
+      setEditingEquipo(null);
+      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "", proveedor: "" });
+      toast.success("Equipo actualizado");
+      fetchEquipos();
+    } else {
+      toast.error("Error al actualizar equipo");
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -739,6 +780,11 @@ export default function StockPage() {
             >
               {eq.nombre || "—"}
             </span>
+          {eq.notas && (
+            <span title={eq.notas} className="shrink-0">
+              <svg className="w-3.5 h-3.5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/><path d="M7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/></svg>
+            </span>
+          )}
           )}
           {/* Etiqueta badge */}
           {eq.etiqueta && !isEditingTag && (
@@ -943,7 +989,7 @@ export default function StockPage() {
             Resumen
           </button>
           {isModOrAdmin && (
-            <button onClick={() => { setDuplicateEquipo(null); const hoy = new Date(); const dd = String(hoy.getDate()).padStart(2,"0"); const mm = String(hoy.getMonth()+1).padStart(2,"0"); const yyyy = hoy.getFullYear(); setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: `${dd}/${mm}/${yyyy}`, proveedor: "" }); setShowModal(true); }} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
+            <button onClick={() => { setEditingEquipo(null); setDuplicateEquipo(null); const hoy = new Date(); const dd = String(hoy.getDate()).padStart(2,"0"); const mm = String(hoy.getMonth()+1).padStart(2,"0"); const yyyy = hoy.getFullYear(); setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: `${dd}/${mm}/${yyyy}`, proveedor: "" }); setShowModal(true); }} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
               Agregar equipo
             </button>
@@ -1124,7 +1170,16 @@ export default function StockPage() {
             </thead>
             <tbody className="divide-y divide-surface-100">
               {sortedEquipos.map((eq) => (
-                <tr key={eq.id} className="hover:bg-surface-50 transition-colors row-animate group">
+                <tr
+                  key={eq.id}
+                  className="hover:bg-surface-50 transition-colors row-animate group cursor-pointer"
+                  onClick={(e) => {
+                    const tag = (e.target as HTMLElement).closest("select, input, button, a, textarea");
+                    if (tag) return;
+                    if (editingCell || editingEtiqueta) return;
+                    openEditModal(eq);
+                  }}
+                >
                   {visibleColumns.map(col => (
                     <td key={col.id} className="px-2.5 py-1.5">
                       {renderCell(eq, col)}
@@ -1164,11 +1219,11 @@ export default function StockPage() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.97 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            onSubmit={duplicateEquipo ? handleUpdateDuplicate : handleCreate}
+            onSubmit={editingEquipo ? handleUpdate : (duplicateEquipo ? handleUpdateDuplicate : handleCreate)}
             className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl p-5 sm:p-6 w-full sm:max-w-lg sm:mx-4 max-h-[90vh] overflow-y-auto"
           >
             <h2 className="text-base font-semibold text-surface-800 mb-4">
-              {duplicateEquipo ? "Modificar Equipo" : "Agregar Equipo"}
+              {editingEquipo ? "Editar Equipo" : (duplicateEquipo ? "Modificar Equipo" : "Agregar Equipo")}
             </h2>
             {duplicateEquipo && (
               <div className="mb-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -1186,7 +1241,7 @@ export default function StockPage() {
                     numeroSerie: val,
                     ...(match ? { nombre: match.nombre, modelo: match.modelo } : {}),
                   }));
-                }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onBlur={handleSerialBlur} placeholder="Número de serie" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo} />
+                }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onBlur={handleSerialBlur} placeholder="Número de serie" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo || !!editingEquipo} />
                 {form.numeroSerie.length >= 4 && SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()] && (
                   <p className="text-[10px] text-green-600 mt-0.5 ml-1">Auto-completado: {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].nombre} · {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].modelo}</p>
                 )}
@@ -1220,9 +1275,9 @@ export default function StockPage() {
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
             </div>
             <div className="flex justify-end gap-2 mt-5">
-              <button type="button" onClick={() => { setShowModal(false); setDuplicateEquipo(null); }} className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
+              <button type="button" onClick={() => { setShowModal(false); setDuplicateEquipo(null); setEditingEquipo(null); }} className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
               <button type="submit" className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium">
-                {duplicateEquipo ? "Guardar cambios" : "Crear"}
+                {editingEquipo || duplicateEquipo ? "Guardar cambios" : "Crear"}
               </button>
             </div>
           </motion.form>
