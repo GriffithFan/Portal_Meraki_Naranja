@@ -217,6 +217,7 @@ export default function ImportarPage() {
         notas:       ["notas", "nota", "notes", "observaciones", "comentarios"],
         fecha:       ["fecha", "date", "fecha_ingreso", "fecha_alta", "fechaingreso", "fechaalta", "f_ingreso", "ingreso"],
         asignado:    ["asignado", "asignado_a", "asignadoa", "tecnico", "técnico", "technician", "asignacion", "asignación"],
+        proveedor:   ["proveedor", "provider", "supplier", "prov"],
       };
 
       const aliases = tipo === "EQUIPO" ? equipoAliases : predioAliases;
