@@ -780,11 +780,11 @@ export default function StockPage() {
             >
               {eq.nombre || "—"}
             </span>
+          )}
           {eq.notas && (
             <span title={eq.notas} className="shrink-0">
               <svg className="w-3.5 h-3.5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/><path d="M7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/></svg>
             </span>
-          )}
           )}
           {/* Etiqueta badge */}
           {eq.etiqueta && !isEditingTag && (
