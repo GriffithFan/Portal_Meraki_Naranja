@@ -82,6 +82,7 @@ const EQUIPO_FIELDS: Record<string, string> = {
   notas: "Notas",
   fecha: "Fecha",
   asignado: "Asignado (Técnico)",
+  proveedor: "Proveedor",
 };
 
 export async function GET() {
@@ -499,6 +500,11 @@ export async function POST(request: NextRequest) {
           if (ub) data.ubicacion = ub;
           const notas = safeGet(row, fieldMap.get("notas"));
           if (notas) data.notas = notas;
+          const proveedorVal = safeGet(row, fieldMap.get("proveedor"));
+          if (proveedorVal) {
+            const pNorm = proveedorVal.toUpperCase().trim();
+            if (pNorm === "OCP" || pNorm === "DINATECH") data.proveedor = pNorm;
+          }
           const fecha = safeGet(row, fieldMap.get("fecha"));
           // Auto-rellenar fecha con hoy si está vacía
           data.fecha = fecha || fechaHoy;

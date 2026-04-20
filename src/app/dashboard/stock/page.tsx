@@ -572,6 +572,23 @@ export default function StockPage() {
     }
   }
 
+  async function cambiarProveedor(id: string, nuevoProveedor: string) {
+    const prev = equipos.find(e => e.id === id)?.proveedor;
+    setEquipos(es => es.map(e => e.id === id ? { ...e, proveedor: nuevoProveedor || null } : e));
+    const res = await fetch(`/api/stock/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ proveedor: nuevoProveedor || "" }),
+    });
+    if (res.ok) {
+      toast.success(nuevoProveedor ? `Proveedor: ${nuevoProveedor}` : "Proveedor removido");
+    } else {
+      setEquipos(es => es.map(e => e.id === id ? { ...e, proveedor: prev } : e));
+      toast.error("Error al cambiar proveedor");
+    }
+  }
+
   async function cambiarEstado(id: string, nuevoEstado: string) {
     const prev = equipos.find(e => e.id === id)?.estado;
     setEquipos(es => es.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
@@ -662,6 +679,24 @@ export default function StockPage() {
           {eq.estado.replace(/_/g, " ")}
         </Badge>
       );
+    }
+
+    // Proveedor — dropdown always visible
+    if (col.id === "proveedor") {
+      if (isModOrAdmin) {
+        return (
+          <select
+            value={eq.proveedor || ""}
+            onChange={(e) => cambiarProveedor(eq.id, e.target.value)}
+            className="px-1.5 py-0.5 rounded text-[11px] border border-surface-200 bg-white focus:outline-none focus:border-primary-400 cursor-pointer max-w-[130px]"
+          >
+            <option value="">—</option>
+            <option value="OCP">OCP</option>
+            <option value="DINATECH">DINATECH</option>
+          </select>
+        );
+      }
+      return <span className="text-[11px] text-surface-600">{eq.proveedor || "—"}</span>;
     }
 
     // Asignado — dropdown de técnicos
