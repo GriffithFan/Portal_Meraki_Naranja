@@ -1213,6 +1213,7 @@ export default function StockPage() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
+          onClick={() => { setShowModal(false); setDuplicateEquipo(null); setEditingEquipo(null); }}
         >
           <motion.form
             initial={{ opacity: 0, y: 40, scale: 0.97 }}
@@ -1220,6 +1221,7 @@ export default function StockPage() {
             exit={{ opacity: 0, y: 40, scale: 0.97 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             onSubmit={editingEquipo ? handleUpdate : (duplicateEquipo ? handleUpdateDuplicate : handleCreate)}
+            onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl p-5 sm:p-6 w-full sm:max-w-lg sm:mx-4 max-h-[90vh] overflow-y-auto"
           >
             <h2 className="text-base font-semibold text-surface-800 mb-4">
@@ -1232,6 +1234,7 @@ export default function StockPage() {
             )}
             <div className="space-y-3">
               <div>
+                <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Número de serie</label>
                 <input value={form.numeroSerie} onChange={(e) => {
                   const val = e.target.value;
                   const prefix = val.slice(0, 4).toUpperCase();
@@ -1241,38 +1244,62 @@ export default function StockPage() {
                     numeroSerie: val,
                     ...(match ? { nombre: match.nombre, modelo: match.modelo } : {}),
                   }));
-                }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onBlur={handleSerialBlur} placeholder="Número de serie" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo || !!editingEquipo} />
+                }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onBlur={handleSerialBlur} placeholder="Ej: Q2PD-XXXX-XXXX" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo || !!editingEquipo} />
                 {form.numeroSerie.length >= 4 && SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()] && (
                   <p className="text-[10px] text-green-600 mt-0.5 ml-1">Auto-completado: {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].nombre} · {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].modelo}</p>
                 )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre *" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
-                <input value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} placeholder="Modelo" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                <div>
+                  <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Nombre *</label>
+                  <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Ej: AP, SWITCH, UTM" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Modelo</label>
+                  <input value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} placeholder="Ej: MR33, MS225" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
-                  {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
-                </select>
-                <select value={form.asignadoId} onChange={(e) => setForm({ ...form, asignadoId: e.target.value })} className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
-                  <option value="">Sin asignar</option>
-                  {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-                </select>
+                <div>
+                  <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Estado</label>
+                  <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                    {ESTADOS_EQUIPO.map((e) => <option key={e} value={e}>{e.replace(/_/g, " ")}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Asignado</label>
+                  <select value={form.asignadoId} onChange={(e) => setForm({ ...form, asignadoId: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                    <option value="">Sin asignar</option>
+                    {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <select value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
-                  <option value="">— Vacío (predio) —</option>
-                  <option value="THNET">THNET</option>
-                  <option value="Dinatech">Dinatech</option>
-                </select>
-                <input value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} placeholder="Fecha" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                <div>
+                  <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Ubicación</label>
+                  <select value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                    <option value="">— Vacío (predio) —</option>
+                    <option value="THNET">THNET</option>
+                    <option value="Dinatech">Dinatech</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Fecha</label>
+                  <input value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} placeholder="DD/MM/AAAA" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                </div>
               </div>
-              <select value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
-                <option value="">Sin proveedor</option>
-                <option value="OCP">OCP</option>
-                <option value="DINATECH">DINATECH</option>
-              </select>
-              <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+              <div>
+                <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Proveedor</label>
+                <select value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                  <option value="">Sin proveedor</option>
+                  <option value="OCP">OCP</option>
+                  <option value="DINATECH">DINATECH</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Notas</label>
+                <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Agregar notas..." rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-5">
               <button type="button" onClick={() => { setShowModal(false); setDuplicateEquipo(null); setEditingEquipo(null); }} className="px-4 py-2.5 sm:py-2 text-sm sm:text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
