@@ -156,6 +156,17 @@ function buildCaptureLayout(
       (el as HTMLElement).style.display = "";
       el.classList.remove("hidden");
     }
+    // Force Tailwind responsive grid columns (md: breakpoint) since CSS
+    // media queries check viewport, not element width — on mobile viewport
+    // the min-width breakpoints don't fire even though the shell is 1500px.
+    const gridBracket = cls.match(/md:grid-cols-\[([^\]]+)\]/);
+    if (gridBracket) {
+      (el as HTMLElement).style.gridTemplateColumns = gridBracket[1].replace(/_/g, " ");
+    }
+    const gridN = cls.match(/md:grid-cols-(\d+)/);
+    if (gridN) {
+      (el as HTMLElement).style.gridTemplateColumns = `repeat(${gridN[1]}, minmax(0, 1fr))`;
+    }
   });
 
   // Override section title for capture (match Meraki original naming)
@@ -180,10 +191,24 @@ function buildCaptureLayout(
   for (const sheet of Array.from(document.styleSheets)) {
     try {
       for (const rule of Array.from(sheet.cssRules)) {
-        // Skip @media rules with max-width (mobile overrides) so the
-        // capture always renders the desktop layout.
-        if (rule instanceof CSSMediaRule && /max-width/i.test(rule.conditionText)) {
+        // Skip dark-mode CSS rules so capture is always light
+        if (rule instanceof CSSStyleRule && /\.dark[\s.>:,[\]]/.test(rule.selectorText)) {
           continue;
+        }
+        if (rule instanceof CSSMediaRule) {
+          // Skip mobile-first overrides (max-width)
+          if (/max-width/i.test(rule.conditionText)) continue;
+          // Skip prefers-color-scheme: dark
+          if (/prefers-color-scheme:\s*dark/i.test(rule.conditionText)) continue;
+          // Include desktop breakpoint rules (min-width) as regular rules
+          // so Tailwind responsive classes apply regardless of viewport
+          if (/min-width/i.test(rule.conditionText)) {
+            for (const inner of Array.from(rule.cssRules)) {
+              if (inner instanceof CSSStyleRule && /\.dark[\s.>:,[\]]/.test(inner.selectorText)) continue;
+              cssRules.push(inner.cssText);
+            }
+            continue;
+          }
         }
         cssRules.push(rule.cssText);
       }
@@ -204,6 +229,51 @@ function buildCaptureLayout(
 
   document.body.appendChild(shell);
   return shell;
+}
+
+/* ─── Force light-mode inline styles for capture ─── */
+
+/** Parse rgb/rgba string to luminance (0=black, 1=white) */
+function rgbLuminance(rgb: string): number | null {
+  const m = rgb.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (!m) return null;
+  return (0.299 * parseInt(m[1]) + 0.587 * parseInt(m[2]) + 0.114 * parseInt(m[3])) / 255;
+}
+
+/**
+ * Walk the capture shell and replace dark inline styles with light equivalents.
+ * Only targets elements with a style attribute. Uses computed-style luminance
+ * checks so it works regardless of hex/rgb format.
+ */
+function forceLightInlineStyles(root: HTMLElement) {
+  root.querySelectorAll("[style]").forEach((node) => {
+    const el = node as HTMLElement;
+    const cs = window.getComputedStyle(el);
+    // Fix dark backgrounds → white
+    const bg = cs.backgroundColor;
+    if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
+      const lum = rgbLuminance(bg);
+      if (lum !== null && lum < 0.18) {
+        el.style.backgroundColor = "#ffffff";
+      }
+    }
+    // Fix very light text (dark-mode text on dark bg) → dark text
+    const color = cs.color;
+    if (color) {
+      const lum = rgbLuminance(color);
+      if (lum !== null && lum > 0.85) {
+        el.style.color = "#111827";
+      }
+    }
+    // Fix dark border colors
+    const bc = cs.borderTopColor;
+    if (bc && bc !== "rgba(0, 0, 0, 0)" && bc !== "transparent") {
+      const lum = rgbLuminance(bc);
+      if (lum !== null && lum < 0.18) {
+        el.style.borderColor = "#e5e7eb";
+      }
+    }
+  });
 }
 
 /* ─── Componente principal ─── */
@@ -228,6 +298,13 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
     // Construir layout completo estilo auditoría
     const shell = buildCaptureLayout(el, sectionName, predioCode, networkId);
 
+    // Force light mode for capture — temporarily remove dark class from <html>
+    // so CSS .dark selectors don't match, then fix inline React dark styles.
+    const htmlEl = document.documentElement;
+    const wasDark = htmlEl.classList.contains("dark");
+    if (wasDark) htmlEl.classList.remove("dark");
+    forceLightInlineStyles(shell);
+
     try {
       const raw = await toCanvas(shell, {
         pixelRatio: 2,
@@ -241,6 +318,7 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
 
       return raw;
     } finally {
+      if (wasDark) htmlEl.classList.add("dark");
       document.body.removeChild(shell);
     }
   };
