@@ -188,11 +188,17 @@ function buildCaptureLayout(
   // Strip responsive media queries so mobile captures render as desktop.
   const styleTag = document.createElement("style");
   const cssRules: string[] = [];
+  const darkFallbackRules: string[] = []; // dark rules stripped of .dark prefix as low-priority fallbacks
+
+  const stripDarkPrefix = (sel: string) => sel.replace(/\.dark\s+/g, "").replace(/\.dark(?=[\s.>:,[\]$])/g, "").trim();
+
   for (const sheet of Array.from(document.styleSheets)) {
     try {
       for (const rule of Array.from(sheet.cssRules)) {
-        // Skip dark-mode CSS rules so capture is always light
+        // Collect dark-mode CSS rules as fallbacks (strip .dark prefix)
         if (rule instanceof CSSStyleRule && /\.dark[\s.>:,[\]]/.test(rule.selectorText)) {
+          const stripped = stripDarkPrefix(rule.selectorText);
+          if (stripped) darkFallbackRules.push(`${stripped} { ${rule.style.cssText} }`);
           continue;
         }
         if (rule instanceof CSSMediaRule) {
@@ -204,7 +210,11 @@ function buildCaptureLayout(
           // so Tailwind responsive classes apply regardless of viewport
           if (/min-width/i.test(rule.conditionText)) {
             for (const inner of Array.from(rule.cssRules)) {
-              if (inner instanceof CSSStyleRule && /\.dark[\s.>:,[\]]/.test(inner.selectorText)) continue;
+              if (inner instanceof CSSStyleRule && /\.dark[\s.>:,[\]]/.test(inner.selectorText)) {
+                const stripped = stripDarkPrefix(inner.selectorText);
+                if (stripped) darkFallbackRules.push(`${stripped} { ${inner.style.cssText} }`);
+                continue;
+              }
               cssRules.push(inner.cssText);
             }
             continue;
@@ -216,7 +226,10 @@ function buildCaptureLayout(
       // Cross-origin stylesheets throw SecurityError — skip them
     }
   }
-  styleTag.textContent = cssRules.join("\n");
+  // Dark fallback rules go FIRST so regular (light) rules override them
+  // when both selectors match. Elements with ONLY dark: Tailwind classes
+  // get the dark-mode color as fallback (visible, better than inheriting black).
+  styleTag.textContent = darkFallbackRules.join("\n") + "\n" + cssRules.join("\n");
   // Force uppercase table headers in capture (match Meraki original)
   styleTag.textContent += "\n[data-capture-content] th { text-transform: uppercase !important; font-size: 11px !important; font-weight: 600 !important; color: #64748b !important; letter-spacing: 0.5px !important; }";
   // Force desktop table display
@@ -233,17 +246,35 @@ function buildCaptureLayout(
 
 /* ─── Force light-mode inline styles for capture ─── */
 
-/** Parse rgb/rgba string to luminance (0=black, 1=white) */
-function rgbLuminance(rgb: string): number | null {
+/** Parse rgb/rgba string to [r, g, b] */
+function parseRGB(rgb: string): [number, number, number] | null {
   const m = rgb.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
   if (!m) return null;
-  return (0.299 * parseInt(m[1]) + 0.587 * parseInt(m[2]) + 0.114 * parseInt(m[3])) / 255;
+  return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])];
+}
+
+/** Perceived luminance 0..1 (ITU-R BT.601) */
+function luminance(r: number, g: number, b: number): number {
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+/** Check if color is "achromatic" (gray/white/black — low saturation) */
+function isGrayish(r: number, g: number, b: number): boolean {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  return (mx - mn) < 30; // low chroma spread
 }
 
 /**
  * Walk the capture shell and replace dark inline styles with light equivalents.
- * Only targets elements with a style attribute. Uses computed-style luminance
+ * Targets elements with a style attribute. Uses computed-style luminance
  * checks so it works regardless of hex/rgb format.
+ *
+ * Strategy:
+ * - Dark backgrounds (luminance < 0.18) → white
+ * - Near-white achromatic text (lum > 0.80, grayish) → dark text
+ *   This catches white/light-gray text used for dark-mode readability
+ *   but preserves colored text (light green status, light blue links, etc.)
+ * - Dark borders → light gray
  */
 function forceLightInlineStyles(root: HTMLElement) {
   root.querySelectorAll("[style]").forEach((node) => {
@@ -252,25 +283,30 @@ function forceLightInlineStyles(root: HTMLElement) {
     // Fix dark backgrounds → white
     const bg = cs.backgroundColor;
     if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
-      const lum = rgbLuminance(bg);
-      if (lum !== null && lum < 0.18) {
-        el.style.backgroundColor = "#ffffff";
+      const rgb = parseRGB(bg);
+      if (rgb) {
+        const lum = luminance(...rgb);
+        if (lum < 0.18) el.style.backgroundColor = "#ffffff";
       }
     }
-    // Fix very light text (dark-mode text on dark bg) → dark text
+    // Fix near-white GRAYISH text → dark text (preserve colored text)
     const color = cs.color;
     if (color) {
-      const lum = rgbLuminance(color);
-      if (lum !== null && lum > 0.85) {
-        el.style.color = "#111827";
+      const rgb = parseRGB(color);
+      if (rgb) {
+        const lum = luminance(...rgb);
+        if (lum > 0.80 && isGrayish(...rgb)) {
+          el.style.color = "#374151";
+        }
       }
     }
     // Fix dark border colors
     const bc = cs.borderTopColor;
     if (bc && bc !== "rgba(0, 0, 0, 0)" && bc !== "transparent") {
-      const lum = rgbLuminance(bc);
-      if (lum !== null && lum < 0.18) {
-        el.style.borderColor = "#e5e7eb";
+      const rgb = parseRGB(bc);
+      if (rgb) {
+        const lum = luminance(...rgb);
+        if (lum < 0.18) el.style.borderColor = "#e5e7eb";
       }
     }
   });
