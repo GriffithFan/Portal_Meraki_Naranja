@@ -208,6 +208,7 @@ model Equipo {
   fecha         String?
   etiqueta      String?
   etiquetaColor String?
+  proveedor     String?
   predioId      String?
   predio        Predio? @relation(fields: [predioId], references: [id], onDelete: SetNull)
   asignadoId    String?

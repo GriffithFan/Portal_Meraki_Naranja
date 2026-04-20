@@ -51,6 +51,7 @@ const FILTER_COLUMNS = [
   { field: "asignado", label: "Asignado" },
   { field: "etiqueta", label: "Etiqueta" },
   { field: "numeroSerie", label: "N/S" },
+  { field: "proveedor", label: "Proveedor" },
 ];
 
 /* ── Auto-fill por prefijo de serial ── */
@@ -73,6 +74,7 @@ const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "asignado",    label: "Asignado",     field: "asignadoId",  visible: true,  editable: true,  type: "select" },
   { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "select", options: ["", "THNET", "Dinatech"] },
   { id: "fecha",       label: "Fecha",        field: "fecha",       visible: true,  editable: true,  type: "text" },
+  { id: "proveedor",   label: "Proveedor",    field: "proveedor",   visible: true,  editable: true,  type: "select", options: ["", "OCP", "DINATECH"] },
   { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
   { id: "descripcion", label: "Descripción",  field: "descripcion", visible: false, editable: true,  type: "text" },
 ];
@@ -92,7 +94,7 @@ export default function StockPage() {
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
+  const [form, setForm] = useState({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "", proveedor: "" });
 
   /* ── Técnicos (para columna Asignado) ── */
   const [tecnicos, setTecnicos] = useState<{ id: string; nombre: string }[]>([]);
@@ -338,7 +340,7 @@ export default function StockPage() {
     });
     if (res.ok) {
       setShowModal(false);
-      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
+      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "", proveedor: "" });
       toast.success("Equipo creado exitosamente");
       fetchEquipos();
     } else if (res.status === 409) {
@@ -368,6 +370,7 @@ export default function StockPage() {
       notas: duplicateEquipo.notas || "",
       asignadoId: duplicateEquipo.asignadoId || "",
       fecha: duplicateEquipo.fecha || "",
+      proveedor: duplicateEquipo.proveedor || "",
     });
     setShowDuplicateModal(false);
     setShowModal(true);
@@ -388,7 +391,7 @@ export default function StockPage() {
     if (res.ok) {
       setShowModal(false);
       setDuplicateEquipo(null);
-      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "" });
+      setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: "", proveedor: "" });
       toast.success("Equipo actualizado exitosamente");
       fetchEquipos();
     } else {
@@ -427,6 +430,7 @@ export default function StockPage() {
         Notas: eq.notas || "",
         Etiqueta: eq.etiqueta || "",
         Categoría: eq.categoria || "",
+        Proveedor: eq.proveedor || "",
       };
     });
 
@@ -904,7 +908,7 @@ export default function StockPage() {
             Resumen
           </button>
           {isModOrAdmin && (
-            <button onClick={() => { setDuplicateEquipo(null); const hoy = new Date(); const dd = String(hoy.getDate()).padStart(2,"0"); const mm = String(hoy.getMonth()+1).padStart(2,"0"); const yyyy = hoy.getFullYear(); setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: `${dd}/${mm}/${yyyy}` }); setShowModal(true); }} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
+            <button onClick={() => { setDuplicateEquipo(null); const hoy = new Date(); const dd = String(hoy.getDate()).padStart(2,"0"); const mm = String(hoy.getMonth()+1).padStart(2,"0"); const yyyy = hoy.getFullYear(); setForm({ nombre: "", descripcion: "", numeroSerie: "", modelo: "", estado: "DISPONIBLE", ubicacion: "", notas: "", asignadoId: "", fecha: `${dd}/${mm}/${yyyy}`, proveedor: "" }); setShowModal(true); }} className="px-3 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1.5">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
               Agregar equipo
             </button>
@@ -1173,6 +1177,11 @@ export default function StockPage() {
                 </select>
                 <input value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} placeholder="Fecha" className="px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
               </div>
+              <select value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                <option value="">Sin proveedor</option>
+                <option value="OCP">OCP</option>
+                <option value="DINATECH">DINATECH</option>
+              </select>
               <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" />
             </div>
             <div className="flex justify-end gap-2 mt-5">

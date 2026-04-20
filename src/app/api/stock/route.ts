@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     const data = await parseBody(request, stockCreateSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor } = data;
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor } = data;
 
     if (numeroSerie) {
       const existing = await prisma.equipo.findUnique({ where: { numeroSerie } });
@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
         asignadoId: asignadoId || null,
         etiqueta: etiqueta || null,
         etiquetaColor: etiquetaColor || null,
+        proveedor: proveedor || null,
       },
     });
 

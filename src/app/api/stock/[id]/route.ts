@@ -46,7 +46,7 @@ export async function PUT(
     const data = await parseBody(request, stockUpdateSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor } = data;
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor } = data;
 
     const existing = await prisma.equipo.findUnique({ where: { id } });
     if (!existing) {
@@ -71,6 +71,7 @@ export async function PUT(
         ...(asignadoId !== undefined && { asignadoId: asignadoId || null }),
         ...(etiqueta !== undefined && { etiqueta: etiqueta || null }),
         ...(etiquetaColor !== undefined && { etiquetaColor: etiquetaColor || null }),
+        ...(proveedor !== undefined && { proveedor: proveedor || null }),
       },
     });
 

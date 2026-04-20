@@ -101,6 +101,7 @@ export const stockCreateSchema = z.object({
   asignadoId: cuidOpt(),
   etiqueta: strOpt(50),
   etiquetaColor: strOpt(20),
+  proveedor: strOpt(50),
 });
 
 // PUT /api/stock/[id]
