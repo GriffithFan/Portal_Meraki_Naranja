@@ -748,10 +748,6 @@ export default function EspacioTareasPage() {
     try {
       let actionKey = bulkAction;
       let actionValue: any = bulkAction === "enFacturacion" ? true : bulkValue;
-      // Para asignaciones, la API espera un array de IDs
-      if (bulkAction === "asignadoIds") {
-        actionValue = bulkValue ? [bulkValue] : [];
-      }
       if (bulkAction === "moverFacturado") {
         const facturadoEsp = allEspacios.find((e: any) => e.nombre === "Facturado" && !e.parentId);
         if (!facturadoEsp) {
@@ -1436,8 +1432,7 @@ export default function EspacioTareasPage() {
             <option value="">Acción...</option>
             <option value="estadoId">Cambiar estado</option>
             <option value="espacioId">Mover a espacio</option>
-            <option value="asignadoIds">Asignar técnico</option>
-            <option value="equipoAsignado">Cambiar equipo</option>
+            <option value="equipoAsignado">Asignar técnico</option>
             <option value="provincia">Cambiar provincia</option>
             <option value="ambito">Cambiar ámbito</option>
             <option value="prioridad">Cambiar prioridad</option>
@@ -1454,12 +1449,6 @@ export default function EspacioTareasPage() {
             <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
               <option value="">Espacio...</option>
               {allEspacios.map(e => <option key={e.id} value={e.id}>{"—".repeat(e._depth || 0)} {e.nombre}</option>)}
-            </select>
-          )}
-          {bulkAction === "asignadoIds" && (
-            <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="text-[11px] border border-orange-200 rounded px-2 py-1 bg-white text-surface-700 focus:outline-none">
-              <option value="">Técnico...</option>
-              {allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
             </select>
           )}
           {bulkAction === "equipoAsignado" && (

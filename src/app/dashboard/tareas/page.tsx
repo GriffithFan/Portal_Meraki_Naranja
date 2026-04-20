@@ -776,10 +776,6 @@ export default function TareasPage() {
       let actionKey = bulkAction;
       let actionValue: any = bulkValue;
 
-      // Para asignaciones, enviar como array de IDs
-      if (bulkAction === "asignadoIds") {
-        actionValue = bulkValue ? [bulkValue] : [];
-      }
       // Marcar para facturación
       if (bulkAction === "enFacturacion") {
         actionValue = true;
@@ -1410,8 +1406,7 @@ export default function TareasPage() {
             <option value="">— Acción masiva —</option>
             <option value="estadoId">Cambiar estado</option>
             <option value="espacioId">Mover a espacio</option>
-            <option value="asignadoIds">Asignar técnico</option>
-            <option value="equipoAsignado">Cambiar equipo</option>
+            <option value="equipoAsignado">Asignar técnico</option>
             <option value="provincia">Cambiar provincia</option>
             <option value="ambito">Cambiar ámbito</option>
             <option value="prioridad">Cambiar prioridad</option>
@@ -1434,13 +1429,6 @@ export default function TareasPage() {
               {espacios.length > 0 ? espacios.map((e: any) => (
                 <option key={e.id} value={e.id}>{"  ".repeat(e._depth || 0)}{(e._depth || 0) > 0 ? "└ " : ""}{e.nombre}</option>
               )) : <option disabled>Cargando...</option>}
-            </select>
-          )}
-          {bulkAction === "asignadoIds" && (
-            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
-              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
-              <option value="">— Técnico —</option>
-              {allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
             </select>
           )}
           {bulkAction === "equipoAsignado" && (
