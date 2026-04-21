@@ -644,8 +644,16 @@ export default function TareasPage() {
     });
 
     if (res.ok) {
-      setSelectedTarea((prev: any) => ({ ...prev, [field]: value }));
-      setTareas(prev => prev.map(t => t.id === selectedTarea.id ? { ...t, [field]: value } : t));
+      const extra: Record<string, any> = {};
+      if (field === "gpsPredio") {
+        const parts = String(value).split(",").map((s: string) => parseFloat(s.trim()));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          extra.latitud = parts[0];
+          extra.longitud = parts[1];
+        }
+      }
+      setSelectedTarea((prev: any) => ({ ...prev, [field]: value, ...extra }));
+      setTareas(prev => prev.map(t => t.id === selectedTarea.id ? { ...t, [field]: value, ...extra } : t));
     }
   }
 
@@ -658,9 +666,17 @@ export default function TareasPage() {
       body: JSON.stringify({ [field]: value }),
     });
     if (res.ok) {
-      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value } : t));
+      const extra: Record<string, any> = {};
+      if (field === "gpsPredio") {
+        const parts = value.split(",").map(s => parseFloat(s.trim()));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          extra.latitud = parts[0];
+          extra.longitud = parts[1];
+        }
+      }
+      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value, ...extra } : t));
       if (selectedTarea?.id === tareaId) {
-        setSelectedTarea((prev: any) => ({ ...prev, [field]: value }));
+        setSelectedTarea((prev: any) => ({ ...prev, [field]: value, ...extra }));
       }
     }
   }

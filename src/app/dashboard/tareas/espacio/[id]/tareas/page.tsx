@@ -645,7 +645,15 @@ export default function EspacioTareasPage() {
       body: JSON.stringify({ [field]: value }),
     });
     if (res.ok) {
-      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value } : t));
+      const extra: Record<string, any> = {};
+      if (field === "gpsPredio") {
+        const parts = value.split(",").map(s => parseFloat(s.trim()));
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          extra.latitud = parts[0];
+          extra.longitud = parts[1];
+        }
+      }
+      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value, ...extra } : t));
     }
   }
 
