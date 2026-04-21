@@ -232,6 +232,15 @@ function buildCaptureLayout(
   styleTag.textContent = darkFallbackRules.join("\n") + "\n" + cssRules.join("\n");
   // Force uppercase table headers in capture (match Meraki original)
   styleTag.textContent += "\n[data-capture-content] th { text-transform: uppercase !important; font-size: 11px !important; font-weight: 600 !important; color: #64748b !important; letter-spacing: 0.5px !important; }";
+  // Force light-mode modern-table styles regardless of which CSS files are loaded on the current page.
+  // AppliancePorts.css (which defines the light .modern-table rules) is only imported in ApplianceSection,
+  // so Switches and APs pages may not have it — without these overrides the stripped dark-fallback rules win.
+  styleTag.textContent += "\n[data-capture-content] .modern-table th { background: #f1f5f9 !important; color: #475569 !important; border-bottom: 2px solid #cbd5e1 !important; }";
+  styleTag.textContent += "\n[data-capture-content] .modern-table td { color: #1e293b !important; border-bottom-color: #f1f5f9 !important; }";
+  styleTag.textContent += "\n[data-capture-content] .modern-table tr:hover td { background: #f8fafc !important; }";
+  // Force light background for summary chips container
+  styleTag.textContent += "\n[data-capture-content] .summary-chips-container { background: #f1f5f9 !important; border: none !important; }";
+  styleTag.textContent += "\n[data-capture-content] .summary-chip { background: #f1f5f9 !important; border-color: #cbd5e1 !important; }";
   // Force desktop table display
   styleTag.textContent += "\n[data-capture-content] table { display: table !important; }";
   styleTag.textContent += "\n[data-capture-content] thead { display: table-header-group !important; }";
@@ -308,6 +317,39 @@ function forceLightInlineStyles(root: HTMLElement) {
         const lum = luminance(...rgb);
         if (lum < 0.18) el.style.borderColor = "#e5e7eb";
       }
+    }
+  });
+
+  // Fix SVG text fills: topology graph uses useTheme() to set fill colors as SVG attributes.
+  // When capturing in dark mode, the theme context still returns "dark" even after removing .dark
+  // from <html>, so text elements have near-white fill (#f1f5f9, #cbd5e1) → invisible on white bg.
+  root.querySelectorAll("svg text, svg tspan").forEach((svgNode) => {
+    const el = svgNode as SVGElement;
+    const cs = window.getComputedStyle(el);
+    const fillVal = cs.getPropertyValue("fill");
+    if (!fillVal || fillVal === "none") return;
+    const rgb = parseRGB(fillVal);
+    if (!rgb) return;
+    const lum = luminance(...rgb);
+    // Near-white grayish fill → dark text color
+    if (lum > 0.65 && isGrayish(...rgb)) {
+      (el as unknown as HTMLElement).style.fill = lum > 0.85 ? "#1e293b" : "#475569";
+    }
+  });
+
+  // Fix SVG shape dark fills: external/internet node uses fill="#1e293b" in dark mode
+  // which renders as a solid black diamond on the white capture background.
+  root.querySelectorAll("svg rect[fill], svg circle[fill], svg polygon[fill]").forEach((svgNode) => {
+    const el = svgNode as SVGElement;
+    const cs = window.getComputedStyle(el);
+    const fillVal = cs.getPropertyValue("fill");
+    if (!fillVal || fillVal === "none") return;
+    const rgb = parseRGB(fillVal);
+    if (!rgb) return;
+    const lum = luminance(...rgb);
+    // Near-black grayish fill → white (only shapes, not status-colored dots)
+    if (lum < 0.18 && isGrayish(...rgb)) {
+      (el as unknown as HTMLElement).style.fill = "#ffffff";
     }
   });
 }
