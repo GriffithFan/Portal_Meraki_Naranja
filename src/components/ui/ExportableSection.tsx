@@ -339,7 +339,11 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
     const htmlEl = document.documentElement;
     const wasDark = htmlEl.classList.contains("dark");
     if (wasDark) htmlEl.classList.remove("dark");
-    forceLightInlineStyles(shell);
+    // Only fix inline dark styles in the CONTENT area (not the shell chrome).
+    // The TopBar/Sidebar are hardcoded light-appropriate HTML; touching them
+    // in light mode would convert white text to dark on a dark background.
+    const captureContentEl = shell.querySelector("[data-capture-content]") as HTMLElement | null;
+    if (wasDark && captureContentEl) forceLightInlineStyles(captureContentEl);
 
     try {
       const raw = await toCanvas(shell, {
