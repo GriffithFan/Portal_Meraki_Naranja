@@ -2024,6 +2024,8 @@ export default function TareasPage() {
                         { label: "DESDE", field: "fechaDesde", type: "date", editable: true },
                         { label: "HASTA", field: "fechaHasta", type: "date", editable: true },
                         { label: "GPS_Predio", field: "gpsPredio", editable: true },
+                        { label: "Latitud", field: "latitud", editable: true },
+                        { label: "Longitud", field: "longitud", editable: true },
                         { label: "LAC-R", field: "lacR", type: "badge", editable: true },
                         { label: "Provincia", field: "provincia", editable: true },
                       ].map(f => (

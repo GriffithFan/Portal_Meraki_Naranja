@@ -181,6 +181,15 @@ export async function PATCH(
       }
     }
 
+    // Si se actualiza gpsPredio, auto-parsear latitud y longitud
+    if (data.gpsPredio) {
+      const parts = data.gpsPredio.split(",").map((s: string) => parseFloat(s.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        data.latitud = parts[0];
+        data.longitud = parts[1];
+      }
+    }
+
     const updated = await prisma.predio.update({
       where: { id },
       data,
