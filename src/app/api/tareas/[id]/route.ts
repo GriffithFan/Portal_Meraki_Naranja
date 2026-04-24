@@ -2,6 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, tareaUpdateSchema } from "@/lib/validation";
+import { getAllEquipoVariants, resolveEquipoKey } from "@/utils/equipoUtils";
+
+/**
+ * Regla: equipoAsignado y asignaciones deben estar sincronizados.
+ * Dado un equipoAsignado (key o alias), devuelve el userId que le corresponde
+ * (si existe un usuario activo cuyo nombre matchee alguno de los variants).
+ */
+async function findUserIdForEquipo(equipo: string | null | undefined): Promise<string | null> {
+  if (!equipo) return null;
+  const variants = getAllEquipoVariants(equipo);
+  const candidates = variants.length > 0 ? variants : [equipo];
+  const user = await prisma.user.findFirst({
+    where: {
+      activo: true,
+      OR: candidates.map((n) => ({ nombre: { equals: n, mode: "insensitive" as const } })),
+    },
+    select: { id: true },
+  });
+  return user?.id ?? null;
+}
+
+/**
+ * Dado una lista de userIds, devuelve la key de equipo del primer user cuyo nombre
+ * matchee una entrada de equipoUtils.
+ */
+async function resolveEquipoFromAsignadoIds(userIds: string[]): Promise<string | null> {
+  if (!userIds.length) return null;
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { nombre: true },
+  });
+  for (const u of users) {
+    const key = resolveEquipoKey(u.nombre);
+    if (key) return key;
+  }
+  return null;
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -224,7 +261,43 @@ export async function PATCH(
           }
         }
       });
+      // Regla: asignados → equipoAsignado. Si no se pasó equipoAsignado explícito,
+      // derivarlo del primer user asignado que matchee una entrada de equipoUtils.
+      if (bodyAny.equipoAsignado === undefined) {
+        const nuevoEquipo = await resolveEquipoFromAsignadoIds(asignadoIds);
+        if (nuevoEquipo && nuevoEquipo !== updated.equipoAsignado) {
+          await prisma.predio.update({ where: { id }, data: { equipoAsignado: nuevoEquipo } });
+          updated.equipoAsignado = nuevoEquipo;
+        } else if (asignadoIds.length === 0 && updated.equipoAsignado) {
+          // Si se removieron todos los asignados, también limpiar equipo
+          await prisma.predio.update({ where: { id }, data: { equipoAsignado: null } });
+          updated.equipoAsignado = null;
+        }
+      }
       // Recargar asignaciones en el response
+      updated.asignaciones = await prisma.asignacion.findMany({
+        where: { predioId: id },
+        include: { usuario: { select: { id: true, nombre: true } } },
+      });
+    } else if (bodyAny.equipoAsignado !== undefined) {
+      // Regla: equipoAsignado → asignados. Si se cambió el equipo sin tocar asignadoIds,
+      // sincronizar la tabla Asignacion con el user correspondiente.
+      const nuevoEquipo = data.equipoAsignado as string | null;
+      const targetUserId = await findUserIdForEquipo(nuevoEquipo);
+      await prisma.$transaction(async (tx) => {
+        await tx.asignacion.deleteMany({ where: { predioId: id, tipo: "TECNICO" } });
+        if (targetUserId) {
+          // Evitar duplicados si ya existe asignación TAREA del mismo user
+          const existingTarea = await tx.asignacion.findFirst({
+            where: { predioId: id, userId: targetUserId, tipo: "TAREA" },
+          });
+          if (!existingTarea) {
+            await tx.asignacion.create({
+              data: { tipo: "TECNICO", userId: targetUserId, predioId: id },
+            });
+          }
+        }
+      });
       updated.asignaciones = await prisma.asignacion.findMany({
         where: { predioId: id },
         include: { usuario: { select: { id: true, nombre: true } } },

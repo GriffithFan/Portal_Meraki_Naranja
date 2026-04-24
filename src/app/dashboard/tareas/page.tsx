@@ -6,7 +6,7 @@ import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
-import { buildEquipoOptions, aliasToKey } from "@/utils/equipoUtils";
+import { buildEquipoOptions, aliasToKey, getEquipoDisplayName } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -1022,7 +1022,20 @@ export default function TareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      if (asigns.length === 0) return <span className="text-surface-300">&mdash;</span>;
+      if (asigns.length === 0) {
+        // Fallback: si el predio tiene equipoAsignado, mostrarlo como asignado (regla equipo = asignado)
+        if (t.equipoAsignado) {
+          const disp = getEquipoDisplayName(t.equipoAsignado);
+          return (
+            <span className="flex items-center gap-1 flex-wrap">
+              <span className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]" title={`Equipo: ${t.equipoAsignado}`}>
+                {disp.split(" ")[0]}
+              </span>
+            </span>
+          );
+        }
+        return <span className="text-surface-300">&mdash;</span>;
+      }
       return (
         <span className="flex items-center gap-1 flex-wrap">
           {asigns.map((a: any) => (
@@ -1982,7 +1995,13 @@ export default function TareasPage() {
                           </span>
                         ))}
                         {(selectedTarea.asignaciones || []).length === 0 && (
-                          <span className="text-xs text-surface-400">Sin asignar</span>
+                          selectedTarea.equipoAsignado ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-full text-[11px] font-medium" title={`Equipo: ${selectedTarea.equipoAsignado}`}>
+                              {getEquipoDisplayName(selectedTarea.equipoAsignado)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-surface-400">Sin asignar</span>
+                          )
                         )}
                         {isModOrAdmin && (
                           <div className="relative">
