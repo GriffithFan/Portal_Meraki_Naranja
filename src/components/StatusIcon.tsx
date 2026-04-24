@@ -49,6 +49,16 @@ export default function StatusIcon({ clave, color, size = 14, className = "" }: 
               </>
             );
 
+          // REVISION INSTALACION: círculo con lupa (inspección)
+          case "revision_instalacion":
+            return (
+              <>
+                <circle cx={cx} cy={cy} r={outerR} stroke={color} strokeWidth={1.5} fill={`${color}15`} />
+                <circle cx={cx - outerR * 0.1} cy={cy - outerR * 0.1} r={outerR * 0.35} stroke={color} strokeWidth={1.2} fill="none" />
+                <line x1={cx + outerR * 0.18} y1={cy + outerR * 0.18} x2={cx + outerR * 0.42} y2={cy + outerR * 0.42} stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+              </>
+            );
+
           // RELEVAR: círculo con cuarto relleno (progreso parcial)
           case "relevar":
             return (
