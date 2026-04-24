@@ -10,16 +10,16 @@ const prisma = new PrismaClient();
 const ESTADOS_CLICKUP = [
   // Abiertos
   { nombre: "SIN ASIGNAR",           clave: "sin_asignar",          color: "#6b7280", orden: 0  },  // gris
-  { nombre: "BLOCKEADO",             clave: "blockeado",            color: "#1e1e1e", orden: 1  },  // negro/dark
-  { nombre: "REVISION INSTALACION",  clave: "revision_instalacion", color: "#0ea5e9", orden: 2  },  // sky blue (lupa)
-  { nombre: "RELEVAR",               clave: "relevar",              color: "#06b6d4", orden: 3  },  // cyan
+  { nombre: "BLOCKEADO",             clave: "blockeado",            color: "#4b5563", orden: 1  },  // gris oscuro
+  { nombre: "REVISION INSTALACION",  clave: "revision_instalacion", color: "#4f46e5", orden: 2  },  // índigo
+  { nombre: "RELEVAR",               clave: "relevar",              color: "#0ea5e9", orden: 3  },  // azul cielo
   { nombre: "RELEVADO",              clave: "relevado",             color: "#14b8a6", orden: 4  },  // teal (no verde, distingue de CERRADO)
-  { nombre: "CAMBIO LAC",            clave: "cambio_lac",           color: "#eab308", orden: 5  },  // ámbar/amarillo
-  { nombre: "EN PROGRESO",           clave: "en_progreso",          color: "#3b82f6", orden: 6  },  // azul
-  { nombre: "INSTALADO",             clave: "instalado",            color: "#f97316", orden: 7  },  // naranja
-  { nombre: "AUDITAR",               clave: "auditar",              color: "#7c3aed", orden: 8  },  // violeta profundo (distingue de CONFORME)
-  { nombre: "NO CONFORME",           clave: "no_conforme",          color: "#ef4444", orden: 9  },  // rojo
-  { nombre: "NO APTO",               clave: "no_apto",              color: "#be185d", orden: 10 },  // rosa/crimson (distingue de NO CONFORME)
+  { nombre: "CAMBIO LAC",            clave: "cambio_lac",           color: "#a16207", orden: 5  },  // marrón
+  { nombre: "EN PROGRESO",           clave: "en_progreso",          color: "#e11d8a", orden: 6  },  // magenta
+  { nombre: "INSTALADO",             clave: "instalado",            color: "#facc15", orden: 7  },  // amarillo
+  { nombre: "AUDITAR",               clave: "auditar",              color: "#f97316", orden: 8  },  // naranja
+  { nombre: "NO CONFORME",           clave: "no_conforme",          color: "#dc2626", orden: 9  },  // rojo fuerte
+  { nombre: "NO APTO",               clave: "no_apto",              color: "#2563eb", orden: 10 },  // azul intenso
   { nombre: "CONFORME",              clave: "conforme",             color: "#a855f7", orden: 11 },  // púrpura (con check)
   // Cerrado
   { nombre: "CERRADO",               clave: "cerrado",              color: "#16a34a", orden: 12 },  // verde check

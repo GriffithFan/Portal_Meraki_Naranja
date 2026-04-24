@@ -9,11 +9,11 @@ const prisma = new PrismaClient();
 
 // ─── MAPEO DE ESTADOS ClickUp → clave en DB ────────
 const STATUS_MAP = {
-  "CONFORME":     { nombre: "CONFORME",     clave: "conforme",      color: "#22c55e", orden: 0 },
-  "NO CONFORME":  { nombre: "NO CONFORME",  clave: "no_conforme",   color: "#ef4444", orden: 1 },
-  "INSTALADO":    { nombre: "INSTALADO",    clave: "instalado",     color: "#f59e0b", orden: 2 },
-  "EN PROGRESO":  { nombre: "EN PROGRESO",  clave: "en_progreso",   color: "#3b82f6", orden: 3 },
-  "RELEVAR":      { nombre: "RELEVAR",      clave: "relevar",       color: "#06b6d4", orden: 4 },
+  "CONFORME":     { nombre: "CONFORME",     clave: "conforme",      color: "#a855f7", orden: 0 },
+  "NO CONFORME":  { nombre: "NO CONFORME",  clave: "no_conforme",   color: "#dc2626", orden: 1 },
+  "INSTALADO":    { nombre: "INSTALADO",    clave: "instalado",     color: "#facc15", orden: 2 },
+  "EN PROGRESO":  { nombre: "EN PROGRESO",  clave: "en_progreso",   color: "#e11d8a", orden: 3 },
+  "RELEVAR":      { nombre: "RELEVAR",      clave: "relevar",       color: "#0ea5e9", orden: 4 },
   "SIN ASIGNAR":  { nombre: "SIN ASIGNAR",  clave: "sin_asignar",   color: "#6b7280", orden: 5 },
 };
 
