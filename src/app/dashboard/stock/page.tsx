@@ -92,6 +92,7 @@ export default function StockPage() {
   const [filterMenuField, setFilterMenuField] = useState<string | null>(null);
   const [filterSearch, setFilterSearch] = useState("");
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  const scrollRestoreRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingEquipo, setEditingEquipo] = useState<any>(null);
@@ -323,6 +324,11 @@ export default function StockPage() {
       const data = await res.json();
       setEquipos(data.equipos || []);
       setTotal(data.total || 0);
+      if (scrollRestoreRef.current !== null) {
+        const y = scrollRestoreRef.current;
+        scrollRestoreRef.current = null;
+        requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "instant" })));
+      }
     }
     setLoading(false);
   }, [search]);
@@ -352,6 +358,7 @@ export default function StockPage() {
     if (!editingEquipo) return;
     const nombre = form.nombre.trim();
     if (!nombre) return;
+    scrollRestoreRef.current = window.scrollY;
     const res = await fetch(`/api/stock/${editingEquipo.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
