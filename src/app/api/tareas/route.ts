@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   const estado = searchParams.get("estado");
   const asignadoId = searchParams.get("asignadoId");
   const espacioId = searchParams.get("espacioId");
+  const includeSubspaces = searchParams.get("includeSubspaces") === "true";
   const limitParam = searchParams.get("limit");
   const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 2000);
   const pageParam = searchParams.get("page");
@@ -48,7 +49,30 @@ export async function GET(request: NextRequest) {
 
   // Filtrar por espacio de trabajo
   if (espacioId) {
-    where.espacioId = espacioId;
+    if (includeSubspaces) {
+      const espacios = await prisma.espacioTrabajo.findMany({
+        where: { activo: true },
+        select: { id: true, parentId: true },
+      });
+      const byParent = new Map<string, string[]>();
+      for (const espacio of espacios) {
+        if (!espacio.parentId) continue;
+        const children = byParent.get(espacio.parentId) || [];
+        children.push(espacio.id);
+        byParent.set(espacio.parentId, children);
+      }
+      const ids = new Set<string>([espacioId]);
+      const stack = [...(byParent.get(espacioId) || [])];
+      while (stack.length > 0) {
+        const id = stack.pop();
+        if (!id || ids.has(id)) continue;
+        ids.add(id);
+        stack.push(...(byParent.get(id) || []));
+      }
+      where.espacioId = { in: Array.from(ids) };
+    } else {
+      where.espacioId = espacioId;
+    }
   }
 
   if (estado) where.estado = { clave: estado };
@@ -91,7 +115,7 @@ export async function GET(request: NextRequest) {
       accion: "CONSULTA_PREDIO",
       detalle: espacioId ? `Espacio ${espacioId}` : "Vista general de tareas",
       ip,
-      metadata: { espacioId: espacioId || null, total, buscar: buscar || null },
+      metadata: { espacioId: espacioId || null, includeSubspaces, total, buscar: buscar || null },
     },
   }).catch(() => {});
 

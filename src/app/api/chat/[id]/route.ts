@@ -11,11 +11,14 @@ interface RouteParams {
 /**
  * GET /api/chat/[id] — Obtener conversación con todos sus mensajes
  */
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { id } = await params;
+  const sinceParam = request.nextUrl.searchParams.get("since");
+  const sinceDate = sinceParam ? new Date(sinceParam) : null;
+  const validSinceDate = sinceDate && !Number.isNaN(sinceDate.getTime()) ? sinceDate : null;
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
@@ -28,6 +31,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       creador: { select: { id: true, nombre: true } },
       agente: { select: { id: true, nombre: true } },
       mensajes: {
+        where: validSinceDate ? { createdAt: { gt: validSinceDate } } : undefined,
         orderBy: { createdAt: "asc" },
         select: {
           id: true,

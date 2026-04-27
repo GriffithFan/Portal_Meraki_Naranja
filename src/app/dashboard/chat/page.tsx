@@ -109,6 +109,15 @@ export default function ChatPage() {
   const conversacionesLoadingRef = useRef(false);
   const mensajesAbortRef = useRef<AbortController | null>(null);
 
+  const mergeMensajes = useCallback((nuevos: any[]) => {
+    if (nuevos.length === 0) return;
+    setMensajes(prev => {
+      const byId = new Map(prev.map((msg: any) => [msg.id, msg]));
+      for (const msg of nuevos) byId.set(msg.id, msg);
+      return Array.from(byId.values()).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    });
+  }, []);
+
   // soloLectura se calcula por conversación: MOD puede escribir en las suyas
   const esMiConversacion = seleccionada?.creadorId === session?.userId;
   const soloLectura = seleccionada ? !(esMiConversacion || isMesa) : false;
@@ -146,6 +155,19 @@ export default function ChatPage() {
     }
   }, []);
 
+  const cargarMensajesNuevos = useCallback(async (id: string) => {
+    const ultimo = mensajes[mensajes.length - 1]?.createdAt;
+    if (!ultimo) return cargarMensajes(id);
+    try {
+      const res = await fetch(`/api/chat/${id}?since=${encodeURIComponent(ultimo)}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        mergeMensajes(data.mensajes || []);
+        setSeleccionada((prev: any) => prev?.id === data.id ? { ...prev, ...data, mensajes: prev.mensajes } : data);
+      }
+    } catch { /* silenciar */ }
+  }, [cargarMensajes, mensajes, mergeMensajes]);
+
   useEffect(() => {
     cargarConversaciones().finally(() => setLoading(false));
   }, [cargarConversaciones]);
@@ -155,10 +177,10 @@ export default function ChatPage() {
     pollRef.current = setInterval(() => {
       if (document.visibilityState === "hidden") return;
       cargarConversaciones();
-      if (seleccionada?.id) cargarMensajes(seleccionada.id);
+      if (seleccionada?.id) cargarMensajesNuevos(seleccionada.id);
     }, 5000);
     return () => clearInterval(pollRef.current);
-  }, [seleccionada?.id, cargarConversaciones, cargarMensajes]);
+  }, [seleccionada?.id, cargarConversaciones, cargarMensajesNuevos]);
 
   // Scroll al último mensaje solo cuando llegan mensajes nuevos
   useEffect(() => {

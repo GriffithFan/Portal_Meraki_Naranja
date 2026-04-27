@@ -97,6 +97,15 @@ export default function ChatFloatingWidget() {
   const pollMensajesLoadingRef = useRef(false);
   const isHidden = pathname === "/dashboard/chat";
 
+  const mergeMensajes = useCallback((nuevos: any[]) => {
+    if (nuevos.length === 0) return;
+    setMensajes(prev => {
+      const byId = new Map(prev.map((msg: any) => [msg.id, msg]));
+      for (const msg of nuevos) byId.set(msg.id, msg);
+      return Array.from(byId.values()).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    });
+  }, []);
+
   const checkUnread = useCallback(async () => {
     if (unreadLoadingRef.current) return;
     unreadLoadingRef.current = true;
@@ -153,10 +162,13 @@ export default function ChatFloatingWidget() {
       if (pollMensajesLoadingRef.current) return;
       pollMensajesLoadingRef.current = true;
       try {
-        const res = await fetch(`/api/chat/${conversacion.id}`, { credentials: "include" });
+        const ultimo = mensajes[mensajes.length - 1]?.createdAt;
+        const query = ultimo ? `?since=${encodeURIComponent(ultimo)}` : "";
+        const res = await fetch(`/api/chat/${conversacion.id}${query}`, { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
-          setMensajes(data.mensajes || []);
+          if (ultimo) mergeMensajes(data.mensajes || []);
+          else setMensajes(data.mensajes || []);
           if (data.estado === "CERRADA") {
             // Auto-limpiar: mostrar vista de nueva consulta
             setConversacion(null);
@@ -167,7 +179,7 @@ export default function ChatFloatingWidget() {
       finally { pollMensajesLoadingRef.current = false; }
     }, 5000);
     return () => clearInterval(pollRef.current);
-  }, [open, conversacion?.id]);
+  }, [open, conversacion?.id, mensajes, mergeMensajes]);
 
   useEffect(() => {
     if (mensajes.length > prevMsgCountRef.current) {

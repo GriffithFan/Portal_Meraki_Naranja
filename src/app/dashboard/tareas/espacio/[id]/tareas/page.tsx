@@ -138,6 +138,7 @@ export default function EspacioTareasPage() {
   const [estados, setEstados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [includeSubspaces, setIncludeSubspaces] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
   const [groupBy, setGroupBy] = useState("estado");
@@ -414,7 +415,7 @@ export default function EspacioTareasPage() {
     }
 
     const [tareasRes, estadosRes, espacioRes] = await Promise.all([
-      fetch(`/api/tareas?espacioId=${espacioId}&limit=2000`, { credentials: "include" }),
+      fetch(`/api/tareas?espacioId=${espacioId}&limit=2000${includeSubspaces ? "&includeSubspaces=true" : ""}`, { credentials: "include" }),
       fetch("/api/estados", { credentials: "include" }),
       fetch(`/api/espacios/${espacioId}`, { credentials: "include" }),
     ]);
@@ -450,7 +451,7 @@ export default function EspacioTareasPage() {
     }
 
     setLoading(false);
-  }, [espacioId]);
+  }, [espacioId, includeSubspaces]);
 
   // Auto-open predio detail from URL ?open=CODIGO
   const openHandled = useRef(false);
@@ -1183,6 +1184,17 @@ export default function EspacioTareasPage() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          {espacio?.hijos?.length > 0 && (
+            <label className="hidden sm:flex items-center gap-1.5 text-[11px] text-surface-500 border border-surface-200 rounded-md px-2 py-1.5 bg-white cursor-pointer select-none" title="Mostrar también tareas de subcarpetas">
+              <input
+                type="checkbox"
+                checked={includeSubspaces}
+                onChange={(e) => setIncludeSubspaces(e.target.checked)}
+                className="h-3 w-3 accent-primary-600"
+              />
+              Subcarpetas
+            </label>
+          )}
           {/* Search */}
           <div className="relative flex-1 sm:flex-initial">
             <input
@@ -1226,7 +1238,7 @@ export default function EspacioTareasPage() {
           Resumen
         </Link>
         <span className="text-xs font-medium text-primary-600 border-b-2 border-primary-600 pb-2 px-1">
-          Tareas ({tareas.length})
+          {includeSubspaces ? "Tareas con subcarpetas" : "Tareas directas"} ({tareas.length})
         </span>
       </div>
 
