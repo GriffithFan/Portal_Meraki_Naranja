@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import * as XLSX from "xlsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -459,7 +458,8 @@ export default function StockPage() {
   }
 
   /* ── Export functions ── */
-  function exportStock(format: "csv" | "xlsx") {
+  async function exportStock(format: "csv" | "xlsx") {
+    const XLSX = await import("xlsx");
     const data = sortedEquipos.map((eq: any) => {
       let fecha = eq.fecha || "";
       // Normalizar fecha a DD/MM/AAAA en la exportación
@@ -544,7 +544,8 @@ export default function StockPage() {
     return { totalItems: equipos.length, porEstado, porNombre, porUbicacion };
   }, [equipos]);
 
-  function exportSummaryToExcel() {
+  async function exportSummaryToExcel() {
+    const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
 
     // Hoja resumen

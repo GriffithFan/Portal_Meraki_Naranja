@@ -131,13 +131,16 @@ export default function ChatFloatingWidget() {
   useEffect(() => {
     if (loading || !session) return;
     checkUnread();
-    const interval = setInterval(checkUnread, 10000);
+    const interval = setInterval(() => {
+      if (document.visibilityState !== "hidden") checkUnread();
+    }, 10000);
     return () => clearInterval(interval);
   }, [loading, session, checkUnread]);
 
   useEffect(() => {
     if (!open || !conversacion?.id) return;
     pollRef.current = setInterval(async () => {
+      if (document.visibilityState === "hidden") return;
       try {
         const res = await fetch(`/api/chat/${conversacion.id}`, { credentials: "include" });
         if (res.ok) {

@@ -141,6 +141,7 @@ export default function ChatPage() {
   // Polling cada 5s para mensajes nuevos
   useEffect(() => {
     pollRef.current = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       cargarConversaciones();
       if (seleccionada?.id) cargarMensajes(seleccionada.id);
     }, 5000);

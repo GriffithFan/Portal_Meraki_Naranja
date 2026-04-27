@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
+const KPI_CACHE_TTL_MS = 45_000;
+
+let cachedKpis: { exp: number; data: unknown } | null = null;
+
 export async function GET() {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+
+  if (cachedKpis && cachedKpis.exp > Date.now()) {
+    return NextResponse.json(cachedKpis.data, {
+      headers: { "X-Cache": "HIT", "Cache-Control": "private, max-age=30" },
+    });
+  }
 
   const now = new Date();
   const startOfWeek = new Date(now);
@@ -114,7 +124,7 @@ export async function GET() {
     .filter((e) => e.nombre.toLowerCase().includes("conforme") && !e.nombre.toLowerCase().includes("no conforme"))
     .reduce((sum, e) => sum + e.count, 0);
 
-  return NextResponse.json({
+  const responseData = {
     predios: {
       total: prediosTotal,
       conRed: prediosConRed,
@@ -142,5 +152,11 @@ export async function GET() {
       actividadSemana,
       notificacionesPendientes: notificacionesSinLeerTotal,
     },
+  };
+
+  cachedKpis = { exp: Date.now() + KPI_CACHE_TTL_MS, data: responseData };
+
+  return NextResponse.json(responseData, {
+    headers: { "X-Cache": "MISS", "Cache-Control": "private, max-age=30" },
   });
 }
