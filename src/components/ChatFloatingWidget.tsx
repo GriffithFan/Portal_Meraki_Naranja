@@ -92,9 +92,14 @@ export default function ChatFloatingWidget() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const unreadLoadingRef = useRef(false);
+  const convActivaLoadingRef = useRef(false);
+  const pollMensajesLoadingRef = useRef(false);
   const isHidden = pathname === "/dashboard/chat";
 
   const checkUnread = useCallback(async () => {
+    if (unreadLoadingRef.current) return;
+    unreadLoadingRef.current = true;
     try {
       const res = await fetch("/api/chat/sin-leer", { credentials: "include" });
       if (res.ok) {
@@ -102,10 +107,13 @@ export default function ChatFloatingWidget() {
         setUnread(data.count);
       }
     } catch { /* silenciar */ }
+    finally { unreadLoadingRef.current = false; }
   }, []);
 
   const cargarConvActiva = useCallback(async () => {
     if (isMesa) return;
+    if (convActivaLoadingRef.current) return;
+    convActivaLoadingRef.current = true;
     try {
       const res = await fetch("/api/chat?estado=EN_CURSO", { credentials: "include" });
       if (!res.ok) return;
@@ -126,6 +134,7 @@ export default function ChatFloatingWidget() {
         setMensajes([]);
       }
     } catch { /* silenciar */ }
+    finally { convActivaLoadingRef.current = false; }
   }, [isMesa]);
 
   useEffect(() => {
@@ -141,6 +150,8 @@ export default function ChatFloatingWidget() {
     if (!open || !conversacion?.id) return;
     pollRef.current = setInterval(async () => {
       if (document.visibilityState === "hidden") return;
+      if (pollMensajesLoadingRef.current) return;
+      pollMensajesLoadingRef.current = true;
       try {
         const res = await fetch(`/api/chat/${conversacion.id}`, { credentials: "include" });
         if (res.ok) {
@@ -153,6 +164,7 @@ export default function ChatFloatingWidget() {
           }
         }
       } catch { /* silenciar */ }
+      finally { pollMensajesLoadingRef.current = false; }
     }, 5000);
     return () => clearInterval(pollRef.current);
   }, [open, conversacion?.id]);

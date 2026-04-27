@@ -46,6 +46,8 @@ export default function EspacioOverviewPage() {
 
   const { espacio, stats } = data;
   const hasHijos = espacio.hijos?.length > 0;
+  const tareasDirectas = espacio._count?.predios || 0;
+  const tareasSubEspacios = Math.max((stats.totalPredios || 0) - tareasDirectas, 0);
 
   return (
     <div className="animate-fade-in-up">
@@ -69,15 +71,16 @@ export default function EspacioOverviewPage() {
           <Link
             href={`/dashboard/tareas/espacio/${espacio.id}/tareas`}
             className="text-xs text-surface-400 hover:text-surface-600 pb-2 px-1 transition-colors"
+            title={tareasSubEspacios > 0 ? `${tareasDirectas} directas; ${tareasSubEspacios} en sub-espacios` : `${tareasDirectas} directas`}
           >
-            Tareas ({stats.totalPredios})
+            Tareas directas ({tareasDirectas})
           </Link>
         </div>
       </div>
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5 sm:mb-6">
-        <KPICard label="Total tareas" value={stats.totalPredios} color="primary" />
+        <KPICard label={hasHijos ? "Total con sub-espacios" : "Total tareas"} value={stats.totalPredios} color="primary" />
         <KPICard
           label="Estados"
           value={stats.byEstado.length}

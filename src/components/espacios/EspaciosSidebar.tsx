@@ -173,8 +173,12 @@ function SpaceNode({
   // Ocultar "Facturado" para no-admin
   if (isFacturado && !isAdmin) return null;
 
-  // Recursive count including children
-  const totalCount = taskCount + (node.children || []).reduce((sum: number, c: any) => sum + (c._count?.predios || 0), 0);
+  const countDescendants = (items: any[]): number => items.reduce(
+    (sum: number, child: any) => sum + (child._count?.predios || 0) + countDescendants(child.children || []),
+    0
+  );
+  const childCount = countDescendants(node.children || []);
+  const totalCount = taskCount + childCount;
 
   const isActive = pathname === `/dashboard/tareas/espacio/${node.id}`;
   const isParentActive = pathname.startsWith(`/dashboard/tareas/espacio/${node.id}`);
@@ -261,7 +265,10 @@ function SpaceNode({
 
         {/* Count badge */}
         {totalCount > 0 && (
-          <span className="text-[10px] text-surface-400 tabular-nums shrink-0 ml-auto">
+          <span
+            className="text-[10px] text-surface-400 tabular-nums shrink-0 ml-auto"
+            title={childCount > 0 ? `${taskCount} directas + ${childCount} en subcarpetas` : `${taskCount} directas`}
+          >
             {totalCount}
           </span>
         )}
@@ -280,7 +287,7 @@ function SpaceNode({
               <button
                 onClick={(e) => { e.stopPropagation(); onClear(node.id, node.nombre); }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 rounded shrink-0 text-surface-400 hover:text-red-500 transition-opacity"
-                title="Vaciar tareas del espacio"
+                title="Vaciar tareas directas del espacio"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
               </button>

@@ -138,7 +138,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   }, [closeMenu]);
 
   // Cargar notificaciones al montar y cada 60s
+  const notifsLoadingRef = useRef(false);
   const fetchNotifs = useCallback(async () => {
+    if (notifsLoadingRef.current) return;
+    notifsLoadingRef.current = true;
     try {
       const res = await fetch("/api/notificaciones?noLeidas=false", { credentials: "include" });
       if (res.ok) {
@@ -147,12 +150,22 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         setSinLeer(data.sinLeer || 0);
       }
     } catch { /* ignore */ }
+    finally { notifsLoadingRef.current = false; }
   }, []);
 
   useEffect(() => {
     fetchNotifs();
-    const iv = setInterval(fetchNotifs, 60_000);
-    return () => clearInterval(iv);
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") fetchNotifs();
+    };
+    const iv = setInterval(() => {
+      if (document.visibilityState === "visible") fetchNotifs();
+    }, 60_000);
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", handleVisible);
+    };
   }, [fetchNotifs]);
 
   async function marcarLeida(id: string) {

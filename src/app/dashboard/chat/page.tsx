@@ -106,6 +106,8 @@ export default function ChatPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const conversacionesLoadingRef = useRef(false);
+  const mensajesAbortRef = useRef<AbortController | null>(null);
 
   // soloLectura se calcula por conversación: MOD puede escribir en las suyas
   const esMiConversacion = seleccionada?.creadorId === session?.userId;
@@ -113,6 +115,8 @@ export default function ChatPage() {
 
   // Cargar conversaciones
   const cargarConversaciones = useCallback(async () => {
+    if (conversacionesLoadingRef.current) return;
+    conversacionesLoadingRef.current = true;
     try {
       const res = await fetch("/api/chat", { credentials: "include" });
       if (res.ok) {
@@ -120,18 +124,26 @@ export default function ChatPage() {
         setConversaciones(data);
       }
     } catch { /* silenciar */ }
+    finally { conversacionesLoadingRef.current = false; }
   }, []);
 
   // Cargar mensajes de una conversación
   const cargarMensajes = useCallback(async (id: string) => {
+    mensajesAbortRef.current?.abort();
+    const controller = new AbortController();
+    mensajesAbortRef.current = controller;
     try {
-      const res = await fetch(`/api/chat/${id}`, { credentials: "include" });
+      const res = await fetch(`/api/chat/${id}`, { credentials: "include", signal: controller.signal });
       if (res.ok) {
         const data = await res.json();
+        if (controller.signal.aborted || mensajesAbortRef.current !== controller) return;
         setMensajes(data.mensajes || []);
         setSeleccionada(data);
       }
     } catch { /* silenciar */ }
+    finally {
+      if (mensajesAbortRef.current === controller) mensajesAbortRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
