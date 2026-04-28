@@ -53,6 +53,8 @@ const GROUP_BY_OPTIONS = [
   { value: "ciudad", label: "Departamento" },
 ];
 
+const SERVER_PAGE_SIZE = 500;
+
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
 // ═══════════════════════════════════════════════════════════════
@@ -103,6 +105,8 @@ export default function TareasPage() {
   const [tareas, setTareas] = useState<any[]>([]);
   const [estados, setEstados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
 
   // Read URL params on mount (client-side only)
   const urlParamsRef = useRef<URLSearchParams | null>(null);
@@ -110,9 +114,14 @@ export default function TareasPage() {
     urlParamsRef.current = new URLSearchParams(window.location.search);
   }
   const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
+  const [serverSearch, setServerSearch] = useState(() => urlParamsRef.current?.get("search") || "");
 
   // Sincronizar búsqueda del Header global
   useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
+  useEffect(() => {
+    const timer = setTimeout(() => setServerSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
@@ -289,8 +298,11 @@ export default function TareasPage() {
 
   // Cargar datos
   const autoHideDone = useRef(false);
-  const fetchTareas = useCallback(async () => {
-    setLoading(true);
+  const fetchTareas = useCallback(async (options?: { page?: number; append?: boolean }) => {
+    const pageToLoad = options?.page || 1;
+    const append = options?.append || false;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
 
     // Cargar config compartida del servidor ANTES de auto-hide
     if (!colConfigLoaded.current) {
@@ -320,11 +332,22 @@ export default function TareasPage() {
       colConfigLoaded.current = true;
     }
 
-    const res = await fetch("/api/tareas?limit=2000", { credentials: "include" });
+    const params = new URLSearchParams({ limit: String(SERVER_PAGE_SIZE), page: String(pageToLoad) });
+    if (serverSearch) params.set("buscar", serverSearch);
+    const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
       const predios = data.predios || [];
-      setTareas(predios);
+      setTareas(prev => {
+        if (!append) return predios;
+        const seen = new Set(prev.map((item: any) => item.id));
+        return [...prev, ...predios.filter((item: any) => !seen.has(item.id))];
+      });
+      setPagination({ page: data.page || pageToLoad, total: data.total || predios.length, hasMore: Boolean(data.hasMore), limit: data.limit || SERVER_PAGE_SIZE });
+      if (!append) {
+        setSelectedIds(new Set());
+        setRenderLimits({});
+      }
 
       // Auto-ocultar columnas sin datos (solo si NO hay config guardada en servidor)
       if (!autoHideDone.current && !hadSavedConfig.current && predios.length > 0) {
@@ -341,8 +364,14 @@ export default function TareasPage() {
         }));
       }
     }
-    setLoading(false);
-  }, []);
+    if (append) setLoadingMore(false);
+    else setLoading(false);
+  }, [serverSearch]);
+
+  const loadMoreTareas = useCallback(() => {
+    if (loadingMore || !pagination.hasMore) return;
+    fetchTareas({ page: pagination.page + 1, append: true });
+  }, [fetchTareas, loadingMore, pagination.hasMore, pagination.page]);
 
   useEffect(() => {
     fetchTareas();
@@ -429,7 +458,7 @@ export default function TareasPage() {
         })
         .catch(() => {});
     }
-  }, [fetchTareas, isModOrAdmin]);
+  }, [fetchTareas, isModOrAdmin, session?.rol, session?.userId]);
 
   // Recargar tareas cuando el sidebar reporta un drop exitoso
   useEffect(() => {
@@ -454,7 +483,7 @@ export default function TareasPage() {
   // Agrupar tareas
   const groupedTareas = useMemo(() => {
     let filtered = tareas;
-    if (search) {
+    if (search && !serverSearch) {
       const s = search.toLowerCase();
       filtered = tareas.filter(t => {
         const prov = obtenerProvincia(t.provincia, t.codigo);
@@ -527,7 +556,7 @@ export default function TareasPage() {
       sorted[k] = groups[k];
     }
     return sorted;
-  }, [tareas, estados, search, sortConfig, groupBy]);
+  }, [tareas, estados, search, serverSearch, sortConfig, groupBy]);
 
   // Abrir modal de detalle
   async function openDetail(tarea: any) {
@@ -1183,7 +1212,9 @@ export default function TareasPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800 tracking-tight">Cronograma</h1>
-          <p className="text-surface-400 text-xs mt-0.5">{tareas.length} registros</p>
+          <p className="text-surface-400 text-xs mt-0.5">
+            {tareas.length} de {pagination.total || tareas.length} registros cargados{serverSearch ? ` · filtro: ${serverSearch}` : ""}
+          </p>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="relative flex-1 sm:flex-initial">
@@ -1888,6 +1919,18 @@ export default function TareasPage() {
                   </button>
                 )}
               </div>
+            </div>
+          )}
+
+          {pagination.hasMore && (
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={loadMoreTareas}
+                disabled={loadingMore}
+                className="px-4 py-2 text-xs rounded-md border border-surface-200 bg-white text-surface-600 hover:bg-surface-50 disabled:opacity-60 transition-colors"
+              >
+                {loadingMore ? "Cargando..." : `Cargar mas (${Math.max((pagination.total || 0) - tareas.length, 0)} restantes)`}
+              </button>
             </div>
           )}
         </div>

@@ -82,8 +82,13 @@ export async function GET(request: NextRequest) {
       OR: [
         { nombre: { contains: buscar, mode: "insensitive" } },
         { codigo: { contains: buscar, mode: "insensitive" } },
+        { incidencias: { contains: buscar, mode: "insensitive" } },
+        { cue: { contains: buscar, mode: "insensitive" } },
         { direccion: { contains: buscar, mode: "insensitive" } },
         { ciudad: { contains: buscar, mode: "insensitive" } },
+        { provincia: { contains: buscar, mode: "insensitive" } },
+        { equipoAsignado: { contains: buscar, mode: "insensitive" } },
+        { nombreInstitucion: { contains: buscar, mode: "insensitive" } },
       ],
     };
     where.AND = where.AND ? [...where.AND, searchWhere] : [searchWhere];
@@ -119,7 +124,14 @@ export async function GET(request: NextRequest) {
     },
   }).catch(() => {});
 
-  return NextResponse.json({ predios, total, page, limit });
+  return NextResponse.json({
+    predios,
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    hasMore: skip + predios.length < total,
+  });
 }
 
 export async function POST(request: NextRequest) {
