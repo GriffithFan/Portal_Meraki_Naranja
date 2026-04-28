@@ -15,6 +15,7 @@ Este documento lista mejoras que conviene aplicar en fases controladas. No forma
 | Panel operativo extendido | Aplicado | Runtime Node, RAM, disco en VPS, logs PM2 y ruta/tamano de backups si existen |
 | Filtros rapidos de Mis tareas | Aplicado | Hoy, vencidas, sin GPS, sin estado, sin espacio y alta prioridad sin modificar datos |
 | Paginacion server-side inicial en tareas | Aplicado | `/dashboard/tareas` carga 500 registros por pagina, busqueda remota y boton para traer mas |
+| Filtros server-side en tareas | Aplicado | Estado, provincia, equipo, prioridad y filtros rapidos operativos desde la API paginada |
 
 ## Seguridad Pendiente
 
@@ -51,7 +52,7 @@ Este documento lista mejoras que conviene aplicar en fases controladas. No forma
 | Mejora | Riesgo | Estado recomendado |
 | --- | --- | --- |
 | Paginacion server-side avanzada en tareas | Medio | Base aplicada; queda mover agrupados/conteos completos al servidor |
-| Filtros server-side para tareas | Medio | Busqueda general aplicada; quedan filtros por estado/provincia/equipo/espacio en la vista general |
+| Filtros server-side avanzados para tareas | Medio | Base aplicada; quedan conteos globales por filtro y combinaciones guardadas por usuario |
 | Separar graficos pesados de KPIs en chunks dinamicos | Medio | Conviene refactorizar `dashboard/kpis` en componentes pequenos |
 | Indices nuevos basados en consultas lentas reales | Medio | Medir primero; luego migracion Prisma controlada |
 | SSE/WebSocket para notificaciones en vivo | Medio-alto | Probar con Nginx/PM2 antes de reemplazar polling |

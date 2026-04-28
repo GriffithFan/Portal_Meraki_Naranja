@@ -107,6 +107,11 @@ export default function TareasPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
+  const [filterEstado, setFilterEstado] = useState("todos");
+  const [filterProvincia, setFilterProvincia] = useState("");
+  const [filterEquipo, setFilterEquipo] = useState("");
+  const [filterPrioridad, setFilterPrioridad] = useState("todas");
+  const [quickFilter, setQuickFilter] = useState("todos");
 
   // Read URL params on mount (client-side only)
   const urlParamsRef = useRef<URLSearchParams | null>(null);
@@ -334,6 +339,11 @@ export default function TareasPage() {
 
     const params = new URLSearchParams({ limit: String(SERVER_PAGE_SIZE), page: String(pageToLoad) });
     if (serverSearch) params.set("buscar", serverSearch);
+    if (filterEstado !== "todos") params.set("estado", filterEstado);
+    if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
+    if (filterEquipo.trim()) params.set("equipo", filterEquipo.trim());
+    if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
+    if (quickFilter !== "todos") params.set("quick", quickFilter);
     const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
@@ -366,7 +376,7 @@ export default function TareasPage() {
     }
     if (append) setLoadingMore(false);
     else setLoading(false);
-  }, [serverSearch]);
+  }, [filterEquipo, filterEstado, filterPrioridad, filterProvincia, quickFilter, serverSearch]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
@@ -1154,6 +1164,17 @@ export default function TareasPage() {
     return columns.filter(c => c.visible);
   }, [columns]);
 
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterEquipo.trim() || filterPrioridad !== "todas" || quickFilter !== "todos");
+  const clearServerFilters = () => {
+    setSearch("");
+    setServerSearch("");
+    setFilterEstado("todos");
+    setFilterProvincia("");
+    setFilterEquipo("");
+    setFilterPrioridad("todas");
+    setQuickFilter("todos");
+  };
+
   // Suprimir warning de session no usada
   void session;
 
@@ -1262,6 +1283,69 @@ export default function TareasPage() {
               Nueva
             </button>
           )}
+        </div>
+      </div>
+
+      <div className="mb-4 bg-white border border-surface-200 rounded-lg p-3 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "todos", label: "Todos" },
+            { key: "hoy", label: "Hoy" },
+            { key: "vencidas", label: "Vencidas" },
+            { key: "sin-gps", label: "Sin GPS" },
+            { key: "sin-estado", label: "Sin estado" },
+            { key: "sin-espacio", label: "Sin espacio" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setQuickFilter(item.key)}
+              className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${quickFilter === item.key ? "bg-primary-600 border-primary-600 text-white" : "border-surface-200 text-surface-600 hover:bg-surface-50"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <select
+            value={filterEstado}
+            onChange={(e) => setFilterEstado(e.target.value)}
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="todos">Todos los estados</option>
+            {estados.map(e => <option key={e.id} value={e.clave}>{e.nombre}</option>)}
+          </select>
+          <input
+            value={filterProvincia}
+            onChange={(e) => setFilterProvincia(e.target.value)}
+            placeholder="Provincia"
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md focus:outline-none focus:border-surface-400"
+          />
+          <select
+            value={filterEquipo}
+            onChange={(e) => setFilterEquipo(e.target.value)}
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="">Todos los equipos</option>
+            {equipoOpts.map(opt => <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>)}
+          </select>
+          <select
+            value={filterPrioridad}
+            onChange={(e) => setFilterPrioridad(e.target.value)}
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="todas">Todas las prioridades</option>
+            <option value="URGENTE">Urgente</option>
+            <option value="ALTA">Alta</option>
+            <option value="MEDIA">Media</option>
+            <option value="BAJA">Baja</option>
+          </select>
+          <button
+            onClick={clearServerFilters}
+            disabled={!hasServerFilters}
+            className="px-3 py-2 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+          >
+            Limpiar filtros
+          </button>
         </div>
       </div>
 

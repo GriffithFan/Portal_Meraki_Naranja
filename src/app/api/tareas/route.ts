@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
   const estado = searchParams.get("estado");
   const asignadoId = searchParams.get("asignadoId");
   const espacioId = searchParams.get("espacioId");
+  const provincia = sanitizeSearch(searchParams.get("provincia"));
+  const equipo = sanitizeSearch(searchParams.get("equipo"));
+  const prioridad = searchParams.get("prioridad");
+  const quick = searchParams.get("quick");
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
   const limitParam = searchParams.get("limit");
   const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 2000);
@@ -77,6 +81,9 @@ export async function GET(request: NextRequest) {
 
   if (estado) where.estado = { clave: estado };
   if (asignadoId) where.asignaciones = { some: { userId: asignadoId } };
+  if (provincia) where.provincia = { contains: provincia, mode: "insensitive" };
+  if (equipo) where.equipoAsignado = { contains: equipo, mode: "insensitive" };
+  if (prioridad && ["BAJA", "MEDIA", "ALTA", "URGENTE"].includes(prioridad)) where.prioridad = prioridad;
   if (buscar) {
     const searchWhere = {
       OR: [
@@ -92,6 +99,42 @@ export async function GET(request: NextRequest) {
       ],
     };
     where.AND = where.AND ? [...where.AND, searchWhere] : [searchWhere];
+  }
+
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  if (quick === "sin-gps") {
+    const quickWhere = {
+      AND: [
+        { OR: [{ gpsPredio: null }, { gpsPredio: "" }] },
+        { OR: [{ latitud: null }, { longitud: null }] },
+      ],
+    };
+    where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
+  } else if (quick === "sin-espacio") {
+    where.espacioId = null;
+  } else if (quick === "sin-estado") {
+    where.estadoId = null;
+  } else if (quick === "vencidas") {
+    const quickWhere = {
+      OR: [
+        { fechaHasta: { lt: startOfDay } },
+        { fechaProgramada: { lt: startOfDay } },
+      ],
+    };
+    where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
+  } else if (quick === "hoy") {
+    const quickWhere = {
+      OR: [
+        { fechaDesde: { lte: endOfDay }, fechaHasta: { gte: startOfDay } },
+        { fechaProgramada: { gte: startOfDay, lte: endOfDay } },
+      ],
+    };
+    where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
   }
 
   const [predios, total] = await Promise.all([
@@ -120,7 +163,7 @@ export async function GET(request: NextRequest) {
       accion: "CONSULTA_PREDIO",
       detalle: espacioId ? `Espacio ${espacioId}` : "Vista general de tareas",
       ip,
-      metadata: { espacioId: espacioId || null, includeSubspaces, total, buscar: buscar || null },
+      metadata: { espacioId: espacioId || null, includeSubspaces, total, buscar: buscar || null, estado: estado || null, provincia: provincia || null, equipo: equipo || null, prioridad: prioridad || null, quick: quick || null },
     },
   }).catch(() => {});
 
