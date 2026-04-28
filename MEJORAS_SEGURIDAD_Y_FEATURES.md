@@ -4,6 +4,15 @@ Fecha: 2026-04-27
 
 Este documento lista mejoras que conviene aplicar en fases controladas. No forman parte de los cambios de bajo riesgo ya desplegados porque pueden afectar accesos, dependencias, uploads, experiencia central o infraestructura.
 
+## Aplicado en fase 2026-04-28
+
+| Mejora | Estado | Notas |
+| --- | --- | --- |
+| Panel de estado operativo basico | Aplicado | Nueva vista `/dashboard/operacion` para ADMIN/MODERADOR con salud, consistencias, stock, chats, backups y actividad reciente |
+| Vista "Mis tareas" | Aplicado | Nueva vista `/dashboard/mis-tareas` con tareas visibles para el usuario, respetando asignaciones, delegaciones y `equipoAsignado` |
+| Alertas de tareas inconsistentes | Aplicado en modo reporte | Se muestran en Estado operativo; no bloquean ni modifican datos |
+| Backup manual con retencion | Aplicado como script | `scripts/backup-production.sh`; aun no esta programado automaticamente |
+
 ## Seguridad Pendiente
 
 | Mejora | Riesgo | Que cambia | Recomendacion |
@@ -23,9 +32,9 @@ Este documento lista mejoras que conviene aplicar en fases controladas. No forma
 
 | Funcionalidad | Riesgo | Valor operativo | Notas |
 | --- | --- | --- | --- |
-| Panel de estado operativo | Bajo-medio | Ver app, DB, backups, disco, PM2, errores recientes | Ideal para administradores |
-| Vista "Mis tareas" para tecnicos | Medio | Reduce ruido y acelera trabajo diario | Debe respetar asignaciones/equipoAsignado actuales |
-| Alertas de tareas inconsistentes | Bajo-medio | Detecta sin estado, sin equipo, sin GPS, duplicados | Primero como reporte, no bloqueo |
+| Panel de estado operativo extendido | Bajo-medio | Sumar disco, PM2 y errores de logs | La base ya esta aplicada con `/dashboard/operacion` |
+| Vista "Mis tareas" para tecnicos | Medio | Reduce ruido y acelera trabajo diario | Base aplicada; queda mejorar filtros/acciones rapidas |
+| Alertas de tareas inconsistentes | Bajo-medio | Detecta sin estado, sin equipo, sin GPS, duplicados | Base aplicada en modo reporte; queda ampliar reglas |
 | Modo supervisor por equipo | Medio | Carga de trabajo, avances y pendientes por tecnico/equipo | Util para coordinacion TH |
 | Historial visual por predio | Medio | Timeline de estados, asignaciones, comentarios y archivos | Aprovecha `actividad` existente |
 | Centro de importaciones | Medio | Historial de importaciones, errores por fila, resumen de cambios | Evita reimportaciones ciegas |

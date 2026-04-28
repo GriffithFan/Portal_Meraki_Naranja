@@ -90,7 +90,7 @@ export function usePermisos(): PermisosResult {
         return campo === "ver" || campo === "crear" || campo === "editar" || campo === "eliminar" || campo === "exportar";
       }
       // TECNICO defaults
-      if (campo === "ver") return ["tareas", "calendario", "bandeja", "instructivo", "predios", "chat", "hospedajes", "actas"].includes(seccion);
+      if (campo === "ver") return ["tareas", "mis-tareas", "calendario", "bandeja", "instructivo", "predios", "chat", "hospedajes", "actas"].includes(seccion);
       if (campo === "crear" || campo === "editar") return ["tareas", "calendario"].includes(seccion);
       return false;
     },
