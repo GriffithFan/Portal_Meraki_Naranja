@@ -70,6 +70,55 @@ export default function OperacionPage() {
         <Stat title="Actividad semanal" value={data.operacion.actividadSemana} detail={`${data.operacion.usuariosActivos} usuarios activos`} tone="amber" />
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Runtime</h2>
+          <div className="space-y-2 text-sm">
+            <Metric label="Ambiente" value={data.app.runtime.nodeEnv} />
+            <Metric label="PID" value={data.app.runtime.pid} />
+            <Metric label="Uptime" value={formatDuration(data.app.runtime.uptimeSeconds)} />
+            <Metric label="Memoria app" value={`${data.app.runtime.memoryMb} MB`} />
+            <Metric label="Heap usado" value={`${data.app.runtime.heapUsedMb} MB`} />
+            <Metric label="RAM libre" value={`${data.app.runtime.systemFreeMb} / ${data.app.runtime.systemTotalMb} MB`} />
+          </div>
+        </section>
+
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Disco</h2>
+          {data.app.disk.available ? (
+            <div className="space-y-2 text-sm">
+              <Metric label="Montaje" value={data.app.disk.mount || "-"} />
+              <Metric label="Uso" value={`${data.app.disk.usedPercent}%`} tone={data.app.disk.usedPercent >= 85 ? "warn" : "ok"} />
+              <Metric label="Libre" value={`${data.app.disk.freeMb} MB`} />
+              <div className="h-2 rounded-full bg-surface-100 overflow-hidden">
+                <div className={`h-full ${data.app.disk.usedPercent >= 85 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${Math.min(data.app.disk.usedPercent || 0, 100)}%` }} />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-surface-400">{data.app.disk.reason || "No disponible"}</p>
+          )}
+        </section>
+
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Logs PM2</h2>
+          <div className="space-y-2">
+            {data.app.logs.map((log: any) => (
+              <div key={log.name} className="rounded-md border border-surface-100 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-surface-700">{log.name}</span>
+                  <span className={`text-[11px] ${log.exists ? "text-emerald-600" : "text-surface-400"}`}>{log.exists ? formatSize(log.size) : "No detectado"}</span>
+                </div>
+                {log.suspicious.length > 0 ? (
+                  <p className="text-[11px] text-amber-600 mt-1">{log.suspicious.length} linea(s) con posibles errores</p>
+                ) : (
+                  <p className="text-[11px] text-surface-400 mt-1">Sin errores recientes detectados</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <section className="bg-white border border-surface-200 rounded-lg p-4">
           <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Alertas de consistencia</h2>
@@ -99,7 +148,10 @@ export default function OperacionPage() {
             <div className="rounded-md border border-surface-100 p-3">
               <p className="text-sm text-surface-700">Backups encontrados: <span className="font-semibold">{data.backups.count}</span></p>
               {data.backups.latest ? (
-                <p className="text-xs text-surface-400 mt-1">Ultimo: {data.backups.latest.name} · {formatDate(data.backups.latest.modifiedAt)}</p>
+                <div className="text-xs text-surface-400 mt-1 space-y-1">
+                  <p>Ultimo: {data.backups.latest.name} · {formatDate(data.backups.latest.modifiedAt)}</p>
+                  <p>Ruta: {data.backups.path || "-"} · Total: {formatSize(data.backups.totalSize || 0)}</p>
+                </div>
               ) : (
                 <p className="text-xs text-amber-600 mt-1">Carpeta encontrada pero sin backups generados.</p>
               )}
@@ -159,6 +211,31 @@ function Stat({ title, value, detail, tone }: { title: string; value: number; de
   );
 }
 
+function Metric({ label, value, tone }: { label: string; value: string | number; tone?: "ok" | "warn" }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-surface-500">{label}</span>
+      <span className={`font-medium text-right ${tone === "warn" ? "text-amber-600" : tone === "ok" ? "text-emerald-600" : "text-surface-800"}`}>{value}</span>
+    </div>
+  );
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDuration(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatSize(bytes: number) {
+  if (!bytes) return "0 B";
+  const mb = bytes / 1024 / 1024;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  if (mb >= 1) return `${mb.toFixed(1)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
 }

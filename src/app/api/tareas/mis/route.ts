@@ -7,6 +7,12 @@ export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+
   const delegaciones = await prisma.delegacion.findMany({
     where: { delegadoId: session.userId, activo: true },
     select: { delegadorId: true },
@@ -26,7 +32,41 @@ export async function GET() {
     ],
   };
 
-  const [predios, total, byEstado] = await Promise.all([
+  const sinGpsWhere = {
+    AND: [
+      where,
+      {
+        AND: [
+          { OR: [{ gpsPredio: null }, { gpsPredio: "" }] },
+          { OR: [{ latitud: null }, { longitud: null }] },
+        ],
+      },
+    ],
+  };
+  const vencidasWhere = {
+    AND: [
+      where,
+      {
+        OR: [
+          { fechaHasta: { lt: startOfDay } },
+          { fechaProgramada: { lt: startOfDay } },
+        ],
+      },
+    ],
+  };
+  const hoyWhere = {
+    AND: [
+      where,
+      {
+        OR: [
+          { fechaDesde: { lte: endOfDay }, fechaHasta: { gte: startOfDay } },
+          { fechaProgramada: { gte: startOfDay, lte: endOfDay } },
+        ],
+      },
+    ],
+  };
+
+  const [predios, total, byEstado, sinEstado, sinGPS, sinEspacio, prioridadAlta, vencidas, hoy] = await Promise.all([
     prisma.predio.findMany({
       where,
       include: {
@@ -40,6 +80,12 @@ export async function GET() {
     }),
     prisma.predio.count({ where }),
     prisma.predio.groupBy({ by: ["estadoId"], where, _count: { _all: true } }),
+    prisma.predio.count({ where: { AND: [where, { estadoId: null }] } }),
+    prisma.predio.count({ where: sinGpsWhere }),
+    prisma.predio.count({ where: { AND: [where, { espacioId: null }] } }),
+    prisma.predio.count({ where: { AND: [where, { prioridad: "ALTA" }] } }),
+    prisma.predio.count({ where: vencidasWhere }),
+    prisma.predio.count({ where: hoyWhere }),
   ]);
 
   const estadoIds = byEstado.map((item) => item.estadoId).filter(Boolean) as string[];
@@ -51,6 +97,7 @@ export async function GET() {
   return NextResponse.json({
     total,
     predios,
+    quickCounts: { sinEstado, sinGPS, sinEspacio, prioridadAlta, vencidas, hoy },
     byEstado: byEstado.map((item) => {
       const estado = item.estadoId ? estadoMap.get(item.estadoId) : null;
       return {

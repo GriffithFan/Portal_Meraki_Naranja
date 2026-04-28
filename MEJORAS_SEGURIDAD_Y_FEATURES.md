@@ -12,6 +12,8 @@ Este documento lista mejoras que conviene aplicar en fases controladas. No forma
 | Vista "Mis tareas" | Aplicado | Nueva vista `/dashboard/mis-tareas` con tareas visibles para el usuario, respetando asignaciones, delegaciones y `equipoAsignado` |
 | Alertas de tareas inconsistentes | Aplicado en modo reporte | Se muestran en Estado operativo; no bloquean ni modifican datos |
 | Backup manual con retencion | Aplicado como script | `scripts/backup-production.sh`; aun no esta programado automaticamente |
+| Panel operativo extendido | Aplicado | Runtime Node, RAM, disco en VPS, logs PM2 y ruta/tamano de backups si existen |
+| Filtros rapidos de Mis tareas | Aplicado | Hoy, vencidas, sin GPS, sin estado, sin espacio y alta prioridad sin modificar datos |
 
 ## Seguridad Pendiente
 
@@ -32,9 +34,9 @@ Este documento lista mejoras que conviene aplicar en fases controladas. No forma
 
 | Funcionalidad | Riesgo | Valor operativo | Notas |
 | --- | --- | --- | --- |
-| Panel de estado operativo extendido | Bajo-medio | Sumar disco, PM2 y errores de logs | La base ya esta aplicada con `/dashboard/operacion` |
-| Vista "Mis tareas" para tecnicos | Medio | Reduce ruido y acelera trabajo diario | Base aplicada; queda mejorar filtros/acciones rapidas |
-| Alertas de tareas inconsistentes | Bajo-medio | Detecta sin estado, sin equipo, sin GPS, duplicados | Base aplicada en modo reporte; queda ampliar reglas |
+| Panel de estado operativo extendido | Bajo-medio | Sumar estado PM2 via CLI/API y checks de HTTP externos | Runtime, disco, logs y backups ya aplicados |
+| Vista "Mis tareas" para tecnicos | Medio | Reduce ruido y acelera trabajo diario | Base y filtros rapidos aplicados; queda acciones rapidas si se aprueban |
+| Alertas de tareas inconsistentes | Bajo-medio | Detecta sin estado, sin equipo, sin GPS, duplicados | Base aplicada en modo reporte; queda ampliar reglas por negocio |
 | Modo supervisor por equipo | Medio | Carga de trabajo, avances y pendientes por tecnico/equipo | Util para coordinacion TH |
 | Historial visual por predio | Medio | Timeline de estados, asignaciones, comentarios y archivos | Aprovecha `actividad` existente |
 | Centro de importaciones | Medio | Historial de importaciones, errores por fila, resumen de cambios | Evita reimportaciones ciegas |
