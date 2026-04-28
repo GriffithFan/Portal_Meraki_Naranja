@@ -141,6 +141,11 @@ export default function EspacioTareasPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
+  const [filterEstado, setFilterEstado] = useState("todos");
+  const [filterProvincia, setFilterProvincia] = useState("");
+  const [filterEquipo, setFilterEquipo] = useState("");
+  const [filterPrioridad, setFilterPrioridad] = useState("todas");
+  const [quickFilter, setQuickFilter] = useState("todos");
   const [search, setSearch] = useState("");
   const [serverSearch, setServerSearch] = useState("");
   const [includeSubspaces, setIncludeSubspaces] = useState(false);
@@ -430,6 +435,11 @@ export default function EspacioTareasPage() {
     const params = new URLSearchParams({ espacioId, limit: String(SERVER_PAGE_SIZE), page: String(pageToLoad) });
     if (includeSubspaces) params.set("includeSubspaces", "true");
     if (serverSearch) params.set("buscar", serverSearch);
+    if (filterEstado !== "todos") params.set("estado", filterEstado);
+    if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
+    if (filterEquipo.trim()) params.set("equipo", filterEquipo.trim());
+    if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
+    if (quickFilter !== "todos") params.set("quick", quickFilter);
 
     const [tareasRes, estadosRes, espacioRes] = await Promise.all([
       fetch(`/api/tareas?${params.toString()}`, { credentials: "include" }),
@@ -478,7 +488,7 @@ export default function EspacioTareasPage() {
 
     if (append) setLoadingMore(false);
     else setLoading(false);
-  }, [espacioId, includeSubspaces, serverSearch]);
+  }, [espacioId, filterEquipo, filterEstado, filterPrioridad, filterProvincia, includeSubspaces, quickFilter, serverSearch]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
@@ -1026,6 +1036,17 @@ export default function EspacioTareasPage() {
     });
   }, [columns, tareas, ALWAYS_VISIBLE]);
 
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterEquipo.trim() || filterPrioridad !== "todas" || quickFilter !== "todos");
+  const clearServerFilters = () => {
+    setSearch("");
+    setServerSearch("");
+    setFilterEstado("todos");
+    setFilterProvincia("");
+    setFilterEquipo("");
+    setFilterPrioridad("todas");
+    setQuickFilter("todos");
+  };
+
   // Suprimir warning de session no usada
   void session;
 
@@ -1274,6 +1295,68 @@ export default function EspacioTareasPage() {
         <span className="text-xs font-medium text-primary-600 border-b-2 border-primary-600 pb-2 px-1">
           {includeSubspaces ? "Tareas con subcarpetas" : "Tareas directas"} ({tareas.length}/{pagination.total || tareas.length})
         </span>
+      </div>
+
+      <div className="mb-4 bg-white border border-surface-200 rounded-lg p-3 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "todos", label: "Todos" },
+            { key: "hoy", label: "Hoy" },
+            { key: "vencidas", label: "Vencidas" },
+            { key: "sin-gps", label: "Sin GPS" },
+            { key: "sin-estado", label: "Sin estado" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setQuickFilter(item.key)}
+              className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${quickFilter === item.key ? "bg-primary-600 border-primary-600 text-white" : "border-surface-200 text-surface-600 hover:bg-surface-50"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <select
+            value={filterEstado}
+            onChange={(e) => setFilterEstado(e.target.value)}
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="todos">Todos los estados</option>
+            {estados.map(e => <option key={e.id} value={e.clave}>{e.nombre}</option>)}
+          </select>
+          <input
+            value={filterProvincia}
+            onChange={(e) => setFilterProvincia(e.target.value)}
+            placeholder="Provincia"
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md focus:outline-none focus:border-surface-400"
+          />
+          <select
+            value={filterEquipo}
+            onChange={(e) => setFilterEquipo(e.target.value)}
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="">Todos los equipos</option>
+            {equipoOpts.map(opt => <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>)}
+          </select>
+          <select
+            value={filterPrioridad}
+            onChange={(e) => setFilterPrioridad(e.target.value)}
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="todas">Todas las prioridades</option>
+            <option value="URGENTE">Urgente</option>
+            <option value="ALTA">Alta</option>
+            <option value="MEDIA">Media</option>
+            <option value="BAJA">Baja</option>
+          </select>
+          <button
+            onClick={clearServerFilters}
+            disabled={!hasServerFilters}
+            className="px-3 py-2 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+          >
+            Limpiar filtros
+          </button>
+        </div>
       </div>
 
       {/* Config panel — drawer lateral */}
