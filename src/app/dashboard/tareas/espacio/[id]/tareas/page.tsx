@@ -124,6 +124,8 @@ const GROUP_BY_OPTIONS = [
   { value: "ciudad", label: "Departamento" },
 ];
 
+const SERVER_PAGE_SIZE = 500;
+
 export default function EspacioTareasPage() {
   const params = useParams();
   const espacioId = params.id as string;
@@ -137,7 +139,10 @@ export default function EspacioTareasPage() {
   const [tareas, setTareas] = useState<any[]>([]);
   const [estados, setEstados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
   const [search, setSearch] = useState("");
+  const [serverSearch, setServerSearch] = useState("");
   const [includeSubspaces, setIncludeSubspaces] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
@@ -239,6 +244,11 @@ export default function EspacioTareasPage() {
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [inlineEstado]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setServerSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const abrirInlineEstado = (e: React.MouseEvent, tareaId: string) => {
     e.stopPropagation();
@@ -383,8 +393,11 @@ export default function EspacioTareasPage() {
     }
   }, [isModOrAdmin]);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (options?: { page?: number; append?: boolean }) => {
+    const pageToLoad = options?.page || 1;
+    const append = options?.append || false;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
 
     // Cargar config compartida del servidor ANTES del auto-hide
     if (!colConfigLoaded.current) {
@@ -414,8 +427,12 @@ export default function EspacioTareasPage() {
       colConfigLoaded.current = true;
     }
 
+    const params = new URLSearchParams({ espacioId, limit: String(SERVER_PAGE_SIZE), page: String(pageToLoad) });
+    if (includeSubspaces) params.set("includeSubspaces", "true");
+    if (serverSearch) params.set("buscar", serverSearch);
+
     const [tareasRes, estadosRes, espacioRes] = await Promise.all([
-      fetch(`/api/tareas?espacioId=${espacioId}&limit=2000${includeSubspaces ? "&includeSubspaces=true" : ""}`, { credentials: "include" }),
+      fetch(`/api/tareas?${params.toString()}`, { credentials: "include" }),
       fetch("/api/estados", { credentials: "include" }),
       fetch(`/api/espacios/${espacioId}`, { credentials: "include" }),
     ]);
@@ -423,7 +440,16 @@ export default function EspacioTareasPage() {
     if (tareasRes.ok) {
       const d = await tareasRes.json();
       const predios = d.predios || [];
-      setTareas(predios);
+      setTareas(prev => {
+        if (!append) return predios;
+        const seen = new Set(prev.map((item: any) => item.id));
+        return [...prev, ...predios.filter((item: any) => !seen.has(item.id))];
+      });
+      setPagination({ page: d.page || pageToLoad, total: d.total || predios.length, hasMore: Boolean(d.hasMore), limit: d.limit || SERVER_PAGE_SIZE });
+      if (!append) {
+        setSelectedIds(new Set());
+        setRenderLimits({});
+      }
       // Auto-ocultar columnas sin datos (solo la primera vez y si NO hay config guardada en servidor)
       if (!autoHideDone.current && !hadSavedConfig.current && predios.length > 0) {
         autoHideDone.current = true;
@@ -450,8 +476,14 @@ export default function EspacioTareasPage() {
       setEspacio(d.espacio);
     }
 
-    setLoading(false);
-  }, [espacioId, includeSubspaces]);
+    if (append) setLoadingMore(false);
+    else setLoading(false);
+  }, [espacioId, includeSubspaces, serverSearch]);
+
+  const loadMoreTareas = useCallback(() => {
+    if (loadingMore || !pagination.hasMore) return;
+    fetchData({ page: pagination.page + 1, append: true });
+  }, [fetchData, loadingMore, pagination.hasMore, pagination.page]);
 
   // Auto-open predio detail from URL ?open=CODIGO
   const openHandled = useRef(false);
@@ -479,7 +511,7 @@ export default function EspacioTareasPage() {
   // Agrupar tareas por estado o campo
   const groupedTareas = useMemo(() => {
     let filtered = tareas;
-    if (search) {
+    if (search && !serverSearch) {
       const s = search.toLowerCase();
       filtered = tareas.filter((t) => {
         const prov = obtenerProvincia(t.provincia, t.codigo);
@@ -546,7 +578,7 @@ export default function EspacioTareasPage() {
       sorted[k] = groups[k];
     }
     return sorted;
-  }, [tareas, estados, search, sortConfig, groupBy]);
+  }, [tareas, estados, search, serverSearch, sortConfig, groupBy]);
 
   const toggleSection = (id: string) => {
     setExpandedSections((prev) => {
@@ -1180,7 +1212,9 @@ export default function EspacioTareasPage() {
             </svg>
           </div>
           <h1 className="text-lg sm:text-xl font-semibold text-surface-800">{espacio.nombre}</h1>
-          <span className="text-xs text-surface-400">{tareas.length} registros</span>
+          <span className="text-xs text-surface-400">
+            {tareas.length} de {pagination.total || tareas.length} registros{serverSearch ? ` · filtro: ${serverSearch}` : ""}
+          </span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -1238,7 +1272,7 @@ export default function EspacioTareasPage() {
           Resumen
         </Link>
         <span className="text-xs font-medium text-primary-600 border-b-2 border-primary-600 pb-2 px-1">
-          {includeSubspaces ? "Tareas con subcarpetas" : "Tareas directas"} ({tareas.length})
+          {includeSubspaces ? "Tareas con subcarpetas" : "Tareas directas"} ({tareas.length}/{pagination.total || tareas.length})
         </span>
       </div>
 
@@ -1616,6 +1650,18 @@ export default function EspacioTareasPage() {
             );
           })}
         </>
+        )}
+
+        {pagination.hasMore && (
+          <div className="flex justify-center pt-2">
+            <button
+              onClick={loadMoreTareas}
+              disabled={loadingMore}
+              className="px-4 py-2 text-xs rounded-md border border-surface-200 bg-white text-surface-600 hover:bg-surface-50 disabled:opacity-60 transition-colors"
+            >
+              {loadingMore ? "Cargando..." : `Cargar mas (${Math.max((pagination.total || 0) - tareas.length, 0)} restantes)`}
+            </button>
+          </div>
         )}
       </div>
 

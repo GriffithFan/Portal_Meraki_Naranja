@@ -1,70 +1,88 @@
-# Mejoras Diferidas: Seguridad y Funcionalidades
+# Checklist de Mejoras: Seguridad, Performance y Funcionalidades
 
-Fecha: 2026-04-27
+Fecha inicial: 2026-04-27
+Ultima actualizacion: 2026-04-28
 
-Este documento lista mejoras que conviene aplicar en fases controladas. No forman parte de los cambios de bajo riesgo ya desplegados porque pueden afectar accesos, dependencias, uploads, experiencia central o infraestructura.
+Este documento funciona como checklist vivo. La fase sensible de credenciales/login queda separada para mas adelante; las mejoras actuales deben evitar tocar credenciales de tecnicos, `passwordPlain`, estados actuales, stock y datos operativos.
 
-## Aplicado en fase 2026-04-28
+## Aplicado
 
-| Mejora | Estado | Notas |
-| --- | --- | --- |
-| Panel de estado operativo basico | Aplicado | Nueva vista `/dashboard/operacion` para ADMIN/MODERADOR con salud, consistencias, stock, chats, backups y actividad reciente |
-| Vista "Mis tareas" | Aplicado | Nueva vista `/dashboard/mis-tareas` con tareas visibles para el usuario, respetando asignaciones, delegaciones y `equipoAsignado` |
-| Alertas de tareas inconsistentes | Aplicado en modo reporte | Se muestran en Estado operativo; no bloquean ni modifican datos |
-| Backup manual con retencion | Aplicado como script | `scripts/backup-production.sh`; aun no esta programado automaticamente |
-| Panel operativo extendido | Aplicado | Runtime Node, RAM, disco en VPS, logs PM2 y ruta/tamano de backups si existen |
-| Filtros rapidos de Mis tareas | Aplicado | Hoy, vencidas, sin GPS, sin estado, sin espacio y alta prioridad sin modificar datos |
-| Paginacion server-side inicial en tareas | Aplicado | `/dashboard/tareas` carga 500 registros por pagina, busqueda remota y boton para traer mas |
-| Filtros server-side en tareas | Aplicado | Estado, provincia, equipo, prioridad y filtros rapidos operativos desde la API paginada |
+- [x] Columnas OCP visibles desde Excel importado mediante campos personalizados.
+- [x] Regla global `equipoAsignado` equivalente a asignacion de usuario.
+- [x] Backfill de asignaciones desde equipo/asignado en produccion.
+- [x] Cache corto para KPIs de dashboard.
+- [x] Carga dinamica de `xlsx` en Stock para reducir bundle inicial.
+- [x] Polling de chat/notificaciones pausado con pestaña oculta y sin requests solapados.
+- [x] Chat incremental con `since` para traer solo mensajes nuevos.
+- [x] Diferencia clara entre tareas directas y tareas con subcarpetas.
+- [x] Toggle opcional para incluir subcarpetas en espacios.
+- [x] Script manual de backup con retencion: `scripts/backup-production.sh`.
+- [x] Panel Estado operativo basico: `/dashboard/operacion`.
+- [x] Panel Estado operativo extendido: runtime Node, RAM, disco, logs PM2 y backups detectados.
+- [x] Vista Mis tareas: `/dashboard/mis-tareas`.
+- [x] Filtros rapidos de Mis tareas: hoy, vencidas, sin GPS, sin estado, sin espacio y alta prioridad.
+- [x] Paginacion server-side inicial en Cronograma: `/dashboard/tareas` carga 500 registros por pagina.
+- [x] Busqueda server-side en Cronograma.
+- [x] Filtros server-side en Cronograma por estado, provincia, equipo, prioridad y filtros rapidos.
+- [x] Paginacion server-side inicial en tareas por espacio: `/dashboard/tareas/espacio/[id]/tareas` carga 500 registros por pagina.
 
-## Seguridad Pendiente
+## En Progreso / Pendiente no Sensible
 
-| Mejora | Riesgo | Que cambia | Recomendacion |
-| --- | --- | --- | --- |
-| Eliminar credenciales en texto plano (`passwordPlain`) | Alto operativo | Cambia recuperacion/consulta de claves de tecnicos | Hacer backup DB, inventario de usuarios afectados, migracion gradual y comunicacion previa |
-| Actualizar dependencias vulnerables (`jspdf`, `xlsx`, y otras segun auditoria) | Medio | Puede afectar exportaciones PDF/Excel | Probar exportacion de stock, tareas, actas y reportes antes de subir |
-| Endurecer uploads de chat, actas e instructivos | Medio | Validaciones MIME, tamano, extension, nombres y carpetas | Aplicar por modulo, empezando por logs/alertas antes de bloquear archivos |
-| Rate limiting persistente | Medio | Cambia proteccion de login y APIs sensibles | Usar almacenamiento externo o estrategia compatible con PM2; evitar falsos positivos a tecnicos |
-| Headers y CSP estrictos | Medio-alto | Puede bloquear imagenes, mapas, scripts o descargas | Primero modo report-only, luego enforcement por etapas |
-| Auditoria de sesiones/cookies | Medio | Ajustes de expiracion, flags y renovacion | Probar en moviles y tecnicos con sesiones largas |
-| Revisar permisos por rol y espacio | Medio | Puede cambiar visibilidad de datos | Crear matriz esperada por rol antes de tocar reglas |
-| Sanitizacion avanzada de contenido renderizado | Bajo-medio | Refuerza textos enriquecidos, comentarios y archivos | Aplicar sin modificar datos existentes |
-| Monitoreo de errores de seguridad | Bajo | Agrega alertas de eventos sospechosos | Empezar con logging sin bloqueo |
-| Backups cifrados fuera del VPS | Medio | Cambia destino y retencion de backups | Probar restauracion completa antes de confiar en la rutina |
+- [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
+- [ ] Filtros guardados por usuario en Cronograma.
+- [ ] Filtros server-side completos en tareas por espacio: estado, provincia, equipo, prioridad y filtros rapidos.
+- [ ] Historial visual por predio con timeline de actividad, cambios de estado, asignaciones, comentarios y archivos.
+- [ ] Centro de importaciones con historial, errores por fila, resumen de altas/cambios y proteccion contra reimportaciones ciegas.
+- [ ] Modo supervisor por equipo: carga, vencidas, avance y pendientes por tecnico/equipo.
+- [ ] Stock minimo y alertas por tipo/equipo.
+- [ ] Busqueda global inicial: predios + stock; luego chats, actas e instructivos.
+- [ ] Reportes programados diarios/semanales por bandeja interna o email.
+- [ ] Panel operativo con checks HTTP externos, estado PM2 mas detallado y ultima ejecucion de cron/backups.
+- [ ] Separar graficos pesados de `/dashboard/kpis` en chunks dinamicos.
+- [ ] Cache compartido para catalogos (`estados`, `espacios`, `campos-personalizados`, usuarios/equipos).
+- [ ] Indices DB basados en consultas lentas reales medidas en VPS.
+- [ ] Optimizar imagenes privadas donde sea seguro reemplazar `<img>` por `next/image` o endpoint optimizado.
 
-## Funcionalidades Sugeridas
+## Seguridad sin Tocar Credenciales
 
-| Funcionalidad | Riesgo | Valor operativo | Notas |
-| --- | --- | --- | --- |
-| Panel de estado operativo extendido | Bajo-medio | Sumar estado PM2 via CLI/API y checks de HTTP externos | Runtime, disco, logs y backups ya aplicados |
-| Vista "Mis tareas" para tecnicos | Medio | Reduce ruido y acelera trabajo diario | Base y filtros rapidos aplicados; queda acciones rapidas si se aprueban |
-| Alertas de tareas inconsistentes | Bajo-medio | Detecta sin estado, sin equipo, sin GPS, duplicados | Base aplicada en modo reporte; queda ampliar reglas por negocio |
-| Modo supervisor por equipo | Medio | Carga de trabajo, avances y pendientes por tecnico/equipo | Util para coordinacion TH |
-| Historial visual por predio | Medio | Timeline de estados, asignaciones, comentarios y archivos | Aprovecha `actividad` existente |
-| Centro de importaciones | Medio | Historial de importaciones, errores por fila, resumen de cambios | Evita reimportaciones ciegas |
-| Reportes programados | Medio | Resumen diario/semanal de tareas, stock, chats y alertas | Enviar por email o bandeja interna |
-| Stock minimo y alertas | Medio | Avisos de faltantes o equipos criticos | Requiere definir umbrales por tipo/equipo |
-| Busqueda global | Medio | Buscar predios, stock, chats, actas e instructivos | Puede empezar por predios + stock |
-| Modo solo lectura segura | Bajo-medio | Acceso para auditorias o supervision externa | Requiere roles/permisos bien definidos |
+- [ ] Actualizar dependencias vulnerables (`xlsx`, `jspdf` y otras segun `npm audit`) con pruebas de exportaciones.
+- [ ] Endurecer uploads de chat, actas e instructivos: MIME, tamaño, extension, nombres y carpetas.
+- [ ] Sanitizacion avanzada de comentarios, nombres de archivo y textos renderizados.
+- [ ] CSP en modo report-only antes de bloquear recursos.
+- [ ] Monitoreo de eventos sospechosos: login fallido, 403/429, uploads rechazados y errores repetidos.
+- [ ] Backup automatico con retencion usando el script existente.
+- [ ] Prueba de restauracion de backup en entorno aislado.
 
-## Mejoras Tecnicas Pendientes de Performance/UX
+## Fase Separada Sensible
 
-| Mejora | Riesgo | Estado recomendado |
-| --- | --- | --- |
-| Paginacion server-side avanzada en tareas | Medio | Base aplicada; queda mover agrupados/conteos completos al servidor |
-| Filtros server-side avanzados para tareas | Medio | Base aplicada; quedan conteos globales por filtro y combinaciones guardadas por usuario |
-| Separar graficos pesados de KPIs en chunks dinamicos | Medio | Conviene refactorizar `dashboard/kpis` en componentes pequenos |
-| Indices nuevos basados en consultas lentas reales | Medio | Medir primero; luego migracion Prisma controlada |
-| SSE/WebSocket para notificaciones en vivo | Medio-alto | Probar con Nginx/PM2 antes de reemplazar polling |
-| Optimizar imagenes privadas de chat/instructivos | Bajo-medio | Cuidar endpoints autenticados antes de usar `next/image` |
-| Cache compartido para catalogos (`estados`, `espacios`, `campos`) | Bajo-medio | Implementar con React Query o contexto dedicado |
-| Backup automatico con retencion | Bajo-medio | Usar primero el script manual y luego cron/systemd timer |
+No aplicar dentro de las tandas operativas actuales.
 
-## Orden Sugerido
+- [ ] Eliminar credenciales en texto plano (`passwordPlain`).
+- [ ] Cambiar recuperacion/consulta de claves de tecnicos.
+- [ ] Resetear contraseñas o forzar rotacion.
+- [ ] Cambiar flujo de login de tecnicos.
+- [ ] Endurecer sesiones/cookies si puede afectar moviles o sesiones largas.
+- [ ] Revisar matriz de permisos por rol/espacio con impacto en visibilidad de datos.
 
-1. Probar restauracion de backup en entorno aislado.
-2. Crear panel de estado operativo basico.
-3. Agregar alertas de inconsistencias en modo reporte.
-4. Implementar "Mis tareas" para tecnicos.
-5. Refactorizar tareas con paginacion/filtros server-side.
-6. Recién despues avanzar con seguridad sensible: `passwordPlain`, CSP, rate limit persistente y uploads estrictos.
+## Sugerencias para Agregar
+
+- [ ] Vista de mapa de trabajo diario con filtros por tecnico/equipo y tareas sin GPS.
+- [ ] Cola de revision para datos incompletos: sin estado, sin equipo, sin GPS, sin espacio, CUE duplicado.
+- [ ] Notificaciones internas por reglas: tarea vencida, stock bajo, chat sin respuesta, backup viejo.
+- [ ] Exportacion de reportes filtrados desde Cronograma respetando los filtros server-side.
+- [ ] Panel de calidad de datos por espacio/provincia/equipo.
+- [ ] Modo auditoria read-only con acceso temporal y trazabilidad.
+- [ ] Resumen ejecutivo semanal para administradores.
+- [ ] Pruebas automatizadas de humo para rutas criticas antes de deploy.
+- [ ] Dashboard de importaciones por origen: ClickUp, Excel, scripts manuales.
+- [ ] Diccionario de campos personalizados para explicar origen y uso de cada columna.
+
+## Orden Recomendado Actual
+
+1. Completar filtros server-side en tareas por espacio.
+2. Agregar historial visual por predio.
+3. Crear centro de importaciones en modo lectura/reporte.
+4. Implementar modo supervisor por equipo.
+5. Agregar stock minimo y alertas.
+6. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
+7. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
