@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -30,9 +30,11 @@ const IconX = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
 );
 
 type Step = "upload" | "map" | "result";
+type ViewMode = "importar" | "historial";
 
 export default function ImportarPage() {
   const [step, setStep] = useState<Step>("upload");
+  const [viewMode, setViewMode] = useState<ViewMode>("importar");
   const [tipo, setTipo] = useState<"PREDIO" | "EQUIPO">("PREDIO");
   const [parseResult, setParseResult] = useState<any>(null);
   const [mappings, setMappings] = useState<Record<number, string>>({});
@@ -57,6 +59,34 @@ export default function ImportarPage() {
   const [newCustomFields, setNewCustomFields] = useState<Record<number, string>>({}); // colIdx → nombre
   // Columna seleccionada para preview dinámico
   const [selectedPreviewCol, setSelectedPreviewCol] = useState<number | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [historySummary, setHistorySummary] = useState<any>(null);
+
+  const formatDateTime = (value: string) => new Date(value).toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/importar/historial", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data.imports || []);
+        setHistorySummary(data.resumen || null);
+      }
+    } catch { /* ignore */ }
+    setHistoryLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   // Cargar campos disponibles + campos personalizados
   useEffect(() => {
@@ -321,6 +351,7 @@ export default function ImportarPage() {
     if (res.ok) {
       setResult(data);
       setStep("result");
+      fetchHistory();
     } else {
       setError(data.error || "Error al importar");
     }
@@ -379,11 +410,103 @@ export default function ImportarPage() {
 
   return (
     <div className="animate-fade-in-up">
-      <h1 className="text-xl font-semibold text-surface-800 mb-1">Importar</h1>
-      <p className="text-xs text-surface-400 mb-6">Importar datos desde archivos Excel o CSV</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-surface-800 mb-1">Importar</h1>
+          <p className="text-xs text-surface-400">Importar datos desde archivos Excel o CSV</p>
+        </div>
+        <div className="inline-flex bg-surface-100 rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setViewMode("importar")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === "importar" ? "bg-white text-surface-800 shadow-sm" : "text-surface-500 hover:text-surface-700"}`}
+          >
+            Cargar archivo
+          </button>
+          <button
+            onClick={() => { setViewMode("historial"); fetchHistory(); }}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === "historial" ? "bg-white text-surface-800 shadow-sm" : "text-surface-500 hover:text-surface-700"}`}
+          >
+            Historial
+          </button>
+        </div>
+      </div>
+
+      {viewMode === "historial" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            {[
+              { label: "Importaciones", value: historySummary?.totalImportaciones || 0, tone: "text-surface-800" },
+              { label: "Filas", value: historySummary?.totalFilas || 0, tone: "text-surface-800" },
+              { label: "Creados", value: historySummary?.totalCreados || 0, tone: "text-emerald-600" },
+              { label: "Actualizados", value: historySummary?.totalActualizados || 0, tone: "text-blue-600" },
+              { label: "Omitidos", value: historySummary?.totalOmitidos || 0, tone: "text-amber-600" },
+            ].map((stat) => (
+              <div key={stat.label} className="bg-white border border-surface-200 rounded-lg p-3">
+                <p className="text-[10px] text-surface-400 uppercase tracking-wider">{stat.label}</p>
+                <p className={`text-xl font-semibold tabular-nums ${stat.tone}`}>{stat.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-surface-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-surface-800">Historial de importaciones</h2>
+                <p className="text-[11px] text-surface-400">Ultimas 50 importaciones registradas</p>
+              </div>
+              <button onClick={fetchHistory} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
+                Actualizar
+              </button>
+            </div>
+            {historyLoading ? (
+              <div className="p-8 text-center text-sm text-surface-400">Cargando historial...</div>
+            ) : history.length === 0 ? (
+              <div className="p-8 text-center text-sm text-surface-400">Sin importaciones registradas</div>
+            ) : (
+              <div className="divide-y divide-surface-100">
+                {history.map((item) => (
+                  <div key={item.id} className="p-4 hover:bg-surface-50 transition-colors">
+                    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${item.tipo === "PREDIO" ? "bg-primary-50 text-primary-700" : "bg-violet-50 text-violet-700"}`}>{item.tipo === "PREDIO" ? "Predios" : "Equipos"}</span>
+                          {item.updateExisting && <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">Actualizo existentes</span>}
+                          {item.errors.length > 0 && <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-700">{item.errors.length} errores</span>}
+                        </div>
+                        <p className="text-sm font-medium text-surface-800 mt-1">{item.descripcion}</p>
+                        <p className="text-[11px] text-surface-400 mt-0.5">
+                          {formatDateTime(item.createdAt)} · {item.usuario?.nombre || "Sistema"}{item.mappingsCount ? ` · ${item.mappingsCount} columnas mapeadas` : ""}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 text-center shrink-0 min-w-[280px]">
+                        <div><p className="text-sm font-semibold text-emerald-600 tabular-nums">{item.created}</p><p className="text-[10px] text-surface-400">Creados</p></div>
+                        <div><p className="text-sm font-semibold text-blue-600 tabular-nums">{item.updated}</p><p className="text-[10px] text-surface-400">Actual.</p></div>
+                        <div><p className="text-sm font-semibold text-amber-600 tabular-nums">{item.skipped}</p><p className="text-[10px] text-surface-400">Omit.</p></div>
+                        <div><p className="text-sm font-semibold text-surface-700 tabular-nums">{item.total}</p><p className="text-[10px] text-surface-400">Total</p></div>
+                      </div>
+                    </div>
+                    {(item.errors.length > 0 || item.duplicates.length > 0) && (
+                      <div className="mt-3 grid gap-2">
+                        {item.errors.slice(0, 5).map((err: string, index: number) => (
+                          <p key={`${item.id}-err-${index}`} className="text-[11px] text-red-600 bg-red-50 rounded px-2 py-1">{err}</p>
+                        ))}
+                        {item.duplicates.length > 0 && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1">
+                            {item.duplicates.length} duplicados registrados en el resultado de importacion.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Paso 1: Subir archivo */}
-      {step === "upload" && (
+      {viewMode === "importar" && step === "upload" && (
         <div className="bg-white rounded-lg border border-surface-200 p-6">
           <div className="max-w-lg mx-auto space-y-4">
             <div>
@@ -479,7 +602,7 @@ export default function ImportarPage() {
       )}
 
       {/* Paso 2: Mapear columnas */}
-      {step === "map" && parseResult && (
+      {viewMode === "importar" && step === "map" && parseResult && (
         <div className="space-y-4">
           <div className="flex gap-4">
           {/* Panel izquierdo: Mapeo */}
@@ -743,7 +866,7 @@ export default function ImportarPage() {
       )}
 
       {/* Paso 3: Resultado */}
-      {step === "result" && result && (
+      {viewMode === "importar" && step === "result" && result && (
         <div className="bg-white rounded-lg border border-surface-200 p-6 text-center">
           <svg className="w-10 h-10 mx-auto mb-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           <h2 className="text-base font-semibold text-surface-800 mb-2">Importación completada</h2>

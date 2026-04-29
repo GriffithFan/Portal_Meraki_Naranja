@@ -27,12 +27,12 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Paginacion server-side inicial en tareas por espacio: `/dashboard/tareas/espacio/[id]/tareas` carga 500 registros por pagina.
 - [x] Filtros server-side en tareas por espacio por estado, provincia, equipo, prioridad y filtros rapidos propios del espacio.
 - [x] Historial visual por predio en el modal de detalle: comentarios, cambios y archivos/actas en una linea de tiempo.
+- [x] Centro de importaciones en modo lectura/reporte con historial, resumen, errores y duplicados registrados.
 
 ## En Progreso / Pendiente no Sensible
 
 - [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
 - [ ] Filtros guardados por usuario en Cronograma.
-- [ ] Centro de importaciones con historial, errores por fila, resumen de altas/cambios y proteccion contra reimportaciones ciegas.
 - [ ] Modo supervisor por equipo: carga, vencidas, avance y pendientes por tecnico/equipo.
 - [ ] Stock minimo y alertas por tipo/equipo.
 - [ ] Busqueda global inicial: predios + stock; luego chats, actas e instructivos.
@@ -79,8 +79,7 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Crear centro de importaciones en modo lectura/reporte.
-2. Implementar modo supervisor por equipo.
-3. Agregar stock minimo y alertas.
-4. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
-5. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
+1. Implementar modo supervisor por equipo.
+2. Agregar stock minimo y alertas.
+3. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
+4. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.

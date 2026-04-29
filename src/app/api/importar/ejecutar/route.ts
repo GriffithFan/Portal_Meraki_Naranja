@@ -603,6 +603,18 @@ export async function POST(request: NextRequest) {
           entidad: tipo,
           entidadId: "bulk-import",
           userId: session.userId,
+          metadata: {
+            tipo,
+            created,
+            updated,
+            skipped,
+            total: rows.length,
+            errors: errors.slice(0, 20),
+            duplicates: duplicates.slice(0, 20),
+            updateExisting: Boolean(updateExisting),
+            espacioId: espacioId || null,
+            mappingsCount: mappings.length,
+          },
         },
       });
     } catch { /* no bloquear por log */ }
