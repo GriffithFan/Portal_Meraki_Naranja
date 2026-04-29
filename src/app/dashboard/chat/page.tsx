@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
+import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -11,6 +12,13 @@ import clsx from "clsx";
 
 const MAX_AUDIO_SECONDS = 120;
 const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/zip,application/x-zip-compressed";
+const PARTICIPANT_COLORS = [
+  "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:ring-blue-700",
+  "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:ring-emerald-700",
+  "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-900/30 dark:text-violet-200 dark:ring-violet-700",
+  "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:ring-amber-700",
+  "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:ring-rose-700",
+];
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -74,6 +82,17 @@ function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
   );
 }
 
+function participantColor(id = "") {
+  const hash = Array.from(id).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return PARTICIPANT_COLORS[hash % PARTICIPANT_COLORS.length];
+}
+
+function participantLabel(msg: any, sessionUserId?: string, isMesa?: boolean, soloLectura?: boolean) {
+  if (msg.autorId === sessionUserId) return "Vos";
+  if (isMesa || soloLectura) return msg.autor?.nombre || "Participante";
+  return "Mesa de Ayuda";
+}
+
 const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
   ABIERTA: { label: "Esperando", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   EN_CURSO: { label: "En curso", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
@@ -82,6 +101,7 @@ const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
 
 export default function ChatPage() {
   const { session, isMesa, isModOrAdmin } = useSession();
+  useChatReminders(Boolean(session));
   // Admin/Mod sin esMesa: ven todos los chats, pueden crear propias consultas
   const esVistaGlobal = isMesa || isModOrAdmin;
   const [conversaciones, setConversaciones] = useState<any[]>([]);
@@ -340,12 +360,13 @@ export default function ChatPage() {
   };
 
   // ── Upload de archivos ──
-  const subirArchivo = async (file: File) => {
+  const subirArchivos = async (files: File[]) => {
     if (!seleccionada?.id) return;
+    if (files.length === 0) return;
     setSubiendo(true);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      files.forEach((file) => fd.append("file", file));
       fd.append("conversacionId", seleccionada.id);
       const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
       if (res.ok) {
@@ -358,9 +379,11 @@ export default function ChatPage() {
     setSubiendo(false);
   };
 
+  const subirArchivo = async (file: File) => subirArchivos([file]);
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) subirArchivo(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length) subirArchivos(files);
     e.target.value = "";
   };
 
@@ -404,14 +427,17 @@ export default function ChatPage() {
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items || !seleccionada?.id) return;
+    const files: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.kind === "file") {
-        e.preventDefault();
         const file = item.getAsFile();
-        if (file) subirArchivo(file);
-        return;
+        if (file) files.push(file);
       }
+    }
+    if (files.length) {
+      e.preventDefault();
+      subirArchivos(files);
     }
   };
 
@@ -560,19 +586,23 @@ export default function ChatPage() {
                   onClick={() => seleccionarConv(conv)}
                   className={clsx(
                     "group/conv w-full text-left p-3 border-b border-surface-100 dark:border-surface-700/50 hover:bg-surface-50 dark:hover:bg-surface-700/50 transition",
+                    conv.noLeida && "bg-amber-50/70 dark:bg-amber-900/20 border-l-4 border-l-amber-500 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.12)]",
                     seleccionada?.id === conv.id && "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500"
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-surface-800 dark:text-surface-100 truncate">
-                        {esVistaGlobal ? conv.creador?.nombre : "Mesa de Ayuda"}
-                      </p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {conv.noLeida && <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />}
+                        <p className={clsx("text-sm truncate", conv.noLeida ? "font-bold text-amber-900 dark:text-amber-100" : "font-medium text-surface-800 dark:text-surface-100")}>
+                          {esVistaGlobal ? conv.creador?.nombre : "Mesa de Ayuda"}
+                        </p>
+                      </div>
                       <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
                         {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: es })}
                       </p>
                       {conv.mensajes?.[0] && (
-                        <p className="text-xs text-surface-400 dark:text-surface-500 mt-1 truncate">
+                        <p className={clsx("text-xs mt-1 truncate", conv.noLeida ? "text-amber-700 dark:text-amber-200 font-medium" : "text-surface-400 dark:text-surface-500")}>
                           {conv.mensajes[0].contenido}
                         </p>
                       )}
@@ -581,6 +611,7 @@ export default function ChatPage() {
                       <Badge className={ESTADO_BADGE[conv.estado]?.className || ""}>
                         {ESTADO_BADGE[conv.estado]?.label || conv.estado}
                       </Badge>
+                      {conv.noLeida && <Badge className="bg-amber-500 text-white">Nuevo</Badge>}
                       {(isMesa || session?.rol === "ADMIN") && (
                         <button
                           onClick={(e) => { e.stopPropagation(); eliminarConversacion(conv.id); }}
@@ -732,14 +763,17 @@ export default function ChatPage() {
                           ? "bg-blue-600 text-white rounded-br-md"
                           : "bg-surface-100 dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-bl-md"
                       )}>
-                        {!esMio && (
-                          <p className={clsx(
-                            "text-[11px] font-medium mb-0.5",
-                            esMio ? "text-blue-200" : "text-surface-500 dark:text-surface-400"
+                        <div className={clsx("mb-1.5 flex", esMio ? "justify-end" : "justify-start")}>
+                          <span className={clsx(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ring-1",
+                            esMio ? "bg-white/15 text-white ring-white/25" : participantColor(msg.autorId)
                           )}>
-                            {isMesa || soloLectura ? msg.autor?.nombre : "Mesa de Ayuda"}
-                          </p>
-                        )}
+                            {participantLabel(msg, session?.userId, isMesa, soloLectura)}
+                            {msg.autor?.esMesa && (isMesa || soloLectura) && msg.autorId !== session?.userId && (
+                              <span className="ml-1 text-[9px] font-semibold opacity-75">Mesa</span>
+                            )}
+                          </span>
+                        </div>
                         {editando ? (
                           <div className="space-y-1.5">
                             <input
@@ -804,7 +838,7 @@ export default function ChatPage() {
               {seleccionada.estado !== "CERRADA" && !soloLectura && (
                 (isMesa ? seleccionada.estado === "EN_CURSO" : true) ? (
                   <div className="p-3 border-t border-surface-200 dark:border-surface-700">
-                    <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} className="hidden" onChange={handleFileSelect} />
+                    <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} multiple className="hidden" onChange={handleFileSelect} />
 
                     {grabando ? (
                       <div className="flex items-center gap-3 px-2">
@@ -824,7 +858,7 @@ export default function ChatPage() {
                     ) : (
                       <form onSubmit={enviarMensaje} className="flex items-center gap-2 touch-manipulation">
                         {/* Adjuntar archivo */}
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo (foto, video, audio, zip)">
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivos (foto, video, audio, zip)">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
                           </svg>

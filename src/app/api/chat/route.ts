@@ -2,6 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
+type ChatUnreadSnapshot = {
+  estado: string;
+  agenteId: string | null;
+  leidoPorMesaAt: Date | string | null;
+  leidoPorCreadorAt: Date | string | null;
+  mensajes?: Array<{ autorId: string; createdAt: Date | string; autor?: { esMesa: boolean } | null }>;
+};
+
+function isUnreadForUser(conversacion: ChatUnreadSnapshot, userId: string, esMesa: boolean, esAdminOMod: boolean) {
+  const last = conversacion.mensajes?.[0];
+  if (!last) return false;
+
+  if (esMesa || esAdminOMod) {
+    if (conversacion.estado === "ABIERTA" && !conversacion.agenteId) return true;
+    if (last.autor?.esMesa) return false;
+    return !conversacion.leidoPorMesaAt || new Date(last.createdAt) > new Date(conversacion.leidoPorMesaAt);
+  }
+
+  if (last.autorId === userId) return false;
+  return !conversacion.leidoPorCreadorAt || new Date(last.createdAt) > new Date(conversacion.leidoPorCreadorAt);
+}
+
 /**
  * GET /api/chat — Lista conversaciones según rol:
  *  - Técnico: solo sus propias conversaciones
@@ -45,14 +67,17 @@ export async function GET(request: NextRequest) {
       mensajes: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { contenido: true, createdAt: true, autorId: true },
+        select: { contenido: true, createdAt: true, autorId: true, autor: { select: { esMesa: true, nombre: true } } },
       },
       _count: { select: { mensajes: true } },
     },
     orderBy: { updatedAt: "desc" },
   });
 
-  return NextResponse.json(conversaciones);
+  return NextResponse.json(conversaciones.map((c) => ({
+    ...c,
+    noLeida: isUnreadForUser(c, session.userId, user?.esMesa === true, esAdminOMod),
+  })));
 }
 
 /**

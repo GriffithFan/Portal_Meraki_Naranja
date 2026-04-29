@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
+import { useChatReminders } from "@/hooks/useChatReminders";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
@@ -96,6 +97,7 @@ export default function ChatFloatingWidget() {
   const convActivaLoadingRef = useRef(false);
   const pollMensajesLoadingRef = useRef(false);
   const isHidden = pathname === "/dashboard/chat";
+  useChatReminders(Boolean(session) && !isHidden);
 
   const mergeMensajes = useCallback((nuevos: any[]) => {
     if (nuevos.length === 0) return;
@@ -197,17 +199,19 @@ export default function ChatFloatingWidget() {
   };
 
   // ── Upload de archivos ──
-  const subirArchivo = async (file: File) => {
+  const subirArchivos = async (files: File[]) => {
+    if (files.length === 0) return;
     setSubiendo(true);
     try {
       let convId = conversacion?.id;
       // Si no hay conversación activa, crear una con mensaje descriptivo
       if (!convId) {
+        const label = files.length === 1 ? files[0].name : `${files.length} archivos`;
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ mensaje: `[Archivo adjunto: ${file.name}]` }),
+          body: JSON.stringify({ mensaje: `[Archivo adjunto: ${label}]` }),
         });
         if (!res.ok) { const err = await res.json(); alert(err.error || "Error al crear conversación"); setSubiendo(false); return; }
         const created = await res.json();
@@ -216,7 +220,7 @@ export default function ChatFloatingWidget() {
         await cargarConvActiva();
       }
       const fd = new FormData();
-      fd.append("file", file);
+      files.forEach((file) => fd.append("file", file));
       fd.append("conversacionId", convId);
       const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
       if (res.ok) {
@@ -230,9 +234,11 @@ export default function ChatFloatingWidget() {
     setSubiendo(false);
   };
 
+  const subirArchivo = async (file: File) => subirArchivos([file]);
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) subirArchivo(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length) subirArchivos(files);
     e.target.value = "";
   };
 
@@ -419,7 +425,7 @@ export default function ChatFloatingWidget() {
           {/* Input — siempre visible */}
           {(!conversacion || conversacion.estado !== "CERRADA") ? (
             <div className="p-2 border-t border-surface-200 dark:border-surface-700">
-              <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} className="hidden" onChange={handleFileSelect} />
+              <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} multiple className="hidden" onChange={handleFileSelect} />
 
               {grabando ? (
                 <div className="flex items-center gap-2 px-2">

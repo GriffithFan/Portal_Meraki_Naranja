@@ -41,6 +41,10 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Graficos de `/dashboard/kpis` cargados en chunks dinamicos para reducir bundle inicial.
 - [x] Cache privada corta para catalogos autenticados (`estados`, `espacios`, `campos-personalizados`, stock y usuarios seguros sin credenciales).
 - [x] Indices DB para filtros, paginacion y stock usados por dashboards y cronograma.
+- [x] Chat Mesa: envio de multiples archivos en una sola seleccion o pegado.
+- [x] Chat Mesa: nombres de participantes mas visibles con colores por usuario/rol.
+- [x] Chat Mesa: conversaciones no leidas destacadas en lista y contador global.
+- [x] Chat Mesa: recordatorios cada 15 minutos con push, bandeja interna y sonido cuando hay mensajes pendientes.
 
 ## En Progreso / Pendiente no Sensible
 
