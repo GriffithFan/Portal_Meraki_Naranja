@@ -83,6 +83,8 @@ export default function StockPage() {
   const { headerSearch } = useSearchContext();
   const [equipos, setEquipos] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
+  const [stockAlerts, setStockAlerts] = useState<any>(null);
+  const [alertsLoading, setAlertsLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
@@ -313,6 +315,16 @@ export default function StockPage() {
   }
 
   /* ── Data fetching ── */
+  const fetchStockAlerts = useCallback(async () => {
+    setAlertsLoading(true);
+    try {
+      const res = await fetch("/api/stock/alertas", { credentials: "include" });
+      if (res.ok) setStockAlerts(await res.json());
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, []);
+
   const fetchEquipos = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -330,7 +342,8 @@ export default function StockPage() {
       }
     }
     setLoading(false);
-  }, [search]);
+    fetchStockAlerts();
+  }, [search, fetchStockAlerts]);
 
   useEffect(() => { fetchEquipos(); }, [fetchEquipos]);
 
@@ -1005,6 +1018,8 @@ export default function StockPage() {
         </div>
       </div>
 
+      <StockAlertsPanel data={stockAlerts} loading={alertsLoading} />
+
       {/* Filtros */}
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
@@ -1510,5 +1525,79 @@ export default function StockPage() {
       )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+function StockAlertsPanel({ data, loading }: { data: any; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="mb-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {[...Array(3)].map((_, index) => <div key={index} className="h-24 bg-white border border-surface-200 rounded-lg animate-pulse" />)}
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const topTipos = (data.tipos || []).slice(0, 5);
+  const topAsignados = (data.asignados || []).slice(0, 5);
+
+  return (
+    <div className="mb-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
+      <section className="bg-white border border-surface-200 rounded-lg p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Alertas de stock</h2>
+            <p className="text-[11px] text-surface-400 mt-1">Minimos sugeridos por tipo</p>
+          </div>
+          <span className={`text-2xl font-semibold tabular-nums ${data.resumen.alertas > 0 ? "text-amber-600" : "text-emerald-600"}`}>{data.resumen.alertas}</span>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <StockMiniStat label="Disponible" value={data.resumen.disponible} tone="ok" />
+          <StockMiniStat label="No operativo" value={data.resumen.noOperativo} tone="warn" />
+          <StockMiniStat label="Sin N/S" value={data.resumen.sinSerie} tone="muted" />
+        </div>
+      </section>
+
+      <section className="bg-white border border-surface-200 rounded-lg p-4">
+        <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Minimos por tipo</h2>
+        <div className="space-y-2">
+          {topTipos.map((item: any) => (
+            <div key={item.tipo} className="flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <p className="font-medium text-surface-700 truncate">{item.tipo}</p>
+                <p className="text-[11px] text-surface-400">Disp. {item.disponible} / min. {item.minimo}</p>
+              </div>
+              <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium ${item.alerta ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+                {item.alerta ? `Faltan ${item.faltante}` : "OK"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-white border border-surface-200 rounded-lg p-4">
+        <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Stock por asignacion</h2>
+        <div className="space-y-2">
+          {topAsignados.map((item: any) => (
+            <div key={item.key} className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-surface-600 truncate">{item.nombre}</span>
+              <span className="font-semibold text-surface-800 tabular-nums shrink-0">{item.total}</span>
+            </div>
+          ))}
+          {topAsignados.length === 0 && <p className="text-xs text-surface-400">Sin stock asignado</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function StockMiniStat({ label, value, tone }: { label: string; value: number; tone: "ok" | "warn" | "muted" }) {
+  const toneClass = tone === "ok" ? "text-emerald-600 bg-emerald-50" : tone === "warn" ? "text-amber-600 bg-amber-50" : "text-surface-600 bg-surface-50";
+  return (
+    <div className="rounded-md border border-surface-100 p-2">
+      <p className={`inline-flex px-1.5 py-0.5 rounded text-sm font-semibold tabular-nums ${toneClass}`}>{value}</p>
+      <p className="text-[10px] text-surface-400 mt-1 truncate">{label}</p>
+    </div>
   );
 }
