@@ -1,7 +1,7 @@
 # Checklist de Mejoras: Seguridad, Performance y Funcionalidades
 
 Fecha inicial: 2026-04-27
-Ultima actualizacion: 2026-04-28
+Ultima actualizacion: 2026-04-29
 
 Este documento funciona como checklist vivo. La fase sensible de credenciales/login queda separada para mas adelante; las mejoras actuales deben evitar tocar credenciales de tecnicos, `passwordPlain`, estados actuales, stock y datos operativos.
 
@@ -28,12 +28,12 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Filtros server-side en tareas por espacio por estado, provincia, equipo, prioridad y filtros rapidos propios del espacio.
 - [x] Historial visual por predio en el modal de detalle: comentarios, cambios y archivos/actas en una linea de tiempo.
 - [x] Centro de importaciones en modo lectura/reporte con historial, resumen, errores y duplicados registrados.
+- [x] Modo supervisor por equipo en lectura: carga, vencidas, tareas de hoy, alertas y avance por tecnico/equipo.
 
 ## En Progreso / Pendiente no Sensible
 
 - [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
 - [ ] Filtros guardados por usuario en Cronograma.
-- [ ] Modo supervisor por equipo: carga, vencidas, avance y pendientes por tecnico/equipo.
 - [ ] Stock minimo y alertas por tipo/equipo.
 - [ ] Busqueda global inicial: predios + stock; luego chats, actas e instructivos.
 - [ ] Reportes programados diarios/semanales por bandeja interna o email.
@@ -79,7 +79,6 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Implementar modo supervisor por equipo.
-2. Agregar stock minimo y alertas.
-3. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
-4. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
+1. Agregar stock minimo y alertas.
+2. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
+3. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
