@@ -9,7 +9,14 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 
 const execFileAsync = promisify(execFile);
 
-export async function GET() {
+type Pm2Process = {
+  name?: string;
+  pid?: number;
+  pm2_env?: { status?: string; restart_time?: number; pm_uptime?: number };
+  monit?: { memory?: number; cpu?: number };
+};
+
+export async function GET(request: Request) {
   const session = await getSession();
   if (!session || !isModOrAdmin(session.rol)) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
@@ -50,8 +57,8 @@ export async function GET() {
     }),
     prisma.predio.count({ where: { espacioId: null } }),
     prisma.user.count({ where: { activo: true } }),
-    prisma.chatConversacion.count({ where: { estado: "ABIERTA" } }),
-    prisma.chatConversacion.count({ where: { estado: "EN_CURSO" } }),
+    safeCount(prisma.chatConversacion.count({ where: { estado: "ABIERTA" } })),
+    safeCount(prisma.chatConversacion.count({ where: { estado: "EN_CURSO" } })),
     prisma.notificacion.count({ where: { leida: false } }),
     prisma.actividad.count({ where: { createdAt: { gte: startOfWeek } } }),
     prisma.equipo.groupBy({ by: ["estado"], _sum: { cantidad: true }, _count: { _all: true } }),
@@ -83,11 +90,14 @@ export async function GET() {
     .map((item) => ({ estado: item.estado || "Sin estado", cantidad: item._sum.cantidad || item._count._all }))
     .sort((a, b) => b.cantidad - a.cantidad);
 
-  const [backups, runtime, disk, logs] = await Promise.all([
+  const [backups, runtime, disk, logs, httpChecks, pm2, cron] = await Promise.all([
     getBackupSummary(),
     getRuntimeSummary(),
     getDiskSummary(),
     getLogSummary(),
+    getHttpChecks(request),
+    getPm2Summary(),
+    getCronSummary(),
   ]);
   const duplicadosCue = cueGroups
     .filter((item) => item.cue && item.cue.trim() !== "")
@@ -95,7 +105,7 @@ export async function GET() {
 
   return NextResponse.json({
     generatedAt: now.toISOString(),
-    app: { ok: true, commit: process.env.VERCEL_GIT_COMMIT_SHA || null, runtime, disk, logs },
+    app: { ok: true, commit: process.env.VERCEL_GIT_COMMIT_SHA || null, runtime, disk, logs, httpChecks, pm2, cron },
     predios: {
       total: prediosTotal,
       actualizadosHoy: prediosActualizadosHoy,
@@ -111,6 +121,15 @@ export async function GET() {
     backups,
     actividadReciente,
   });
+}
+
+async function safeCount(promise: Promise<number>) {
+  try {
+    return await promise;
+  } catch (error) {
+    if (typeof error === "object" && error && "code" in error && error.code === "P2021") return 0;
+    throw error;
+  }
 }
 
 async function getBackupSummary() {
@@ -186,9 +205,97 @@ async function getDiskSummary() {
 }
 
 async function getLogSummary() {
-  const files = [join(process.cwd(), "logs", "pm2-error.log"), join(process.cwd(), "logs", "pm2-out.log")];
+  const files = [
+    join(process.cwd(), "logs", "pm2-error.log"),
+    join(process.cwd(), "logs", "pm2-out.log"),
+    join(process.cwd(), "logs", "reportes-cron.log"),
+  ];
   const results = await Promise.all(files.map(readLogFile));
   return results;
+}
+
+async function getHttpChecks(request: Request) {
+  const origin = new URL(request.url).origin;
+  const checks = [
+    { name: "Health", url: `${origin}/api/health`, expected: [200] },
+    { name: "Login", url: `${origin}/login`, expected: [200] },
+    { name: "Cron protegido", url: `${origin}/api/cron/reportes?tipo=diario&dryRun=true`, expected: [401] },
+  ];
+
+  return Promise.all(checks.map(runHttpCheck));
+}
+
+async function runHttpCheck(check: { name: string; url: string; expected: number[] }) {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(check.url, { cache: "no-store", redirect: "manual", signal: controller.signal });
+    const latencyMs = Date.now() - startedAt;
+    return {
+      name: check.name,
+      status: response.status,
+      ok: check.expected.includes(response.status),
+      latencyMs,
+      url: new URL(check.url).pathname,
+      expected: check.expected,
+    };
+  } catch (error) {
+    return {
+      name: check.name,
+      status: null,
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      url: new URL(check.url).pathname,
+      expected: check.expected,
+      error: error instanceof Error ? error.message : "Error desconocido",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getPm2Summary() {
+  if (process.platform === "win32") return { available: false, reason: "No disponible en Windows local", processes: [] };
+
+  try {
+    const { stdout } = await execFileAsync("pm2", ["jlist"], { timeout: 5000 });
+    const processes = (JSON.parse(stdout) as Pm2Process[]).map((item) => ({
+      name: item.name,
+      pid: item.pid || null,
+      status: item.pm2_env?.status || "unknown",
+      restarts: item.pm2_env?.restart_time || 0,
+      uptimeMs: item.pm2_env?.pm_uptime ? Date.now() - item.pm2_env.pm_uptime : null,
+      memoryMb: item.monit?.memory ? Math.round(item.monit.memory / 1024 / 1024) : null,
+      cpu: item.monit?.cpu ?? null,
+    }));
+    return { available: true, processes };
+  } catch (error) {
+    return { available: false, reason: error instanceof Error ? error.message : "No se pudo leer PM2", processes: [] };
+  }
+}
+
+async function getCronSummary() {
+  const reportLog = join(process.cwd(), "logs", "reportes-cron.log");
+  const [crontab, reportes] = await Promise.all([readCrontab(), readLogFile(reportLog)]);
+  return { crontab, reportes };
+}
+
+async function readCrontab() {
+  if (process.platform === "win32") return { available: false, entries: [], reason: "No disponible en Windows local" };
+
+  try {
+    const { stdout } = await execFileAsync("crontab", ["-l"], { timeout: 5000 });
+    const entries = stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .filter((line) => /cron|reportes|backup/i.test(line));
+    return { available: true, entries };
+  } catch (error) {
+    return { available: false, entries: [], reason: error instanceof Error ? error.message : "No se pudo leer crontab" };
+  }
 }
 
 async function readLogFile(filePath: string) {

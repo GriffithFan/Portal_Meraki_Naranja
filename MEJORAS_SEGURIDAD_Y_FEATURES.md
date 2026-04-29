@@ -35,12 +35,12 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Reporte operativo diario/semanal por bandeja interna: endpoint cron `/api/cron/reportes?tipo=diario|semanal` con deduplicacion por periodo.
 - [x] Script seguro de ejecucion de reportes cron: `scripts/run-reportes-cron.sh` lee `CRON_SECRET` desde `.env` sin guardarlo en crontab.
 - [x] Reportes programados en VPS: diario 11:00 UTC y semanal lunes 11:30 UTC, con log en `/var/www/carrot/logs/reportes-cron.log`.
+- [x] Panel operativo ampliado con checks HTTP, detalle PM2, crontab relevante y log de reportes/backups.
 
 ## En Progreso / Pendiente no Sensible
 
 - [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
 - [ ] Filtros guardados por usuario en Cronograma.
-- [ ] Panel operativo con checks HTTP externos, estado PM2 mas detallado y ultima ejecucion de cron/backups.
 - [ ] Separar graficos pesados de `/dashboard/kpis` en chunks dinamicos.
 - [ ] Cache compartido para catalogos (`estados`, `espacios`, `campos-personalizados`, usuarios/equipos).
 - [ ] Indices DB basados en consultas lentas reales medidas en VPS.
@@ -82,6 +82,6 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Panel operativo con checks HTTP externos, estado PM2 mas detallado y ultima ejecucion de cron/backups.
+1. Separar graficos pesados de `/dashboard/kpis` en chunks dinamicos.
 2. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
 3. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.

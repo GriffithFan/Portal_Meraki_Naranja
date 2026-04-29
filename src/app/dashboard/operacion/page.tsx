@@ -119,6 +119,71 @@ export default function OperacionPage() {
         </section>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Checks HTTP</h2>
+          <div className="space-y-2">
+            {(data.app.httpChecks || []).map((check: any) => (
+              <div key={check.name} className="flex items-center justify-between gap-3 rounded-md border border-surface-100 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-surface-700 truncate">{check.name}</p>
+                  <p className="text-[11px] text-surface-400 truncate">{check.url} · {check.latencyMs} ms</p>
+                </div>
+                <span className={`text-xs font-semibold ${check.ok ? "text-emerald-600" : "text-red-600"}`}>{check.status || "ERR"}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">PM2</h2>
+          {data.app.pm2?.available ? (
+            <div className="space-y-2">
+              {data.app.pm2.processes.map((proc: any) => (
+                <div key={proc.name} className="rounded-md border border-surface-100 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-surface-700">{proc.name}</span>
+                    <span className={`text-[11px] font-semibold ${proc.status === "online" ? "text-emerald-600" : "text-red-600"}`}>{proc.status}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-surface-400 mt-2">
+                    <span>PID: {proc.pid || "-"}</span>
+                    <span>CPU: {proc.cpu ?? "-"}%</span>
+                    <span>RAM: {proc.memoryMb ?? "-"} MB</span>
+                    <span>Reinicios: {proc.restarts}</span>
+                    <span className="col-span-2">Uptime: {proc.uptimeMs ? formatDuration(Math.floor(proc.uptimeMs / 1000)) : "-"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-surface-400">{data.app.pm2?.reason || "No disponible"}</p>
+          )}
+        </section>
+
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Cron y reportes</h2>
+          {data.app.cron?.crontab?.available ? (
+            <div className="space-y-2">
+              {data.app.cron.crontab.entries.length > 0 ? data.app.cron.crontab.entries.map((entry: string) => (
+                <p key={entry} className="rounded-md border border-surface-100 px-3 py-2 text-[11px] text-surface-600 break-words">{entry}</p>
+              )) : <p className="text-sm text-surface-400">Sin entradas relevantes detectadas.</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-surface-400">{data.app.cron?.crontab?.reason || "No disponible"}</p>
+          )}
+          <div className="mt-3 rounded-md border border-surface-100 px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium text-surface-700">reportes-cron.log</span>
+              <span className={`text-[11px] ${data.app.cron?.reportes?.exists ? "text-emerald-600" : "text-surface-400"}`}>{data.app.cron?.reportes?.exists ? formatSize(data.app.cron.reportes.size) : "No detectado"}</span>
+            </div>
+            {data.app.cron?.reportes?.modifiedAt && <p className="text-[11px] text-surface-400 mt-1">Ultima actividad: {formatDate(data.app.cron.reportes.modifiedAt)}</p>}
+            {data.app.cron?.reportes?.lastLines?.slice(-2).map((line: string, index: number) => (
+              <p key={`${index}-${line}`} className="text-[11px] text-surface-500 mt-1 truncate">{line}</p>
+            ))}
+          </div>
+        </section>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <section className="bg-white border border-surface-200 rounded-lg p-4">
           <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Alertas de consistencia</h2>
