@@ -5,6 +5,7 @@ import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
+import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
 import { buildEquipoOptions, aliasToKey, getEquipoDisplayName } from "@/utils/equipoUtils";
 
@@ -136,6 +137,7 @@ export default function TareasPage() {
   const filterSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [createDefaults, setCreateDefaults] = useState<{ estadoId?: string; espacioId?: string }>({});
   const [showEstadoModal, setShowEstadoModal] = useState(false);
   const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6" });
 
@@ -281,6 +283,7 @@ export default function TareasPage() {
   const [nuevoComentario, setNuevoComentario] = useState("");
   const [estadoDropdown, setEstadoDropdown] = useState(false);
   const [inlineEstado, setInlineEstado] = useState<{ id: string; x: number; y: number } | null>(null);
+  const detailRequestRef = useRef(0);
 
   // Cerrar dropdown inline al click fuera
   useEffect(() => {
@@ -297,12 +300,10 @@ export default function TareasPage() {
     setInlineEstado({ id: tareaId, x: rect.left, y: rect.bottom + 4 });
   };
 
-  // Form para nueva tarea
-  const [form, setForm] = useState({
-    nombre: "", direccion: "", ciudad: "", notas: "", prioridad: "MEDIA",
-    incidencias: "", lacR: "", cue: "", ambito: "", equipoAsignado: "",
-    provincia: "", cuePredio: "", gpsPredio: "", estadoId: ""
-  });
+  const openCreateModal = useCallback((defaults: { estadoId?: string; espacioId?: string } = {}) => {
+    setCreateDefaults(defaults);
+    setShowModal(true);
+  }, []);
 
   // Cargar datos
   const autoHideDone = useRef(false);
@@ -610,8 +611,12 @@ export default function TareasPage() {
 
   // Abrir modal de detalle
   async function openDetail(tarea: any) {
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
     setSelectedTarea(tarea);
-    setDetailLoading(true);
+    setDetailLoading(false);
+    setActividades([]);
+    setComentarios([]);
     setEstadoDropdown(false);
     setShowUserPicker(false);
 
@@ -623,20 +628,28 @@ export default function TareasPage() {
 
     if (tareaRes.ok) {
       const fullTarea = await tareaRes.json();
+      if (detailRequestRef.current !== requestId) return;
       setSelectedTarea(fullTarea);
     }
     
     if (actRes?.ok) {
       const actData = await actRes.json();
+      if (detailRequestRef.current !== requestId) return;
       setActividades(actData.actividades || []);
     }
     
     if (comRes.ok) {
       const comData = await comRes.json();
+      if (detailRequestRef.current !== requestId) return;
       setComentarios(comData.comentarios || []);
     }
+  }
 
-    setDetailLoading(false);
+  function closeDetail() {
+    detailRequestRef.current += 1;
+    setSelectedTarea(null);
+    setEstadoDropdown(false);
+    setShowUserPicker(false);
   }
 
   // Cambiar estado
@@ -760,26 +773,6 @@ export default function TareasPage() {
     }
   }
 
-  // Crear tarea
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    const res = await fetch("/api/tareas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(form),
-    });
-    if (res.ok) {
-      setShowModal(false);
-      setForm({
-        nombre: "", direccion: "", ciudad: "", notas: "", prioridad: "MEDIA",
-        incidencias: "", lacR: "", cue: "", ambito: "", equipoAsignado: "",
-        provincia: "", cuePredio: "", gpsPredio: "", estadoId: ""
-      });
-      fetchTareas();
-    }
-  }
-
   // Crear estado
   async function handleCreateEstado(e: React.FormEvent) {
     e.preventDefault();
@@ -817,7 +810,7 @@ export default function TareasPage() {
       const res = await fetch(`/api/tareas/${id}`, { method: "DELETE", credentials: "include" });
       if (res.ok) {
         setTareas(prev => prev.filter(t => t.id !== id));
-        if (selectedTarea?.id === id) setSelectedTarea(null);
+        if (selectedTarea?.id === id) closeDetail();
       }
     } else if (type === "estado") {
       const res = await fetch(`/api/estados/${id}`, { method: "DELETE", credentials: "include" });
@@ -1316,7 +1309,7 @@ export default function TareasPage() {
           )}
           {isModOrAdmin && (
             <button
-              onClick={() => setShowModal(true)}
+              onClick={() => openCreateModal()}
               className="px-2.5 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1"
             >
               <IconPlus className="w-3.5 h-3.5" />
@@ -1744,7 +1737,7 @@ export default function TareasPage() {
                     )}
                     {isModOrAdmin && (
                       <span
-                        onClick={() => { setForm(f => ({ ...f, estadoId: estado.id })); setShowModal(true); }}
+                        onClick={() => openCreateModal({ estadoId: estado.id })}
                         className="text-[11px] text-surface-400 hover:text-surface-600 font-medium cursor-pointer"
                       >
                         + Añadir
@@ -2080,7 +2073,7 @@ export default function TareasPage() {
                     </h2>
                   </div>
                   <button
-                    onClick={() => setSelectedTarea(null)}
+                    onClick={closeDetail}
                     className="p-1.5 hover:bg-surface-100 rounded-md transition-colors ml-3 flex-shrink-0"
                   >
                     <IconX className="w-4 h-4 text-surface-400" />
@@ -2408,63 +2401,15 @@ export default function TareasPage() {
         </div>
       )}
 
-      {/* Modal crear tarea */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <form onSubmit={handleCreate} className="bg-white rounded-xl shadow-xl p-5 w-full max-w-lg mx-4 animate-fade-in-up max-h-[90vh] overflow-y-auto">
-            <h2 className="text-sm font-semibold text-surface-800 mb-4">Nueva tarea</h2>
-            <div className="space-y-2.5">
-              <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre / CUE *" className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-              <input value={form.incidencias} onChange={(e) => setForm({ ...form, incidencias: e.target.value })} placeholder="Número de Predio (NI-...)" className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-              
-              <div className="grid grid-cols-2 gap-2">
-                <input value={form.cue} onChange={(e) => setForm({ ...form, cue: e.target.value })} placeholder="CUE" className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-                <select value={form.lacR} onChange={(e) => setForm({ ...form, lacR: e.target.value })} className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs text-surface-600">
-                  <option value="">LAC-R</option>
-                  <option value="SI">SI</option>
-                  <option value="NO">NO</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <select value={form.ambito} onChange={(e) => setForm({ ...form, ambito: e.target.value })} className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs text-surface-600">
-                  <option value="">Ámbito</option>
-                  <option value="Urbano">Urbano</option>
-                  <option value="Rural">Rural</option>
-                </select>
-                <select value={form.equipoAsignado} onChange={(e) => setForm({ ...form, equipoAsignado: e.target.value })} className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs text-surface-600">
-                  <option value="">Equipo</option>
-                  {equipoOpts.map(opt => (
-                    <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <input value={form.provincia} onChange={(e) => setForm({ ...form, provincia: e.target.value })} placeholder="Provincia" className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-                <input value={form.ciudad} onChange={(e) => setForm({ ...form, ciudad: e.target.value })} placeholder="Ciudad/Departamento" className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-              </div>
-
-              <input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} placeholder="Dirección" className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-
-              <div className="grid grid-cols-2 gap-2">
-                <input value={form.cuePredio} onChange={(e) => setForm({ ...form, cuePredio: e.target.value })} placeholder="CUE_Predio" className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-                <input value={form.gpsPredio} onChange={(e) => setForm({ ...form, gpsPredio: e.target.value })} placeholder="GPS_Predio" className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-              </div>
-
-              <select value={form.estadoId} onChange={(e) => setForm({ ...form, estadoId: e.target.value })} className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs text-surface-600">
-                <option value="">Estado inicial</option>
-                {estados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-              </select>
-
-              <textarea value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Notas" rows={2} className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 resize-none placeholder:text-surface-300" />
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button type="button" onClick={() => setShowModal(false)} className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 rounded-md transition-colors">Cancelar</button>
-              <button type="submit" className="px-3 py-1.5 text-xs bg-surface-800 text-white rounded-md hover:bg-surface-700 font-medium transition-colors">Crear</button>
-            </div>
-          </form>
-        </div>
+        <CreateTareaModal
+          estados={estados}
+          equipoOpts={equipoOpts}
+          initialEstadoId={createDefaults.estadoId}
+          initialEspacioId={createDefaults.espacioId}
+          onClose={() => setShowModal(false)}
+          onCreated={() => fetchTareas()}
+        />
       )}
 
       {/* Modal crear estado */}

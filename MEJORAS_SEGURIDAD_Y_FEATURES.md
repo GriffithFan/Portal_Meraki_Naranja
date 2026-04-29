@@ -46,6 +46,9 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Chat Mesa: conversaciones no leidas destacadas en lista y contador global.
 - [x] Chat Mesa: recordatorios cada 15 minutos con push, bandeja interna y sonido cuando hay mensajes pendientes.
 - [x] Topologia: separacion visual por columnas para evitar dispositivos y etiquetas amontonados sin cambiar la logica ni el orden del grafico.
+- [x] Tareas: boton Nueva disponible dentro de carpetas/subcarpetas excepto Facturado, con espacio precargado.
+- [x] Tareas: carpetas padre muestran por defecto tareas de subcarpetas para una vista unificada.
+- [x] Tareas: apertura/creacion y movimientos con respuesta visual mas rapida en la interfaz.
 
 ## En Progreso / Pendiente no Sensible
 

@@ -421,7 +421,7 @@ export default function EspaciosSidebar() {
         setTimeout(() => setDropNotice(null), 3000);
         fetchEspacios();
         // Disparar evento para que la página de tareas se refresque
-        window.dispatchEvent(new CustomEvent("espacios-updated"));
+        window.dispatchEvent(new CustomEvent("espacios-updated", { detail: { movedIds: ids, targetEspacioId: espacioId } }));
       }
     } catch { /* ignore */ }
     (window as any).__draggedPredioIds = null;

@@ -73,7 +73,7 @@ export default function EspacioOverviewPage() {
             className="text-xs text-surface-400 hover:text-surface-600 pb-2 px-1 transition-colors"
             title={tareasSubEspacios > 0 ? `${tareasDirectas} directas; ${tareasSubEspacios} en sub-espacios` : `${tareasDirectas} directas`}
           >
-            Tareas directas ({tareasDirectas})
+            {hasHijos ? `Tareas (${stats.totalPredios})` : `Tareas directas (${tareasDirectas})`}
           </Link>
         </div>
       </div>

@@ -6,6 +6,8 @@ import { useSession } from "@/hooks/useSession";
 import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import StatusIcon from "@/components/StatusIcon";
+import CreateTareaModal from "@/components/tareas/CreateTareaModal";
+import { IconPlus } from "@/components/ui/Icons";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
 import { aliasToKey, buildEquipoOptions } from "@/utils/equipoUtils";
 
@@ -148,7 +150,8 @@ export default function EspacioTareasPage() {
   const [quickFilter, setQuickFilter] = useState("todos");
   const [search, setSearch] = useState("");
   const [serverSearch, setServerSearch] = useState("");
-  const [includeSubspaces, setIncludeSubspaces] = useState(false);
+  const [includeSubspaces, setIncludeSubspaces] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
   const [groupBy, setGroupBy] = useState("estado");
@@ -375,9 +378,9 @@ export default function EspacioTareasPage() {
       .catch(() => {});
     // Cargar usuarios y espacios para acciones masivas
     if (isModOrAdmin) {
-      fetch("/api/usuarios", { credentials: "include" })
+      fetch("/api/catalogos/usuarios", { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
-        .then(setAllUsers)
+        .then((data: any) => setAllUsers(Array.isArray(data) ? data : (data.usuarios || [])))
         .catch(() => {});
       fetch("/api/espacios", { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
@@ -513,10 +516,18 @@ export default function EspacioTareasPage() {
 
   // Recargar tareas cuando el sidebar reporta un drop exitoso
   useEffect(() => {
-    const handler = () => fetchData();
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ movedIds?: string[]; targetEspacioId?: string }>).detail;
+      if (detail?.movedIds?.length && !includeSubspaces && detail.targetEspacioId !== espacioId) {
+        const moved = new Set(detail.movedIds);
+        setTareas(prev => prev.filter(t => !moved.has(t.id)));
+        setSelectedIds(prev => new Set(Array.from(prev).filter(id => !moved.has(id))));
+      }
+      fetchData();
+    };
     window.addEventListener("espacios-updated", handler);
     return () => window.removeEventListener("espacios-updated", handler);
-  }, [fetchData]);
+  }, [espacioId, fetchData, includeSubspaces]);
 
   // Agrupar tareas por estado o campo
   const groupedTareas = useMemo(() => {
@@ -1222,6 +1233,9 @@ export default function EspacioTareasPage() {
     );
   }
 
+  const isFacturadoSpace = espacio.nombre?.trim?.().toLowerCase() === "facturado";
+  const hasSubspaces = espacio?.hijos?.length > 0;
+
   return (
     <div className="animate-fade-in-up">
       {/* Header */}
@@ -1239,7 +1253,7 @@ export default function EspacioTareasPage() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          {espacio?.hijos?.length > 0 && (
+          {hasSubspaces && (
             <label className="hidden sm:flex items-center gap-1.5 text-[11px] text-surface-500 border border-surface-200 rounded-md px-2 py-1.5 bg-white cursor-pointer select-none" title="Mostrar también tareas de subcarpetas">
               <input
                 type="checkbox"
@@ -1249,6 +1263,15 @@ export default function EspacioTareasPage() {
               />
               Subcarpetas
             </label>
+          )}
+          {isModOrAdmin && !isFacturadoSpace && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-2.5 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1"
+            >
+              <IconPlus className="w-3.5 h-3.5" />
+              Nueva
+            </button>
           )}
           {/* Search */}
           <div className="relative flex-1 sm:flex-initial">
@@ -1293,7 +1316,7 @@ export default function EspacioTareasPage() {
           Resumen
         </Link>
         <span className="text-xs font-medium text-primary-600 border-b-2 border-primary-600 pb-2 px-1">
-          {includeSubspaces ? "Tareas con subcarpetas" : "Tareas directas"} ({tareas.length}/{pagination.total || tareas.length})
+          {hasSubspaces && includeSubspaces ? "Tareas con subcarpetas" : "Tareas directas"} ({tareas.length}/{pagination.total || tareas.length})
         </span>
       </div>
 
@@ -1747,6 +1770,17 @@ export default function EspacioTareasPage() {
           </div>
         )}
       </div>
+
+      {showCreateModal && (
+        <CreateTareaModal
+          estados={estados}
+          equipoOpts={equipoOpts}
+          initialEspacioId={espacioId}
+          espacioNombre={espacio.nombre}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={() => fetchData()}
+        />
+      )}
 
       {/* Modal detalle */}
       {selectedTareaId && (
