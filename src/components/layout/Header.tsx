@@ -94,6 +94,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const [sinLeer, setSinLeer] = useState(0);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
+  const [globalSummary, setGlobalSummary] = useState<{ predios: number; stock: number; total: number } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -178,6 +179,12 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     fetchNotifs();
   }
 
+  const handleSelectNetwork = useCallback((net: any) => {
+    setSelectedNetwork(net);
+    setQuery("");
+    setIsOpen(false);
+  }, [setSelectedNetwork]);
+
   const search = useCallback(async (q: string) => {
     if (q.length < 2) { setResults([]); setIsOpen(false); return; }
     setLoading(true);
@@ -196,6 +203,21 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         setActiveIdx(-1);
       }
     } catch { /* ignore */ } finally { setLoading(false); }
+  }, [handleSelectNetwork]);
+
+  const globalSearch = useCallback(async (q: string) => {
+    if (q.length < 2) { setResults([]); setGlobalSummary(null); setIsOpen(false); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/busqueda?q=${encodeURIComponent(q)}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data.results || []);
+        setGlobalSummary(data.resumen || null);
+        setIsOpen(true);
+        setActiveIdx(-1);
+      }
+    } catch { /* ignore */ } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -206,23 +228,32 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     } else {
       // Propagar búsqueda a la página activa via contexto
       setHeaderSearch(query);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => globalSearch(query), 300);
       // Si está en subpágina de tareas (espacio), navegar a la vista global para buscar entre todas
       if (query && pathname.startsWith("/dashboard/tareas/espacio")) {
         router.push("/dashboard/tareas");
       }
+      return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     }
-  }, [query, search, isMonitoring, setHeaderSearch]);
+  }, [globalSearch, isMonitoring, pathname, query, router, search, setHeaderSearch]);
 
   // Limpiar búsqueda al cambiar de página
   useEffect(() => {
     setQuery("");
     setHeaderSearch("");
+    setResults([]);
+    setGlobalSummary(null);
+    setIsOpen(false);
   }, [pathname, setHeaderSearch]);
 
-  function handleSelectNetwork(net: any) {
-    setSelectedNetwork(net);
+  function handleSelectGlobalResult(result: any) {
     setQuery("");
+    setHeaderSearch("");
+    setResults([]);
+    setGlobalSummary(null);
     setIsOpen(false);
+    router.push(result.href);
   }
 
   async function handleLogout() {
@@ -258,14 +289,19 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => isMonitoring && query.length >= 2 && setIsOpen(true)}
           onKeyDown={(e) => {
-            if (!isOpen || !isMonitoring) return;
+            if (!isOpen) return;
             if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx((i) => Math.min(i + 1, results.length - 1)); }
             else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx((i) => Math.max(i - 1, 0)); }
             else if (e.key === "Enter") {
               e.preventDefault();
-              if (activeIdx >= 0 && results[activeIdx]) { handleSelectNetwork(results[activeIdx]); }
-              else if (results.length === 1) { handleSelectNetwork(results[0]); }
-              else if (results.length > 0) { handleSelectNetwork(results[0]); }
+              if (isMonitoring) {
+                if (activeIdx >= 0 && results[activeIdx]) { handleSelectNetwork(results[activeIdx]); }
+                else if (results.length === 1) { handleSelectNetwork(results[0]); }
+                else if (results.length > 0) { handleSelectNetwork(results[0]); }
+              } else {
+                if (activeIdx >= 0 && results[activeIdx]) { handleSelectGlobalResult(results[activeIdx]); }
+                else if (results.length > 0) { handleSelectGlobalResult(results[0]); }
+              }
             }
             else if (e.key === "Escape") { setIsOpen(false); }
           }}
@@ -275,7 +311,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
               : pathname.startsWith("/dashboard/tareas") ? "Buscar tarea por código, nombre, incidencia..."
               : pathname.startsWith("/dashboard/hospedajes") ? "Buscar hospedaje por nombre, ubicación..."
               : pathname.startsWith("/dashboard/stock") ? "Buscar equipo por nombre, serie, modelo..."
-              : "Buscar..."
+                : "Buscar tareas o stock..."
           }
           className="w-full pl-10 pr-20 py-2 rounded-xl border border-surface-200 bg-surface-50 text-sm
             focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 transition-colors"
@@ -305,6 +341,35 @@ export default function Header({ onMenuToggle }: HeaderProps) {
               </button>
             )) : !loading && query.length >= 2 ? (
               <div className="px-4 py-6 text-center text-sm text-surface-400">No se encontraron resultados</div>
+            ) : null}
+          </div>
+        )}
+
+        {!isMonitoring && isOpen && query.length >= 2 && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-surface-200 rounded-xl shadow-lg max-h-96 overflow-y-auto z-50">
+            {globalSummary && (
+              <div className="px-4 py-2 border-b border-surface-100 text-[11px] text-surface-400 flex items-center justify-between">
+                <span>Resultados globales</span>
+                <span>{globalSummary.predios} tareas · {globalSummary.stock} stock</span>
+              </div>
+            )}
+            {results.length > 0 ? results.map((item, i) => (
+              <button
+                key={`${item.type}-${item.id}`}
+                onClick={() => handleSelectGlobalResult(item)}
+                className={`w-full text-left px-4 py-2.5 text-sm transition-colors border-b border-surface-100 last:border-0 flex items-start gap-3 ${
+                  i === activeIdx ? "bg-primary-50" : "hover:bg-surface-50"
+                }`}
+              >
+                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${item.type === "PREDIO" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>{item.type === "PREDIO" ? "Tarea" : "Stock"}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-surface-800 truncate">{item.title}</span>
+                  {item.subtitle && <span className="block text-xs text-surface-400 truncate mt-0.5">{item.subtitle}</span>}
+                </span>
+                {item.badge && <span className="shrink-0 text-[10px] text-surface-400 max-w-20 truncate">{item.badge}</span>}
+              </button>
+            )) : !loading ? (
+              <div className="px-4 py-6 text-center text-sm text-surface-400">No se encontraron tareas ni stock</div>
             ) : null}
           </div>
         )}

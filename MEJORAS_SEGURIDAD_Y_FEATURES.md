@@ -30,12 +30,13 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Centro de importaciones en modo lectura/reporte con historial, resumen, errores y duplicados registrados.
 - [x] Modo supervisor por equipo en lectura: carga, vencidas, tareas de hoy, alertas y avance por tecnico/equipo.
 - [x] Stock minimo y alertas en lectura: faltantes por tipo, no operativos, sin numero de serie y distribucion por asignacion.
+- [x] Busqueda global inicial en el header: resultados combinados de tareas/predios y stock con navegacion directa.
 
 ## En Progreso / Pendiente no Sensible
 
 - [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
 - [ ] Filtros guardados por usuario en Cronograma.
-- [ ] Busqueda global inicial: predios + stock; luego chats, actas e instructivos.
+- [ ] Ampliar busqueda global a chats, actas e instructivos.
 - [ ] Reportes programados diarios/semanales por bandeja interna o email.
 - [ ] Panel operativo con checks HTTP externos, estado PM2 mas detallado y ultima ejecucion de cron/backups.
 - [ ] Separar graficos pesados de `/dashboard/kpis` en chunks dinamicos.
@@ -79,6 +80,6 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Implementar busqueda global inicial: predios + stock.
+1. Ampliar busqueda global a chats, actas e instructivos.
 2. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
 3. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.

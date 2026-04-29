@@ -85,7 +85,11 @@ export default function StockPage() {
   const [total, setTotal] = useState(0);
   const [stockAlerts, setStockAlerts] = useState<any>(null);
   const [alertsLoading, setAlertsLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const urlParamsRef = useRef<URLSearchParams | null>(null);
+  if (typeof window !== "undefined" && !urlParamsRef.current) {
+    urlParamsRef.current = new URLSearchParams(window.location.search);
+  }
+  const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
 
   useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
