@@ -134,8 +134,11 @@ export default function EspacioTareasPage() {
   const { session, isModOrAdmin } = useSession();
   const [selectedTareaId, setSelectedTareaId] = useState<string | null>(null);
 
-  // Read URL ?open= param on mount
-  const urlOpenRef = useRef<string | null>(typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("open") : null);
+  // Read URL params on mount
+  const urlParamsRef = useRef<URLSearchParams | null>(null);
+  if (typeof window !== "undefined" && !urlParamsRef.current) {
+    urlParamsRef.current = new URLSearchParams(window.location.search);
+  }
 
   const [espacio, setEspacio] = useState<any>(null);
   const [tareas, setTareas] = useState<any[]>([]);
@@ -148,8 +151,8 @@ export default function EspacioTareasPage() {
   const [filterEquipo, setFilterEquipo] = useState("");
   const [filterPrioridad, setFilterPrioridad] = useState("todas");
   const [quickFilter, setQuickFilter] = useState("todos");
-  const [search, setSearch] = useState("");
-  const [serverSearch, setServerSearch] = useState("");
+  const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
+  const [serverSearch, setServerSearch] = useState(() => urlParamsRef.current?.get("search") || "");
   const [includeSubspaces, setIncludeSubspaces] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
@@ -502,7 +505,7 @@ export default function EspacioTareasPage() {
   const openHandled = useRef(false);
   useEffect(() => {
     if (openHandled.current || loading || tareas.length === 0) return;
-    const openCode = urlOpenRef.current;
+    const openCode = urlParamsRef.current?.get("open");
     if (!openCode) return;
     openHandled.current = true;
     const tarea = tareas.find(t => t.codigo === openCode);

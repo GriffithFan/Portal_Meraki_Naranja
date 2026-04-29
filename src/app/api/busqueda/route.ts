@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
         provincia: true,
         equipoAsignado: true,
         prioridad: true,
+        espacioId: true,
         estado: { select: { nombre: true, color: true } },
         espacio: { select: { nombre: true } },
       },
@@ -183,13 +184,16 @@ export async function GET(request: NextRequest) {
       const searchValue = predio.codigo || predio.nombre;
       const params = new URLSearchParams({ search: searchValue });
       if (predio.codigo) params.set("open", predio.codigo);
+      const baseHref = predio.espacioId
+        ? `/dashboard/tareas/espacio/${predio.espacioId}/tareas`
+        : "/dashboard/tareas";
       return {
         id: predio.id,
         type: "PREDIO",
         title: predio.codigo ? `${predio.codigo} · ${predio.nombre}` : predio.nombre,
         subtitle: [predio.incidencias, predio.provincia, predio.equipoAsignado, predio.espacio?.nombre].filter(Boolean).join(" · "),
         badge: predio.estado?.nombre || predio.prioridad,
-        href: `/dashboard/tareas?${params.toString()}`,
+        href: `${baseHref}?${params.toString()}`,
       };
     }),
     ...equipos.map((equipo) => {
