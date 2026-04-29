@@ -33,6 +33,7 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Busqueda global inicial en el header: resultados combinados de tareas/predios y stock con navegacion directa.
 - [x] Busqueda global ampliada a chats, actas e instructivos con navegacion filtrada.
 - [x] Reporte operativo diario/semanal por bandeja interna: endpoint cron `/api/cron/reportes?tipo=diario|semanal` con deduplicacion por periodo.
+- [x] Script seguro de ejecucion de reportes cron: `scripts/run-reportes-cron.sh` lee `CRON_SECRET` desde `.env` sin guardarlo en crontab.
 
 ## En Progreso / Pendiente no Sensible
 
