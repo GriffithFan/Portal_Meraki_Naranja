@@ -53,7 +53,11 @@ export default function ActasPage() {
   const canEdit = isModOrAdmin || puedeEditar("actas");
   const [actas, setActas] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState("");
+  const urlParamsRef = useRef<URLSearchParams | null>(null);
+  if (typeof window !== "undefined" && !urlParamsRef.current) {
+    urlParamsRef.current = new URLSearchParams(window.location.search);
+  }
+  const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);

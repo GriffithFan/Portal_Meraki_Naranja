@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   const query = sanitizeSearch(new URL(request.url).searchParams.get("q"), 80);
   if (query.length < 2) {
-    return NextResponse.json({ query, results: [], resumen: { predios: 0, stock: 0, total: 0 } });
+    return NextResponse.json({ query, results: [], resumen: { predios: 0, stock: 0, chats: 0, actas: 0, instructivos: 0, total: 0 } });
   }
 
   const predioSearchWhere = {
@@ -60,7 +60,43 @@ export async function GET(request: NextRequest) {
     ],
   };
 
-  const [predios, prediosTotal, equipos, stockTotal] = await Promise.all([
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { esMesa: true, rol: true },
+  });
+  const chatVisibilityWhere = user?.esMesa || isModOrAdmin(user?.rol || session.rol) ? {} : { creadorId: session.userId };
+  const chatSearchWhere = {
+    OR: [
+      { asunto: { contains: query, mode: "insensitive" as const } },
+      { creador: { nombre: { contains: query, mode: "insensitive" as const } } },
+      { agente: { nombre: { contains: query, mode: "insensitive" as const } } },
+      { mensajes: { some: { contenido: { contains: query, mode: "insensitive" as const } } } },
+    ],
+  };
+  const chatWhere: any = chatVisibilityWhere;
+  chatWhere.AND = chatWhere.AND ? [...chatWhere.AND, chatSearchWhere] : [chatSearchWhere];
+
+  const actaWhere = {
+    OR: [
+      { nombre: { contains: query, mode: "insensitive" as const } },
+      { descripcion: { contains: query, mode: "insensitive" as const } },
+      { archivoNombre: { contains: query, mode: "insensitive" as const } },
+      { predio: { nombre: { contains: query, mode: "insensitive" as const } } },
+    ],
+  };
+
+  const instructivoWhere = {
+    activo: true,
+    OR: [
+      { titulo: { contains: query, mode: "insensitive" as const } },
+      { contenido: { contains: query, mode: "insensitive" as const } },
+      { categoria: { contains: query, mode: "insensitive" as const } },
+      { videoNombre: { contains: query, mode: "insensitive" as const } },
+      { pdfNombre: { contains: query, mode: "insensitive" as const } },
+    ],
+  };
+
+  const [predios, prediosTotal, equipos, stockTotal, chats, chatsTotal, actas, actasTotal, instructivos, instructivosTotal] = await Promise.all([
     prisma.predio.findMany({
       where: predioWhere,
       select: {
@@ -75,7 +111,7 @@ export async function GET(request: NextRequest) {
         espacio: { select: { nombre: true } },
       },
       orderBy: [{ prioridad: "desc" }, { updatedAt: "desc" }],
-      take: 6,
+      take: 4,
     }),
     prisma.predio.count({ where: predioWhere }),
     prisma.equipo.findMany({
@@ -92,9 +128,54 @@ export async function GET(request: NextRequest) {
         predio: { select: { nombre: true } },
       },
       orderBy: { updatedAt: "desc" },
-      take: 6,
+      take: 4,
     }),
     prisma.equipo.count({ where: stockWhere }),
+    prisma.chatConversacion.findMany({
+      where: chatWhere,
+      select: {
+        id: true,
+        asunto: true,
+        estado: true,
+        updatedAt: true,
+        creador: { select: { nombre: true } },
+        agente: { select: { nombre: true } },
+        mensajes: { orderBy: { createdAt: "desc" }, take: 1, select: { contenido: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 3,
+    }),
+    prisma.chatConversacion.count({ where: chatWhere }),
+    prisma.acta.findMany({
+      where: actaWhere,
+      select: {
+        id: true,
+        nombre: true,
+        descripcion: true,
+        archivoNombre: true,
+        archivoTipo: true,
+        predio: { select: { nombre: true } },
+        subidoPor: { select: { nombre: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+    }),
+    prisma.acta.count({ where: actaWhere }),
+    prisma.instructivo.findMany({
+      where: instructivoWhere,
+      select: {
+        id: true,
+        titulo: true,
+        contenido: true,
+        categoria: true,
+        videoNombre: true,
+        pdfNombre: true,
+        creador: { select: { nombre: true } },
+      },
+      orderBy: [{ categoria: "asc" }, { orden: "asc" }, { createdAt: "desc" }],
+      take: 3,
+    }),
+    prisma.instructivo.count({ where: instructivoWhere }),
   ]);
 
   const results = [
@@ -123,11 +204,42 @@ export async function GET(request: NextRequest) {
         href: `/dashboard/stock?${params.toString()}`,
       };
     }),
-  ].slice(0, 10);
+    ...chats.map((chat) => ({
+      id: chat.id,
+      type: "CHAT",
+      title: chat.asunto || `Consulta de ${chat.creador?.nombre || "usuario"}`,
+      subtitle: [chat.mensajes?.[0]?.contenido, chat.agente?.nombre ? `Agente: ${chat.agente.nombre}` : null].filter(Boolean).join(" · "),
+      badge: chat.estado?.replace(/_/g, " "),
+      href: `/dashboard/chat?${new URLSearchParams({ search: query }).toString()}`,
+    })),
+    ...actas.map((acta) => ({
+      id: acta.id,
+      type: "ACTA",
+      title: acta.nombre,
+      subtitle: [acta.descripcion, acta.predio?.nombre, acta.archivoNombre].filter(Boolean).join(" · "),
+      badge: acta.archivoTipo || "Acta",
+      href: `/dashboard/actas?${new URLSearchParams({ search: query }).toString()}`,
+    })),
+    ...instructivos.map((instructivo) => ({
+      id: instructivo.id,
+      type: "INSTRUCTIVO",
+      title: instructivo.titulo,
+      subtitle: [instructivo.categoria, instructivo.videoNombre || instructivo.pdfNombre, instructivo.contenido?.slice(0, 90)].filter(Boolean).join(" · "),
+      badge: instructivo.categoria,
+      href: `/dashboard/instructivo?${new URLSearchParams({ search: query }).toString()}`,
+    })),
+  ].slice(0, 14);
 
   return NextResponse.json({
     query,
     results,
-    resumen: { predios: prediosTotal, stock: stockTotal, total: prediosTotal + stockTotal },
+    resumen: {
+      predios: prediosTotal,
+      stock: stockTotal,
+      chats: chatsTotal,
+      actas: actasTotal,
+      instructivos: instructivosTotal,
+      total: prediosTotal + stockTotal + chatsTotal + actasTotal + instructivosTotal,
+    },
   });
 }

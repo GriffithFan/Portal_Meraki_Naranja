@@ -96,7 +96,11 @@ export default function ChatPage() {
   const [vistaMovil, setVistaMovil] = useState<"lista" | "chat">("lista");
   const [filtroEstado, setFiltroEstado] = useState<string>("TODAS");
   const [orden, setOrden] = useState<"recientes" | "antiguas">("recientes");
-  const [busqueda, setBusqueda] = useState("");
+  const urlParamsRef = useRef<URLSearchParams | null>(null);
+  if (typeof window !== "undefined" && !urlParamsRef.current) {
+    urlParamsRef.current = new URLSearchParams(window.location.search);
+  }
+  const [busqueda, setBusqueda] = useState(() => urlParamsRef.current?.get("search") || "");
   const [editandoMsgId, setEditandoMsgId] = useState<string | null>(null);
   const [editandoTxt, setEditandoTxt] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);

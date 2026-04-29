@@ -54,6 +54,14 @@ function getTimeAgo(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
 }
 
+const GLOBAL_TYPE_META: Record<string, { label: string; className: string }> = {
+  PREDIO: { label: "Tarea", className: "bg-blue-50 text-blue-700" },
+  STOCK: { label: "Stock", className: "bg-emerald-50 text-emerald-700" },
+  CHAT: { label: "Chat", className: "bg-sky-50 text-sky-700" },
+  ACTA: { label: "Acta", className: "bg-rose-50 text-rose-700" },
+  INSTRUCTIVO: { label: "Guia", className: "bg-amber-50 text-amber-700" },
+};
+
 /* ── Theme toggle button ───────────────────────────── */
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -94,7 +102,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const [sinLeer, setSinLeer] = useState(0);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
-  const [globalSummary, setGlobalSummary] = useState<{ predios: number; stock: number; total: number } | null>(null);
+  const [globalSummary, setGlobalSummary] = useState<{ predios: number; stock: number; chats?: number; actas?: number; instructivos?: number; total: number } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -350,10 +358,13 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             {globalSummary && (
               <div className="px-4 py-2 border-b border-surface-100 text-[11px] text-surface-400 flex items-center justify-between">
                 <span>Resultados globales</span>
-                <span>{globalSummary.predios} tareas · {globalSummary.stock} stock</span>
+                <span>{globalSummary.predios} tareas · {globalSummary.stock} stock · {globalSummary.chats || 0} chats · {globalSummary.actas || 0} actas · {globalSummary.instructivos || 0} guias</span>
               </div>
             )}
             {results.length > 0 ? results.map((item, i) => (
+              (() => {
+                const meta = GLOBAL_TYPE_META[item.type] || { label: item.type, className: "bg-surface-100 text-surface-600" };
+                return (
               <button
                 key={`${item.type}-${item.id}`}
                 onClick={() => handleSelectGlobalResult(item)}
@@ -361,15 +372,17 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                   i === activeIdx ? "bg-primary-50" : "hover:bg-surface-50"
                 }`}
               >
-                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${item.type === "PREDIO" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>{item.type === "PREDIO" ? "Tarea" : "Stock"}</span>
+                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${meta.className}`}>{meta.label}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium text-surface-800 truncate">{item.title}</span>
                   {item.subtitle && <span className="block text-xs text-surface-400 truncate mt-0.5">{item.subtitle}</span>}
                 </span>
                 {item.badge && <span className="shrink-0 text-[10px] text-surface-400 max-w-20 truncate">{item.badge}</span>}
               </button>
+                );
+              })()
             )) : !loading ? (
-              <div className="px-4 py-6 text-center text-sm text-surface-400">No se encontraron tareas ni stock</div>
+              <div className="px-4 py-6 text-center text-sm text-surface-400">No se encontraron resultados</div>
             ) : null}
           </div>
         )}

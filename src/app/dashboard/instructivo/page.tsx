@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { usePermisos } from "@/hooks/usePermisos";
 
@@ -52,6 +52,11 @@ function isYouTubeUrl(url: string | null): boolean {
 export default function InstructivoPage() {
   const [instructivos, setInstructivos] = useState<Instructivo[]>([]);
   const [selected, setSelected] = useState<Instructivo | null>(null);
+  const urlParamsRef = useRef<URLSearchParams | null>(null);
+  if (typeof window !== "undefined" && !urlParamsRef.current) {
+    urlParamsRef.current = new URLSearchParams(window.location.search);
+  }
+  const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -88,6 +93,13 @@ export default function InstructivoPage() {
 
   const { puedeEditar } = usePermisos();
   const canEdit = userRol === "ADMIN" || userRol === "MODERADOR" || puedeEditar("instructivo");
+
+  const instructivosFiltrados = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return instructivos;
+    return instructivos.filter((inst) => [inst.titulo, inst.contenido, inst.categoria, inst.videoNombre, inst.pdfNombre]
+      .some((value) => String(value || "").toLowerCase().includes(q)));
+  }, [instructivos, search]);
 
   const handleDelete = async (id: string) => {
     toast("¿Eliminar este instructivo?", {
@@ -164,6 +176,16 @@ export default function InstructivoPage() {
       </div>
 
       {/* Filtro por categorías */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <input
+          type="text"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar instructivo..."
+          className="flex-1 min-w-0 px-3 py-1.5 border border-surface-200 rounded-lg text-sm sm:text-xs focus:outline-none focus:border-surface-400"
+        />
+      </div>
+
       <div className="flex gap-2 mb-4 flex-wrap">
         {["Todas", ...CATEGORIAS].map(cat => (
           <button
@@ -193,21 +215,21 @@ export default function InstructivoPage() {
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin" />
         </div>
-      ) : instructivos.length === 0 ? (
+      ) : instructivosFiltrados.length === 0 ? (
         <div className="bg-white rounded-lg border border-surface-200 p-6">
           <div className="flex flex-col items-center justify-center py-16 text-surface-400">
             <svg className="w-16 h-16 mb-4 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z" />
             </svg>
             <p className="text-sm font-medium text-surface-500 mb-2">Sin instructivos</p>
-            <p className="text-xs">No hay instructivos disponibles{filtroCategoria !== "Todas" ? ` en "${filtroCategoria}"` : ""}.</p>
+            <p className="text-xs">No hay instructivos disponibles{search ? ` para "${search}"` : filtroCategoria !== "Todas" ? ` en "${filtroCategoria}"` : ""}.</p>
           </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Lista lateral */}
           <div className="lg:col-span-1 space-y-2 max-h-[50vh] lg:max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
-            {instructivos.map(inst => (
+            {instructivosFiltrados.map(inst => (
               <button
                 key={inst.id}
                 onClick={() => setSelected(inst)}
