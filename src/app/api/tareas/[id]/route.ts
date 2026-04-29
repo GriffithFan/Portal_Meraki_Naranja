@@ -123,6 +123,20 @@ export async function GET(
         orderBy: { fecha: "asc" },
         take: 100,
       },
+      actas: {
+        select: {
+          id: true,
+          nombre: true,
+          archivoNombre: true,
+          archivoTipo: true,
+          archivoSize: true,
+          version: true,
+          createdAt: true,
+          subidoPor: { select: { id: true, nombre: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      },
     },
   });
 

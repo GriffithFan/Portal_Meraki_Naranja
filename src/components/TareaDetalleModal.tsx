@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { IconX, IconChevron, IconCheck, IconClock } from "@/components/ui/Icons";
 import { toast } from "sonner";
 
@@ -60,17 +60,17 @@ export default function TareaDetalleModal({
       minute: "2-digit",
     });
 
-  // ── Cargar datos ──────────────────────────────
-  const fetchDetail = useCallback(async () => {
-    setLoading(true);
+  const formatFileSize = (size?: number) => {
+    if (!size) return "";
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
-    const [tareaRes, actRes, comRes] = await Promise.all([
-      fetch(`/api/tareas/${tareaId}`, { credentials: "include" }),
+  const refreshTimeline = useCallback(async () => {
+    const [actRes, comRes] = await Promise.all([
       fetch(`/api/actividad?entidad=PREDIO&entidadId=${tareaId}&limite=50`, { credentials: "include" }),
       fetch(`/api/comentarios?predioId=${tareaId}`, { credentials: "include" }),
     ]);
-
-    if (tareaRes.ok) setTarea(await tareaRes.json());
     if (actRes.ok) {
       const d = await actRes.json();
       setActividades(d.actividades || []);
@@ -79,9 +79,19 @@ export default function TareaDetalleModal({
       const d = await comRes.json();
       setComentarios(d.comentarios || []);
     }
+  }, [tareaId]);
+
+  // ── Cargar datos ──────────────────────────────
+  const fetchDetail = useCallback(async () => {
+    setLoading(true);
+
+    const tareaRes = await fetch(`/api/tareas/${tareaId}`, { credentials: "include" });
+
+    if (tareaRes.ok) setTarea(await tareaRes.json());
+    await refreshTimeline();
 
     setLoading(false);
-  }, [tareaId]);
+  }, [refreshTimeline, tareaId]);
 
   useEffect(() => {
     fetchDetail();
@@ -107,6 +117,7 @@ export default function TareaDetalleModal({
     });
     if (res.ok) {
       setTarea((prev: any) => ({ ...prev, estadoId, estado: newEstado }));
+      await refreshTimeline();
       onUpdated?.();
     }
     setEstadoDropdown(false);
@@ -122,6 +133,7 @@ export default function TareaDetalleModal({
     });
     if (res.ok) {
       setTarea((prev: any) => ({ ...prev, [field]: value }));
+      await refreshTimeline();
       onUpdated?.();
     }
   }
@@ -139,8 +151,35 @@ export default function TareaDetalleModal({
       const newCom = await res.json();
       setComentarios((prev) => [newCom, ...prev]);
       setNuevoComentario("");
+      await refreshTimeline();
     }
   }
+
+  const timelineItems = useMemo(() => {
+    const items = [
+      ...comentarios.map((c) => ({ ...c, _type: "comentario" as const, _date: c.createdAt })),
+      ...actividades.map((a) => ({ ...a, _type: "actividad" as const, _date: a.createdAt })),
+      ...(tarea?.actas || []).map((a: any) => ({ ...a, _type: "acta" as const, _date: a.createdAt })),
+    ];
+    return items.sort((a, b) => new Date(b._date).getTime() - new Date(a._date).getTime());
+  }, [actividades, comentarios, tarea?.actas]);
+
+  const lastTimelineItem = timelineItems[0];
+
+  const getActivityMeta = (item: any) => {
+    if (item._type === "comentario") {
+      return { label: "Comentario", dot: "bg-primary-500", chip: "bg-primary-50 text-primary-700", actor: item.usuario?.nombre || "Usuario" };
+    }
+    if (item._type === "acta") {
+      return { label: "Archivo", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-700", actor: item.subidoPor?.nombre || "Usuario" };
+    }
+    const accion = String(item.accion || "").toUpperCase();
+    if (accion.includes("COMENTARIO")) return { label: "Comentario", dot: "bg-primary-500", chip: "bg-primary-50 text-primary-700", actor: item.usuario?.nombre || "Sistema" };
+    if (accion.includes("EDIT") || accion.includes("ACTUAL")) return { label: "Cambio", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-700", actor: item.usuario?.nombre || "Sistema" };
+    if (accion.includes("CREAR")) return { label: "Creacion", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-700", actor: item.usuario?.nombre || "Sistema" };
+    if (accion.includes("ELIMIN")) return { label: "Eliminacion", dot: "bg-red-500", chip: "bg-red-50 text-red-700", actor: item.usuario?.nombre || "Sistema" };
+    return { label: item.accion || "Actividad", dot: "bg-surface-400", chip: "bg-surface-100 text-surface-600", actor: item.usuario?.nombre || "Sistema" };
+  };
 
   // ── Campos editables ──────────────────────────────
   const fields = [
@@ -396,6 +435,27 @@ export default function TareaDetalleModal({
               ) : (
                 /* ── Tab: Actividad ── */
                 <div className="px-5 py-4 space-y-4">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="border border-surface-200 rounded-lg p-3">
+                      <p className="text-[10px] text-surface-400 uppercase tracking-wider">Comentarios</p>
+                      <p className="text-lg font-semibold text-surface-800 tabular-nums">{comentarios.length}</p>
+                    </div>
+                    <div className="border border-surface-200 rounded-lg p-3">
+                      <p className="text-[10px] text-surface-400 uppercase tracking-wider">Cambios</p>
+                      <p className="text-lg font-semibold text-surface-800 tabular-nums">{actividades.length}</p>
+                    </div>
+                    <div className="border border-surface-200 rounded-lg p-3">
+                      <p className="text-[10px] text-surface-400 uppercase tracking-wider">Archivos</p>
+                      <p className="text-lg font-semibold text-surface-800 tabular-nums">{tarea.actas?.length || 0}</p>
+                    </div>
+                  </div>
+
+                  {lastTimelineItem && (
+                    <div className="rounded-lg bg-surface-50 border border-surface-100 px-3 py-2 text-xs text-surface-600">
+                      Ultimo movimiento: <span className="font-medium text-surface-800">{formatDateTime(lastTimelineItem._date)}</span>
+                    </div>
+                  )}
+
                   {/* Comentar */}
                   <div className="flex gap-2">
                     <textarea
@@ -417,52 +477,55 @@ export default function TareaDetalleModal({
                     </div>
                   )}
 
-                  {/* Timeline */}
-                  <div className="space-y-0">
-                    {/* Mezclar comentarios + actividades, ordenar por fecha desc */}
-                    {[
-                      ...comentarios.map((c) => ({ ...c, _type: "comentario" as const })),
-                      ...actividades.map((a) => ({ ...a, _type: "actividad" as const })),
-                    ]
-                      .sort(
-                        (a, b) =>
-                          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-                      )
-                      .map((item) => (
-                        <div key={item.id} className="flex gap-3 py-2.5 border-b border-surface-50 last:border-0">
-                          {item._type === "comentario" ? (
-                            <div className="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center text-[10px] font-bold text-primary-600 shrink-0 mt-0.5">
-                              {item.usuario?.nombre?.charAt(0) || "?"}
-                            </div>
-                          ) : (
-                            <div className="w-6 h-6 rounded-full bg-surface-100 flex items-center justify-center shrink-0 mt-0.5">
-                              <IconClock className="w-3 h-3 text-surface-400" />
-                            </div>
-                          )}
+                  <div className="relative pl-3">
+                    <div className="absolute left-[22px] top-2 bottom-2 w-px bg-surface-100" />
+                    {timelineItems.map((item) => {
+                      const meta = getActivityMeta(item);
+                      const title = item._type === "comentario"
+                        ? item.contenido
+                        : item._type === "acta"
+                          ? item.nombre || item.archivoNombre
+                          : item.descripcion || item.accion;
+                      const fileSize = item._type === "acta" ? formatFileSize(item.archivoSize) : "";
+                      const subtitle = item._type === "acta"
+                        ? `${item.archivoNombre}${fileSize ? ` · ${fileSize}` : ""}`
+                        : item._type === "actividad" && item.metadata?.contenido
+                          ? item.metadata.contenido
+                          : "";
+                      return (
+                        <div key={`${item._type}-${item.id}`} className="relative flex gap-3 py-3 border-b border-surface-50 last:border-0">
+                          <div className={`w-5 h-5 rounded-full ${meta.dot} ring-4 ring-white shrink-0 mt-0.5 z-10`} />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-baseline gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-xs font-medium text-surface-700">
-                                {item.usuario?.nombre || "Sistema"}
+                                {meta.actor}
                               </span>
-                              {item._type === "actividad" && (
-                                <span className="text-[10px] text-surface-400 bg-surface-50 px-1.5 py-0.5 rounded">
-                                  {item.accion}
-                                </span>
-                              )}
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${meta.chip}`}>
+                                {meta.label}
+                              </span>
                             </div>
                             <p className="text-xs text-surface-500 mt-0.5 break-words">
-                              {item._type === "comentario"
-                                ? item.contenido
-                                : item.descripcion || item.accion}
+                              {title}
                             </p>
+                            {subtitle && <p className="text-[11px] text-surface-400 mt-0.5 break-words">{subtitle}</p>}
+                            {item._type === "acta" && (
+                              <a
+                                href={`/api/actas/${item.id}`}
+                                className="inline-flex mt-1 text-[11px] text-primary-600 hover:text-primary-700 font-medium"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Descargar archivo
+                              </a>
+                            )}
                             <p className="text-[10px] text-surface-400 mt-1">
-                              {formatDateTime(item.createdAt)}
+                              {formatDateTime(item._date)}
                             </p>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
 
-                    {actividades.length === 0 && comentarios.length === 0 && (
+                    {timelineItems.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-12 text-surface-300">
                         <IconClock className="w-8 h-8 mb-2" />
                         <p className="text-xs">Sin actividad registrada</p>

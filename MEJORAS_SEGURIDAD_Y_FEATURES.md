@@ -26,12 +26,12 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Filtros server-side en Cronograma por estado, provincia, equipo, prioridad y filtros rapidos.
 - [x] Paginacion server-side inicial en tareas por espacio: `/dashboard/tareas/espacio/[id]/tareas` carga 500 registros por pagina.
 - [x] Filtros server-side en tareas por espacio por estado, provincia, equipo, prioridad y filtros rapidos propios del espacio.
+- [x] Historial visual por predio en el modal de detalle: comentarios, cambios y archivos/actas en una linea de tiempo.
 
 ## En Progreso / Pendiente no Sensible
 
 - [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
 - [ ] Filtros guardados por usuario en Cronograma.
-- [ ] Historial visual por predio con timeline de actividad, cambios de estado, asignaciones, comentarios y archivos.
 - [ ] Centro de importaciones con historial, errores por fila, resumen de altas/cambios y proteccion contra reimportaciones ciegas.
 - [ ] Modo supervisor por equipo: carga, vencidas, avance y pendientes por tecnico/equipo.
 - [ ] Stock minimo y alertas por tipo/equipo.
@@ -79,9 +79,8 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Agregar historial visual por predio.
-2. Crear centro de importaciones en modo lectura/reporte.
-3. Implementar modo supervisor por equipo.
-4. Agregar stock minimo y alertas.
-5. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
-6. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
+1. Crear centro de importaciones en modo lectura/reporte.
+2. Implementar modo supervisor por equipo.
+3. Agregar stock minimo y alertas.
+4. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
+5. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
