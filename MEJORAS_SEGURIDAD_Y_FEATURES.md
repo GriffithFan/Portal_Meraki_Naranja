@@ -32,12 +32,13 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Stock minimo y alertas en lectura: faltantes por tipo, no operativos, sin numero de serie y distribucion por asignacion.
 - [x] Busqueda global inicial en el header: resultados combinados de tareas/predios y stock con navegacion directa.
 - [x] Busqueda global ampliada a chats, actas e instructivos con navegacion filtrada.
+- [x] Reporte operativo diario/semanal por bandeja interna: endpoint cron `/api/cron/reportes?tipo=diario|semanal` con deduplicacion por periodo.
 
 ## En Progreso / Pendiente no Sensible
 
 - [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
 - [ ] Filtros guardados por usuario en Cronograma.
-- [ ] Reportes programados diarios/semanales por bandeja interna o email.
+- [ ] Programar en VPS la ejecucion diaria/semanal del endpoint de reportes con `CRON_SECRET`.
 - [ ] Panel operativo con checks HTTP externos, estado PM2 mas detallado y ultima ejecucion de cron/backups.
 - [ ] Separar graficos pesados de `/dashboard/kpis` en chunks dinamicos.
 - [ ] Cache compartido para catalogos (`estados`, `espacios`, `campos-personalizados`, usuarios/equipos).
@@ -80,6 +81,6 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Preparar reportes programados diarios/semanales por bandeja interna o email.
+1. Programar en VPS la ejecucion diaria/semanal del endpoint de reportes con `CRON_SECRET`.
 2. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
 3. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
