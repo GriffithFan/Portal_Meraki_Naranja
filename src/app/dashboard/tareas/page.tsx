@@ -107,6 +107,7 @@ export default function TareasPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
+  const [groupCounts, setGroupCounts] = useState<Record<string, number> | null>(null);
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterProvincia, setFilterProvincia] = useState("");
   const [filterEquipo, setFilterEquipo] = useState("");
@@ -131,6 +132,8 @@ export default function TareasPage() {
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
   const [groupBy, setGroupBy] = useState("estado");
+  const filtersLoadedRef = useRef(false);
+  const filterSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showEstadoModal, setShowEstadoModal] = useState(false);
@@ -344,6 +347,7 @@ export default function TareasPage() {
     if (filterEquipo.trim()) params.set("equipo", filterEquipo.trim());
     if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
+    params.set("groupBy", groupBy);
     const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
@@ -354,6 +358,7 @@ export default function TareasPage() {
         return [...prev, ...predios.filter((item: any) => !seen.has(item.id))];
       });
       setPagination({ page: data.page || pageToLoad, total: data.total || predios.length, hasMore: Boolean(data.hasMore), limit: data.limit || SERVER_PAGE_SIZE });
+      setGroupCounts(data.groupCounts || null);
       if (!append) {
         setSelectedIds(new Set());
         setRenderLimits({});
@@ -376,7 +381,38 @@ export default function TareasPage() {
     }
     if (append) setLoadingMore(false);
     else setLoading(false);
-  }, [filterEquipo, filterEstado, filterPrioridad, filterProvincia, quickFilter, serverSearch]);
+  }, [filterEquipo, filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, serverSearch]);
+
+  useEffect(() => {
+    fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then((data) => {
+        const cfg = data?.config;
+        if (!cfg) return;
+        setFilterEstado(cfg.filterEstado || "todos");
+        setFilterProvincia(cfg.filterProvincia || "");
+        setFilterEquipo(cfg.filterEquipo || "");
+        setFilterPrioridad(cfg.filterPrioridad || "todas");
+        setQuickFilter(cfg.quickFilter || "todos");
+        setGroupBy(cfg.groupBy || "estado");
+      })
+      .catch(() => {})
+      .finally(() => { filtersLoadedRef.current = true; });
+  }, []);
+
+  useEffect(() => {
+    if (!filtersLoadedRef.current) return;
+    if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
+    filterSaveTimerRef.current = setTimeout(() => {
+      fetch("/api/preferencias/tareas-filtros", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filterEstado, filterProvincia, filterEquipo, filterPrioridad, quickFilter, groupBy }),
+      }).catch(() => {});
+    }, 900);
+    return () => { if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current); };
+  }, [filterEquipo, filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
@@ -447,7 +483,7 @@ export default function TareasPage() {
       .catch(() => {});
     // Cargar usuarios para asignación
     if (isModOrAdmin) {
-      fetch("/api/usuarios", { credentials: "include" })
+      fetch("/api/catalogos/usuarios", { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
         .then(setAllUsers)
         .catch(() => {});
@@ -567,6 +603,10 @@ export default function TareasPage() {
     }
     return sorted;
   }, [tareas, estados, search, serverSearch, sortConfig, groupBy]);
+
+  const getGroupTotal = useCallback((key: string, loadedCount: number) => {
+    return groupCounts?.[key] ?? loadedCount;
+  }, [groupCounts]);
 
   // Abrir modal de detalle
   async function openDetail(tarea: any) {
@@ -1649,10 +1689,11 @@ export default function TareasPage() {
           )}
           {estados.map((estado) => {
             const items = groupedTareas[estado.id] || [];
+            const totalInGroup = getGroupTotal(estado.id, items.length);
             const isExpanded = expandedSections.has(estado.id);
 
             // Ocultar estados sin tareas si no se activó el toggle
-            if (items.length === 0 && !showEmptyStates) return null;
+            if (totalInGroup === 0 && !showEmptyStates) return null;
 
             // Ocultar estados restringidos por permisos de rol
             if (hiddenEstadoIds.has(estado.id)) return null;
@@ -1670,7 +1711,7 @@ export default function TareasPage() {
                     <IconChevron expanded={isExpanded} className="w-3.5 h-3.5 text-surface-400" />
                     <StatusIcon clave={estado.clave} color={estado.color} size={16} />
                     <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
-                    <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
+                    <span className="text-[11px] text-surface-400 tabular-nums">{totalInGroup}</span>
                   </button>
                   <div className="pr-3 flex items-center gap-1.5">
                     {session?.rol === "ADMIN" && items.length > 1 && (
@@ -1775,7 +1816,7 @@ export default function TareasPage() {
           })}
 
           {/* Sin estado */}
-          {groupedTareas["sin-estado"]?.length > 0 && (
+          {getGroupTotal("sin-estado", groupedTareas["sin-estado"]?.length || 0) > 0 && (
             <div className="bg-white border border-surface-200 rounded-lg overflow-hidden">
               <div className="flex items-center">
                 <button
@@ -1785,7 +1826,7 @@ export default function TareasPage() {
                   <IconChevron expanded={expandedSections.has("sin-estado")} className="w-3.5 h-3.5 text-surface-400" />
                   <span className="w-2 h-2 rounded-full bg-surface-300 flex-shrink-0" />
                   <span className="text-sm font-medium text-surface-500">Sin estado</span>
-                  <span className="text-[11px] text-surface-400 tabular-nums">{groupedTareas["sin-estado"].length}</span>
+                  <span className="text-[11px] text-surface-400 tabular-nums">{getGroupTotal("sin-estado", groupedTareas["sin-estado"]?.length || 0)}</span>
                 </button>
                 {session?.rol === "ADMIN" && groupedTareas["sin-estado"].length > 0 && (
                   <div className="pr-3 flex items-center gap-1.5">
@@ -1876,6 +1917,7 @@ export default function TareasPage() {
           <>
             {Object.entries(groupedTareas).map(([groupKey, items]: [string, any[]]) => {
               const isExpanded = expandedSections.has(groupKey);
+              const totalInGroup = getGroupTotal(groupKey, items.length);
               return (
                 <div key={groupKey} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
                   <button
@@ -1885,7 +1927,7 @@ export default function TareasPage() {
                     <IconChevron expanded={isExpanded} className="w-3.5 h-3.5 text-surface-400" />
                     <span className="w-2.5 h-2.5 rounded-full bg-surface-400 flex-shrink-0" />
                     <span className="text-sm font-medium text-surface-700">{groupKey}</span>
-                    <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
+                    <span className="text-[11px] text-surface-400 tabular-nums">{totalInGroup}</span>
                   </button>
                   {isExpanded && (
                     <div className="border-t border-surface-100 overflow-x-auto">

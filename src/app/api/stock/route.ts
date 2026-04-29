@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
 import { stockCreateSchema, parseBody, isErrorResponse } from "@/lib/validation";
+import { withPrivateCatalogCache } from "@/lib/cacheHeaders";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -50,14 +51,14 @@ export async function GET(request: NextRequest) {
     where: { categoria: { not: null } },
   });
 
-  return NextResponse.json({
+  return withPrivateCatalogCache(NextResponse.json({
     equipos,
     total,
     page,
     limit,
     totalPages: Math.ceil(total / limit),
     categorias: categorias.map((c) => c.categoria).filter(Boolean),
-  });
+  }));
 }
 
 export async function POST(request: NextRequest) {

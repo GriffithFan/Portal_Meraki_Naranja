@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { espacioSchema, parseBody, isErrorResponse } from "@/lib/validation";
 import { equipoFilter } from "@/utils/equipoUtils";
+import { withPrivateCatalogCache } from "@/lib/cacheHeaders";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -86,7 +87,7 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ espacios: roots });
+  return withPrivateCatalogCache(NextResponse.json({ espacios: roots }));
 }
 
 // POST /api/espacios — Crear espacio

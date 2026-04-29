@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession, isModOrAdmin } from '@/lib/auth';
 import { parseBody, isErrorResponse, estadoCreateSchema } from '@/lib/validation';
+import { withPrivateCatalogCache } from '@/lib/cacheHeaders';
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     orderBy: { orden: 'asc' },
   });
 
-  return NextResponse.json({ estados });
+  return withPrivateCatalogCache(NextResponse.json({ estados }));
 }
 
 export async function POST(request: NextRequest) {

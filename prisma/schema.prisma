@@ -187,7 +187,15 @@ model Predio {
   @@index([provincia])
   @@index([equipoAsignado])
   @@index([espacioId])
+  @@index([updatedAt])
+  @@index([prioridad, updatedAt])
+  @@index([provincia, updatedAt])
+  @@index([equipoAsignado, updatedAt])
+  @@index([espacioId, updatedAt])
+  @@index([fechaHasta])
+  @@index([fechaProgramada])
   @@index([estadoId, fechaActualizacion])
+  @@index([estadoId, updatedAt])
   @@index([creadorId])
   @@index([enFacturacion])
 }
@@ -222,6 +230,9 @@ model Equipo {
 
   @@index([estado])
   @@index([categoria])
+  @@index([updatedAt])
+  @@index([estado, updatedAt])
+  @@index([categoria, updatedAt])
   @@index([predioId])
   @@index([asignadoId])
 }

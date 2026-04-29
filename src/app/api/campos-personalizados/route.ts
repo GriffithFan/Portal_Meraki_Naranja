@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { withPrivateCatalogCache } from "@/lib/cacheHeaders";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -14,7 +15,7 @@ export async function GET() {
     orderBy: { orden: "asc" },
   });
 
-  return NextResponse.json({ campos });
+  return withPrivateCatalogCache(NextResponse.json({ campos }));
 }
 
 // Crear uno o varios campos personalizados

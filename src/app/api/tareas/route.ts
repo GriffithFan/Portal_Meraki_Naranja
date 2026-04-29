@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   const equipo = sanitizeSearch(searchParams.get("equipo"));
   const prioridad = searchParams.get("prioridad");
   const quick = searchParams.get("quick");
+  const groupBy = searchParams.get("groupBy") || "estado";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
   const limitParam = searchParams.get("limit");
   const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 2000);
@@ -137,7 +138,7 @@ export async function GET(request: NextRequest) {
     where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
   }
 
-  const [predios, total] = await Promise.all([
+  const [predios, total, groupCounts] = await Promise.all([
     prisma.predio.findMany({
       where,
       include: {
@@ -153,6 +154,7 @@ export async function GET(request: NextRequest) {
       take: limit,
     }),
     prisma.predio.count({ where }),
+    getGroupCounts(where, groupBy),
   ]);
 
   // Registrar consulta de predios (auditoría) — fire-and-forget
@@ -174,7 +176,37 @@ export async function GET(request: NextRequest) {
     limit,
     totalPages: Math.max(1, Math.ceil(total / limit)),
     hasMore: skip + predios.length < total,
+    groupCounts,
   });
+}
+
+async function getGroupCounts(where: any, groupBy: string) {
+  if (groupBy === "estado") {
+    const rows = await prisma.predio.groupBy({
+      by: ["estadoId"],
+      where,
+      _count: { _all: true },
+    });
+    return Object.fromEntries(rows.map((row) => [row.estadoId || "sin-estado", row._count._all]));
+  }
+
+  const fieldMap: Record<string, "provincia" | "lacR" | "equipoAsignado" | "ambito" | "ciudad"> = {
+    provincia: "provincia",
+    lacR: "lacR",
+    equipoAsignado: "equipoAsignado",
+    ambito: "ambito",
+    ciudad: "ciudad",
+  };
+  const field = fieldMap[groupBy];
+  if (!field) return null;
+
+  const rows = await prisma.predio.groupBy({
+    by: [field],
+    where,
+    _count: { _all: true },
+  });
+
+  return Object.fromEntries(rows.map((row) => [String(row[field] || (field === "provincia" ? "Sin provincia" : "Sin valor")), row._count._all]));
 }
 
 export async function POST(request: NextRequest) {

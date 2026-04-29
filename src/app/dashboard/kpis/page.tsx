@@ -2,11 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, Legend, AreaChart, Area, CartesianGrid,
-} from "recharts";
 import SectionSettings from "@/components/ui/SectionSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -49,6 +46,24 @@ const EQUIPO_COLORS = [
 ];
 
 const AMBITO_COLORS = ["#6366f1", "#22c55e", "#f97316", "#94a3b8"];
+
+function ChartFallback() {
+  return <div className="h-full min-h-[140px] rounded-lg bg-surface-100 skeleton-shimmer" />;
+}
+
+const ResponsiveContainer = dynamic<any>(() => import("recharts").then((m) => m.ResponsiveContainer as any), { ssr: false, loading: ChartFallback });
+const PieChart = dynamic<any>(() => import("recharts").then((m) => m.PieChart as any), { ssr: false, loading: ChartFallback });
+const Pie = dynamic<any>(() => import("recharts").then((m) => m.Pie as any), { ssr: false, loading: ChartFallback });
+const Cell = dynamic<any>(() => import("recharts").then((m) => m.Cell as any), { ssr: false, loading: ChartFallback });
+const BarChart = dynamic<any>(() => import("recharts").then((m) => m.BarChart as any), { ssr: false, loading: ChartFallback });
+const Bar = dynamic<any>(() => import("recharts").then((m) => m.Bar as any), { ssr: false, loading: ChartFallback });
+const XAxis = dynamic<any>(() => import("recharts").then((m) => m.XAxis as any), { ssr: false, loading: ChartFallback });
+const YAxis = dynamic<any>(() => import("recharts").then((m) => m.YAxis as any), { ssr: false, loading: ChartFallback });
+const Tooltip = dynamic<any>(() => import("recharts").then((m) => m.Tooltip as any), { ssr: false, loading: ChartFallback });
+const Legend = dynamic<any>(() => import("recharts").then((m) => m.Legend as any), { ssr: false, loading: ChartFallback });
+const AreaChart = dynamic<any>(() => import("recharts").then((m) => m.AreaChart as any), { ssr: false, loading: ChartFallback });
+const Area = dynamic<any>(() => import("recharts").then((m) => m.Area as any), { ssr: false, loading: ChartFallback });
+const CartesianGrid = dynamic<any>(() => import("recharts").then((m) => m.CartesianGrid as any), { ssr: false, loading: ChartFallback });
 
 export default function KPIsPage() {
   const { theme } = useTheme();

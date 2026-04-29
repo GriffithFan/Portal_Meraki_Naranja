@@ -36,14 +36,14 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Script seguro de ejecucion de reportes cron: `scripts/run-reportes-cron.sh` lee `CRON_SECRET` desde `.env` sin guardarlo en crontab.
 - [x] Reportes programados en VPS: diario 11:00 UTC y semanal lunes 11:30 UTC, con log en `/var/www/carrot/logs/reportes-cron.log`.
 - [x] Panel operativo ampliado con checks HTTP, detalle PM2, crontab relevante y log de reportes/backups.
+- [x] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor.
+- [x] Filtros guardados por usuario en Cronograma mediante preferencias persistidas.
+- [x] Graficos de `/dashboard/kpis` cargados en chunks dinamicos para reducir bundle inicial.
+- [x] Cache privada corta para catalogos autenticados (`estados`, `espacios`, `campos-personalizados`, stock y usuarios seguros sin credenciales).
+- [x] Indices DB para filtros, paginacion y stock usados por dashboards y cronograma.
 
 ## En Progreso / Pendiente no Sensible
 
-- [ ] Paginacion avanzada de tareas: conteos globales por estado/grupo calculados en servidor, no solo sobre lo cargado.
-- [ ] Filtros guardados por usuario en Cronograma.
-- [ ] Separar graficos pesados de `/dashboard/kpis` en chunks dinamicos.
-- [ ] Cache compartido para catalogos (`estados`, `espacios`, `campos-personalizados`, usuarios/equipos).
-- [ ] Indices DB basados en consultas lentas reales medidas en VPS.
 - [ ] Optimizar imagenes privadas donde sea seguro reemplazar `<img>` por `next/image` o endpoint optimizado.
 
 ## Seguridad sin Tocar Credenciales
@@ -82,6 +82,6 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Separar graficos pesados de `/dashboard/kpis` en chunks dinamicos.
+1. Optimizar imagenes privadas donde sea seguro reemplazar `<img>` por `next/image` o endpoint optimizado.
 2. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
 3. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
