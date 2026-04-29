@@ -84,8 +84,8 @@ export default function CreateTareaModal({
           </button>
         </div>
         <div className="space-y-2.5">
-          <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre / CUE *" className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
-          <input value={form.incidencias} onChange={(e) => setForm({ ...form, incidencias: e.target.value })} placeholder="Numero de Predio (NI-...)" className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
+          <input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre / Predio *" className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
+          <input value={form.incidencias} onChange={(e) => setForm({ ...form, incidencias: e.target.value })} placeholder="Incidencia" className="w-full px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
 
           <div className="grid grid-cols-2 gap-2">
             <input value={form.cue} onChange={(e) => setForm({ ...form, cue: e.target.value })} placeholder="CUE" className="px-2.5 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 placeholder:text-surface-300" />
