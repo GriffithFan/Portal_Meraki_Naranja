@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import SectionSettings from "@/components/ui/SectionSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useSession } from "@/hooks/useSession";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -38,6 +39,15 @@ interface KPIData {
     actividadSemana: number;
     notificacionesPendientes: number;
   };
+  produccionSemanal?: {
+    semana: string;
+    desde: string;
+    hasta: string;
+    total: number;
+    conformes: number;
+    noConformes: number;
+    porTecnico: { tecnicoId: string; tecnicoNombre: string; total: number; conformes: number; noConformes: number }[];
+  };
 }
 
 const EQUIPO_COLORS = [
@@ -67,6 +77,7 @@ const CartesianGrid = dynamic<any>(() => import("recharts").then((m) => m.Cartes
 
 export default function KPIsPage() {
   const { theme } = useTheme();
+  const { isAdmin } = useSession();
   const dk = theme === "dark";
   const [data, setData] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,7 +85,7 @@ export default function KPIsPage() {
 
   // Secciones visibles (persistencia en localStorage)
   const KPI_SECTIONS_KEY = "pmn-kpi-sections";
-  const defaultSections = { progreso: true, predios: true, operacion: true, recursos: true, graficos1: true, graficos2: true, actividad: true };
+  const defaultSections = { progreso: true, produccionSemanal: true, predios: true, operacion: true, recursos: true, graficos1: true, graficos2: true, actividad: true };
   const [sections, setSections] = useState(defaultSections);
 
   useEffect(() => {
@@ -148,7 +159,8 @@ export default function KPIsPage() {
     );
   }
 
-  const { predios, tareas, equipos, operacion } = data;
+  const { predios, tareas, equipos, operacion, produccionSemanal } = data;
+  const showProduccionSemanal = isAdmin && Boolean(produccionSemanal);
   const equipoData = predios.byEquipo.filter((e) => e.nombre !== "Sin asignar").slice(0, 10);
   const totalEquipos = equipos.disponibles + equipos.asignados + equipos.rotos;
   const equipoPieData = [
@@ -185,6 +197,7 @@ export default function KPIsPage() {
           <SectionSettings seccion="kpis">
             {[
               { key: "progreso", label: "Progreso general" },
+              ...(showProduccionSemanal ? [{ key: "produccionSemanal", label: "Producción semanal" }] : []),
               { key: "predios", label: "KPIs Predios" },
               { key: "operacion", label: "KPIs Operación" },
               { key: "recursos", label: "KPIs Recursos" },
@@ -282,9 +295,70 @@ export default function KPIsPage() {
       </motion.div>}
       </AnimatePresence>
 
+      {/* ── Producción semanal (solo ADMIN) ─────────── */}
+      <AnimatePresence>
+      {showProduccionSemanal && sections.produccionSemanal && produccionSemanal && <motion.div custom={1} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-3">
+          <SectionTitle title="Producción semanal" />
+          <p className="text-[11px] text-surface-400">
+            Semana {produccionSemanal.semana} · desde {formatShortDate(produccionSemanal.desde)} · reinicia los lunes 00:00
+          </p>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3 sm:gap-4">
+            <KPICard
+              label="Total semanal" value={produccionSemanal.total}
+              icon="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" color="primary"
+            />
+            <KPICard
+              label="Conformes" value={produccionSemanal.conformes}
+              icon="M4.5 12.75l6 6 9-13.5" color="green"
+              progress={produccionSemanal.total > 0 ? (produccionSemanal.conformes / produccionSemanal.total) * 100 : 0}
+            />
+            <KPICard
+              label="No conformes" value={produccionSemanal.noConformes}
+              icon="M6 18L18 6M6 6l12 12" color="red" highlight={produccionSemanal.noConformes > 0}
+              progress={produccionSemanal.total > 0 ? (produccionSemanal.noConformes / produccionSemanal.total) * 100 : 0}
+            />
+          </div>
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Producción por técnico</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {produccionSemanal.porTecnico.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-surface-400 border-b border-surface-100">
+                        <th className="py-2 pr-3 font-medium">Técnico</th>
+                        <th className="py-2 px-3 font-medium text-right">Total</th>
+                        <th className="py-2 px-3 font-medium text-right">Conformes</th>
+                        <th className="py-2 pl-3 font-medium text-right">No conformes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-100">
+                      {produccionSemanal.porTecnico.slice(0, 12).map((tecnico) => (
+                        <tr key={tecnico.tecnicoId} className="text-surface-700">
+                          <td className="py-2.5 pr-3 font-medium max-w-[180px] truncate">{tecnico.tecnicoNombre}</td>
+                          <td className="py-2.5 px-3 text-right font-semibold tabular-nums">{tecnico.total}</td>
+                          <td className="py-2.5 px-3 text-right text-emerald-600 font-semibold tabular-nums">{tecnico.conformes}</td>
+                          <td className="py-2.5 pl-3 text-right text-red-600 font-semibold tabular-nums">{tecnico.noConformes}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <EmptyState text="Sin producción semanal registrada" />}
+            </CardContent>
+          </Card>
+        </div>
+      </motion.div>}
+      </AnimatePresence>
+
       {/* ── KPI Cards: Predios ───────────────────────── */}
       <AnimatePresence>
-      {sections.predios && <motion.div custom={1} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+      {sections.predios && <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Predios" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
@@ -318,7 +392,7 @@ export default function KPIsPage() {
 
       {/* ── KPI Cards: Operación ─────────────────────── */}
       <AnimatePresence>
-      {sections.operacion && <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+      {sections.operacion && <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Operación" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
@@ -346,7 +420,7 @@ export default function KPIsPage() {
 
       {/* ── KPI Cards: Recursos ──────────────────────── */}
       <AnimatePresence>
-      {sections.recursos && <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+      {sections.recursos && <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Recursos" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
@@ -376,7 +450,7 @@ export default function KPIsPage() {
 
       {/* ── Gráficos fila 1 ────────────────────────── */}
       <AnimatePresence>
-      {sections.graficos1 && <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
+      {sections.graficos1 && <motion.div custom={5} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
         {/* Distribución por estado - Donut */}
         <ChartCard title="Distribución por Estado" subtitle={`${predios.byEstado.length} estados configurados`}>
           {predios.byEstado.length > 0 ? (
@@ -472,7 +546,7 @@ export default function KPIsPage() {
 
       {/* ── Gráficos fila 2 ────────────────────────── */}
       <AnimatePresence>
-      {sections.graficos2 && <motion.div custom={5} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+      {sections.graficos2 && <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Predios por Provincia - Bar */}
         <div className="lg:col-span-2">
           <ChartCard title="Predios por Provincia" subtitle="Distribución geográfica">
@@ -555,7 +629,7 @@ export default function KPIsPage() {
 
       {/* ── Resumen actividad + Quick links ───────────── */}
       <AnimatePresence>
-      {sections.actividad && <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+      {sections.actividad && <motion.div custom={7} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Activity summary */}
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -601,6 +675,10 @@ function SectionTitle({ title }: { title: string }) {
       {title}
     </h2>
   );
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
 }
 
 function KPICard({
