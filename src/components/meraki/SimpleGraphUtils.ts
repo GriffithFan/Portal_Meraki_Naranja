@@ -154,6 +154,51 @@ export const buildLinkPath = (source: any, target: any): string => {
   return `M ${start.x} ${start.y} C ${start.x + direction * controlDistance} ${start.y + curvature}, ${end.x - direction * controlDistance} ${end.y - curvature}, ${end.x} ${end.y}`;
 };
 
+const estimateLabelHeight = (node: any, apCount: number): number => {
+  if (node.kind === "external") return 42;
+  const { primary, secondary, tertiary } = computeNodeLabels(node);
+  const lines = [primary, secondary, tertiary].filter(Boolean).length;
+  const labelTopOffset = apCount <= 6 ? 92 : apCount <= 12 ? 72 : apCount <= 30 ? 92 : 118;
+  return labelTopOffset + Math.max(1, lines) * 22;
+};
+
+const estimateNodeFootprint = (node: any, apCount: number): { top: number; bottom: number } => {
+  const dims = getNodeDimensions(node);
+  const scale = node?.scale || 1;
+  const labelHeight = estimateLabelHeight(node, apCount);
+  const iconHalf = (dims.height * scale) / 2;
+  return {
+    top: node.y - Math.max(labelHeight, iconHalf + 18),
+    bottom: node.y + iconHalf + 22,
+  };
+};
+
+const improveColumnVisibility = (nodes: any[], apCount: number) => {
+  const columns = new Map<number, any[]>();
+  nodes.forEach((node) => {
+    if (node.kind === "external") return;
+    const key = Math.round(node.x / 80) * 80;
+    if (!columns.has(key)) columns.set(key, []);
+    columns.get(key)!.push(node);
+  });
+
+  columns.forEach((columnNodes) => {
+    if (columnNodes.length < 2) return;
+    columnNodes.sort((a, b) => a.y - b.y);
+    let previousBottom = -Infinity;
+    columnNodes.forEach((node) => {
+      const bounds = estimateNodeFootprint(node, apCount);
+      const minGap = apCount <= 6 ? 34 : apCount <= 20 ? 28 : 22;
+      const neededTop = previousBottom + minGap;
+      if (bounds.top < neededTop) {
+        const delta = neededTop - bounds.top;
+        node.y += delta;
+      }
+      previousBottom = estimateNodeFootprint(node, apCount).bottom;
+    });
+  });
+};
+
 // ═══════════════════════════════════════════════════════════════
 // buildLayout — core graph layout algorithm
 // ═══════════════════════════════════════════════════════════════
@@ -391,7 +436,7 @@ export const buildLayout = (graph: any, deviceMap: Map<string, any> = new Map())
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   layoutNodes.forEach((n) => { minX = Math.min(minX, n.x); minY = Math.min(minY, n.y); maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y); });
 
-  const paddingLeft = 30, paddingRight = 250, paddingTop = 150, paddingBottom = 200;
+  const paddingLeft = 30, paddingRight = 250, paddingTop = apCount <= 8 ? 190 : 170, paddingBottom = 220;
   const shiftX = paddingLeft - minX;
   let shiftY = paddingTop - minY;
   const isGAPorGTW = layoutNodes.some((n) => n.kind === "gateway" || n.model?.toUpperCase().includes("Z3"));
@@ -415,6 +460,8 @@ export const buildLayout = (graph: any, deviceMap: Map<string, any> = new Map())
       }
     }
   }
+
+  improveColumnVisibility(layoutNodes, apCount);
 
   minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
   layoutNodes.forEach((n) => { minX = Math.min(minX, n.x); minY = Math.min(minY, n.y); maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y); });

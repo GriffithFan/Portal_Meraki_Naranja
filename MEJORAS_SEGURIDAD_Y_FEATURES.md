@@ -45,6 +45,7 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Chat Mesa: nombres de participantes mas visibles con colores por usuario/rol.
 - [x] Chat Mesa: conversaciones no leidas destacadas en lista y contador global.
 - [x] Chat Mesa: recordatorios cada 15 minutos con push, bandeja interna y sonido cuando hay mensajes pendientes.
+- [x] Topologia: separacion visual por columnas para evitar dispositivos y etiquetas amontonados sin cambiar la logica ni el orden del grafico.
 
 ## En Progreso / Pendiente no Sensible
 
