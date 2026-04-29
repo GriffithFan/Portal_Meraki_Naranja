@@ -154,21 +154,35 @@ export const buildLinkPath = (source: any, target: any): string => {
   return `M ${start.x} ${start.y} C ${start.x + direction * controlDistance} ${start.y + curvature}, ${end.x - direction * controlDistance} ${end.y - curvature}, ${end.x} ${end.y}`;
 };
 
-const estimateLabelHeight = (node: any, apCount: number): number => {
-  if (node.kind === "external") return 42;
+const estimateLabelBounds = (node: any, apCount: number): { top: number; bottom: number } => {
+  if (node.kind === "external") return { top: -18, bottom: 36 };
   const { primary, secondary, tertiary } = computeNodeLabels(node);
-  const lines = [primary, secondary, tertiary].filter(Boolean).length;
-  const labelTopOffset = apCount <= 6 ? 92 : apCount <= 12 ? 72 : apCount <= 30 ? 92 : 118;
-  return labelTopOffset + Math.max(1, lines) * 22;
+  const offsets = apCount <= 4 ? [-76, -48, -24]
+    : apCount <= 6 ? [-84, -52, -28]
+      : apCount <= 8 ? [-60, -35, -10]
+        : apCount <= 12 ? [-65, -40, -15]
+          : apCount <= 20 ? [-70, -45, -20]
+            : apCount <= 30 ? [-85, -55, -25]
+              : apCount <= 40 ? [-95, -65, -35]
+                : apCount <= 60 ? [-110, -75, -40]
+                  : [-125, -90, -55];
+  const visibleOffsets = [primary, secondary, tertiary]
+    .map((value, index) => (value ? offsets[index] : null))
+    .filter((value): value is number => value !== null);
+  if (!visibleOffsets.length) return { top: -28, bottom: 28 };
+  return {
+    top: Math.min(...visibleOffsets) - 16,
+    bottom: Math.max(...visibleOffsets) + 8,
+  };
 };
 
 const estimateNodeFootprint = (node: any, apCount: number): { top: number; bottom: number } => {
   const dims = getNodeDimensions(node);
   const scale = node?.scale || 1;
-  const labelHeight = estimateLabelHeight(node, apCount);
+  const labelBounds = estimateLabelBounds(node, apCount);
   const iconHalf = (dims.height * scale) / 2;
   return {
-    top: node.y - Math.max(labelHeight, iconHalf + 18),
+    top: node.y + Math.min(labelBounds.top, -iconHalf - 12),
     bottom: node.y + iconHalf + 22,
   };
 };
@@ -188,7 +202,7 @@ const improveColumnVisibility = (nodes: any[], apCount: number) => {
     let previousBottom = -Infinity;
     columnNodes.forEach((node) => {
       const bounds = estimateNodeFootprint(node, apCount);
-      const minGap = apCount <= 6 ? 34 : apCount <= 20 ? 28 : 22;
+      const minGap = apCount <= 8 ? 18 : apCount <= 20 ? 16 : 14;
       const neededTop = previousBottom + minGap;
       if (bounds.top < neededTop) {
         const delta = neededTop - bounds.top;
@@ -436,7 +450,7 @@ export const buildLayout = (graph: any, deviceMap: Map<string, any> = new Map())
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   layoutNodes.forEach((n) => { minX = Math.min(minX, n.x); minY = Math.min(minY, n.y); maxX = Math.max(maxX, n.x); maxY = Math.max(maxY, n.y); });
 
-  const paddingLeft = 30, paddingRight = 250, paddingTop = apCount <= 8 ? 190 : 170, paddingBottom = 220;
+  const paddingLeft = 30, paddingRight = 250, paddingTop = apCount <= 8 ? 165 : 155, paddingBottom = 200;
   const shiftX = paddingLeft - minX;
   let shiftY = paddingTop - minY;
   const isGAPorGTW = layoutNodes.some((n) => n.kind === "gateway" || n.model?.toUpperCase().includes("Z3"));
