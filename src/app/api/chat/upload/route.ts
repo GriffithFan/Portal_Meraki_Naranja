@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { sanitizeFileName, validateAndReadUpload } from "@/lib/uploadSecurity";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
@@ -14,8 +15,7 @@ const ALLOWED_MIME: Record<string, string[]> = {
 };
 
 const ALL_ALLOWED = Object.values(ALLOWED_MIME).flat();
-
-const SAFE_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|mp4|mov|webm|mp3|ogg|wav|zip)$/i;
+const SAFE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "mp3", "ogg", "wav", "zip"];
 
 export const runtime = "nodejs";
 
@@ -45,20 +45,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "conversacionId requerido" }, { status: 400 });
     }
 
+    const validatedFiles = [];
     for (const file of files) {
-      const baseMime = file.type.split(";")[0].trim().toLowerCase();
-      if (!ALL_ALLOWED.includes(baseMime)) {
-        return NextResponse.json(
-          { error: `Tipo de archivo no permitido: ${file.name}` },
-          { status: 400 }
-        );
-      }
-      if (!file.name.match(SAFE_EXTENSIONS)) {
-        return NextResponse.json({ error: `Extensión de archivo no permitida: ${file.name}` }, { status: 400 });
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        return NextResponse.json({ error: `${file.name} supera 25MB` }, { status: 400 });
-      }
+      const validation = await validateAndReadUpload({
+        file,
+        allowedMimeTypes: ALL_ALLOWED,
+        allowedExtensions: SAFE_EXTENSIONS,
+        maxSizeBytes: MAX_FILE_SIZE,
+        label: "archivo",
+      });
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
+      validatedFiles.push({ file, ...validation });
     }
 
     // Verificar que la conversación existe y el usuario tiene acceso
@@ -94,11 +91,11 @@ export async function POST(request: NextRequest) {
     const mensajesCreados = [];
     for (let index = 0; index < files.length; index++) {
       const file = files[index];
-      const ext = path.extname(file.name).toLowerCase();
+      const validated = validatedFiles[index];
+      const ext = `.${validated.extension}`;
       const safeName = `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}${ext}`;
       const filePath = path.join(uploadsDir, safeName);
-      const buffer = Buffer.from(await file.arrayBuffer());
-      await writeFile(filePath, buffer);
+      await writeFile(filePath, validated.buffer);
 
       const nuevoMensaje = await prisma.chatMensaje.create({
         data: {
@@ -106,8 +103,8 @@ export async function POST(request: NextRequest) {
           conversacionId,
           autorId: session.userId,
           archivoUrl: `uploads/chat/${safeName}`,
-          archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() áéíóúñÁÉÍÓÚÑ]/g, "_").slice(0, 200),
-          archivoTipo: file.type,
+          archivoNombre: sanitizeFileName(file.name),
+          archivoTipo: validated.mime,
           archivoTamanio: file.size,
         },
         include: {

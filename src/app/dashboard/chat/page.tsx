@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
 import { useSession } from "@/hooks/useSession";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +44,7 @@ function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
     return (
       <div className="mt-1.5">
         <a href={inlineUrl} target="_blank" rel="noopener noreferrer">
-          <img src={inlineUrl} alt={msg.archivoNombre} className="max-w-[280px] max-h-[200px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition" loading="lazy" />
+          <Image src={inlineUrl} alt={msg.archivoNombre} width={280} height={200} unoptimized className="max-w-[280px] max-h-[200px] w-auto h-auto rounded-lg object-cover cursor-pointer hover:opacity-90 transition" />
         </a>
         <div className="flex items-center gap-2">
           <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>

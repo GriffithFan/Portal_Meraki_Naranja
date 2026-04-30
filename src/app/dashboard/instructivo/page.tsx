@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Image from "next/image";
 import { toast } from "sonner";
 import { usePermisos } from "@/hooks/usePermisos";
 
@@ -364,9 +365,13 @@ export default function InstructivoPage() {
                 {/* Visor de imagen */}
                 {getImagenSrc(selected) && (
                   <div className="p-4 flex justify-center bg-surface-50">
-                    <img
+                    <Image
                       src={getImagenSrc(selected)!}
                       alt={selected.titulo}
+                      width={1200}
+                      height={800}
+                      sizes="(max-width: 1024px) 100vw, 1024px"
+                      unoptimized
                       className="max-w-full max-h-[600px] object-contain rounded-lg cursor-zoom-in"
                       onClick={() => setImagenExpandida(getImagenSrc(selected))}
                     />
@@ -449,13 +454,16 @@ export default function InstructivoPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-          <img
-            src={imagenExpandida}
-            alt="Imagen expandida"
-            className="max-w-[100vw] max-h-[100vh] object-contain select-none"
-            style={{ touchAction: "pinch-zoom" }}
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="relative w-screen h-screen" style={{ touchAction: "pinch-zoom" }} onClick={(e) => e.stopPropagation()}>
+            <Image
+              src={imagenExpandida}
+              alt="Imagen expandida"
+              fill
+              sizes="100vw"
+              unoptimized
+              className="object-contain select-none"
+            />
+          </div>
         </div>
       )}
     </div>

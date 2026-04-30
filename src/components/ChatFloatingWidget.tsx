@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
 import { useSession } from "@/hooks/useSession";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import { usePathname } from "next/navigation";
@@ -34,7 +35,7 @@ function ChatArchivo({ msg }: { msg: any }) {
     return (
       <div className="mt-1">
         <a href={inlineUrl} target="_blank" rel="noopener noreferrer">
-          <img src={inlineUrl} alt={msg.archivoNombre} className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90" loading="lazy" />
+          <Image src={inlineUrl} alt={msg.archivoNombre} width={200} height={150} unoptimized className="max-w-[200px] max-h-[150px] w-auto h-auto rounded-lg object-cover cursor-pointer hover:opacity-90" />
         </a>
         <div className="flex items-center gap-2">
           <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>

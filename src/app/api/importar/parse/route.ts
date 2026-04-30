@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import * as XLSX from "xlsx";
 
+const MAX_IMPORT_FILE_SIZE = 20 * 1024 * 1024;
+const MAX_PREVIEW_ROWS = 2000;
+const MAX_COLUMNS = 200;
+const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls", "csv"]);
+const ALLOWED_MIME_TYPES = new Set([
+  "",
+  "application/octet-stream",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv",
+  "text/plain",
+]);
+
+function getExtension(fileName: string) {
+  return fileName.split(".").pop()?.toLowerCase() || "";
+}
+
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session || !isModOrAdmin(session.rol)) {
@@ -17,17 +34,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No se proporcionó archivo" }, { status: 400 });
     }
 
-    const allowedExtensions = /\.(xlsx|xls|csv)$/i;
-    if (!file.name.match(allowedExtensions)) {
+    const extension = getExtension(file.name);
+    if (!ALLOWED_EXTENSIONS.has(extension)) {
       return NextResponse.json({ error: "Formato no soportado. Usa .xlsx, .xls o .csv" }, { status: 400 });
     }
 
-    if (file.size > 20 * 1024 * 1024) {
+    if (!ALLOWED_MIME_TYPES.has(file.type)) {
+      return NextResponse.json({ error: "Tipo de archivo no soportado" }, { status: 400 });
+    }
+
+    if (file.size > MAX_IMPORT_FILE_SIZE) {
       return NextResponse.json({ error: "El archivo no puede superar 20MB" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+    const workbook = XLSX.read(buffer, {
+      type: "buffer",
+      cellDates: true,
+      cellFormula: false,
+      cellHTML: false,
+      cellStyles: false,
+      sheetRows: MAX_PREVIEW_ROWS + 1,
+    });
 
     const sheetNames = workbook.SheetNames;
     if (sheetIndex >= sheetNames.length) {
@@ -45,7 +73,11 @@ export async function POST(request: NextRequest) {
       h ? String(h).trim() : `Columna ${i + 1}`
     );
 
-    const rows = rawData.slice(1, 2001).map((row) =>
+    if (headers.length > MAX_COLUMNS) {
+      return NextResponse.json({ error: `El archivo no puede superar ${MAX_COLUMNS} columnas` }, { status: 400 });
+    }
+
+    const rows = rawData.slice(1, MAX_PREVIEW_ROWS + 1).map((row) =>
       headers.map((_, i) => {
         const val = (row as unknown[])[i];
         if (val instanceof Date) return val.toISOString().split("T")[0];

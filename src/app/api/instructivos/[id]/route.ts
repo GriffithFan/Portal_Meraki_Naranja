@@ -3,13 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
+import { sanitizeFileName, validateAndReadUpload } from "@/lib/uploadSecurity";
 
 const ALLOWED_VIDEO_TYPES = [
   "video/mp4",
   "video/webm",
   "video/ogg",
 ];
-const ALLOWED_VIDEO_EXT = /\.(mp4|webm|ogg)$/i;
+const ALLOWED_VIDEO_EXT = ["mp4", "webm", "ogg"];
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024;
 
 const ALLOWED_IMAGE_TYPES = [
@@ -18,11 +19,11 @@ const ALLOWED_IMAGE_TYPES = [
   "image/webp",
   "image/gif",
 ];
-const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif)$/i;
+const ALLOWED_IMAGE_EXT = ["jpg", "jpeg", "png", "webp", "gif"];
 const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
 
 const ALLOWED_PDF_TYPES = ["application/pdf"];
-const ALLOWED_PDF_EXT = /\.pdf$/i;
+const ALLOWED_PDF_EXT = ["pdf"];
 const MAX_PDF_SIZE = 50 * 1024 * 1024;
 
 export async function GET(
@@ -91,19 +92,14 @@ export async function PUT(
 
     // Si se sube un nuevo video, eliminar el anterior
     if (video && video.size > 0) {
-      if (!ALLOWED_VIDEO_TYPES.includes(video.type) || !video.name.match(ALLOWED_VIDEO_EXT)) {
-        return NextResponse.json(
-          { error: "Solo se permiten videos MP4, WebM u OGG" },
-          { status: 400 }
-        );
-      }
-
-      if (video.size > MAX_VIDEO_SIZE) {
-        return NextResponse.json(
-          { error: "El video no puede superar 200MB" },
-          { status: 400 }
-        );
-      }
+      const validation = await validateAndReadUpload({
+        file: video,
+        allowedMimeTypes: ALLOWED_VIDEO_TYPES,
+        allowedExtensions: ALLOWED_VIDEO_EXT,
+        maxSizeBytes: MAX_VIDEO_SIZE,
+        label: "video",
+      });
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
       // Eliminar video anterior si existe
       if (existing.videoRuta) {
@@ -113,16 +109,15 @@ export async function PUT(
       const uploadsDir = path.join(process.cwd(), "uploads", "instructivos");
       await mkdir(uploadsDir, { recursive: true });
 
-      const ext = path.extname(video.name);
+      const ext = `.${validation.extension}`;
       const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
       const filePath = path.join(uploadsDir, safeName);
 
-      const buffer = Buffer.from(await video.arrayBuffer());
-      await writeFile(filePath, buffer);
+      await writeFile(filePath, validation.buffer);
 
-      updateData.videoNombre = video.name;
+      updateData.videoNombre = sanitizeFileName(video.name);
       updateData.videoRuta = `/uploads/instructivos/${safeName}`;
-      updateData.videoTipo = video.type || ext.replace(".", "");
+      updateData.videoTipo = validation.mime;
       updateData.videoSize = video.size;
     } else if (removeVideo && existing.videoRuta) {
       // Si se solicita eliminar el video sin reemplazar
@@ -135,19 +130,14 @@ export async function PUT(
 
     // Manejo de imagen
     if (imagen && imagen.size > 0) {
-      if (!ALLOWED_IMAGE_TYPES.includes(imagen.type) || !imagen.name.match(ALLOWED_IMAGE_EXT)) {
-        return NextResponse.json(
-          { error: "Solo se permiten imágenes JPG, PNG, WebP o GIF" },
-          { status: 400 }
-        );
-      }
-
-      if (imagen.size > MAX_IMAGE_SIZE) {
-        return NextResponse.json(
-          { error: "La imagen no puede superar 25MB" },
-          { status: 400 }
-        );
-      }
+      const validation = await validateAndReadUpload({
+        file: imagen,
+        allowedMimeTypes: ALLOWED_IMAGE_TYPES,
+        allowedExtensions: ALLOWED_IMAGE_EXT,
+        maxSizeBytes: MAX_IMAGE_SIZE,
+        label: "imagen",
+      });
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
       if (existing.imagenRuta) {
         await deleteUploadFile(existing.imagenRuta);
@@ -156,16 +146,15 @@ export async function PUT(
       const imgDir = path.join(process.cwd(), "uploads", "instructivos");
       await mkdir(imgDir, { recursive: true });
 
-      const imgExt = path.extname(imagen.name);
+      const imgExt = `.${validation.extension}`;
       const imgSafeName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${imgExt}`;
       const imgPath = path.join(imgDir, imgSafeName);
 
-      const imgBuffer = Buffer.from(await imagen.arrayBuffer());
-      await writeFile(imgPath, imgBuffer);
+      await writeFile(imgPath, validation.buffer);
 
-      updateData.imagenNombre = imagen.name;
+      updateData.imagenNombre = sanitizeFileName(imagen.name);
       updateData.imagenRuta = `/uploads/instructivos/${imgSafeName}`;
-      updateData.imagenTipo = imagen.type;
+      updateData.imagenTipo = validation.mime;
       updateData.imagenSize = imagen.size;
     } else if (removeImagen && existing.imagenRuta) {
       await deleteUploadFile(existing.imagenRuta);
@@ -177,19 +166,14 @@ export async function PUT(
 
     // Manejo de PDF
     if (pdf && pdf.size > 0) {
-      if (!ALLOWED_PDF_TYPES.includes(pdf.type) || !pdf.name.match(ALLOWED_PDF_EXT)) {
-        return NextResponse.json(
-          { error: "Solo se permiten archivos PDF" },
-          { status: 400 }
-        );
-      }
-
-      if (pdf.size > MAX_PDF_SIZE) {
-        return NextResponse.json(
-          { error: "El PDF no puede superar 50MB" },
-          { status: 400 }
-        );
-      }
+      const validation = await validateAndReadUpload({
+        file: pdf,
+        allowedMimeTypes: ALLOWED_PDF_TYPES,
+        allowedExtensions: ALLOWED_PDF_EXT,
+        maxSizeBytes: MAX_PDF_SIZE,
+        label: "PDF",
+      });
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
       if (existing.pdfRuta) {
         await deleteUploadFile(existing.pdfRuta);
@@ -201,12 +185,11 @@ export async function PUT(
       const pdfSafeName = `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`;
       const pdfPath = path.join(pdfDir, pdfSafeName);
 
-      const pdfBuffer = Buffer.from(await pdf.arrayBuffer());
-      await writeFile(pdfPath, pdfBuffer);
+      await writeFile(pdfPath, validation.buffer);
 
-      updateData.pdfNombre = pdf.name;
+      updateData.pdfNombre = sanitizeFileName(pdf.name);
       updateData.pdfRuta = `/uploads/instructivos/${pdfSafeName}`;
-      updateData.pdfTipo = pdf.type;
+      updateData.pdfTipo = validation.mime;
       updateData.pdfSize = pdf.size;
     } else if (removePdf && existing.pdfRuta) {
       await deleteUploadFile(existing.pdfRuta);

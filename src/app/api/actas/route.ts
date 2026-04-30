@@ -4,7 +4,16 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
 import { sanitizeSearch } from "@/lib/sanitize";
+import { sanitizeFileName, validateAndReadUpload } from "@/lib/uploadSecurity";
 import { detectarProvincia } from "@/utils/provinciaUtils";
+
+const ACTA_ALLOWED_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+];
+const ACTA_ALLOWED_EXTENSIONS = ["pdf", "docx", "doc"];
+const ACTA_MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -101,21 +110,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Archivo y nombre son requeridos" }, { status: 400 });
     }
 
-    const allowedTypes = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/msword",
-    ];
-    const allowedExtensions = /\.(pdf|docx|doc)$/i;
-
-    if (!allowedTypes.includes(file.type) || !file.name.match(allowedExtensions)) {
-      return NextResponse.json({ error: "Solo se permiten archivos PDF y DOCX" }, { status: 400 });
-    }
-
-    // Limitar tamaño a 10MB
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: "El archivo no puede superar 10MB" }, { status: 400 });
-    }
+    const validation = await validateAndReadUpload({
+      file,
+      allowedMimeTypes: ACTA_ALLOWED_TYPES,
+      allowedExtensions: ACTA_ALLOWED_EXTENSIONS,
+      maxSizeBytes: ACTA_MAX_FILE_SIZE,
+      label: "acta",
+    });
+    if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
     // Detectar duplicado por nombre
     const existing = await prisma.acta.findFirst({
@@ -134,12 +136,11 @@ export async function POST(request: NextRequest) {
     const uploadsDir = path.join(process.cwd(), "uploads", "actas");
     await mkdir(uploadsDir, { recursive: true });
 
-    const ext = path.extname(file.name);
+    const ext = `.${validation.extension}`;
     const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
     const filePath = path.join(uploadsDir, safeName);
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(filePath, buffer);
+    await writeFile(filePath, validation.buffer);
 
     let acta;
     if (existing && overwrite) {
@@ -157,8 +158,8 @@ export async function POST(request: NextRequest) {
         data: {
           nombre,
           descripcion: descripcion || null,
-          archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() ]/g, '_').slice(0, 200),
-          archivoTipo: file.type || ext.replace(".", ""),
+          archivoNombre: sanitizeFileName(file.name),
+          archivoTipo: validation.mime,
           archivoRuta: `/uploads/actas/${safeName}`,
           archivoSize: file.size,
           predioId: predioId || null,
@@ -181,8 +182,8 @@ export async function POST(request: NextRequest) {
         data: {
           nombre,
           descripcion: descripcion || null,
-          archivoNombre: file.name.replace(/[^a-zA-Z0-9._\-() ]/g, '_').slice(0, 200),
-          archivoTipo: file.type || ext.replace(".", ""),
+          archivoNombre: sanitizeFileName(file.name),
+          archivoTipo: validation.mime,
           archivoRuta: `/uploads/actas/${safeName}`,
           archivoSize: file.size,
           predioId: predioId || null,

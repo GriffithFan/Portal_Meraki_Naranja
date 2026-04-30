@@ -1,7 +1,7 @@
 # Checklist de Mejoras: Seguridad, Performance y Funcionalidades
 
 Fecha inicial: 2026-04-27
-Ultima actualizacion: 2026-04-29
+Ultima actualizacion: 2026-04-30
 
 Este documento funciona como checklist vivo. La fase sensible de credenciales/login queda separada para mas adelante; las mejoras actuales deben evitar tocar credenciales de tecnicos, `passwordPlain`, estados actuales, stock y datos operativos.
 
@@ -49,15 +49,20 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Tareas: boton Nueva disponible dentro de carpetas/subcarpetas excepto Facturado, con espacio precargado.
 - [x] Tareas: carpetas padre muestran por defecto tareas de subcarpetas para una vista unificada.
 - [x] Tareas: apertura/creacion y movimientos con respuesta visual mas rapida en la interfaz.
+- [x] Imagenes privadas de chat e instructivos migradas a `next/image` sin optimizador para conservar rutas autenticadas.
+- [x] Dependencias vulnerables con fix compatible actualizadas via `npm audit fix` sin upgrades mayores.
+- [x] Importacion Excel/CSV mitigada: limite de filas parseadas, columnas maximas, MIME/extensiones y formulas/HTML/estilos desactivados.
+- [x] Uploads de chat, actas e instructivos endurecidos con validacion compartida de extension, MIME, tamaño y firma real del archivo.
 
 ## En Progreso / Pendiente no Sensible
 
-- [ ] Optimizar imagenes privadas donde sea seguro reemplazar `<img>` por `next/image` o endpoint optimizado.
+- [ ] Evaluar migracion mayor de Next 14 a una rama nueva de Next 16 con ventana de pruebas.
+- [ ] Evaluar reemplazo definitivo de `xlsx` o wrapper aislado para eliminar el advisory sin fix en npm.
 
 ## Seguridad sin Tocar Credenciales
 
-- [ ] Actualizar dependencias vulnerables (`xlsx`, `jspdf` y otras segun `npm audit`) con pruebas de exportaciones.
-- [ ] Endurecer uploads de chat, actas e instructivos: MIME, tamaño, extension, nombres y carpetas.
+- [x] Actualizar dependencias vulnerables con fix compatible (`axios`, `jspdf`, transitorias y otras segun `npm audit`) con build local.
+- [x] Endurecer uploads de chat, actas e instructivos: MIME, tamaño, extension, nombres, carpetas y firma real del archivo.
 - [ ] Sanitizacion avanzada de comentarios, nombres de archivo y textos renderizados.
 - [ ] CSP en modo report-only antes de bloquear recursos.
 - [ ] Monitoreo de eventos sospechosos: login fallido, 403/429, uploads rechazados y errores repetidos.
@@ -90,6 +95,7 @@ No aplicar dentro de las tandas operativas actuales.
 
 ## Orden Recomendado Actual
 
-1. Optimizar imagenes privadas donde sea seguro reemplazar `<img>` por `next/image` o endpoint optimizado.
-2. Avanzar con seguridad sin credenciales: dependencias, uploads, sanitizacion y CSP report-only.
-3. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
+1. Avanzar con seguridad sin credenciales: sanitizacion y CSP report-only.
+2. Evaluar migracion mayor de Next 14 a Next 16 en rama/ventana separada.
+3. Evaluar reemplazo definitivo de `xlsx` o aislamiento del parser.
+4. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
