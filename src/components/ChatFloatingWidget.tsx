@@ -97,7 +97,7 @@ export default function ChatFloatingWidget() {
   const convActivaLoadingRef = useRef(false);
   const pollMensajesLoadingRef = useRef(false);
   const isHidden = pathname === "/dashboard/chat";
-  useChatReminders(Boolean(session) && !isHidden);
+  useChatReminders(Boolean(session) && !isHidden, session?.userId || "default");
 
   const mergeMensajes = useCallback((nuevos: any[]) => {
     if (nuevos.length === 0) return;

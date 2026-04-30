@@ -101,7 +101,7 @@ const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
 
 export default function ChatPage() {
   const { session, isMesa, isModOrAdmin } = useSession();
-  useChatReminders(Boolean(session));
+  useChatReminders(Boolean(session), session?.userId || "default");
   // Admin/Mod sin esMesa: ven todos los chats, pueden crear propias consultas
   const esVistaGlobal = isMesa || isModOrAdmin;
   const [conversaciones, setConversaciones] = useState<any[]>([]);
