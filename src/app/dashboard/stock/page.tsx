@@ -73,9 +73,9 @@ const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "numeroSerie", label: "N/S",         field: "numeroSerie", visible: true,  editable: true,  type: "text" },
   { id: "estado",      label: "Estado",       field: "estado",      visible: true,  editable: true,  type: "select", options: ESTADOS_EQUIPO },
   { id: "asignado",    label: "Asignado",     field: "asignadoId",  visible: true,  editable: true,  type: "select" },
-  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text", options: ["", ...UBICACION_OPTIONS] },
+  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text" },
   { id: "fecha",       label: "Fecha",        field: "fecha",       visible: true,  editable: true,  type: "text" },
-  { id: "proveedor",   label: "Proveedor",    field: "proveedor",   visible: true,  editable: true,  type: "text", options: ["", ...PROVEEDOR_OPTIONS] },
+  { id: "proveedor",   label: "Proveedor",    field: "proveedor",   visible: true,  editable: true,  type: "text" },
   { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
   { id: "descripcion", label: "Descripción",  field: "descripcion", visible: false, editable: true,  type: "text" },
 ];
