@@ -2,30 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, espacioUpdateSchema } from "@/lib/validation";
+import { canAccessSpaceId, getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // GET /api/espacios/[id] — Detalle + stats del espacio
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   // Validar acceso al espacio (ADMIN siempre tiene acceso)
   if (!isAdmin(session.rol)) {
+    const allowedSpaceIds = await getRestrictedSpaceIdsForSession(session);
+    if (allowedSpaceIds && !canAccessSpaceId(id, allowedSpaceIds)) {
+      return NextResponse.json({ error: "Sin acceso a este espacio" }, { status: 403 });
+    }
+
     const accesos = await prisma.accesoEspacio.findMany({
       where: { userId: session.userId },
       select: { espacioId: true },
     });
     if (accesos.length > 0) {
       const idsPermitidos = new Set(accesos.map(a => a.espacioId));
-      if (!idsPermitidos.has(params.id)) {
+      if (!idsPermitidos.has(id)) {
         // Verificar si es un padre de un espacio permitido
         const espacioCheck = await prisma.espacioTrabajo.findFirst({
-          where: { parentId: params.id, id: { in: Array.from(idsPermitidos) } },
+          where: { parentId: id, id: { in: Array.from(idsPermitidos) } },
         });
         if (!espacioCheck) {
           return NextResponse.json({ error: "Sin acceso a este espacio" }, { status: 403 });
@@ -35,7 +42,7 @@ export async function GET(
   }
 
   const espacio = await prisma.espacioTrabajo.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       hijos: {
         where: { activo: true },
@@ -117,9 +124,9 @@ export async function GET(
     data: {
       userId: session.userId,
       accion: "CONSULTA_PREDIO",
-      detalle: espacio.nombre || params.id,
+      detalle: espacio.nombre || id,
       ip,
-      metadata: { espacioId: params.id, totalPredios },
+      metadata: { espacioId: id, totalPredios },
     },
   }).catch(() => {});
 
@@ -145,8 +152,9 @@ export async function GET(
 // PATCH /api/espacios/[id] — Editar espacio
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session || !isModOrAdmin(session.rol))
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
@@ -155,8 +163,8 @@ export async function PATCH(
   if (isErrorResponse(data)) return data;
 
   const espacio = await prisma.espacioTrabajo.update({
-    where: { id: params.id },
-    data,
+    where: { id },
+    data: data as any,
   });
 
   return NextResponse.json(espacio);
@@ -165,14 +173,15 @@ export async function PATCH(
 // DELETE /api/espacios/[id] — Soft-delete
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getSession();
   if (!session || session.rol !== "ADMIN")
     return NextResponse.json({ error: "Solo ADMIN" }, { status: 403 });
 
   await prisma.espacioTrabajo.update({
-    where: { id: params.id },
+    where: { id },
     data: { activo: false },
   });
 

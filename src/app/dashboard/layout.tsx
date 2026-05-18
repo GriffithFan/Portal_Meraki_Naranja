@@ -30,11 +30,11 @@ export default function DashboardLayout({
       <NetworkProvider>
         <PushNotificationRegistrar />
         <CommandPalette />
-        <div className="flex min-h-screen bg-surface-50">
+        <div className="flex min-h-screen bg-surface-50 overflow-x-hidden">
           <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
           <div className="flex-1 flex flex-col min-w-0">
             <Header onMenuToggle={() => setMobileMenuOpen((v) => !v)} />
-            <main className="flex-1 p-3 sm:p-4 md:p-6">
+            <main className="flex-1 min-w-0 px-3 pb-24 pt-3 sm:p-4 md:p-6 md:pb-6">
               <Breadcrumbs />
               {children}
             </main>

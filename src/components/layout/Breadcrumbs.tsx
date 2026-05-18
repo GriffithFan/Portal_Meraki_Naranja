@@ -16,6 +16,8 @@ const LABEL_MAP: Record<string, string> = {
   importar: "Importar",
   bandeja: "Bandeja",
   actividad: "Actividad",
+  "calidad-datos": "Calidad de datos",
+  "diccionario-campos": "Diccionario de campos",
   instructivo: "Instructivo",
   actas: "Actas",
   usuarios: "Usuarios",
@@ -74,9 +76,9 @@ export default function Breadcrumbs() {
     .filter(c => !c.skip);
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-surface-400 mb-4">
+    <nav aria-label="Breadcrumb" className="-mx-3 mb-3 flex items-center gap-1.5 overflow-x-auto px-3 pb-1 text-xs text-surface-400 scrollbar-thin sm:mx-0 sm:mb-4 sm:px-0">
       {crumbs.map((c, i) => (
-        <span key={c.href} className="flex items-center gap-1.5">
+        <span key={c.href} className="flex shrink-0 items-center gap-1.5">
           {i > 0 && (
             <svg className="w-3 h-3 text-surface-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />

@@ -30,7 +30,7 @@ export async function GET(
   }
 
   const uploadsDir = path.resolve(process.cwd(), "uploads", "instructivos");
-  const filePath = path.resolve(uploadsDir, filename);
+  const filePath = path.resolve(/* turbopackIgnore: true */ uploadsDir, filename);
 
   // Double-check path traversal protection
   if (!filePath.startsWith(uploadsDir)) {

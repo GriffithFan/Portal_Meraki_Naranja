@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   const uploadsDir = path.resolve(process.cwd(), "uploads");
   for (const acta of actas) {
     try {
-      const filePath = path.resolve(process.cwd(), acta.archivoRuta);
+      const filePath = path.resolve(/* turbopackIgnore: true */ process.cwd(), acta.archivoRuta);
       if (filePath.startsWith(uploadsDir)) {
         await unlink(filePath).catch(() => {});
       }

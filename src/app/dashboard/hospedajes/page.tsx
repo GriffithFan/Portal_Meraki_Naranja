@@ -149,18 +149,18 @@ export default function HospedajesPage() {
   return (
     <div className="animate-fade-in-up">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Hospedajes</h1>
           <p className="text-xs text-surface-400 mt-0.5">
             {loading ? "Cargando..." : `${filtered.length} hospedajes`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:justify-end">
           {canEdit && (
             <button
               onClick={openCreate}
-              className="px-2.5 py-1.5 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 transition-colors flex items-center gap-1"
+              className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-surface-800 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-surface-700 sm:w-auto sm:py-1.5 sm:text-xs"
             >
               <IconPlus className="w-3.5 h-3.5" />
               Nuevo
@@ -170,18 +170,18 @@ export default function HospedajesPage() {
       </div>
 
       {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre, ubicación, teléfono..."
-          className="flex-1 min-w-[200px] px-3 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400"
+          className="w-full px-3 py-2 text-sm border border-surface-200 rounded-md focus:outline-none focus:border-surface-400 sm:py-1.5 sm:text-xs"
         />
         <select
           value={filtroProvincia}
           onChange={(e) => setFiltroProvincia(e.target.value)}
-          className="px-2 py-1.5 border border-surface-200 rounded-md text-xs"
+          className="w-full px-3 py-2 text-sm border border-surface-200 rounded-md sm:w-auto sm:px-2 sm:py-1.5 sm:text-xs"
         >
           <option value="">Todas las provincias</option>
           {provincias.map(p => <option key={p} value={p}>{p}</option>)}
@@ -189,7 +189,7 @@ export default function HospedajesPage() {
         <select
           value={filtroTipo}
           onChange={(e) => setFiltroTipo(e.target.value)}
-          className="px-2 py-1.5 border border-surface-200 rounded-md text-xs"
+          className="w-full px-3 py-2 text-sm border border-surface-200 rounded-md sm:w-auto sm:px-2 sm:py-1.5 sm:text-xs"
         >
           <option value="">Todos los tipos</option>
           {tipos.map(t => <option key={t} value={t}>{t}</option>)}
@@ -197,7 +197,7 @@ export default function HospedajesPage() {
         {(search || filtroProvincia || filtroTipo) && (
           <button
             onClick={() => { setSearch(""); setFiltroProvincia(""); setFiltroTipo(""); }}
-            className="px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-md"
+            className="w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md sm:w-auto sm:px-2 sm:py-1.5 sm:text-xs"
           >
             Limpiar
           </button>
@@ -222,7 +222,36 @@ export default function HospedajesPage() {
                 <span className="text-sm font-medium text-surface-700">{provincia}</span>
                 <span className="text-[11px] text-surface-400 tabular-nums">{items.length}</span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="divide-y divide-surface-100 sm:hidden">
+                {items.map((h) => (
+                  <div key={`mobile-${h.id}`} className="p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-surface-800">{h.nombre}</p>
+                        <p className="mt-0.5 truncate text-xs font-medium text-surface-500">{h.ubicacion}</p>
+                      </div>
+                      <span className="shrink-0 rounded bg-surface-100 px-1.5 py-0.5 text-[10px] font-medium text-surface-600">{h.tipo || "-"}</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-surface-500">
+                      <span><b className="font-medium text-surface-400">Garage:</b> {h.garage || "-"}</span>
+                      <span><b className="font-medium text-surface-400">Tel:</b> {h.telefono ? <a href={`tel:${h.telefono}`} className="text-primary-600">{h.telefono}</a> : "-"}</span>
+                      {h.notas && <span className="col-span-2 line-clamp-2"><b className="font-medium text-surface-400">Notas:</b> {h.notas}</span>}
+                    </div>
+                    {canEdit && (
+                      <div className="mt-3 flex gap-2">
+                        <button onClick={() => openEdit(h)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-surface-200 px-2 py-1.5 text-xs text-surface-600 hover:bg-surface-50">
+                          <IconEdit className="h-3.5 w-3.5" /> Editar
+                        </button>
+                        <button onClick={() => setConfirmDelete({ id: h.id, nombre: h.nombre })} className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-red-100 px-2 py-1.5 text-xs text-red-600 hover:bg-red-50">
+                          <IconTrash className="h-3.5 w-3.5" /> Eliminar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto sm:block">
                 <table className="w-full min-w-max text-[11px]">
                   <thead>
                     <tr className="border-b border-surface-100">
@@ -294,8 +323,8 @@ export default function HospedajesPage() {
 
       {/* Modal Crear/Editar */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 sm:items-center" onClick={() => setShowModal(false)}>
+          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:mx-4 sm:max-w-md sm:rounded-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-surface-800">
                 {editingId ? "Editar hospedaje" : "Nuevo hospedaje"}
@@ -305,7 +334,7 @@ export default function HospedajesPage() {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-[11px] font-medium text-surface-500 mb-1">Ubicación *</label>
                   <input
@@ -327,7 +356,7 @@ export default function HospedajesPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="block text-[11px] font-medium text-surface-500 mb-1">Tipo</label>
                   <select

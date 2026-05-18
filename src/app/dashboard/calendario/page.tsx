@@ -8,6 +8,7 @@ import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
+import { dedupeUsersByName } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -33,6 +34,8 @@ interface TareaCalendario {
   asignado: { id: string; nombre: string } | null;
   predio: { id: string; nombre: string } | null;
 }
+
+type UsuarioOption = { id: string; nombre: string; email?: string | null };
 
 /* ── SVG icon helper ── */
 const svgIcon = (d: string, cls = "w-3.5 h-3.5 inline-block") => (
@@ -138,7 +141,7 @@ export default function CalendarioPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UsuarioOption[]>([]);
   const [filterCat, setFilterCat] = useState<string>("");
 
   const load = useCallback(() => {
@@ -164,9 +167,16 @@ export default function CalendarioPage() {
     if (isModOrAdmin) {
       fetch("/api/usuarios", { credentials: "include" })
         .then((r) => r.json())
-        .then((data) => setUsers(Array.isArray(data) ? data : []));
+        .then((data) => setUsers(dedupeUsersByName(Array.isArray(data) ? data : [])));
     }
   }, [isModOrAdmin]);
+
+  const editingTask = useMemo(() => tasks.find((task) => task.id === editingId) || null, [editingId, tasks]);
+  const assignableUsers = useMemo(() => {
+    const current = editingTask?.asignado;
+    if (!current?.id || users.some((user) => user.id === current.id)) return users;
+    return [...users, current].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [editingTask?.asignado, users]);
 
   function prev() {
     if (view === "semana") {
@@ -625,7 +635,10 @@ export default function CalendarioPage() {
                     <select value={form.asignadoId} onChange={(e) => setForm({ ...form, asignadoId: e.target.value })}
                       className="w-full px-3 py-2 border border-surface-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-surface-400">
                       <option value="">Sin asignar</option>
-                      {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      {assignableUsers.map((u) => {
+                        const isContextualCurrent = form.asignadoId === u.id && !users.some((base) => base.id === u.id);
+                        return <option key={u.id} value={u.id}>{isContextualCurrent ? `${u.nombre} (actual)` : u.nombre}</option>;
+                      })}
                     </select>
                   ) : (
                     <p className="text-[10px] text-surface-400 py-2">Solo admin puede asignar</p>

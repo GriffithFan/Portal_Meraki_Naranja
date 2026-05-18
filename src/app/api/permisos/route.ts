@@ -24,7 +24,7 @@ export async function GET() {
 // Secciones configurables (excluye monitoreo que es visible para todos)
 const SECCIONES_VALIDAS = [
   "tareas", "calendario", "stock", "importar", "predios", "hospedajes",
-  "bandeja", "actividad", "chat", "instructivo", "actas",
+  "bandeja", "actividad", "chat", "instructivo", "actas", "ranking",
   "facturacion", "usuarios", "kpis", "mapa",
   "permisos", "auditoria", "papelera",
 ];

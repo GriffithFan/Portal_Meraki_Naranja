@@ -42,10 +42,7 @@ export async function GET(
 
   // ══════ DEMO: predio imaginario 111111 ══════
   if (networkId === "DEMO_111111") {
-    const demo = buildDemoAccessPoints();
-    if (sectionKey === "access_points") return NextResponse.json({ networkId, section: sectionKey, ...demo });
-    // Para otras secciones devolver vacío
-    return NextResponse.json({ networkId, section: sectionKey });
+    return NextResponse.json({ networkId, section: sectionKey, ...buildDemoMerakiSection(sectionKey) });
   }
 
   try {
@@ -1087,6 +1084,98 @@ async function buildApplianceSection(
 // ═══════════════════════════════════════════════════════════════
 // DEMO: Predio imaginario 111111 — 5 APs en distintos estados
 // ═══════════════════════════════════════════════════════════════
+function buildDemoMerakiSection(sectionKey: string) {
+  const topology = {
+    nodes: [
+      { id: "internet", label: "Internet", type: "internet", status: "online" },
+      { id: "DEMO-MX68-0001", label: "MX68 Demo", type: "appliance", status: "online", serial: "DEMO-MX68-0001" },
+      { id: "DEMO-MS120-01", label: "MS120 Rack A", type: "switch", status: "alerting", serial: "DEMO-MS120-01" },
+      { id: "DEMO-0001-0001", label: "AP_DEMO_01", type: "wireless", status: "online", serial: "DEMO-0001-0001" },
+      { id: "DEMO-0001-0003", label: "AP_DEMO_03", type: "wireless", status: "alerting", serial: "DEMO-0001-0003" },
+      { id: "DEMO-0001-0005", label: "AP_DEMO_05", type: "wireless", status: "offline", serial: "DEMO-0001-0005" },
+    ],
+    links: [
+      { source: "internet", target: "DEMO-MX68-0001", type: "wan" },
+      { source: "DEMO-MX68-0001", target: "DEMO-MS120-01", type: "ethernet" },
+      { source: "DEMO-MS120-01", target: "DEMO-0001-0001", type: "ethernet" },
+      { source: "DEMO-MS120-01", target: "DEMO-0001-0003", type: "ethernet" },
+      { source: "DEMO-MS120-01", target: "DEMO-0001-0005", type: "ethernet" },
+    ],
+  };
+
+  const devices = [
+    { serial: "DEMO-MX68-0001", name: "MX68 Demo", model: "MX68", mac: "aa:bb:cc:00:00:01", lanIp: "10.111.0.1", status: "online" },
+    { serial: "DEMO-MS120-01", name: "MS120 Rack A", model: "MS120-24P", mac: "aa:bb:cc:00:00:02", lanIp: "10.111.0.2", status: "alerting" },
+    { serial: "DEMO-0001-0001", name: "AP_DEMO_01", model: "MR46", mac: "aa:bb:cc:dd:ee:01", lanIp: "10.111.0.101", status: "online" },
+    { serial: "DEMO-0001-0003", name: "AP_DEMO_03", model: "MR46", mac: "aa:bb:cc:dd:ee:03", lanIp: "10.111.0.103", status: "alerting" },
+    { serial: "DEMO-0001-0005", name: "AP_DEMO_05", model: "MR46", mac: "aa:bb:cc:dd:ee:05", lanIp: "10.111.0.105", status: "offline" },
+  ];
+
+  const switchPorts = Array.from({ length: 24 }, (_, index) => {
+    const portId = String(index + 1);
+    const connected = [1, 2, 3, 4, 8, 12, 18].includes(index + 1);
+    return {
+      portId,
+      name: index === 0 ? "Uplink MX68" : index === 2 ? "AP Biblioteca" : `Puerto ${portId}`,
+      enabled: index !== 23,
+      status: connected ? "connected" : index === 17 ? "disconnected" : "disabled",
+      isUplink: index === 0,
+      errors: [],
+      warnings: index === 17 ? ["CRC errors detectados"] : [],
+      speed: connected ? (index === 17 ? "100 Mbps" : "1 Gbps") : null,
+      duplex: connected ? "full" : null,
+      poeEnabled: index > 0 && index < 12,
+      clientCount: connected ? index + 2 : 0,
+    };
+  });
+
+  if (sectionKey === "topology") return { topology, devices };
+  if (sectionKey === "switches") {
+    return {
+      switches: [{
+        serial: "DEMO-MS120-01",
+        name: "MS120 Rack A",
+        model: "MS120-24P",
+        mac: "aa:bb:cc:00:00:02",
+        firmware: "switch-16-9",
+        lanIp: "10.111.0.2",
+        status: "alerting",
+        connectedTo: "MX68 Demo",
+        ports: switchPorts,
+        availabilityHistory: [{ ts: new Date(Date.now() - 86_400_000).toISOString(), details: { new: { status: "online" } } }],
+        tooltipInfo: { totalPorts: 24, connectedPorts: 7, poePorts: 11, poeActivePorts: 4, connectedTo: "MX68 Demo", detectionMethod: "LLDP demo" },
+      }],
+      switchesOverview: { totalSwitches: 1, totalPorts: 24, connectedPorts: 7, inactivePorts: 16, disabledPorts: 1, poePorts: 11, poeActivePorts: 4, uplinkPorts: 1, warningPorts: 1, crcErrorPorts: 1 },
+      accessControlLists: [{ policy: "allow", ipVersion: "ipv4", protocol: "any", srcCidr: "10.111.0.0/24", dstCidr: "any", comment: "Regla ficticia demo" }],
+    };
+  }
+  if (sectionKey === "appliance_status") {
+    return {
+      topology,
+      devices,
+      applianceStatus: {
+        topology,
+        devices: [{
+          serial: "DEMO-MX68-0001",
+          name: "MX68 Demo",
+          model: "MX68",
+          mac: "aa:bb:cc:00:00:01",
+          lanIp: "10.111.0.1",
+          status: "online",
+          ports: [
+            { portId: "1", name: "WAN 1", enabled: true, status: "connected", type: "wan", isUplink: true },
+            { portId: "2", name: "LAN switch", enabled: true, status: "connected", type: "access", vlan: 111 },
+            { portId: "3", name: "Contingencia 4G", enabled: true, status: "disconnected", type: "wan" },
+          ],
+        }],
+        uplinks: [{ serial: "DEMO-MX68-0001", interface: "wan1", status: "active", ip: "192.0.2.27", gateway: "192.0.2.1", publicIp: "203.0.113.27", provider: "ISP Demo", connectionType: "fiber", loss: 0.2, latency: 34, jitter: 4 }],
+      },
+    };
+  }
+  if (sectionKey === "access_points") return buildDemoAccessPoints();
+  return {};
+}
+
 function buildDemoAccessPoints() {
   const now = Math.floor(Date.now() / 1000);
 

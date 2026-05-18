@@ -262,6 +262,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     setGlobalSummary(null);
     setIsOpen(false);
     router.push(result.href);
+    window.dispatchEvent(new CustomEvent("pmn-global-result-selected", { detail: { href: result.href } }));
   }
 
   async function handleLogout() {
@@ -271,7 +272,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 h-14 sm:h-16 bg-white/80 backdrop-blur-md border-b border-surface-200 flex items-center justify-between px-3 sm:px-4 md:px-6 gap-2">
+    <header className="sticky top-0 z-30 min-h-14 bg-white/80 backdrop-blur-md border-b border-surface-200 flex flex-wrap items-center justify-between px-3 py-2 sm:h-16 sm:flex-nowrap sm:px-4 sm:py-0 md:px-6 gap-2">
       {/* Botón hamburguesa (solo móvil) */}
       <button
         onClick={onMenuToggle}
@@ -284,7 +285,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       </button>
 
       {/* Barra de búsqueda */}
-      <div className="relative flex-1 min-w-0 max-w-md" ref={searchRef}>
+      <div className="relative order-3 basis-full min-w-0 sm:order-none sm:basis-auto sm:flex-1 sm:max-w-md" ref={searchRef}>
         <svg
           className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
@@ -321,12 +322,12 @@ export default function Header({ onMenuToggle }: HeaderProps) {
               : pathname.startsWith("/dashboard/stock") ? "Buscar equipo por nombre, serie, modelo..."
                 : "Buscar tareas o stock..."
           }
-          className="w-full pl-10 pr-20 py-2 rounded-xl border border-surface-200 bg-surface-50 text-sm
+          className="w-full pl-10 pr-10 sm:pr-20 py-2.5 sm:py-2 rounded-xl border border-surface-200 bg-surface-50 text-sm
             focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400 transition-colors"
         />
         {!loading && !query && (
           <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-surface-400 bg-surface-100 rounded border border-surface-200">
-            ⌘K
+            Ctrl K
           </kbd>
         )}
         {loading && (
@@ -335,7 +336,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
 
         {/* Resultados de búsqueda */}
         {isMonitoring && isOpen && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-surface-200 rounded-xl shadow-lg max-h-80 overflow-y-auto z-50">
+          <div className="fixed inset-x-3 top-[104px] sm:absolute sm:inset-x-0 sm:top-full mt-1 bg-white border border-surface-200 rounded-xl shadow-lg max-h-[65vh] sm:max-h-80 overflow-y-auto z-50">
             {results.length > 0 ? results.map((net, i) => (
               <button
                 key={net.id}
@@ -354,9 +355,9 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         )}
 
         {!isMonitoring && isOpen && query.length >= 2 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-surface-200 rounded-xl shadow-lg max-h-96 overflow-y-auto z-50">
+          <div className="fixed inset-x-3 top-[104px] sm:absolute sm:inset-x-0 sm:top-full mt-1 bg-white border border-surface-200 rounded-xl shadow-lg max-h-[65vh] sm:max-h-96 overflow-y-auto z-50">
             {globalSummary && (
-              <div className="px-4 py-2 border-b border-surface-100 text-[11px] text-surface-400 flex items-center justify-between">
+              <div className="px-4 py-2 border-b border-surface-100 text-[11px] text-surface-400 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <span>Resultados globales</span>
                 <span>{globalSummary.predios} tareas · {globalSummary.stock} stock · {globalSummary.chats || 0} chats · {globalSummary.actas || 0} actas · {globalSummary.instructivos || 0} guias</span>
               </div>
@@ -402,7 +403,19 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       </div>
 
       {/* Acciones */}
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("pmn-open-command-palette"))}
+          className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-surface-200 bg-white px-2.5 py-2 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-50 hover:text-surface-700"
+          aria-label="Abrir comandos"
+          title="Abrir comandos"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9m-9 6h9m-9 6h9M4.5 6h.008v.008H4.5V6Zm0 6h.008v.008H4.5V12Zm0 6h.008v.008H4.5V18Z" />
+          </svg>
+          Comandos
+        </button>
         {/* Dark mode toggle */}
         <ThemeToggle />
 

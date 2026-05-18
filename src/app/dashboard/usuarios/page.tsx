@@ -9,7 +9,6 @@ interface Usuario {
   email: string;
   rol: "ADMIN" | "MODERADOR" | "TECNICO";
   esMesa?: boolean;
-  passwordPlain?: string;
 }
 
 interface Delegacion {
@@ -56,7 +55,6 @@ export default function UsuariosPage() {
   const [nuevoRol, setNuevoRol] = useState<Usuario["rol"]>("TECNICO");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
 
   // Crear usuario
   const [showCrear, setShowCrear] = useState(false);
@@ -229,10 +227,6 @@ export default function UsuariosPage() {
     } catch { /* ignore */ }
   };
 
-  const togglePassword = (id: string) => {
-    setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
   const crearDelegacion = async () => {
     if (!delegadorId || !delegadoId) return;
     setSavingDeleg(true);
@@ -376,26 +370,7 @@ export default function UsuariosPage() {
                           {esMiUsuario && <span className="text-[10px] text-surface-400">(tú)</span>}
                         </div>
                         <p className="text-xs text-surface-500 mt-0.5 truncate">{u.email}</p>
-                        {isAdmin && u.passwordPlain && (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <span className="text-[10px] text-surface-400">Pass:</span>
-                            <span className="text-xs font-mono text-surface-600">
-                              {showPasswords[u.id] ? u.passwordPlain : "••••••••"}
-                            </span>
-                            <button onClick={() => togglePassword(u.id)} className="text-surface-400 hover:text-primary-600">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                {showPasswords[u.id] ? (
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
-                                ) : (
-                                  <>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                                  </>
-                                )}
-                              </svg>
-                            </button>
-                          </div>
-                        )}
+                        {isAdmin && <p className="mt-1 text-[10px] text-surface-400">Contraseña protegida</p>}
                       </div>
                     </div>
                     {isAdmin && !esMiUsuario && (
@@ -422,7 +397,7 @@ export default function UsuariosPage() {
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Usuario</th>
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Email</th>
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Rol</th>
-                    {isAdmin && <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Contraseña</th>}
+                    {isAdmin && <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Seguridad</th>}
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Acciones</th>
                   </tr>
                 </thead>
@@ -450,27 +425,7 @@ export default function UsuariosPage() {
                         </td>
                         {isAdmin && (
                           <td className="px-2.5 py-2.5">
-                            {u.passwordPlain ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-[12px] text-surface-600">
-                                  {showPasswords[u.id] ? u.passwordPlain : "••••••••"}
-                                </span>
-                                <button onClick={() => togglePassword(u.id)} className="text-surface-400 hover:text-primary-600 transition-colors">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    {showPasswords[u.id] ? (
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
-                                    ) : (
-                                      <>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                                      </>
-                                    )}
-                                  </svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-surface-300 italic">Sin registrar</span>
-                            )}
+                            <span className="text-xs text-surface-400">Hash protegido</span>
                           </td>
                         )}
                         <td className="px-2.5 py-2.5">
@@ -789,7 +744,9 @@ export default function UsuariosPage() {
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">Contraseña</label>
                 <input value={crearPassword} onChange={e => setCrearPassword(e.target.value)} placeholder="Mínimo 6 caracteres"
+                  type="password" autoComplete="new-password"
                   className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none font-mono" />
+                <p className="text-[10px] text-surface-400 mt-1">Se guarda solo el hash. No quedará visible en el panel.</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">Rol</label>
@@ -839,12 +796,11 @@ export default function UsuariosPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">Nueva contraseña <span className="text-surface-400 font-normal">(dejar vacío para no cambiar)</span></label>
-                <input value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="Nueva contraseña..."
+                <label className="block text-xs font-medium text-surface-600 mb-1">Resetear contraseña <span className="text-surface-400 font-normal">(dejar vacío para mantener la actual)</span></label>
+                <input value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="Nueva contraseña temporal..."
+                  type="password" autoComplete="new-password"
                   className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none font-mono" />
-                {editando.passwordPlain && (
-                  <p className="text-[10px] text-surface-400 mt-1">Actual: <span className="font-mono">{editando.passwordPlain}</span></p>
-                )}
+                <p className="text-[10px] text-surface-400 mt-1">La contraseña actual no se muestra. Si completás este campo, se reemplaza por la nueva.</p>
               </div>
 
               <div>

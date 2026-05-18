@@ -22,6 +22,18 @@ interface ImportPayload {
   updateExisting?: boolean;
 }
 
+interface ImportColumnConfig {
+  id: string;
+  label: string;
+  field: string;
+  width: number;
+  visible: boolean;
+  editable: boolean;
+  type: "text" | "badge" | "date" | "select" | "multiselect" | "colored-select";
+  options?: string[];
+  showInCreate?: boolean;
+}
+
 // Campos del cronograma SF 2026
 const PREDIO_FIELDS: Record<string, string> = {
   nombre: "Nombre / CUE",
@@ -41,7 +53,7 @@ const PREDIO_FIELDS: Record<string, string> = {
   fechaDesde: "Fecha DESDE",
   fechaHasta: "Fecha HASTA",
   ambito: "Ámbito (Urbano/Rural)",
-  equipoAsignado: "Equipo (TH01-TH10)",
+  equipoAsignado: "Equipo / técnico",
   provincia: "Provincia",
   cuePredio: "CUE_Predio",
   gpsPredio: "GPS_Predio",
@@ -56,6 +68,71 @@ const PREDIO_FIELDS: Record<string, string> = {
   estado: "Estado (texto)",
   orden: "Orden (nro)",
 };
+
+const IMPORT_SPACE_COLUMNS: Record<string, ImportColumnConfig> = {
+  codigo: { id: "codigoPredio", label: "Predio", field: "codigo", width: 100, visible: true, editable: false, type: "text" },
+  nombre: { id: "nombre", label: "Nombre", field: "nombre", width: 140, visible: true, editable: true, type: "text" },
+  incidencias: { id: "predio", label: "Incidencia", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
+  direccion: { id: "direccion", label: "Dirección", field: "direccion", width: 140, visible: true, editable: true, type: "text" },
+  ciudad: { id: "ciudad", label: "Departamento", field: "ciudad", width: 120, visible: true, editable: true, type: "text" },
+  tipo: { id: "tipo", label: "Tipo", field: "tipo", width: 90, visible: true, editable: true, type: "text" },
+  notas: { id: "notas", label: "Notas", field: "notas", width: 160, visible: true, editable: true, type: "text" },
+  prioridad: { id: "prioridad", label: "Prioridad", field: "prioridad", width: 90, visible: true, editable: true, type: "select", options: ["BAJA", "MEDIA", "ALTA", "URGENTE"] },
+  seccion: { id: "seccion", label: "Sección", field: "seccion", width: 90, visible: true, editable: true, type: "text" },
+  latitud: { id: "latitud", label: "Latitud", field: "latitud", width: 100, visible: true, editable: true, type: "text" },
+  longitud: { id: "longitud", label: "Longitud", field: "longitud", width: 100, visible: true, editable: true, type: "text" },
+  lacR: { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO", "PEDIDO"] },
+  cue: { id: "cue", label: "CUE", field: "cue", width: 100, visible: true, editable: true, type: "text" },
+  fechaDesde: { id: "fechaDesde", label: "DESDE", field: "fechaDesde", width: 90, visible: true, editable: true, type: "date" },
+  fechaHasta: { id: "fechaHasta", label: "HASTA", field: "fechaHasta", width: 90, visible: true, editable: true, type: "date" },
+  ambito: { id: "ambito", label: "Ámbito", field: "ambito", width: 80, visible: true, editable: true, type: "select", options: ["Urbano", "Rural", "Rural Disperso"] },
+  equipoAsignado: { id: "equipoAsignado", label: "Equipo", field: "equipoAsignado", width: 90, visible: true, editable: true, type: "text" },
+  provincia: { id: "provincia", label: "Provincia", field: "provincia", width: 100, visible: true, editable: true, type: "text" },
+  cuePredio: { id: "cuePredio", label: "CUE_Predio", field: "cuePredio", width: 100, visible: true, editable: true, type: "text" },
+  gpsPredio: { id: "gpsPredio", label: "GPS", field: "gpsPredio", width: 120, visible: true, editable: true, type: "text" },
+  tipoRed: { id: "tipoRed", label: "Tipo de Red", field: "tipoRed", width: 100, visible: true, editable: true, type: "text" },
+  codigoPostal: { id: "codigoPostal", label: "Cód. Postal", field: "codigoPostal", width: 90, visible: true, editable: true, type: "text" },
+  caracteristicaTelefonica: { id: "caracteristicaTelefonica", label: "Car. Tel.", field: "caracteristicaTelefonica", width: 80, visible: true, editable: true, type: "text" },
+  telefono: { id: "telefono", label: "Teléfono", field: "telefono", width: 100, visible: true, editable: true, type: "text" },
+  lab: { id: "lab", label: "LAB", field: "lab", width: 70, visible: true, editable: true, type: "text" },
+  nombreInstitucion: { id: "nombreInstitucion", label: "Institución", field: "nombreInstitucion", width: 140, visible: true, editable: true, type: "text" },
+  correo: { id: "correo", label: "Correo", field: "correo", width: 140, visible: true, editable: true, type: "text" },
+  asignado: { id: "asignados", label: "Asignados", field: "asignaciones", width: 120, visible: true, editable: false, type: "text" },
+  orden: { id: "orden", label: "Orden", field: "orden", width: 60, visible: true, editable: true, type: "text" },
+};
+
+function buildImportSpaceCamposConfig(mappings: ColumnMapping[], customFields: Array<{ clave: string; nombre: string; ancho?: number | null; tipo?: string | null; opciones?: string[] }>) {
+  const customByClave = new Map(customFields.map((field) => [field.clave, field]));
+  const byId = new Map<string, ImportColumnConfig>();
+
+  for (const mapping of mappings) {
+    const dbField = mapping.dbField;
+    if (!dbField || dbField === "_skip") continue;
+
+    if (dbField.startsWith("custom:")) {
+      const clave = dbField.substring(7);
+      const custom = customByClave.get(clave);
+      if (!custom) continue;
+      byId.set(`custom_${clave}`, {
+        id: `custom_${clave}`,
+        label: custom.nombre,
+        field: `_custom_${clave}`,
+        width: custom.ancho || 100,
+        visible: true,
+        editable: true,
+        type: (custom.tipo || "text") as ImportColumnConfig["type"],
+        options: custom.opciones?.length ? custom.opciones : undefined,
+        showInCreate: false,
+      });
+      continue;
+    }
+
+    const column = IMPORT_SPACE_COLUMNS[dbField];
+    if (column) byId.set(column.id, { ...column });
+  }
+
+  return Array.from(byId.values());
+}
 
 /* Auto-fill por prefijo de serial (4 primeros caracteres) */
 const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
@@ -239,6 +316,23 @@ export async function POST(request: NextRequest) {
         return partial?.id || null;
       }
 
+      const importCamposConfig = espacioId
+        ? buildImportSpaceCamposConfig(
+            mappings,
+            await prisma.campoPersonalizado.findMany({
+              where: { activo: true },
+              select: { clave: true, nombre: true, ancho: true, tipo: true, opciones: true },
+            })
+          )
+        : [];
+
+      if (espacioId) {
+        await prisma.espacioTrabajo.update({
+          where: { id: espacioId },
+          data: { camposConfig: importCamposConfig as any },
+        });
+      }
+
       // Track codes created in this batch to handle within-batch duplicates
       const batchCreatedCodes = new Map<string, string>(); // codigo → predioId
 
@@ -297,7 +391,7 @@ export async function POST(request: NextRequest) {
           const ambito = safeGet(row, fieldMap.get("ambito"));
           if (ambito) data.ambito = ambito;
           const equipoAsignado = safeGet(row, fieldMap.get("equipoAsignado"));
-          if (equipoAsignado) data.equipoAsignado = equipoAsignado.toUpperCase();
+          if (equipoAsignado) data.equipoAsignado = resolveEquipoKey(equipoAsignado) || equipoAsignado.trim();
           const provincia = safeGet(row, fieldMap.get("provincia"));
           if (provincia) data.provincia = provincia;
           const cuePredio = safeGet(row, fieldMap.get("cuePredio"));
@@ -503,7 +597,7 @@ export async function POST(request: NextRequest) {
           const proveedorVal = safeGet(row, fieldMap.get("proveedor"));
           if (proveedorVal) {
             const pNorm = proveedorVal.toUpperCase().trim();
-            if (pNorm === "OCP" || pNorm === "DINATECH") data.proveedor = pNorm;
+            if (pNorm === "OCP" || pNorm === "DINATECH" || pNorm === "THNET") data.proveedor = pNorm;
           }
           const fecha = safeGet(row, fieldMap.get("fecha"));
           // Auto-rellenar fecha con hoy si está vacía

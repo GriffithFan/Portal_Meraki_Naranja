@@ -54,6 +54,7 @@ model User {
   chatsCreados         ChatConversacion[] @relation("CreadorChat")
   chatsAtendidos       ChatConversacion[] @relation("AgenteChat")
   mensajesChat         ChatMensaje[]
+  reaccionesChat       ChatMensajeReaction[]
   equiposAsignados     Equipo[]           @relation("EquipoAsignado")
   permisosEstado       PermisoEstadoUsuario[]
   permisosSeccion      PermisoSeccionUsuario[]
@@ -102,6 +103,8 @@ model EspacioTrabajo {
   icono       String   @default("folder")
   orden       Int      @default(0)
   activo      Boolean  @default(true)
+  camposConfig Json?
+  estadosConfig Json?
 
   parentId    String?
   parent      EspacioTrabajo?  @relation("EspacioHijos", fields: [parentId], references: [id], onDelete: Cascade)
@@ -112,6 +115,7 @@ model EspacioTrabajo {
 
   predios     Predio[]
   accesos     AccesoEspacio[]
+  accesosRol  AccesoEspacioRol[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -131,6 +135,7 @@ model Predio {
   latitud         Float?
   longitud        Float?
   notas           String?
+  notasTecnico    String?
   orden           Int       @default(0)
   fechaProgramada DateTime?
   prioridad       Prioridad @default(MEDIA)
@@ -217,6 +222,7 @@ model Equipo {
   etiqueta      String?
   etiquetaColor String?
   proveedor     String?
+  camposExtra   Json?
   predioId      String?
   predio        Predio? @relation(fields: [predioId], references: [id], onDelete: SetNull)
   asignadoId    String?
@@ -235,6 +241,18 @@ model Equipo {
   @@index([categoria, updatedAt])
   @@index([predioId])
   @@index([asignadoId])
+}
+
+model AccesoEspacioRol {
+  id        String   @id @default(cuid())
+  rol       Role
+  espacioId String
+  espacio   EspacioTrabajo @relation(fields: [espacioId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([rol, espacioId])
+  @@index([rol])
+  @@index([espacioId])
 }
 
 // ─── ETIQUETAS ──────────────────────────────────────
@@ -638,14 +656,36 @@ model ChatMensaje {
   archivoNombre   String?  // Nombre original del archivo
   archivoTipo     String?  // MIME type (image/jpeg, video/mp4, audio/webm, application/zip)
   archivoTamanio  Int?     // Tamaño en bytes
+  replyToId       String?
   conversacion    ChatConversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
   autor           User @relation(fields: [autorId], references: [id], onDelete: Cascade)
+  replyTo         ChatMensaje? @relation("ChatMensajeReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies         ChatMensaje[] @relation("ChatMensajeReplies")
+  reacciones      ChatMensajeReaction[]
 
   createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt @default(now())
   editadoAt       DateTime? // Se setea al editar el mensaje
 
   @@index([conversacionId, createdAt])
   @@index([autorId])
+  @@index([replyToId])
+}
+
+model ChatMensajeReaction {
+  id        String   @id @default(cuid())
+  mensajeId String
+  userId    String
+  emoji     String
+  mensaje   ChatMensaje @relation(fields: [mensajeId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([mensajeId, userId])
+  @@index([mensajeId])
+  @@index([userId])
 }
 
 // ─── ACCESO POR USUARIO A ESPACIOS DE TRABAJO ──────

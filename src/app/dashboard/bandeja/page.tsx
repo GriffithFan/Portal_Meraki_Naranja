@@ -7,6 +7,7 @@ import { es } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,6 +42,7 @@ const TIPO_BG_COLORS: Record<string, string> = {
 };
 
 export default function BandejaPage() {
+  const router = useRouter();
   const [notificaciones, setNotificaciones] = useState<any[]>([]);
   const [sinLeer, setSinLeer] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -79,6 +81,11 @@ export default function BandejaPage() {
       body: JSON.stringify({ marcarTodas: true }),
     });
     fetchNotificaciones();
+  }
+
+  async function abrirNotificacion(notificacion: any) {
+    if (!notificacion.leida) await marcarLeida(notificacion.id);
+    if (notificacion.enlace) router.push(notificacion.enlace);
   }
 
   function getTimeAgo(dateStr: string) {
@@ -138,7 +145,7 @@ export default function BandejaPage() {
               <div
                 key={n.id}
                 className={`flex items-start gap-3 px-3 sm:px-5 py-3 sm:py-4 transition-all cursor-pointer row-animate active:scale-[0.995] ${n.leida ? "bg-white hover:bg-surface-50" : "bg-primary-50/20 hover:bg-primary-50/40"}`}
-                onClick={() => !n.leida && marcarLeida(n.id)}
+                onClick={() => abrirNotificacion(n)}
               >
                 <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center shrink-0 ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"}`}>
                   <svg className={`w-4 h-4 sm:w-[18px] sm:h-[18px] ${TIPO_ICON_COLORS[n.tipo] || "text-surface-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
@@ -158,6 +165,7 @@ export default function BandejaPage() {
                     <Badge variant="secondary" className={`text-[10px] ${TIPO_BG_COLORS[n.tipo] || "bg-surface-100"} ${TIPO_ICON_COLORS[n.tipo] || "text-surface-500"}`}>
                       {TIPO_LABELS[n.tipo] || n.tipo}
                     </Badge>
+                    {n.enlace && <span className="text-[10px] font-medium text-primary-600">Abrir</span>}
                     <span className="text-[10px] text-surface-300 sm:hidden">{getTimeAgo(n.createdAt)}</span>
                   </div>
                 </div>

@@ -16,6 +16,7 @@ const SAFE_MIME: Record<string, string> = {
   ".mp3": "audio/mpeg",
   ".ogg": "audio/ogg",
   ".wav": "audio/wav",
+  ".pdf": "application/pdf",
   ".zip": "application/zip",
 };
 
@@ -66,7 +67,7 @@ export async function GET(
     const uploadsDir = path.resolve(process.cwd(), "uploads");
     // Quitar / inicial si existe para que path.resolve sea relativo al cwd
     const cleanUrl = mensaje.archivoUrl.replace(/^\/+/, "");
-    const filePath = path.resolve(process.cwd(), cleanUrl);
+    const filePath = path.resolve(/* turbopackIgnore: true */ process.cwd(), cleanUrl);
 
     // Path traversal protection
     if (!filePath.startsWith(uploadsDir)) {

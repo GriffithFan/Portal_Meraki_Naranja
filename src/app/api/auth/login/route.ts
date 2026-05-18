@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { createToken, setTokenCookie } from "@/lib/auth";
 import { loginSchema, parseBody, isErrorResponse } from "@/lib/validation";
+import { getClientIp, logSecurityEvent } from "@/lib/securityEvents";
 
 /* ── Rate limiter en memoria (por IP) ── */
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
@@ -38,9 +39,10 @@ function clearRateLimit(ip: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const ip = getClientIp(request.headers);
 
   if (isRateLimited(ip)) {
+    logSecurityEvent({ type: "LOGIN_RATE_LIMIT_EXCEEDED", ip, path: request.nextUrl.pathname, method: request.method, status: 429 });
     return NextResponse.json(
       { error: "Demasiados intentos. Intente de nuevo en 15 minutos." },
       { status: 429 }
@@ -61,6 +63,26 @@ export async function POST(request: NextRequest) {
     const valid = await bcrypt.compare(password, hashToCompare);
 
     if (!user || !user.activo || !valid) {
+      logSecurityEvent({
+        type: "LOGIN_FAILED",
+        ip,
+        path: request.nextUrl.pathname,
+        method: request.method,
+        status: 401,
+        userId: user?.id,
+        metadata: { userAgent: request.headers.get("user-agent") || "", knownUser: Boolean(user), activeUser: Boolean(user?.activo) },
+      });
+      if (user?.id) {
+        prisma.registroAcceso.create({
+          data: {
+            userId: user.id,
+            accion: "LOGIN_FALLIDO",
+            detalle: `Login fallido desde ${ip}`,
+            ip,
+            metadata: { userAgent: request.headers.get("user-agent") || "", activeUser: user.activo },
+          },
+        }).catch(() => {});
+      }
       return NextResponse.json(
         { error: "Credenciales inválidas" },
         { status: 401 }

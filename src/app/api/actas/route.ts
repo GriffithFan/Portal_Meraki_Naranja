@@ -133,12 +133,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Guardar archivo
-    const uploadsDir = path.join(process.cwd(), "uploads", "actas");
+    const uploadsDir = path.join(/* turbopackIgnore: true */ process.cwd(), "uploads", "actas");
     await mkdir(uploadsDir, { recursive: true });
 
     const ext = `.${validation.extension}`;
     const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-    const filePath = path.join(uploadsDir, safeName);
+    const filePath = path.join(/* turbopackIgnore: true */ uploadsDir, safeName);
 
     await writeFile(filePath, validation.buffer);
 
@@ -146,9 +146,9 @@ export async function POST(request: NextRequest) {
     if (existing && overwrite) {
       // Intentar borrar archivo anterior
       try {
-        const oldPath = path.join(process.cwd(), existing.archivoRuta);
+        const oldPath = path.join(/* turbopackIgnore: true */ process.cwd(), existing.archivoRuta);
         const resolved = path.resolve(oldPath);
-        if (resolved.startsWith(path.join(process.cwd(), "uploads"))) {
+        if (resolved.startsWith(path.join(/* turbopackIgnore: true */ process.cwd(), "uploads"))) {
           await unlink(resolved).catch(() => {});
         }
       } catch { /* ignorar */ }

@@ -11,11 +11,12 @@ const ALLOWED_MIME: Record<string, string[]> = {
   image: ["image/jpeg", "image/png", "image/gif", "image/webp"],
   video: ["video/mp4", "video/quicktime", "video/webm"],
   audio: ["audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4"],
+  document: ["application/pdf"],
   zip: ["application/zip", "application/x-zip-compressed"],
 };
 
 const ALL_ALLOWED = Object.values(ALLOWED_MIME).flat();
-const SAFE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "mp3", "ogg", "wav", "zip"];
+const SAFE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "mp3", "ogg", "wav", "pdf", "zip"];
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
     const files = formData.getAll("file").filter((entry): entry is File => entry instanceof File && entry.size > 0);
     const conversacionId = formData.get("conversacionId") as string | null;
     const mensaje = (formData.get("mensaje") as string)?.trim() || "";
+    const replyToId = (formData.get("replyToId") as string | null)?.trim() || "";
 
     if (files.length === 0) {
       return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
@@ -85,6 +87,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
     }
 
+    let safeReplyToId: string | null = null;
+    if (replyToId) {
+      const replyTo = await prisma.chatMensaje.findFirst({
+        where: { id: replyToId, conversacionId },
+        select: { id: true },
+      });
+      if (!replyTo) return NextResponse.json({ error: "Mensaje citado no encontrado" }, { status: 400 });
+      safeReplyToId = replyTo.id;
+    }
+
     const uploadsDir = path.join(process.cwd(), "uploads", "chat");
     await mkdir(uploadsDir, { recursive: true });
 
@@ -106,9 +118,24 @@ export async function POST(request: NextRequest) {
           archivoNombre: sanitizeFileName(file.name),
           archivoTipo: validated.mime,
           archivoTamanio: file.size,
+          replyToId: index === 0 ? safeReplyToId : null,
         },
         include: {
           autor: { select: { id: true, nombre: true, esMesa: true } },
+          reacciones: {
+            select: { id: true, emoji: true, userId: true },
+            orderBy: { createdAt: "asc" },
+          },
+          replyTo: {
+            select: {
+              id: true,
+              contenido: true,
+              autorId: true,
+              archivoNombre: true,
+              archivoTipo: true,
+              autor: { select: { id: true, nombre: true, esMesa: true } },
+            },
+          },
         },
       });
       mensajesCreados.push(nuevoMensaje);

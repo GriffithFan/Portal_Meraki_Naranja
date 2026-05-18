@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { sanitizeFileName, validateAndReadUpload } from "@/lib/uploadSecurity";
 
 // Incrementar límite para upload de videos
 export const runtime = "nodejs";
@@ -13,7 +14,7 @@ const ALLOWED_VIDEO_TYPES = [
   "video/webm",
   "video/ogg",
 ];
-const ALLOWED_VIDEO_EXT = /\.(mp4|webm|ogg)$/i;
+const ALLOWED_VIDEO_EXT = ["mp4", "webm", "ogg"];
 const MAX_VIDEO_SIZE = 200 * 1024 * 1024; // 200MB
 
 const ALLOWED_IMAGE_TYPES = [
@@ -22,11 +23,11 @@ const ALLOWED_IMAGE_TYPES = [
   "image/webp",
   "image/gif",
 ];
-const ALLOWED_IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif)$/i;
+const ALLOWED_IMAGE_EXT = ["jpg", "jpeg", "png", "webp", "gif"];
 const MAX_IMAGE_SIZE = 25 * 1024 * 1024; // 25MB
 
 const ALLOWED_PDF_TYPES = ["application/pdf"];
-const ALLOWED_PDF_EXT = /\.pdf$/i;
+const ALLOWED_PDF_EXT = ["pdf"];
 const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50MB
 
 export async function GET(request: NextRequest) {
@@ -79,34 +80,28 @@ export async function POST(request: NextRequest) {
     } = {};
 
     if (video && video.size > 0) {
-      if (!ALLOWED_VIDEO_TYPES.includes(video.type) || !video.name.match(ALLOWED_VIDEO_EXT)) {
-        return NextResponse.json(
-          { error: "Solo se permiten videos MP4, WebM u OGG" },
-          { status: 400 }
-        );
-      }
-
-      if (video.size > MAX_VIDEO_SIZE) {
-        return NextResponse.json(
-          { error: "El video no puede superar 200MB" },
-          { status: 400 }
-        );
-      }
+      const validation = await validateAndReadUpload({
+        file: video,
+        allowedMimeTypes: ALLOWED_VIDEO_TYPES,
+        allowedExtensions: ALLOWED_VIDEO_EXT,
+        maxSizeBytes: MAX_VIDEO_SIZE,
+        label: "video",
+      });
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
       const uploadsDir = path.join(process.cwd(), "uploads", "instructivos");
       await mkdir(uploadsDir, { recursive: true });
 
-      const ext = path.extname(video.name);
+      const ext = `.${validation.extension}`;
       const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
       const filePath = path.join(uploadsDir, safeName);
 
-      const buffer = Buffer.from(await video.arrayBuffer());
-      await writeFile(filePath, buffer);
+      await writeFile(filePath, validation.buffer);
 
       videoData = {
-        videoNombre: video.name,
+        videoNombre: sanitizeFileName(video.name),
         videoRuta: `/uploads/instructivos/${safeName}`,
-        videoTipo: video.type || ext.replace(".", ""),
+        videoTipo: validation.mime,
         videoSize: video.size,
       };
     }
@@ -119,34 +114,28 @@ export async function POST(request: NextRequest) {
     } = {};
 
     if (imagen && imagen.size > 0) {
-      if (!ALLOWED_IMAGE_TYPES.includes(imagen.type) || !imagen.name.match(ALLOWED_IMAGE_EXT)) {
-        return NextResponse.json(
-          { error: "Solo se permiten imágenes JPG, PNG, WebP o GIF" },
-          { status: 400 }
-        );
-      }
-
-      if (imagen.size > MAX_IMAGE_SIZE) {
-        return NextResponse.json(
-          { error: "La imagen no puede superar 25MB" },
-          { status: 400 }
-        );
-      }
+      const validation = await validateAndReadUpload({
+        file: imagen,
+        allowedMimeTypes: ALLOWED_IMAGE_TYPES,
+        allowedExtensions: ALLOWED_IMAGE_EXT,
+        maxSizeBytes: MAX_IMAGE_SIZE,
+        label: "imagen",
+      });
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
       const imgDir = path.join(process.cwd(), "uploads", "instructivos");
       await mkdir(imgDir, { recursive: true });
 
-      const imgExt = path.extname(imagen.name);
+      const imgExt = `.${validation.extension}`;
       const imgSafeName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${imgExt}`;
       const imgPath = path.join(imgDir, imgSafeName);
 
-      const imgBuffer = Buffer.from(await imagen.arrayBuffer());
-      await writeFile(imgPath, imgBuffer);
+      await writeFile(imgPath, validation.buffer);
 
       imagenData = {
-        imagenNombre: imagen.name,
+        imagenNombre: sanitizeFileName(imagen.name),
         imagenRuta: `/uploads/instructivos/${imgSafeName}`,
-        imagenTipo: imagen.type,
+        imagenTipo: validation.mime,
         imagenSize: imagen.size,
       };
     }
@@ -159,19 +148,14 @@ export async function POST(request: NextRequest) {
     } = {};
 
     if (pdf && pdf.size > 0) {
-      if (!ALLOWED_PDF_TYPES.includes(pdf.type) || !pdf.name.match(ALLOWED_PDF_EXT)) {
-        return NextResponse.json(
-          { error: "Solo se permiten archivos PDF" },
-          { status: 400 }
-        );
-      }
-
-      if (pdf.size > MAX_PDF_SIZE) {
-        return NextResponse.json(
-          { error: "El PDF no puede superar 50MB" },
-          { status: 400 }
-        );
-      }
+      const validation = await validateAndReadUpload({
+        file: pdf,
+        allowedMimeTypes: ALLOWED_PDF_TYPES,
+        allowedExtensions: ALLOWED_PDF_EXT,
+        maxSizeBytes: MAX_PDF_SIZE,
+        label: "PDF",
+      });
+      if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
       const pdfDir = path.join(process.cwd(), "uploads", "instructivos");
       await mkdir(pdfDir, { recursive: true });
@@ -179,13 +163,12 @@ export async function POST(request: NextRequest) {
       const pdfSafeName = `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`;
       const pdfPath = path.join(pdfDir, pdfSafeName);
 
-      const pdfBuffer = Buffer.from(await pdf.arrayBuffer());
-      await writeFile(pdfPath, pdfBuffer);
+      await writeFile(pdfPath, validation.buffer);
 
       pdfData = {
-        pdfNombre: pdf.name,
+        pdfNombre: sanitizeFileName(pdf.name),
         pdfRuta: `/uploads/instructivos/${pdfSafeName}`,
-        pdfTipo: pdf.type,
+        pdfTipo: validation.mime,
         pdfSize: pdf.size,
       };
     }

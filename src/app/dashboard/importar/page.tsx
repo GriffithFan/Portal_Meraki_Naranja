@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -125,7 +125,7 @@ export default function ImportarPage() {
     if (!nuevoEspacioNombre.trim()) return;
     setCreandoEspacio(true);
     try {
-      const body: any = { nombre: nuevoEspacioNombre.trim(), color: "#3b82f6" };
+      const body: any = { nombre: nuevoEspacioNombre.trim(), color: "#3b82f6", camposConfig: [] };
       // Si hay un espacio seleccionado, crear como subcarpeta dentro de él
       if (espacioId) {
         body.parentId = espacioId;
@@ -407,6 +407,26 @@ export default function ImportarPage() {
 
   const activeRowsCount = parseResult ? parseResult.totalRows - excludedRows.size : 0;
   const activeColsCount = parseResult ? parseResult.headers.length - excludedCols.size : 0;
+  const importPreview = useMemo(() => {
+    if (!parseResult) return null;
+    const activeMappings = Object.entries(mappings).filter(([col, value]) => !excludedCols.has(Number(col)) && value !== "_skip");
+    const mappedFields = new Set(activeMappings.map(([, value]) => value));
+    const newCustomCount = activeMappings.filter(([, value]) => value === "_new_custom").length;
+    const existingCustomCount = activeMappings.filter(([, value]) => value.startsWith("custom:")).length;
+    const requiredReady = tipo === "PREDIO"
+      ? mappedFields.has("nombre") || mappedFields.has("codigo")
+      : mappedFields.has("nombre") || mappedFields.has("numeroSerie");
+    const requiredText = tipo === "PREDIO" ? "Nombre / CUE o Código" : "Nombre o Número de Serie";
+    return {
+      mappedCols: activeMappings.length,
+      omittedCols: Math.max(0, activeColsCount - activeMappings.length),
+      newCustomCount,
+      existingCustomCount,
+      requiredReady,
+      requiredText,
+      ready: requiredReady && activeRowsCount > 0 && activeMappings.length > 0,
+    };
+  }, [activeColsCount, activeRowsCount, excludedCols, mappings, parseResult, tipo]);
 
   return (
     <div className="animate-fade-in-up">
@@ -624,6 +644,32 @@ export default function ImportarPage() {
               </div>
               <button onClick={reset} className="text-sm text-surface-500 hover:text-surface-700">Cambiar archivo</button>
             </div>
+
+            {importPreview && (
+              <div className="mb-4 grid gap-2 rounded-lg border border-surface-200 bg-surface-50 p-3 sm:grid-cols-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-surface-400">Filas a importar</p>
+                  <p className="text-lg font-semibold tabular-nums text-surface-800">{activeRowsCount}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-surface-400">Columnas mapeadas</p>
+                  <p className="text-lg font-semibold tabular-nums text-emerald-600">{importPreview.mappedCols}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-surface-400">Omitidas</p>
+                  <p className="text-lg font-semibold tabular-nums text-amber-600">{importPreview.omittedCols}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-surface-400">Campos extra</p>
+                  <p className="text-lg font-semibold tabular-nums text-violet-600">{importPreview.existingCustomCount + importPreview.newCustomCount}</p>
+                </div>
+                <div className={`sm:col-span-4 rounded-md px-3 py-2 text-xs ${importPreview.ready ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                  {importPreview.ready
+                    ? "Listo para importar con la configuracion actual."
+                    : `Falta mapear ${importPreview.requiredText} para poder ejecutar la importacion.`}
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-2">
               {parseResult.headers.map((header: string, i: number) => {
@@ -858,7 +904,7 @@ export default function ImportarPage() {
               />
               Actualizar existentes (sobreescribir duplicados)
             </label>
-            <button onClick={handleImport} disabled={importing || activeRowsCount === 0 || activeColsCount === 0 || Object.values(mappings).filter((v) => v !== "_skip").length === 0} className="flex-1 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 disabled:opacity-50 transition-colors">
+            <button onClick={handleImport} disabled={importing || !importPreview?.ready} className="flex-1 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 disabled:opacity-50 transition-colors">
               {importing ? "Importando..." : `Importar ${activeRowsCount} filas × ${activeColsCount} columnas`}
             </button>
           </div>

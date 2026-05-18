@@ -31,7 +31,7 @@ export async function GET(
     const uploadsBase = path.join(process.cwd(), "uploads");
 
     if (format === "xlsx") {
-      const xlsxPath = path.join(process.cwd(), "uploads", "reportes", `${baseName}.xlsx`);
+      const xlsxPath = path.join(/* turbopackIgnore: true */ process.cwd(), "uploads", "reportes", `${baseName}.xlsx`);
       if (!xlsxPath.startsWith(uploadsBase)) {
         return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
       }
@@ -47,7 +47,7 @@ export async function GET(
     }
 
     // Default: CSV
-    const filePath = path.join(process.cwd(), reporte.csvRuta);
+    const filePath = path.join(/* turbopackIgnore: true */ process.cwd(), reporte.csvRuta);
     if (!filePath.startsWith(uploadsBase)) {
       return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
     }
@@ -88,7 +88,7 @@ export async function DELETE(
   // Eliminar CSV del disco
   if (reporte.csvRuta) {
     try {
-      const filePath = path.join(process.cwd(), reporte.csvRuta);
+      const filePath = path.join(/* turbopackIgnore: true */ process.cwd(), reporte.csvRuta);
       const uploadsBase = path.join(process.cwd(), "uploads");
       if (filePath.startsWith(uploadsBase)) {
         await unlink(filePath);

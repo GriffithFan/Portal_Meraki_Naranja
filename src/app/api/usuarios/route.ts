@@ -7,21 +7,17 @@ import bcrypt from "bcryptjs";
 
 /**
  * GET /api/usuarios — Lista usuarios activos
- * Admin: incluye passwordPlain para poder verlas
- * Mod: solo id, nombre, email, rol, esMesa
+ * Admin/Mod: solo datos no sensibles. Las contraseñas nunca se devuelven.
  */
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   if (!isModOrAdmin(session.rol)) return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
-  const esAdmin = isAdmin(session.rol);
-
   const usuarios = await prisma.user.findMany({
     where: { activo: true },
     select: {
       id: true, nombre: true, email: true, rol: true, esMesa: true,
-      ...(esAdmin ? { passwordPlain: true } : {}),
     },
     orderBy: { nombre: "asc" },
   });
@@ -63,11 +59,10 @@ export async function POST(req: NextRequest) {
         nombre: nombre.trim(),
         email: email.trim().toLowerCase(),
         password: hash,
-        passwordPlain: password.trim(),
         rol: ["ADMIN", "MODERADOR", "TECNICO"].includes(rol) ? rol : "TECNICO",
         esMesa: esMesa === true,
       },
-      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, passwordPlain: true },
+      select: { id: true, nombre: true, email: true, rol: true, esMesa: true },
     });
 
     return NextResponse.json(usuario, { status: 201 });
@@ -117,7 +112,6 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 });
       }
       data.password = await bcrypt.hash(password.trim(), 12);
-      data.passwordPlain = password.trim();
     }
 
     if (Object.keys(data).length === 0) {
@@ -127,7 +121,7 @@ export async function PATCH(req: NextRequest) {
     const updated = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, passwordPlain: true },
+      select: { id: true, nombre: true, email: true, rol: true, esMesa: true },
     });
 
     return NextResponse.json(updated);

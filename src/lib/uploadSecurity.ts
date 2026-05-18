@@ -1,3 +1,5 @@
+import { logSecurityEvent } from "@/lib/securityEvents";
+
 type UploadValidationOptions = {
   file: File;
   allowedMimeTypes: readonly string[];
@@ -40,26 +42,35 @@ export async function validateAndReadUpload({ file, allowedMimeTypes, allowedExt
   const extension = getFileExtension(file.name);
   const mime = file.type.split(";")[0].trim().toLowerCase();
 
+  const reject = (error: string): UploadValidationResult => {
+    logSecurityEvent({
+      type: "UPLOAD_REJECTED",
+      reason: error,
+      metadata: { label, extension, mime, size: file.size, fileName: sanitizeFileName(file.name) },
+    });
+    return { ok: false, error };
+  };
+
   if (!allowedExtensions.includes(extension)) {
-    return { ok: false, error: `Extensión de ${label} no permitida: ${file.name}` };
+    return reject(`Extensión de ${label} no permitida: ${file.name}`);
   }
 
   if (!allowedMimeTypes.includes(mime)) {
-    return { ok: false, error: `Tipo de ${label} no permitido: ${file.name}` };
+    return reject(`Tipo de ${label} no permitido: ${file.name}`);
   }
 
   if (file.size > maxSizeBytes) {
-    return { ok: false, error: `${file.name} supera el tamaño permitido` };
+    return reject(`${file.name} supera el tamaño permitido`);
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
   if (buffer.length !== file.size) {
-    return { ok: false, error: `No se pudo validar el tamaño real de ${file.name}` };
+    return reject(`No se pudo validar el tamaño real de ${file.name}`);
   }
 
   const signature = SIGNATURES[extension];
   if (signature && !signature(buffer)) {
-    return { ok: false, error: `El contenido de ${file.name} no coincide con su extensión` };
+    return reject(`El contenido de ${file.name} no coincide con su extensión`);
   }
 
   return { ok: true, buffer, extension, mime };

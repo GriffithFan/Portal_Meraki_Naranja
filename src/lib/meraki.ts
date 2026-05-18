@@ -14,6 +14,17 @@ const client: AxiosInstance = axios.create({
   },
 });
 
+function logMerakiError(context: string, err: unknown) {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status ?? "unknown";
+    const method = err.config?.method?.toUpperCase() || "GET";
+    const url = err.config?.url || context;
+    console.error(`[Meraki] ${context} failed (${status}) ${method} ${url}: ${err.message}`);
+    return;
+  }
+  console.error(`[Meraki] ${context} failed:`, err instanceof Error ? err.message : String(err));
+}
+
 /* ── Retry automático para 429 (Meraki rate limit: 10 req/s) ──── */
 client.interceptors.response.use(undefined, async (error) => {
   const config = error.config;
@@ -103,7 +114,7 @@ async function safeGet<T = unknown>(path: string, params: Record<string, unknown
   } catch (err) {
     const status = axios.isAxiosError(err) ? err.response?.status : undefined;
     if (status !== 404 && status !== 400) {
-      console.error(`[Meraki] safeGet ${path} failed (${status ?? "unknown"}):`, axios.isAxiosError(err) ? err.message : err);
+      logMerakiError(`safeGet ${path}`, err);
     }
     return fallback;
   }
@@ -209,16 +220,9 @@ export async function getNetworkWirelessSSIDs(networkId: string) {
 /* ── Appliance ─────────────────────────────────────────── */
 
 export async function getApplianceStatuses(networkId: string) {
-  try {
-    const { data } = await client.get(`/networks/${networkId}/appliance/uplinks/statuses`);
-    return data;
-  } catch (e: unknown) {
-    if (axios.isAxiosError(e) && e.response?.status === 404) {
-      const { data } = await client.get(`/networks/${networkId}/appliance/uplink/statuses`);
-      return data;
-    }
-    throw e;
-  }
+  const primary = await safeGet<unknown[]>(`/networks/${networkId}/appliance/uplinks/statuses`);
+  if (primary !== null) return primary;
+  return (await safeGet<unknown[]>(`/networks/${networkId}/appliance/uplink/statuses`, {}, [])) ?? [];
 }
 
 export async function getAppliancePorts(networkId: string) {
@@ -227,16 +231,9 @@ export async function getAppliancePorts(networkId: string) {
 }
 
 export async function getDeviceAppliancePortsStatuses(serial: string) {
-  try {
-    const { data } = await client.get(`/devices/${serial}/appliance/ports/statuses`);
-    return data;
-  } catch (e: unknown) {
-    if (axios.isAxiosError(e) && e.response?.status === 404) {
-      const { data } = await client.get(`/devices/${serial}/appliance/ports/status`);
-      return data;
-    }
-    throw e;
-  }
+  const primary = await safeGet<unknown[]>(`/devices/${serial}/appliance/ports/statuses`);
+  if (primary !== null) return primary;
+  return (await safeGet<unknown[]>(`/devices/${serial}/appliance/ports/status`, {}, [])) ?? [];
 }
 
 export async function getDeviceAppliancePerformance(serial: string, params: Record<string, unknown> = {}) {

@@ -206,6 +206,8 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
 
       const provColor = getProvinciaColor(prov);
 
+      const taskQuery = encodeURIComponent(p.codigo || p.nombre || p.id);
+
       marker.bindPopup(
         `<div style="font-family:system-ui;font-size:12px;min-width:180px">
           <div style="font-weight:600;font-size:13px;margin-bottom:2px">${escapeHtml(p.nombre)}</div>
@@ -221,7 +223,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
             <tr><td style="color:#94a3b8;padding:2px 8px 2px 0">GPS</td><td style="display:flex;align-items:center;gap:4px"><span style="font-family:monospace;font-size:10px">${p.latitud.toFixed(6)}, ${p.longitud.toFixed(6)}</span><button onclick="navigator.clipboard.writeText('${p.latitud.toFixed(6)}, ${p.longitud.toFixed(6)}');this.textContent='✓';setTimeout(()=>this.textContent='📋',1200)" style="background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:11px;padding:1px 4px;line-height:1" title="Copiar coordenadas">📋</button></td></tr>
           </table>
           <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e2e8f0">
-            <a href="${p.espacioId ? `/dashboard/tareas/espacio/${p.espacioId}/tareas?open=${encodeURIComponent(p.codigo)}` : `/dashboard/tareas?search=${encodeURIComponent(p.codigo)}&open=${encodeURIComponent(p.codigo)}`}" style="color:#6366f1;text-decoration:none;font-size:11px">Ver en tareas →</a>
+            <a href="${p.espacioId ? `/dashboard/tareas/espacio/${p.espacioId}/tareas?search=${taskQuery}&open=${taskQuery}` : `/dashboard/tareas?search=${taskQuery}&open=${taskQuery}`}" style="color:#6366f1;text-decoration:none;font-size:11px">Ver en tareas →</a>
           </div>
         </div>`,
         { maxWidth: 280 }

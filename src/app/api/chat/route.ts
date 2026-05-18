@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { sanitizeUserText } from "@/lib/sanitize";
 
 type ChatUnreadSnapshot = {
   estado: string;
@@ -91,8 +92,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { mensaje } = body;
+    const safeMensaje = typeof mensaje === "string" ? sanitizeUserText(mensaje, { maxLength: 2000 }) : "";
 
-    if (!mensaje?.trim()) {
+    if (!safeMensaje) {
       return NextResponse.json(
         { error: "Mensaje requerido" },
         { status: 400 }
@@ -119,7 +121,7 @@ export async function POST(request: NextRequest) {
         creadorId: session.userId,
         mensajes: {
           create: {
-            contenido: mensaje.trim().slice(0, 2000),
+            contenido: safeMensaje,
             autorId: session.userId,
           },
         },
@@ -145,7 +147,7 @@ export async function POST(request: NextRequest) {
               enviarPushYBandeja(u.id, {
                 tipo: "CHAT",
                 titulo: "Nueva consulta en Mesa de Ayuda",
-                mensaje: `${session.nombre}: ${mensaje.trim().slice(0, 80)}`,
+                mensaje: `${session.nombre}: ${safeMensaje.slice(0, 80)}`,
                 enlace: "/dashboard/chat",
                 entidad: "CHAT",
                 entidadId: conversacion.id,

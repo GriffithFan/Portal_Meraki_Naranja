@@ -256,7 +256,7 @@ export async function DELETE(
 async function deleteUploadFile(fileRuta: string) {
   try {
     const uploadsDir = path.resolve(process.cwd(), "uploads");
-    const filePath = path.resolve(process.cwd(), fileRuta);
+    const filePath = path.resolve(/* turbopackIgnore: true */ process.cwd(), fileRuta);
     // Path traversal protection
     if (!filePath.startsWith(uploadsDir)) return;
     await unlink(filePath);

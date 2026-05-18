@@ -1,5 +1,6 @@
 import { z, ZodSchema } from "zod";
 import { NextResponse } from "next/server";
+import { sanitizeUserText } from "@/lib/sanitize";
 
 /* ── Helpers ────────────────────────────────────────────── */
 
@@ -20,7 +21,19 @@ export async function parseBody<T>(
     const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
     return NextResponse.json({ error: "Datos inválidos", detalles: issues }, { status: 400 });
   }
-  return result.data;
+  return sanitizePayload(result.data) as T;
+}
+
+const SENSITIVE_TEXT_KEYS = new Set(["password", "passwordPlain", "currentPassword", "newPassword", "token", "secret"]);
+
+function sanitizePayload(value: unknown, key?: string): unknown {
+  if (key && SENSITIVE_TEXT_KEYS.has(key)) return value;
+  if (typeof value === "string") return sanitizeUserText(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizePayload(item, key));
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([itemKey, item]) => [itemKey, sanitizePayload(item, itemKey)]));
+  }
+  return value;
 }
 
 /** Type guard: true si parseBody devolvió un NextResponse (error) */
@@ -102,6 +115,7 @@ export const stockCreateSchema = z.object({
   etiqueta: strOpt(50),
   etiquetaColor: strOpt(20),
   proveedor: strOpt(50),
+  camposExtra: z.record(z.string(), z.unknown()).optional(),
 });
 
 // PUT /api/stock/[id]
@@ -147,6 +161,12 @@ export const espacioSchema = z.object({
   color: strOpt(20),
   icono: strOpt(50),
   parentId: cuidOpt(),
+  camposConfig: z.unknown().optional(),
+  estadosConfig: z.unknown().optional(),
+  nuevosEstados: z.array(z.object({
+    nombre: str(100).min(1),
+    color: strOpt(20),
+  })).max(50).optional(),
 });
 
 // PUT /api/permisos
@@ -170,6 +190,7 @@ export const tareaCreateSchema = z.object({
   ciudad: strOpt(200),
   tipo: strOpt(50),
   notas: strOpt(5000),
+  notasTecnico: strOpt(5000),
   prioridad: z.enum(PRIORIDADES).optional(),
   asignadoIds: z.array(cuid()).max(50).optional(),
   fechaProgramada: strOpt(100),
@@ -185,6 +206,7 @@ export const tareaCreateSchema = z.object({
   gpsPredio: strOpt(200),
   fechaDesde: strOpt(100),
   fechaHasta: strOpt(100),
+  camposExtra: z.record(z.string(), z.unknown()).optional(),
 });
 
 // PATCH /api/tareas/[id]
@@ -246,6 +268,8 @@ export const espacioUpdateSchema = z.object({
   icono: strOpt(50),
   orden: z.number().int().min(0).max(9999).optional(),
   activo: boolOpt(),
+  camposConfig: z.unknown().optional(),
+  estadosConfig: z.unknown().optional(),
 });
 
 // PUT /api/calendario/[id] — rama asignatario (solo completada)

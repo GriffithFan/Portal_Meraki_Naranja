@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { stockUpdateSchema, parseBody, isErrorResponse } from "@/lib/validation";
+import type { Prisma } from "@prisma/client";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -46,33 +47,35 @@ export async function PUT(
     const data = await parseBody(request, stockUpdateSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor } = data;
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor, camposExtra } = data;
 
     const existing = await prisma.equipo.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: "Equipo no encontrado" }, { status: 404 });
     }
 
+    const updateData: Prisma.EquipoUncheckedUpdateInput = {};
+    if (nombre !== undefined) updateData.nombre = nombre;
+    if (descripcion !== undefined) updateData.descripcion = descripcion;
+    if (numeroSerie !== undefined) updateData.numeroSerie = numeroSerie || null;
+    if (modelo !== undefined) updateData.modelo = modelo;
+    if (marca !== undefined) updateData.marca = marca;
+    if (cantidad !== undefined) updateData.cantidad = parseInt(String(cantidad));
+    if (estado !== undefined) updateData.estado = estado;
+    if (categoria !== undefined) updateData.categoria = categoria;
+    if (ubicacion !== undefined) updateData.ubicacion = ubicacion;
+    if (predioId !== undefined) updateData.predioId = predioId || null;
+    if (notas !== undefined) updateData.notas = notas;
+    if (fecha !== undefined) updateData.fecha = fecha || null;
+    if (asignadoId !== undefined) updateData.asignadoId = asignadoId || null;
+    if (etiqueta !== undefined) updateData.etiqueta = etiqueta || null;
+    if (etiquetaColor !== undefined) updateData.etiquetaColor = etiquetaColor || null;
+    if (proveedor !== undefined) updateData.proveedor = proveedor || null;
+    if (camposExtra !== undefined) updateData.camposExtra = camposExtra as Prisma.InputJsonValue;
+
     const equipo = await prisma.equipo.update({
       where: { id },
-      data: {
-        ...(nombre !== undefined && { nombre }),
-        ...(descripcion !== undefined && { descripcion }),
-        ...(numeroSerie !== undefined && { numeroSerie: numeroSerie || null }),
-        ...(modelo !== undefined && { modelo }),
-        ...(marca !== undefined && { marca }),
-        ...(cantidad !== undefined && { cantidad: parseInt(String(cantidad)) }),
-        ...(estado !== undefined && { estado }),
-        ...(categoria !== undefined && { categoria }),
-        ...(ubicacion !== undefined && { ubicacion }),
-        ...(predioId !== undefined && { predioId: predioId || null }),
-        ...(notas !== undefined && { notas }),
-        ...(fecha !== undefined && { fecha: fecha || null }),
-        ...(asignadoId !== undefined && { asignadoId: asignadoId || null }),
-        ...(etiqueta !== undefined && { etiqueta: etiqueta || null }),
-        ...(etiquetaColor !== undefined && { etiquetaColor: etiquetaColor || null }),
-        ...(proveedor !== undefined && { proveedor: proveedor || null }),
-      },
+      data: updateData,
     });
 
     const desc =

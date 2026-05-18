@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { sanitizeUserText } from "@/lib/sanitize";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -21,8 +22,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const body = await request.json();
     const { contenido } = body;
+    const safeContenido = typeof contenido === "string" ? sanitizeUserText(contenido, { maxLength: 2000 }) : "";
 
-    if (!contenido?.trim()) {
+    if (!safeContenido) {
       return NextResponse.json({ error: "Contenido requerido" }, { status: 400 });
     }
 
@@ -48,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const actualizado = await prisma.chatMensaje.update({
       where: { id },
       data: {
-        contenido: contenido.trim().slice(0, 2000),
+        contenido: safeContenido,
         editadoAt: new Date(),
       },
     });

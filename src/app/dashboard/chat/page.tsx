@@ -5,14 +5,19 @@ import Image from "next/image";
 import { useSession } from "@/hooks/useSession";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
+import EmptyState from "@/components/ui/EmptyState";
+import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import clsx from "clsx";
+import { toast } from "sonner";
+import { MessageSquare, SearchX } from "lucide-react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const MAX_AUDIO_SECONDS = 120;
-const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/zip,application/x-zip-compressed";
+const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/pdf,.pdf,application/zip,application/x-zip-compressed";
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 const PARTICIPANT_COLORS = [
   "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:ring-blue-700",
   "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:ring-emerald-700",
@@ -27,7 +32,7 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
+function ChatArchivo({ msg, esMio, onOpenMedia }: { msg: any; esMio: boolean; onOpenMedia: (msg: any) => void }) {
   if (!msg.archivoUrl) return null;
   const tipo = (msg.archivoTipo || "").split(";")[0].trim();
   const downloadUrl = `/api/chat/archivo/${msg.id}`;
@@ -43,9 +48,9 @@ function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
   if (tipo.startsWith("image/")) {
     return (
       <div className="mt-1.5">
-        <a href={inlineUrl} target="_blank" rel="noopener noreferrer">
+        <button type="button" onClick={() => onOpenMedia(msg)} className="block text-left">
           <Image src={inlineUrl} alt={msg.archivoNombre} width={280} height={200} unoptimized className="max-w-[280px] max-h-[200px] w-auto h-auto rounded-lg object-cover cursor-pointer hover:opacity-90 transition" />
-        </a>
+        </button>
         <div className="flex items-center gap-2">
           <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
           <DownloadBtn />
@@ -73,13 +78,13 @@ function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
     );
   }
   return (
-    <a href={downloadUrl} className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition text-xs" download>
+    <button type="button" onClick={() => onOpenMedia(msg)} className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition text-xs text-left">
       <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
       </svg>
       <span className="truncate">{msg.archivoNombre}</span>
       <span className="opacity-60 flex-shrink-0">{formatFileSize(msg.archivoTamanio)}</span>
-    </a>
+    </button>
   );
 }
 
@@ -94,11 +99,135 @@ function participantLabel(msg: any, sessionUserId?: string, isMesa?: boolean, so
   return "Mesa de Ayuda";
 }
 
+function messagePreview(msg: any) {
+  if (!msg) return "Mensaje";
+  if (msg.archivoNombre) return msg.contenido && msg.contenido !== msg.archivoNombre ? msg.contenido : msg.archivoNombre;
+  return msg.contenido || "Mensaje";
+}
+
+function searchSnippet(text: string, query: string, maxLength = 150) {
+  const source = text || "";
+  const cleanQuery = query.trim().toLowerCase();
+  if (!cleanQuery || source.length <= maxLength) return source;
+  const index = source.toLowerCase().indexOf(cleanQuery);
+  if (index < 0) return source.slice(0, maxLength).trimEnd() + "...";
+  const start = Math.max(0, index - 45);
+  const end = Math.min(source.length, index + cleanQuery.length + 90);
+  return `${start > 0 ? "..." : ""}${source.slice(start, end).trim()}${end < source.length ? "..." : ""}`;
+}
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) return <>{text}</>;
+  const index = text.toLowerCase().indexOf(cleanQuery.toLowerCase());
+  if (index < 0) return <>{text}</>;
+  const before = text.slice(0, index);
+  const match = text.slice(index, index + cleanQuery.length);
+  const after = text.slice(index + cleanQuery.length);
+  return <>{before}<mark className="rounded bg-amber-200 px-0.5 text-amber-950 dark:bg-amber-500/40 dark:text-amber-50">{match}</mark>{after}</>;
+}
+
+function ReplyQuote({ msg, esMio, onClick }: { msg: any; esMio: boolean; onClick?: () => void }) {
+  if (!msg) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        "mb-2 w-full rounded-lg border-l-2 px-2 py-1.5 text-left transition",
+        esMio
+          ? "border-blue-200 bg-white/15 hover:bg-white/20"
+          : "border-blue-400 bg-white/70 hover:bg-white dark:bg-surface-600/70 dark:hover:bg-surface-600"
+      )}
+    >
+      <p className={clsx("text-[10px] font-semibold", esMio ? "text-blue-100" : "text-blue-600 dark:text-blue-300")}>{msg.autor?.nombre || "Mensaje"}</p>
+      <p className={clsx("line-clamp-2 text-xs", esMio ? "text-blue-50" : "text-surface-500 dark:text-surface-300")}>{messagePreview(msg)}</p>
+    </button>
+  );
+}
+
+function ReactionSummary({ msg, sessionUserId, onReact }: { msg: any; sessionUserId?: string; onReact: (msg: any, emoji: string) => void }) {
+  const reacciones = msg.reacciones || [];
+  if (reacciones.length === 0) return null;
+  const counts = QUICK_REACTIONS
+    .map((emoji) => ({ emoji, count: reacciones.filter((r: any) => r.emoji === emoji).length, mine: reacciones.some((r: any) => r.emoji === emoji && r.userId === sessionUserId) }))
+    .filter((item) => item.count > 0);
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {counts.map((item) => (
+        <button
+          key={item.emoji}
+          type="button"
+          onClick={() => onReact(msg, item.emoji)}
+          className={clsx("inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px] shadow-sm transition", item.mine ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200" : "border-surface-200 bg-white text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200")}
+          title={item.mine ? "Quitar reacción" : "Reaccionar"}
+        >
+          <span>{item.emoji}</span>
+          <span className="font-semibold">{item.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReactionPicker({ msg, onReact, placement }: { msg: any; onReact: (msg: any, emoji: string) => void; placement: "top" | "bottom" }) {
+  return (
+    <div className={clsx("absolute z-20 flex rounded-full border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-800", placement === "bottom" ? "top-full mt-1" : "bottom-full mb-1")}>
+      {QUICK_REACTIONS.map((emoji) => (
+        <button key={emoji} type="button" onClick={() => onReact(msg, emoji)} className="rounded-full px-1.5 py-1 text-base hover:bg-surface-100 dark:hover:bg-surface-700" title={`Reaccionar ${emoji}`}>
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
   ABIERTA: { label: "Esperando", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   EN_CURSO: { label: "En curso", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
   CERRADA: { label: "Cerrada", className: "bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400" },
 };
+
+interface ConfirmState {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "danger";
+  resolve: (confirmed: boolean) => void;
+}
+
+function ConfirmDialog({ state, onResolve }: { state: ConfirmState | null; onResolve: (confirmed: boolean) => void }) {
+  if (!state) return null;
+  const isDanger = state.tone === "danger";
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="chat-confirm-title">
+      <div className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-4 shadow-2xl dark:border-surface-700 dark:bg-surface-800">
+        <h2 id="chat-confirm-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">{state.title}</h2>
+        <p className="mt-2 text-sm leading-5 text-surface-500 dark:text-surface-300">{state.description}</p>
+        <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => onResolve(false)}
+            className="rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-600 transition hover:bg-surface-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onResolve(true)}
+            className={clsx(
+              "rounded-lg px-3 py-2 text-sm font-semibold text-white transition",
+              isDanger ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"
+            )}
+          >
+            {state.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ChatPage() {
   const { session, isMesa, isModOrAdmin } = useSession();
@@ -122,9 +251,18 @@ export default function ChatPage() {
     urlParamsRef.current = new URLSearchParams(window.location.search);
   }
   const [busqueda, setBusqueda] = useState(() => urlParamsRef.current?.get("search") || "");
+  const [resultadosBusqueda, setResultadosBusqueda] = useState<any[]>([]);
+  const [buscandoMensajes, setBuscandoMensajes] = useState(false);
   const [editandoMsgId, setEditandoMsgId] = useState<string | null>(null);
   const [editandoTxt, setEditandoTxt] = useState("");
+  const [respondiendoA, setRespondiendoA] = useState<any | null>(null);
+  const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
+  const [reactionPickerMsg, setReactionPickerMsg] = useState<{ id: string; placement: "top" | "bottom" } | null>(null);
+  const [mediaViewerMsg, setMediaViewerMsg] = useState<any | null>(null);
+  const [mensajeBuscadoId, setMensajeBuscadoId] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevMsgCountRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,6 +271,20 @@ export default function ChatPage() {
   const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
   const conversacionesLoadingRef = useRef(false);
   const mensajesAbortRef = useRef<AbortController | null>(null);
+  const busquedaAbortRef = useRef<AbortController | null>(null);
+
+  const pedirConfirmacion = useCallback((options: Omit<ConfirmState, "resolve">) => {
+    return new Promise<boolean>((resolve) => {
+      setConfirmState({ ...options, resolve });
+    });
+  }, []);
+
+  const resolverConfirmacion = useCallback((confirmed: boolean) => {
+    setConfirmState((current) => {
+      current?.resolve(confirmed);
+      return null;
+    });
+  }, []);
 
   const mergeMensajes = useCallback((nuevos: any[]) => {
     if (nuevos.length === 0) return;
@@ -146,6 +298,20 @@ export default function ChatPage() {
   // soloLectura se calcula por conversación: MOD puede escribir en las suyas
   const esMiConversacion = seleccionada?.creadorId === session?.userId;
   const soloLectura = seleccionada ? !(esMiConversacion || isMesa) : false;
+
+  const scrollToMessage = useCallback((id: string) => {
+    const node = messageRefs.current.get(id);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightMsgId(id);
+    window.setTimeout(() => setHighlightMsgId((current) => current === id ? null : current), 1400);
+  }, []);
+
+  const toggleReactionPicker = useCallback((id: string, event: any) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const placement = rect.top < 120 ? "bottom" : "top";
+    setReactionPickerMsg((current) => current?.id === id ? null : { id, placement });
+  }, []);
 
   // Cargar conversaciones
   const cargarConversaciones = useCallback(async () => {
@@ -194,6 +360,43 @@ export default function ChatPage() {
   }, [cargarMensajes, mensajes, mergeMensajes]);
 
   useEffect(() => {
+    busquedaAbortRef.current?.abort();
+    const q = busqueda.trim();
+    if (q.length < 2) {
+      setResultadosBusqueda([]);
+      setBuscandoMensajes(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    busquedaAbortRef.current = controller;
+    setBuscandoMensajes(true);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q });
+        if (filtroEstado !== "TODAS") params.set("estado", filtroEstado);
+        const res = await fetch(`/api/chat/buscar?${params.toString()}`, { credentials: "include", signal: controller.signal });
+        if (!res.ok || controller.signal.aborted) return;
+        const data = await res.json();
+        setResultadosBusqueda(data.results || []);
+      } catch (err: any) {
+        if (err?.name !== "AbortError") setResultadosBusqueda([]);
+      } finally {
+        if (busquedaAbortRef.current === controller) {
+          setBuscandoMensajes(false);
+          busquedaAbortRef.current = null;
+        }
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [busqueda, filtroEstado]);
+
+  useEffect(() => {
     cargarConversaciones().finally(() => setLoading(false));
   }, [cargarConversaciones]);
 
@@ -215,29 +418,47 @@ export default function ChatPage() {
     prevMsgCountRef.current = mensajes.length;
   }, [mensajes]);
 
+  useEffect(() => {
+    if (!mensajeBuscadoId || !mensajes.some((msg: any) => msg.id === mensajeBuscadoId)) return;
+    const timer = window.setTimeout(() => {
+      scrollToMessage(mensajeBuscadoId);
+      setMensajeBuscadoId(null);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [mensajeBuscadoId, mensajes, scrollToMessage]);
+
   // Para técnicos: auto-deseleccionar conversación cuando se cierra → muestra vista nueva consulta
   useEffect(() => {
     if (seleccionada?.estado === "CERRADA" && !isMesa && !soloLectura) {
       setSeleccionada(null);
       setMensajes([]);
+      setRespondiendoA(null);
       setVistaMovil("lista");
     }
   }, [seleccionada?.estado, isMesa, soloLectura]);
 
   const seleccionarConv = (conv: any) => {
     setSeleccionada(conv);
+    setRespondiendoA(null);
     cargarMensajes(conv.id);
     setVistaMovil("chat");
   };
 
-  const enviarMensaje = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const texto = nuevoMensaje.trim();
-    if (!texto || enviando) return;
+  const abrirResultadoBusqueda = async (resultado: any) => {
+    setSeleccionada(resultado.conversacion);
+    setRespondiendoA(null);
+    setMensajeBuscadoId(resultado.id);
+    setVistaMovil("chat");
+    await cargarMensajes(resultado.conversacion.id);
+  };
+
+  const enviarTexto = async (texto: string) => {
+    const mensajeTexto = texto.trim();
+    if (!mensajeTexto || enviando) return;
 
     // Si no hay conversación seleccionada y no es Mesa, crear nueva
     if (!seleccionada && !isMesa) {
-      await crearConsulta(nuevoMensaje);
+      await crearConsulta(mensajeTexto);
       setNuevoMensaje("");
       return;
     }
@@ -249,17 +470,44 @@ export default function ChatPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ mensaje: texto }),
+        body: JSON.stringify({ mensaje: mensajeTexto, replyToId: respondiendoA?.id }),
       });
       if (res.ok) {
         setNuevoMensaje("");
+        setRespondiendoA(null);
         await cargarMensajes(seleccionada.id);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al enviar mensaje");
+        toast.error(err.error || "Error al enviar mensaje");
       }
-    } catch (err) { console.error("[Chat] Error enviando mensaje:", err); alert("Error de conexión"); } finally {
+    } catch (err) { console.error("[Chat] Error enviando mensaje:", err); toast.error("Error de conexión"); } finally {
       setEnviando(false);
+    }
+  };
+
+  const enviarMensaje = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await enviarTexto(nuevoMensaje);
+  };
+
+  const reaccionarMensaje = async (msg: any, emoji: string) => {
+    setReactionPickerMsg(null);
+    try {
+      const res = await fetch(`/api/chat/mensaje/${msg.id}/reaccion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ emoji }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Error al reaccionar");
+        return;
+      }
+      const data = await res.json();
+      setMensajes((prev) => prev.map((item: any) => item.id === data.mensajeId ? { ...item, reacciones: data.reacciones } : item));
+    } catch {
+      toast.error("Error de conexión");
     }
   };
 
@@ -279,9 +527,9 @@ export default function ChatPage() {
         seleccionarConv(data);
       } else {
         const err = await res.json();
-        alert(err.error || "Error al crear consulta");
+        toast.error(err.error || "Error al crear consulta");
       }
-    } catch { /* silenciar */ } finally {
+    } catch { toast.error("Error de conexión al crear la consulta"); } finally {
       setEnviando(false);
     }
   };
@@ -297,12 +545,21 @@ export default function ChatPage() {
       if (res.ok) {
         await cargarConversaciones();
         await cargarMensajes(id);
+        toast.success("Consulta tomada");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "No se pudo tomar la consulta");
       }
-    } catch { /* silenciar */ }
+    } catch { toast.error("Error de conexión"); }
   };
 
   const cerrarConversacion = async (id: string) => {
-    if (!confirm("¿Cerrar esta consulta? El técnico podrá crear una nueva.")) return;
+    const confirmed = await pedirConfirmacion({
+      title: "Cerrar consulta",
+      description: "El técnico podrá crear una nueva consulta cuando necesite volver a contactar a Mesa.",
+      confirmLabel: "Cerrar consulta",
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/chat/${id}`, {
         method: "PATCH",
@@ -313,10 +570,15 @@ export default function ChatPage() {
       if (res.ok) {
         setSeleccionada(null);
         setMensajes([]);
+        setRespondiendoA(null);
         setVistaMovil("lista");
         await cargarConversaciones();
+        toast.success("Consulta cerrada");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "No se pudo cerrar la consulta");
       }
-    } catch { /* silenciar */ }
+    } catch { toast.error("Error de conexión"); }
   };
 
   const tieneActiva = conversaciones.some(
@@ -324,17 +586,24 @@ export default function ChatPage() {
   );
 
   const eliminarConversacion = async (id: string) => {
-    if (!confirm("¿Eliminar esta conversación? Se borrarán todos los mensajes y archivos.")) return;
+    const confirmed = await pedirConfirmacion({
+      title: "Eliminar conversación",
+      description: "Se borrarán todos los mensajes y archivos asociados. Esta acción no se puede deshacer.",
+      confirmLabel: "Eliminar conversación",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/chat/${id}`, { method: "DELETE", credentials: "include" });
       if (res.ok) {
-        if (seleccionada?.id === id) { setSeleccionada(null); setMensajes([]); setVistaMovil("lista"); }
+        if (seleccionada?.id === id) { setSeleccionada(null); setMensajes([]); setRespondiendoA(null); setVistaMovil("lista"); }
         await cargarConversaciones();
+        toast.success("Conversación eliminada");
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al eliminar");
+        toast.error(err.error || "Error al eliminar");
       }
-    } catch { alert("Error de conexión"); }
+    } catch { toast.error("Error de conexión"); }
   };
 
   // Filtrar y ordenar conversaciones
@@ -369,14 +638,16 @@ export default function ChatPage() {
       const fd = new FormData();
       files.forEach((file) => fd.append("file", file));
       fd.append("conversacionId", seleccionada.id);
+      if (respondiendoA?.id) fd.append("replyToId", respondiendoA.id);
       const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
       if (res.ok) {
+        setRespondiendoA(null);
         await cargarMensajes(seleccionada.id);
       } else {
         const err = await res.json();
-        alert(err.error || "Error al subir archivo");
+        toast.error(err.error || "Error al subir archivo");
       }
-    } catch (err) { console.error("[Chat] Error subiendo archivo:", err); alert("Error al subir archivo. Intentá de nuevo."); }
+    } catch (err) { console.error("[Chat] Error subiendo archivo:", err); toast.error("Error al subir archivo. Intentá de nuevo."); }
     setSubiendo(false);
   };
 
@@ -418,7 +689,7 @@ export default function ChatPage() {
         });
       }, 1000);
     } catch {
-      alert("No se pudo acceder al micrófono");
+      toast.error("No se pudo acceder al micrófono");
     }
   };
 
@@ -444,6 +715,7 @@ export default function ChatPage() {
 
   // ── Editar mensaje ──
   const iniciarEdicion = (msg: any) => {
+    setRespondiendoA(null);
     setEditandoMsgId(msg.id);
     setEditandoTxt(msg.contenido || "");
   };
@@ -467,14 +739,20 @@ export default function ChatPage() {
         if (seleccionada?.id) await cargarMensajes(seleccionada.id);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al editar mensaje");
+        toast.error(err.error || "Error al editar mensaje");
       }
-    } catch { alert("Error de conexión"); }
+    } catch { toast.error("Error de conexión"); }
   };
 
   // ── Eliminar mensaje ──
   const eliminarMensaje = async (msgId: string) => {
-    if (!confirm("¿Eliminar este mensaje?")) return;
+    const confirmed = await pedirConfirmacion({
+      title: "Eliminar mensaje",
+      description: "El mensaje se quitará de la conversación para todos los participantes.",
+      confirmLabel: "Eliminar mensaje",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/chat/mensaje/${msgId}`, {
         method: "DELETE",
@@ -482,11 +760,12 @@ export default function ChatPage() {
       });
       if (res.ok) {
         if (seleccionada?.id) await cargarMensajes(seleccionada.id);
+        toast.success("Mensaje eliminado");
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al eliminar mensaje");
+        toast.error(err.error || "Error al eliminar mensaje");
       }
-    } catch { alert("Error de conexión"); }
+    } catch { toast.error("Error de conexión"); }
   };
 
   if (loading) {
@@ -499,6 +778,7 @@ export default function ChatPage() {
 
   return (
     <div className="space-y-4">
+      <ConfirmDialog state={confirmState} onResolve={resolverConfirmacion} />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -560,26 +840,89 @@ export default function ChatPage() {
             {/* Búsqueda */}
             <input
               type="text"
-              placeholder="Buscar por nombre o mensaje..."
+              placeholder="Buscar en chats y mensajes..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-full px-2 py-1 rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-700 dark:text-surface-200 text-xs placeholder:text-surface-400 focus:ring-1 focus:ring-blue-500 outline-none"
             />
+            {busqueda.trim().length >= 2 && (
+              <div className="rounded-lg border border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900/40">
+                <div className="flex items-center justify-between border-b border-surface-200 px-2 py-1.5 dark:border-surface-700">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Mensajes</span>
+                  {buscandoMensajes ? (
+                    <span className="text-[10px] text-blue-500">Buscando...</span>
+                  ) : (
+                    <span className="text-[10px] text-surface-400">{resultadosBusqueda.length}</span>
+                  )}
+                </div>
+                <div className="max-h-52 overflow-y-auto">
+                  {buscandoMensajes && resultadosBusqueda.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 px-3 py-4 text-[11px] text-surface-400">
+                      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-surface-200 border-t-blue-500" />
+                      Buscando coincidencias
+                    </div>
+                  ) : resultadosBusqueda.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-[11px] text-surface-400">Sin mensajes encontrados</div>
+                  ) : (
+                    resultadosBusqueda.map((resultado) => {
+                      const conversacion = resultado.conversacion;
+                      const preview = searchSnippet(messagePreview(resultado), busqueda);
+                      return (
+                        <button
+                          key={resultado.id}
+                          type="button"
+                          onClick={() => abrirResultadoBusqueda(resultado)}
+                          className="w-full border-b border-surface-100 px-2.5 py-2 text-left transition last:border-b-0 hover:bg-white dark:border-surface-700 dark:hover:bg-surface-800"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[11px] font-semibold text-surface-700 dark:text-surface-200">
+                                {esVistaGlobal ? conversacion.creador?.nombre : "Mesa de Ayuda"}
+                              </p>
+                              <p className="mt-0.5 line-clamp-2 text-[11px] text-surface-500 dark:text-surface-300">
+                                <HighlightedText text={preview} query={busqueda} />
+                              </p>
+                              <p className="mt-1 text-[10px] text-surface-400">
+                                {resultado.autor?.nombre || "Participante"} · {formatDistanceToNow(new Date(resultado.createdAt), { addSuffix: true, locale: es })}
+                              </p>
+                            </div>
+                            <Badge className={ESTADO_BADGE[conversacion.estado]?.className || ""}>
+                              {ESTADO_BADGE[conversacion.estado]?.label || conversacion.estado}
+                            </Badge>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {conversaciones.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-surface-400 dark:text-surface-500 p-4 text-center">
-                <svg className="w-12 h-12 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-                </svg>
-                <p className="text-sm">
-                  {esVistaGlobal ? "No hay consultas pendientes" : "No tenés consultas aún"}
-                </p>
-              </div>
+              <EmptyState
+                className="h-full"
+                icon={<MessageSquare className="h-7 w-7" />}
+                title={esVistaGlobal ? "No hay consultas pendientes" : "No tenés consultas aún"}
+                description={esVistaGlobal ? "Cuando llegue una consulta nueva va a aparecer en esta lista." : "Escribí un mensaje para abrir una consulta con Mesa de Ayuda."}
+              />
             ) : convsFiltradas.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-surface-400 dark:text-surface-500 p-4 text-center">
-                <p className="text-sm">Sin resultados para este filtro</p>
-              </div>
+              <EmptyState
+                className="h-full"
+                compact
+                icon={<SearchX className="h-5 w-5" />}
+                title="Sin resultados para este filtro"
+                description="Probá limpiar la búsqueda o cambiar el estado seleccionado."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => { setBusqueda(""); setFiltroEstado("TODAS"); }}
+                    className="rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 transition hover:bg-surface-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
+                  >
+                    Limpiar filtros
+                  </button>
+                }
+              />
             ) : (
               convsFiltradas.map((conv) => (
                 <button
@@ -639,16 +982,21 @@ export default function ChatPage() {
         )}>
           {!seleccionada ? (
             <div className="flex-1 flex flex-col">
-              <div className="flex-1 flex flex-col items-center justify-center text-surface-400 dark:text-surface-500">
-                <svg className="w-16 h-16 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-                </svg>
-                <p className="text-sm">
-                  {isMesa || soloLectura ? "Seleccioná una conversación" : !tieneActiva ? "Escribí tu primer mensaje para iniciar" : "Seleccioná tu conversación"}
-                </p>
-              </div>
+              <EmptyState
+                className="flex-1"
+                icon={<MessageSquare className="h-8 w-8" />}
+                title={isMesa || soloLectura ? "Seleccioná una conversación" : !tieneActiva ? "Escribí tu primer mensaje para iniciar" : "Seleccioná tu conversación"}
+                description={isMesa || soloLectura ? "Elegí una consulta de la lista para ver mensajes, archivos y acciones disponibles." : !tieneActiva ? "Mesa de Ayuda va a recibir tu consulta y continuar desde esta misma ventana." : "Tu conversación activa queda guardada en la lista."}
+              />
               {!isMesa && !tieneActiva && (
                 <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700 touch-manipulation">
+                  <div className="mb-2 flex gap-1">
+                    {QUICK_REACTIONS.map((emoji) => (
+                      <button key={emoji} type="button" onClick={() => enviarTexto(emoji)} className="rounded-full border border-surface-200 bg-white px-2 py-1 text-sm shadow-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:bg-surface-700" title={`Enviar ${emoji}`}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -744,10 +1092,21 @@ export default function ChatPage() {
                     : false;
                   const editando = editandoMsgId === msg.id;
                   return (
-                    <div key={msg.id} className={clsx("group/msg flex", esMio ? "justify-end" : "justify-start")}>
+                    <div
+                      key={msg.id}
+                      ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
+                      className={clsx("group/msg flex transition-colors rounded-xl", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
+                    >
                       {/* Botones de acción (hover) — lado izquierdo para mensajes míos */}
                       {esMio && !editando && seleccionada.estado !== "CERRADA" && (
-                        <div className="flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
+                        <div className="relative flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
+                          {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
+                          <button onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
+                            <span className="text-sm leading-none">☺</span>
+                          </button>
+                          <button onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                          </button>
                           {!msg.archivoUrl && (
                             <button onClick={() => iniciarEdicion(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Editar">
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
@@ -793,8 +1152,9 @@ export default function ChatPage() {
                           </div>
                         ) : (
                           <>
+                            <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
                             {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
-                            <ChatArchivo msg={msg} esMio={esMio} />
+                            <ChatArchivo msg={msg} esMio={esMio} onOpenMedia={setMediaViewerMsg} />
                           </>
                         )}
                         <div className={clsx("flex items-center gap-1 mt-1", esMio ? "justify-end" : "")}>
@@ -820,13 +1180,23 @@ export default function ChatPage() {
                             </svg>
                           )}
                         </div>
+                        <ReactionSummary msg={msg} sessionUserId={session?.userId} onReact={reaccionarMensaje} />
                       </div>
-                      {/* Botones de acción (hover) — lado derecho para mensajes ajenos (solo Mesa/Admin) */}
-                      {!esMio && (isMesa || session?.rol === "ADMIN") && !editando && seleccionada.estado !== "CERRADA" && (
-                        <div className="flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
-                          <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                      {/* Botones de acción (hover) — lado derecho para mensajes ajenos */}
+                      {!esMio && !editando && seleccionada.estado !== "CERRADA" && !soloLectura && (
+                        <div className="relative flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
+                          {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
+                          <button onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
+                            <span className="text-sm leading-none">☺</span>
                           </button>
+                          <button onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                          </button>
+                          {(isMesa || session?.rol === "ADMIN") && (
+                            <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -840,6 +1210,18 @@ export default function ChatPage() {
                 (isMesa ? seleccionada.estado === "EN_CURSO" : true) ? (
                   <div className="p-3 border-t border-surface-200 dark:border-surface-700">
                     <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} multiple className="hidden" onChange={handleFileSelect} />
+
+                    {respondiendoA && (
+                      <div className="mb-2 flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 dark:border-blue-900/50 dark:bg-blue-900/20">
+                        <div className="min-w-0 flex-1 border-l-2 border-blue-500 pl-2">
+                          <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">Respondiendo a {participantLabel(respondiendoA, session?.userId, isMesa, soloLectura)}</p>
+                          <p className="truncate text-xs text-surface-600 dark:text-surface-300">{messagePreview(respondiendoA)}</p>
+                        </div>
+                        <button type="button" onClick={() => setRespondiendoA(null)} className="rounded p-1 text-surface-400 hover:bg-white hover:text-surface-600 dark:hover:bg-surface-700" title="Cancelar respuesta">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    )}
 
                     {grabando ? (
                       <div className="flex items-center gap-3 px-2">
@@ -857,6 +1239,14 @@ export default function ChatPage() {
                         <span className="text-sm text-surface-500">Subiendo archivo...</span>
                       </div>
                     ) : (
+                      <>
+                      <div className="mb-2 flex gap-1">
+                        {QUICK_REACTIONS.map((emoji) => (
+                          <button key={emoji} type="button" onClick={() => enviarTexto(emoji)} className="rounded-full border border-surface-200 bg-white px-2 py-1 text-sm shadow-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:bg-surface-700" title={`Enviar ${emoji}`}>
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
                       <form onSubmit={enviarMensaje} className="flex items-center gap-2 touch-manipulation">
                         {/* Adjuntar archivo */}
                         <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivos (foto, video, audio, zip)">
@@ -891,6 +1281,7 @@ export default function ChatPage() {
                           </svg>
                         </button>
                       </form>
+                      </>
                     )}
                   </div>
                 ) : (
@@ -911,6 +1302,12 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+      <ChatMediaViewer
+        message={mediaViewerMsg}
+        conversacionId={seleccionada?.id}
+        onClose={() => setMediaViewerMsg(null)}
+        onSent={() => seleccionada?.id && cargarMensajes(seleccionada.id)}
+      />
     </div>
   );
 }

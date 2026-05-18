@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { comentarioSchema, parseBody, isErrorResponse } from "@/lib/validation";
+import { sanitizeUserText } from "@/lib/sanitize";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -35,10 +36,15 @@ export async function POST(request: NextRequest) {
     if (isErrorResponse(data)) return data;
 
     const { contenido, predioId, equipoId } = data;
+    const safeContenido = sanitizeUserText(contenido, { maxLength: 5000 });
+
+    if (!safeContenido) {
+      return NextResponse.json({ error: "El comentario no puede estar vacío" }, { status: 400 });
+    }
 
     const comentario = await prisma.comentario.create({
       data: {
-        contenido: contenido.trim(),
+        contenido: safeContenido,
         userId: session.userId,
         predioId: predioId || null,
         equipoId: equipoId || null,
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
         entidad: predioId ? "PREDIO" : "EQUIPO",
         entidadId: predioId || equipoId || "",
         userId: session.userId,
-        metadata: { contenido: contenido.substring(0, 100) },
+        metadata: { contenido: safeContenido.substring(0, 100) },
       },
     });
 

@@ -1,7 +1,7 @@
 # Checklist de Mejoras: Seguridad, Performance y Funcionalidades
 
 Fecha inicial: 2026-04-27
-Ultima actualizacion: 2026-04-30
+Ultima actualizacion: 2026-05-05
 
 Este documento funciona como checklist vivo. La fase sensible de credenciales/login queda separada para mas adelante; las mejoras actuales deben evitar tocar credenciales de tecnicos, `passwordPlain`, estados actuales, stock y datos operativos.
 
@@ -53,6 +53,15 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Dependencias vulnerables con fix compatible actualizadas via `npm audit fix` sin upgrades mayores.
 - [x] Importacion Excel/CSV mitigada: limite de filas parseadas, columnas maximas, MIME/extensiones y formulas/HTML/estilos desactivados.
 - [x] Uploads de chat, actas e instructivos endurecidos con validacion compartida de extension, MIME, tamaño y firma real del archivo.
+- [x] Panel read-only de calidad de datos: sin estado, sin equipo, sin GPS, sin espacio, sin asignacion formal, vencidas y CUE duplicados.
+- [x] Diccionario read-only de campos base y personalizados con uso real y valores frecuentes.
+- [x] Prueba automatizada de humo para healthcheck, login y endpoints protegidos sin sesion.
+- [x] CSP en modo report-only con endpoint de reportes sin bloquear la app.
+- [x] Monitoreo basico de eventos sospechosos en logs: 429, payloads grandes, acceso directo a uploads, token invalido, login fallido y uploads rechazados.
+- [x] Creacion de instructivos unificada con validacion compartida de extension, MIME, tamaño y firma real.
+- [x] Middleware de tamaño de payload alineado con uploads grandes de instructivos sin relajar chat/actas.
+- [x] Sanitizacion no destructiva de textos ingresados por usuarios: comentarios, chat y bodies JSON validados.
+- [x] Cierre automatico diario de chats abiertos/en curso a las 17:05 hora local.
 
 ## En Progreso / Pendiente no Sensible
 
@@ -63,10 +72,10 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 
 - [x] Actualizar dependencias vulnerables con fix compatible (`axios`, `jspdf`, transitorias y otras segun `npm audit`) con build local.
 - [x] Endurecer uploads de chat, actas e instructivos: MIME, tamaño, extension, nombres, carpetas y firma real del archivo.
-- [ ] Sanitizacion avanzada de comentarios, nombres de archivo y textos renderizados.
-- [ ] CSP en modo report-only antes de bloquear recursos.
-- [ ] Monitoreo de eventos sospechosos: login fallido, 403/429, uploads rechazados y errores repetidos.
-- [ ] Backup automatico con retencion usando el script existente.
+- [x] Sanitizacion avanzada de comentarios y textos renderizados.
+- [x] CSP en modo report-only antes de bloquear recursos.
+- [x] Monitoreo de eventos sospechosos: login fallido, 403/429, uploads rechazados y errores repetidos.
+- [x] Backup automatico diario con retencion usando el script existente (`03:15`, `KEEP_DAYS=14`, log en `logs/backup-cron.log`).
 - [ ] Prueba de restauracion de backup en entorno aislado.
 
 ## Fase Separada Sensible
@@ -86,16 +95,17 @@ No aplicar dentro de las tandas operativas actuales.
 - [ ] Cola de revision para datos incompletos: sin estado, sin equipo, sin GPS, sin espacio, CUE duplicado.
 - [ ] Notificaciones internas por reglas: tarea vencida, stock bajo, chat sin respuesta, backup viejo.
 - [ ] Exportacion de reportes filtrados desde Cronograma respetando los filtros server-side.
-- [ ] Panel de calidad de datos por espacio/provincia/equipo.
+- [x] Panel de calidad de datos por espacio/provincia/equipo.
 - [ ] Modo auditoria read-only con acceso temporal y trazabilidad.
 - [ ] Resumen ejecutivo semanal para administradores.
-- [ ] Pruebas automatizadas de humo para rutas criticas antes de deploy.
+- [x] Pruebas automatizadas de humo para rutas criticas antes de deploy.
 - [ ] Dashboard de importaciones por origen: ClickUp, Excel, scripts manuales.
-- [ ] Diccionario de campos personalizados para explicar origen y uso de cada columna.
+- [x] Diccionario de campos personalizados para explicar origen y uso de cada columna.
 
 ## Orden Recomendado Actual
 
-1. Avanzar con seguridad sin credenciales: sanitizacion y CSP report-only.
-2. Evaluar migracion mayor de Next 14 a Next 16 en rama/ventana separada.
-3. Evaluar reemplazo definitivo de `xlsx` o aislamiento del parser.
-4. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.
+1. Probar restauracion de backup en entorno aislado antes de confiar en la retencion automatica.
+2. Revisar reportes CSP en logs antes de pasar de report-only a modo bloqueo.
+3. Evaluar migracion mayor de Next 14 a Next 16 en rama/ventana separada.
+4. Evaluar reemplazo definitivo de `xlsx` o aislamiento del parser.
+5. Ejecutar fase separada sensible solo con backup, comunicacion y ventana de prueba.

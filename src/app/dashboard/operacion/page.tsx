@@ -52,6 +52,7 @@ export default function OperacionPage() {
     { label: "Predios sin GPS", value: data.predios.sinGPS, href: "/dashboard/predios" },
     { label: "Predios sin espacio", value: data.predios.sinEspacio, href: "/dashboard/tareas" },
   ];
+  const health = data.app.health || { level: "warn", label: "Sin diagnostico", errors: 0, warnings: 0, checks: [] };
 
   return (
     <div className="animate-fade-in-up space-y-5">
@@ -59,9 +60,30 @@ export default function OperacionPage() {
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Estado operativo</h1>
           <p className="text-xs text-surface-400">Lectura rapida de salud, datos incompletos y actividad reciente</p>
+          {data.generatedAt && <p className="text-[11px] text-surface-400 mt-1">Ultima lectura: {formatDate(data.generatedAt)}</p>}
         </div>
         <button onClick={fetchData} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50">Actualizar</button>
       </div>
+
+      <section className="bg-white border border-surface-200 rounded-lg p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-surface-800">Estado general</h2>
+              <HealthBadge level={health.level} label={health.label} />
+            </div>
+            <p className="text-xs text-surface-400 mt-1">Resumen de disponibilidad, procesos, cron, backups, logs y consistencia de datos.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 min-w-[260px]">
+            <MiniMetric label="Criticos" value={health.errors || 0} tone={(health.errors || 0) > 0 ? "error" : "ok"} />
+            <MiniMetric label="Alertas" value={health.warnings || 0} tone={(health.warnings || 0) > 0 ? "warn" : "ok"} />
+            <MiniMetric label="Checks" value={health.checks?.length || 0} tone="neutral" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4">
+          {(health.checks || []).map((check: any) => <HealthCard key={check.key} check={check} />)}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat title="Predios" value={data.predios.total} detail={`${data.predios.actualizadosHoy} actualizados hoy`} tone="primary" />
@@ -124,14 +146,58 @@ export default function OperacionPage() {
           <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Checks HTTP</h2>
           <div className="space-y-2">
             {(data.app.httpChecks || []).map((check: any) => (
-              <div key={check.name} className="flex items-center justify-between gap-3 rounded-md border border-surface-100 px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-surface-700 truncate">{check.name}</p>
-                  <p className="text-[11px] text-surface-400 truncate">{check.url} · {check.latencyMs} ms</p>
+              <div key={check.name} className={`rounded-md border px-3 py-2 ${check.ok ? "border-emerald-100 bg-emerald-50/30" : "border-red-100 bg-red-50/30"}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-surface-700 truncate">{check.name}</p>
+                    <p className="text-[11px] text-surface-400 truncate">{check.url} · {check.latencyMs} ms</p>
+                  </div>
+                  <span className={`text-xs font-semibold ${check.ok ? "text-emerald-600" : "text-red-600"}`}>{check.ok ? (check.status ? `${check.status} OK` : "OK") : (check.status || "ERR")}</span>
                 </div>
-                <span className={`text-xs font-semibold ${check.ok ? "text-emerald-600" : "text-red-600"}`}>{check.status || "ERR"}</span>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                  <span className="text-surface-400">Esperado: {check.expected?.join("/") || "-"}</span>
+                  {check.detail && <span className={check.ok ? "text-emerald-600" : "text-red-600"}>{check.detail}</span>}
+                  {check.error && <span className="text-red-600 truncate">{check.error}</span>}
+                </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Riesgos activos</h2>
+          <div className="space-y-2">
+            {(health.checks || []).filter((check: any) => check.level !== "ok").length > 0 ? (health.checks || []).filter((check: any) => check.level !== "ok").map((check: any) => (
+              <div key={check.key} className={`rounded-md border px-3 py-2 ${check.level === "error" ? "border-red-100 bg-red-50/40" : "border-amber-100 bg-amber-50/40"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-surface-700">{check.label}</p>
+                  <span className={`text-[11px] font-semibold ${check.level === "error" ? "text-red-600" : "text-amber-600"}`}>{check.level === "error" ? "Critico" : "Alerta"}</span>
+                </div>
+                <p className="text-[11px] text-surface-500 mt-1">{check.detail}</p>
+              </div>
+            )) : (
+              <p className="text-sm text-emerald-600">Sin riesgos activos en los controles principales.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Comunicacion</h2>
+          <div className="space-y-2 text-sm">
+            <Metric label="Chats abiertos" value={data.comunicacion.chatsAbiertos} tone={data.comunicacion.chatsAbiertos > 0 ? "warn" : "ok"} />
+            <Metric label="Chats en curso" value={data.comunicacion.chatsEnCurso} tone={data.comunicacion.chatsEnCurso > 0 ? "warn" : "ok"} />
+            <Metric label="Notificaciones" value={data.comunicacion.notificacionesPendientes} tone={data.comunicacion.notificacionesPendientes > 0 ? "warn" : "ok"} />
+            <Metric label="Usuarios activos" value={data.operacion.usuariosActivos} />
+          </div>
+        </section>
+
+        <section className="bg-white border border-surface-200 rounded-lg p-4">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Datos clave</h2>
+          <div className="space-y-2 text-sm">
+            <Metric label="Predios total" value={data.predios.total} />
+            <Metric label="Actualizados hoy" value={data.predios.actualizadosHoy} />
+            <Metric label="CUE duplicados" value={data.predios.duplicadosCue.length} tone={data.predios.duplicadosCue.length > 0 ? "warn" : "ok"} />
+            <Metric label="Stock total" value={data.stock.total} />
           </div>
         </section>
 
@@ -272,6 +338,35 @@ function Stat({ title, value, detail, tone }: { title: string; value: number; de
         <span className="text-2xl font-semibold tabular-nums">{value}</span>
       </div>
       <p className="text-xs text-surface-500 mt-2">{detail}</p>
+    </div>
+  );
+}
+
+function HealthBadge({ level, label }: { level: "ok" | "warn" | "error" | string; label: string }) {
+  const classes = level === "error" ? "bg-red-50 text-red-700 border-red-200" : level === "warn" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200";
+  return <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold ${classes}`}>{label}</span>;
+}
+
+function HealthCard({ check }: { check: any }) {
+  const classes = check.level === "error" ? "border-red-100 bg-red-50/40" : check.level === "warn" ? "border-amber-100 bg-amber-50/40" : "border-emerald-100 bg-emerald-50/40";
+  const dot = check.level === "error" ? "bg-red-500" : check.level === "warn" ? "bg-amber-500" : "bg-emerald-500";
+  return (
+    <div className={`rounded-md border px-3 py-2 ${classes}`}>
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 rounded-full ${dot}`} />
+        <p className="text-sm font-medium text-surface-700 truncate">{check.label}</p>
+      </div>
+      <p className="text-[11px] text-surface-500 mt-1 line-clamp-2">{check.detail}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, tone }: { label: string; value: number; tone: "ok" | "warn" | "error" | "neutral" }) {
+  const classes = tone === "error" ? "bg-red-50 text-red-700 border-red-100" : tone === "warn" ? "bg-amber-50 text-amber-700 border-amber-100" : tone === "ok" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-surface-50 text-surface-700 border-surface-100";
+  return (
+    <div className={`rounded-md border px-3 py-2 text-center ${classes}`}>
+      <p className="text-[11px] font-medium">{label}</p>
+      <p className="text-lg font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

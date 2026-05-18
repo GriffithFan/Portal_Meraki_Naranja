@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { sanitizeUserText } from "@/lib/sanitize";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       creador: { select: { id: true, nombre: true } },
       agente: { select: { id: true, nombre: true } },
       mensajes: {
-        where: validSinceDate ? { createdAt: { gt: validSinceDate } } : undefined,
+        where: validSinceDate ? { OR: [{ createdAt: { gt: validSinceDate } }, { updatedAt: { gt: validSinceDate } }] } : undefined,
         orderBy: { createdAt: "asc" },
         select: {
           id: true,
@@ -43,8 +44,23 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           archivoTipo: true,
           archivoTamanio: true,
           createdAt: true,
+          updatedAt: true,
           editadoAt: true,
           autor: { select: { id: true, nombre: true, esMesa: true } },
+          reacciones: {
+            select: { id: true, emoji: true, userId: true },
+            orderBy: { createdAt: "asc" },
+          },
+          replyTo: {
+            select: {
+              id: true,
+              contenido: true,
+              autorId: true,
+              archivoNombre: true,
+              archivoTipo: true,
+              autor: { select: { id: true, nombre: true, esMesa: true } },
+            },
+          },
         },
       },
     },
@@ -82,6 +98,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         autor: m.autor.esMesa || m.autorId !== session.userId
           ? { id: m.autorId === session.userId ? session.userId : "mesa", nombre: m.autorId === session.userId ? session.nombre : "Mesa de Ayuda", esMesa: m.autor.esMesa }
           : m.autor,
+        replyTo: m.replyTo ? {
+          ...m.replyTo,
+          autor: m.replyTo.autor.esMesa || m.replyTo.autorId !== session.userId
+            ? { id: m.replyTo.autorId === session.userId ? session.userId : "mesa", nombre: m.replyTo.autorId === session.userId ? session.nombre : "Mesa de Ayuda", esMesa: m.replyTo.autor.esMesa }
+            : m.replyTo.autor,
+        } : null,
       })),
     };
     return NextResponse.json(anonimizado);
@@ -107,9 +129,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   try {
     const body = await request.json();
-    const { mensaje } = body;
+    const { mensaje, replyToId } = body;
+    const safeMensaje = typeof mensaje === "string" ? sanitizeUserText(mensaje, { maxLength: 2000 }) : "";
 
-    if (!mensaje?.trim()) {
+    if (!safeMensaje) {
       return NextResponse.json({ error: "Mensaje requerido" }, { status: 400 });
     }
 
@@ -132,23 +155,49 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { esMesa: true },
+      select: { esMesa: true, rol: true },
     });
     const esMesaUser = user?.esMesa === true;
+    const esAdminOMod = user?.rol === "ADMIN" || user?.rol === "MODERADOR";
 
-    // Mesa puede participar en cualquier conversación EN_CURSO
-    if (!esCreador && !esAgente && !(esMesaUser && conversacion.estado === "EN_CURSO")) {
+    // Mesa/Admin/Mod pueden participar en conversaciones en curso desde el chat rápido.
+    if (!esCreador && !esAgente && !((esMesaUser || esAdminOMod) && conversacion.estado === "EN_CURSO")) {
       return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
+    }
+
+    let safeReplyToId: string | null = null;
+    if (typeof replyToId === "string" && replyToId.trim()) {
+      const replyTo = await prisma.chatMensaje.findFirst({
+        where: { id: replyToId.trim(), conversacionId: id },
+        select: { id: true },
+      });
+      if (!replyTo) return NextResponse.json({ error: "Mensaje citado no encontrado" }, { status: 400 });
+      safeReplyToId = replyTo.id;
     }
 
     const nuevoMensaje = await prisma.chatMensaje.create({
       data: {
-        contenido: mensaje.trim().slice(0, 2000),
+        contenido: safeMensaje,
         conversacionId: id,
         autorId: session.userId,
+        replyToId: safeReplyToId,
       },
       include: {
         autor: { select: { id: true, nombre: true, esMesa: true } },
+        reacciones: {
+          select: { id: true, emoji: true, userId: true },
+          orderBy: { createdAt: "asc" },
+        },
+        replyTo: {
+          select: {
+            id: true,
+            contenido: true,
+            autorId: true,
+            archivoNombre: true,
+            archivoTipo: true,
+            autor: { select: { id: true, nombre: true, esMesa: true } },
+          },
+        },
       },
     });
 
@@ -165,7 +214,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         const pushPayload = {
           tipo: "CHAT",
           titulo: "Nuevo mensaje en chat",
-          mensaje: `${remitente}: ${mensaje.trim().slice(0, 80)}`,
+          mensaje: `${remitente}: ${safeMensaje.slice(0, 80)}`,
           enlace: "/dashboard/chat",
           entidad: "CHAT",
           entidadId: id,
@@ -221,11 +270,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { esMesa: true },
+      select: { esMesa: true, rol: true },
     });
+    const esSoporte = user?.esMesa === true || user?.rol === "ADMIN" || user?.rol === "MODERADOR";
 
-    if (!user?.esMesa) {
-      return NextResponse.json({ error: "Solo usuarios Mesa" }, { status: 403 });
+    if (!esSoporte) {
+      return NextResponse.json({ error: "Solo usuarios de soporte" }, { status: 403 });
     }
 
     const conversacion = await prisma.chatConversacion.findUnique({

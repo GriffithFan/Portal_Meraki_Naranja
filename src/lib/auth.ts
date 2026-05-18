@@ -7,7 +7,9 @@ if (!JWT_SECRET) {
   throw new Error("FATAL: JWT_SECRET no está configurado. Defínelo en .env");
 }
 const secret = new TextEncoder().encode(JWT_SECRET);
-const COOKIE_NAME = "pmn-token";
+const COOKIE_NAME = process.env.AUTH_COOKIE_NAME || "pmn-token";
+const COOKIE_PATH = process.env.AUTH_COOKIE_PATH || process.env.NEXT_PUBLIC_BASE_PATH || "/";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
 export interface TokenPayload {
   userId: string;
@@ -21,7 +23,7 @@ export async function createToken(payload: TokenPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("8h")
+    .setExpirationTime(`${SESSION_MAX_AGE_SECONDS}s`)
     .sign(secret);
 }
 
@@ -49,8 +51,8 @@ export async function setTokenCookie(token: string) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 60 * 60 * 8, // 8 horas
-    path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    path: COOKIE_PATH,
   });
 }
 
@@ -61,7 +63,7 @@ export async function removeTokenCookie() {
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
     maxAge: 0,
-    path: "/",
+    path: COOKIE_PATH,
   });
 }
 

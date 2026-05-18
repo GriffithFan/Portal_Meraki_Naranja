@@ -4,8 +4,55 @@ import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { espacioSchema, parseBody, isErrorResponse } from "@/lib/validation";
 import { equipoFilter } from "@/utils/equipoUtils";
 import { withPrivateCatalogCache } from "@/lib/cacheHeaders";
+import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+function estadoClave(nombre: string) {
+  return nombre
+    .toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+async function ensureEstados(nuevosEstados: Array<{ nombre: string; color?: string | null }> = []) {
+  const ids: string[] = [];
+  for (const item of nuevosEstados) {
+    const nombre = item.nombre?.trim();
+    if (!nombre) continue;
+    const clave = estadoClave(nombre);
+    if (!clave) continue;
+
+    const existing = await prisma.estadoConfig.findUnique({ where: { clave } });
+    if (existing) {
+      if (!existing.activo) {
+        const restored = await prisma.estadoConfig.update({ where: { id: existing.id }, data: { activo: true } });
+        ids.push(restored.id);
+      } else {
+        ids.push(existing.id);
+      }
+      continue;
+    }
+
+    const maxOrden = await prisma.estadoConfig.findFirst({
+      where: { entidad: "PREDIO" },
+      orderBy: { orden: "desc" },
+      select: { orden: true },
+    });
+    const estado = await prisma.estadoConfig.create({
+      data: {
+        nombre,
+        clave,
+        color: item.color || "#3b82f6",
+        entidad: "PREDIO",
+        orden: (maxOrden?.orden ?? -1) + 1,
+      },
+    });
+    ids.push(estado.id);
+  }
+  return ids;
+}
 
 // GET /api/espacios — Listar árbol de espacios con conteos
 export async function GET() {
@@ -21,9 +68,22 @@ export async function GET() {
     orderBy: [{ orden: "asc" }, { nombre: "asc" }],
   });
 
-  // Filtrar por acceso del usuario (ADMIN siempre ve todo)
+  // Filtrar por acceso del usuario/rol (ADMIN siempre ve todo)
   let espaciosFiltrados = espacios;
   if (!isAdmin(session.rol)) {
+    const allowedSpaceIds = await getRestrictedSpaceIdsForSession(session);
+    if (allowedSpaceIds) {
+      const idsPermitidos = new Set(allowedSpaceIds);
+      for (const e of espacios) {
+        if (!idsPermitidos.has(e.id)) continue;
+        let parentId = e.parentId;
+        while (parentId) {
+          idsPermitidos.add(parentId);
+          parentId = espacios.find((parent) => parent.id === parentId)?.parentId || null;
+        }
+      }
+      espaciosFiltrados = espacios.filter(e => idsPermitidos.has(e.id));
+    } else {
     const accesos = await prisma.accesoEspacio.findMany({
       where: { userId: session.userId },
       select: { espacioId: true },
@@ -68,6 +128,7 @@ export async function GET() {
       espaciosFiltrados = espacios.filter(e => idsConPredios.has(e.id));
     }
     // MODERADORs sin whitelist: ven todo (no se filtra)
+    }
   }
 
   // Construir árbol
@@ -100,7 +161,11 @@ export async function POST(request: NextRequest) {
     const data = await parseBody(request, espacioSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, color, icono, parentId } = data;
+    const { nombre, descripcion, color, icono, parentId, camposConfig, estadosConfig, nuevosEstados } = data;
+    const ownCamposConfig = Array.isArray(camposConfig) ? camposConfig : [];
+    const nuevosEstadoIds = await ensureEstados(nuevosEstados || []);
+    const selectedEstadoIds = Array.isArray((estadosConfig as any)?.estadoIds) ? (estadosConfig as any).estadoIds : [];
+    const finalEstadoIds = Array.from(new Set([...selectedEstadoIds, ...nuevosEstadoIds].filter(Boolean)));
 
     // Calcular siguiente orden
     const maxOrden = await prisma.espacioTrabajo.aggregate({
@@ -117,7 +182,9 @@ export async function POST(request: NextRequest) {
         parentId: parentId || null,
         orden: (maxOrden._max.orden ?? -1) + 1,
         creadorId: session.userId,
-      },
+        camposConfig: ownCamposConfig,
+        estadosConfig: { estadoIds: finalEstadoIds },
+      } as any,
     });
 
     return NextResponse.json(espacio, { status: 201 });

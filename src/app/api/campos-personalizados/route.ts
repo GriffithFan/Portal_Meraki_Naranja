@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
 
   // Soporta crear uno solo o un array
-  const items: { nombre: string; tipo?: string }[] = Array.isArray(body) ? body : [body];
+  const items: { nombre: string; tipo?: string; opciones?: string[] }[] = Array.isArray(body) ? body : [body];
   const created = [];
 
   for (const item of items) {
@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
         clave,
         nombre: item.nombre.trim(),
         tipo: item.tipo || "text",
+        opciones: Array.isArray(item.opciones) ? item.opciones.map(String).filter(Boolean).slice(0, 100) : [],
         orden: (maxOrden._max.orden ?? 0) + 1,
       },
     });

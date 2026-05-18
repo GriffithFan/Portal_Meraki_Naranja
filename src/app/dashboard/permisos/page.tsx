@@ -39,6 +39,23 @@ interface PermisoSeccionUsuario {
   exportar: boolean;
 }
 
+interface EspacioPlano {
+  id: string;
+  nombre: string;
+  parentId: string | null;
+  _depth: number;
+}
+
+interface AccesoEspacioRol {
+  rol: string;
+  espacioId: string;
+}
+
+interface AccesoEspacioUsuario {
+  userId: string;
+  espacioId: string;
+}
+
 const CAMPOS = ["ver", "crear", "editar", "eliminar", "exportar"] as const;
 type CampoPermiso = (typeof CAMPOS)[number];
 
@@ -68,6 +85,8 @@ const SECCIONES = [
   { clave: "kpis",        label: "KPIs",         grupo: "Administración", icono: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" },
   { clave: "operacion",   label: "Operación",    grupo: "Administración", icono: "M3.75 3v11.25A2.25 2.25 0 006 16.5h12A2.25 2.25 0 0020.25 14.25V3M3.75 21h16.5M8.25 7.5h.008v.008H8.25V7.5zm3.75 0h3.75M8.25 11.25h.008v.008H8.25v-.008zm3.75 0h3.75" },
   { clave: "supervisor",  label: "Supervisor",   grupo: "Administración", icono: "M2.25 18L9 11.25l4.306 4.306a11.95 11.95 0 015.814-5.518l2.63-1.038M2.25 18h5.25m-5.25 0v-5.25" },
+  { clave: "calidad-datos", label: "Calidad datos", grupo: "Administración", icono: "M9 12.75L11.25 15 15 9.75M4.5 19.5h15M4.5 4.5h15M6.75 4.5v15m10.5-15v15" },
+  { clave: "diccionario-campos", label: "Diccionario campos", grupo: "Administración", icono: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H6.75A2.25 2.25 0 004.5 4.5v15A2.25 2.25 0 006.75 21h10.5a2.25 2.25 0 002.25-2.25v-4.5zM8.25 10.5h3.75M8.25 13.5h7.5M8.25 16.5h7.5" },
   { clave: "usuarios",    label: "Usuarios",     grupo: "Administración", icono: "M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" },
   { clave: "permisos",    label: "Permisos",     grupo: "Administración", icono: "M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" },
   { clave: "auditoria",   label: "Auditoría",    grupo: "Administración", icono: "M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM12 10.5h.008v.008H12V10.5zm0 3h.008v.008H12V13.5z" },
@@ -97,7 +116,7 @@ export default function PermisosPage() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [tab, setTab] = useState<"secciones" | "estados" | "usuarios" | "seccionesUsuario">("secciones");
+  const [tab, setTab] = useState<"secciones" | "estados" | "usuarios" | "seccionesUsuario" | "espacios">("secciones");
 
   const [estados, setEstados] = useState<any[]>([]);
   const [permisosEstado, setPermisosEstado] = useState<PermisoEstado[]>([]);
@@ -118,6 +137,13 @@ export default function PermisosPage() {
   const [savingSeccionUsuario, setSavingSeccionUsuario] = useState(false);
   const [selectedUserSeccion, setSelectedUserSeccion] = useState<string>("");
 
+  // Space access by role/user
+  const [espacios, setEspacios] = useState<EspacioPlano[]>([]);
+  const [accesosEspacioRol, setAccesosEspacioRol] = useState<AccesoEspacioRol[]>([]);
+  const [accesosEspacioUsuario, setAccesosEspacioUsuario] = useState<AccesoEspacioUsuario[]>([]);
+  const [selectedSpaceUser, setSelectedSpaceUser] = useState<string>("");
+  const [savingEspacios, setSavingEspacios] = useState(false);
+
   const fetchPermisos = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/permisos", { credentials: "include" });
@@ -137,7 +163,9 @@ export default function PermisosPage() {
       fetch("/api/estados", { credentials: "include" }).then(r => r.ok ? r.json() : { estados: [] }),
       fetch("/api/permisos/estados", { credentials: "include" }).then(r => r.ok ? r.json() : { permisos: [], permisosUsuario: [] }),
       fetch("/api/usuarios", { credentials: "include" }).then(r => r.ok ? r.json() : []),
-    ]).then(([estData, permData, usersData]) => {
+      fetch("/api/espacios", { credentials: "include" }).then(r => r.ok ? r.json() : { espacios: [] }),
+      fetch("/api/accesos-espacio?scope=all", { credentials: "include" }).then(r => r.ok ? r.json() : { accesos: [], accesosRol: [] }),
+    ]).then(([estData, permData, usersData, espaciosData, accesosData]) => {
       setEstados(estData.estados || []);
       setPermisosEstado(permData.permisos || []);
       setPermisosUsuario(permData.permisosUsuario || []);
@@ -147,6 +175,20 @@ export default function PermisosPage() {
       setTecnicos(tecList);
       if (tecList.length > 0) setSelectedTecnico(tecList[0].id);
       if (usersList.length > 0) setSelectedUserSeccion(usersList[0].id);
+      if (usersList.length > 0) setSelectedSpaceUser(usersList[0].id);
+
+      const flatSpaces: EspacioPlano[] = [];
+      function flatten(nodes: any[], depth: number) {
+        for (const node of nodes) {
+          flatSpaces.push({ id: node.id, nombre: node.nombre, parentId: node.parentId || null, _depth: depth });
+          if (node.children?.length) flatten(node.children, depth + 1);
+          else if (node.hijos?.length) flatten(node.hijos, depth + 1);
+        }
+      }
+      flatten(espaciosData.espacios || [], 0);
+      setEspacios(flatSpaces);
+      setAccesosEspacioUsuario((accesosData.accesos || []).map((a: any) => ({ userId: a.userId, espacioId: a.espacioId })));
+      setAccesosEspacioRol((accesosData.accesosRol || []).map((a: any) => ({ rol: a.rol, espacioId: a.espacioId })));
     });
   }, [isAdmin]);
 
@@ -380,6 +422,50 @@ export default function PermisosPage() {
     setSavingSeccionUsuario(false);
   };
 
+  const getRoleSpaceIds = (rol: string) => new Set(accesosEspacioRol.filter((a) => a.rol === rol).map((a) => a.espacioId));
+  const getUserSpaceIds = (userId: string) => new Set(accesosEspacioUsuario.filter((a) => a.userId === userId).map((a) => a.espacioId));
+
+  const toggleRolEspacio = (rol: string, espacioId: string) => {
+    setAccesosEspacioRol((prev) => {
+      const exists = prev.some((a) => a.rol === rol && a.espacioId === espacioId);
+      return exists ? prev.filter((a) => !(a.rol === rol && a.espacioId === espacioId)) : [...prev, { rol, espacioId }];
+    });
+  };
+
+  const toggleUsuarioEspacio = (userId: string, espacioId: string) => {
+    setAccesosEspacioUsuario((prev) => {
+      const exists = prev.some((a) => a.userId === userId && a.espacioId === espacioId);
+      return exists ? prev.filter((a) => !(a.userId === userId && a.espacioId === espacioId)) : [...prev, { userId, espacioId }];
+    });
+  };
+
+  const guardarEspacios = async () => {
+    setSavingEspacios(true);
+    try {
+      await Promise.all([
+        ...ROLES_EDITABLES.map((rol) => fetch("/api/accesos-espacio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ rol, espacioIds: Array.from(getRoleSpaceIds(rol)) }),
+        })),
+        ...(selectedSpaceUser ? [fetch("/api/accesos-espacio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ userId: selectedSpaceUser, espacioIds: Array.from(getUserSpaceIds(selectedSpaceUser)) }),
+        })] : []),
+      ]);
+      const refreshed = await fetch("/api/accesos-espacio?scope=all", { credentials: "include" }).then((r) => r.ok ? r.json() : { accesos: [], accesosRol: [] });
+      setAccesosEspacioUsuario((refreshed.accesos || []).map((a: any) => ({ userId: a.userId, espacioId: a.espacioId })));
+      setAccesosEspacioRol((refreshed.accesosRol || []).map((a: any) => ({ rol: a.rol, espacioId: a.espacioId })));
+      setToast("Accesos a espacios guardados");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setSavingEspacios(false);
+    }
+  };
+
   if (!isAdmin || !puedeVer("permisos")) {
     return (
       <div className="animate-fade-in-up flex items-center justify-center py-20">
@@ -439,12 +525,12 @@ export default function PermisosPage() {
       )}
 
       {/* Tabs + Save */}
-      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <div className="flex bg-surface-100 dark:bg-surface-700 rounded-lg p-0.5 flex-wrap">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full overflow-x-auto rounded-lg bg-surface-100 p-0.5 scrollbar-thin dark:bg-surface-700 sm:w-auto sm:flex-wrap">
           <button
             onClick={() => setTab("secciones")}
             className={clsx(
-              "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+              "shrink-0 px-4 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all",
               tab === "secciones"
                 ? "bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 shadow-sm"
                 : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
@@ -455,7 +541,7 @@ export default function PermisosPage() {
           <button
             onClick={() => setTab("seccionesUsuario")}
             className={clsx(
-              "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+              "shrink-0 px-4 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all",
               tab === "seccionesUsuario"
                 ? "bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 shadow-sm"
                 : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
@@ -463,12 +549,23 @@ export default function PermisosPage() {
           >
             Secciones × Usuario
           </button>
+          <button
+            onClick={() => setTab("espacios")}
+            className={clsx(
+              "shrink-0 px-4 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all",
+              tab === "espacios"
+                ? "bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 shadow-sm"
+                : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
+            )}
+          >
+            Espacios
+          </button>
           {estados.length > 0 && (
             <>
             <button
               onClick={() => setTab("estados")}
               className={clsx(
-                "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                "shrink-0 px-4 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all",
                 tab === "estados"
                   ? "bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 shadow-sm"
                   : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
@@ -479,7 +576,7 @@ export default function PermisosPage() {
             <button
               onClick={() => setTab("usuarios")}
               className={clsx(
-                "px-4 py-1.5 rounded-md text-xs font-medium transition-all",
+                "shrink-0 px-4 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all",
                 tab === "usuarios"
                   ? "bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 shadow-sm"
                   : "text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
@@ -491,22 +588,23 @@ export default function PermisosPage() {
           )}
         </div>
         <button
-          onClick={tab === "estados" ? guardarEstados : tab === "usuarios" ? guardarEstadosUsuario : tab === "seccionesUsuario" ? guardarSeccionUsuario : guardar}
+          onClick={tab === "estados" ? guardarEstados : tab === "usuarios" ? guardarEstadosUsuario : tab === "seccionesUsuario" ? guardarSeccionUsuario : tab === "espacios" ? guardarEspacios : guardar}
           disabled={
             tab === "estados" ? !dirtyEstados || savingEstados :
             tab === "usuarios" ? !dirtyUsuarios || savingUsuarios :
             tab === "seccionesUsuario" ? !dirtySeccionUsuario || savingSeccionUsuario :
+            tab === "espacios" ? savingEspacios :
             !dirty || saving
           }
           className={clsx(
-            "px-4 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5",
-            (tab === "estados" ? dirtyEstados : tab === "usuarios" ? dirtyUsuarios : tab === "seccionesUsuario" ? dirtySeccionUsuario : dirty)
+            "flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition-all sm:w-auto sm:py-1.5",
+            (tab === "estados" ? dirtyEstados : tab === "usuarios" ? dirtyUsuarios : tab === "seccionesUsuario" ? dirtySeccionUsuario : tab === "espacios" ? true : dirty)
               ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
               : "bg-surface-200 dark:bg-surface-700 text-surface-400 cursor-not-allowed"
           )}
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-          {(tab === "estados" ? savingEstados : tab === "usuarios" ? savingUsuarios : tab === "seccionesUsuario" ? savingSeccionUsuario : saving) ? "Guardando..." : "Guardar"}
+          {(tab === "estados" ? savingEstados : tab === "usuarios" ? savingUsuarios : tab === "seccionesUsuario" ? savingSeccionUsuario : tab === "espacios" ? savingEspacios : saving) ? "Guardando..." : "Guardar"}
         </button>
       </div>
 
@@ -588,11 +686,11 @@ export default function PermisosPage() {
           ))}
 
           {/* Footer actions */}
-          <div className="flex items-center justify-between pt-2 pb-4 px-1">
+          <div className="flex flex-col gap-3 px-1 pb-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[10px] text-surface-400 dark:text-surface-500">
               Monitoreo (Topología, Switches, APs, Appliance) siempre visible para todos.
             </p>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               {ROLES_EDITABLES.map((rol) => {
                 const rs = ROL_STYLE[rol];
                 return (
@@ -757,6 +855,77 @@ export default function PermisosPage() {
               </p>
             </>
           )}
+        </div>
+      ) : tab === "espacios" ? (
+        <div className="space-y-5">
+          <p className="text-xs text-surface-400 dark:text-surface-500">
+            Limita qué espacios, carpetas y subcarpetas puede ver cada rol o usuario. Si no marcás nada, no se aplica restricción para ese nivel.
+          </p>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 overflow-hidden">
+              <div className="px-4 py-3 border-b border-surface-100 dark:border-surface-700/50">
+                <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-100">Por rol</h3>
+                <p className="text-[11px] text-surface-400 dark:text-surface-500">Seleccionar una carpeta incluye sus subcarpetas al navegar.</p>
+              </div>
+              <div className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                {ROLES_EDITABLES.map((rol) => {
+                  const rs = ROL_STYLE[rol];
+                  const selected = getRoleSpaceIds(rol);
+                  return (
+                    <div key={rol} className="p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <span className={clsx("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold border", rs.bg, rs.text, rs.border)}>
+                          <span className={clsx("w-1.5 h-1.5 rounded-full", rs.dot)} />
+                          {rs.label}
+                        </span>
+                        <span className="text-[10px] text-surface-400">{selected.size || "sin"} restricciones</span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto rounded-lg border border-surface-100 dark:border-surface-700">
+                        {espacios.map((espacio) => (
+                          <label key={`${rol}-${espacio.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700/50 cursor-pointer">
+                            <input type="checkbox" checked={selected.has(espacio.id)} onChange={() => toggleRolEspacio(rol, espacio.id)} className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5" />
+                            <span className="truncate" style={{ paddingLeft: espacio._depth * 12 }}>{espacio._depth > 0 ? "└ " : ""}{espacio.nombre}</span>
+                          </label>
+                        ))}
+                        {espacios.length === 0 && <p className="px-3 py-6 text-center text-xs text-surface-400">Sin espacios creados.</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 overflow-hidden">
+              <div className="px-4 py-3 border-b border-surface-100 dark:border-surface-700/50">
+                <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-100">Por usuario</h3>
+                <p className="text-[11px] text-surface-400 dark:text-surface-500">Tiene prioridad sobre la restricción por rol.</p>
+              </div>
+              <div className="p-4 space-y-3">
+                {allUsers.length > 0 ? (
+                  <>
+                    <select value={selectedSpaceUser} onChange={(e) => setSelectedSpaceUser(e.target.value)} className="w-full text-xs border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500 outline-none">
+                      {allUsers.map((u) => <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>)}
+                    </select>
+                    <div className="max-h-80 overflow-y-auto rounded-lg border border-surface-100 dark:border-surface-700">
+                      {espacios.map((espacio) => {
+                        const selected = getUserSpaceIds(selectedSpaceUser);
+                        return (
+                          <label key={`${selectedSpaceUser}-${espacio.id}`} className="flex items-center gap-2 px-3 py-1.5 text-xs text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700/50 cursor-pointer">
+                            <input type="checkbox" checked={selected.has(espacio.id)} onChange={() => toggleUsuarioEspacio(selectedSpaceUser, espacio.id)} className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5" />
+                            <span className="truncate" style={{ paddingLeft: espacio._depth * 12 }}>{espacio._depth > 0 ? "└ " : ""}{espacio.nombre}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-surface-400 dark:text-surface-500">Usuario con 0 espacios marcados queda sin restricción individual y hereda el rol.</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-surface-400 py-8 text-center">No hay usuarios registrados.</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       ) : tab === "seccionesUsuario" ? (
         /* ── Tab: Secciones × Usuario ── */
