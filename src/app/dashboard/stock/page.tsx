@@ -1280,7 +1280,6 @@ export default function StockPage() {
                     className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400"
                   />
                   <datalist id="stock-ubicacion-options">
-                    <option value="">— Vacío (predio) —</option>
                     {UBICACION_OPTIONS.map((o) => <option key={o} value={o} />)}
                   </datalist>
                 </div>
@@ -1299,7 +1298,6 @@ export default function StockPage() {
                   className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400"
                 />
                 <datalist id="stock-proveedor-options">
-                  <option value="">Sin proveedor</option>
                   {PROVEEDOR_OPTIONS.map((o) => <option key={o} value={o} />)}
                 </datalist>
               </div>
