@@ -1551,18 +1551,23 @@ export default function TareasPage() {
                   {estados.map(e => {
                     const isHidden = userHiddenEstados.has(e.id);
                     return (
-                      <label key={e.id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
-                        style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}>
-                        <input type="checkbox" checked={!isHidden} onChange={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })} className="sr-only" />
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })}
+                        aria-pressed={!isHidden}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
+                        style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}
+                      >
                         <StatusIcon clave={e.clave} color={e.color} size={12} />
                         {e.nombre}
                         {session?.rol === "ADMIN" && (
-                          <button onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
+                          <button onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
                             className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all" title="Eliminar estado">
                             <IconX className="w-3 h-3" />
                           </button>
                         )}
-                      </label>
+                      </button>
                     );
                   })}
                 </div>

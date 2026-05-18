@@ -41,6 +41,8 @@ const ETIQUETA_COLORS = [
   "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",
   "#3b82f6", "#8b5cf6", "#ec4899", "#6b7280", "#1e293b",
 ];
+const UBICACION_OPTIONS = ["THNET", "Dinatech"];
+const PROVEEDOR_OPTIONS = ["OCP", "DINATECH"];
 
 const FILTER_COLUMNS = [
   { field: "nombre", label: "Equipo" },
@@ -71,9 +73,9 @@ const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "numeroSerie", label: "N/S",         field: "numeroSerie", visible: true,  editable: true,  type: "text" },
   { id: "estado",      label: "Estado",       field: "estado",      visible: true,  editable: true,  type: "select", options: ESTADOS_EQUIPO },
   { id: "asignado",    label: "Asignado",     field: "asignadoId",  visible: true,  editable: true,  type: "select" },
-  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "select", options: ["", "THNET", "Dinatech"] },
+  { id: "ubicacion",   label: "Ubicación",    field: "ubicacion",   visible: true,  editable: true,  type: "text", options: ["", ...UBICACION_OPTIONS] },
   { id: "fecha",       label: "Fecha",        field: "fecha",       visible: true,  editable: true,  type: "text" },
-  { id: "proveedor",   label: "Proveedor",    field: "proveedor",   visible: true,  editable: true,  type: "select", options: ["", "OCP", "DINATECH"] },
+  { id: "proveedor",   label: "Proveedor",    field: "proveedor",   visible: true,  editable: true,  type: "text", options: ["", ...PROVEEDOR_OPTIONS] },
   { id: "notas",       label: "Notas",        field: "notas",       visible: false, editable: true,  type: "text" },
   { id: "descripcion", label: "Descripción",  field: "descripcion", visible: false, editable: true,  type: "text" },
 ];
@@ -638,23 +640,6 @@ export default function StockPage() {
     }
   }
 
-  async function cambiarProveedor(id: string, nuevoProveedor: string) {
-    const prev = equipos.find(e => e.id === id)?.proveedor;
-    setEquipos(es => es.map(e => e.id === id ? { ...e, proveedor: nuevoProveedor || null } : e));
-    const res = await fetch(`/api/stock/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ proveedor: nuevoProveedor || "" }),
-    });
-    if (res.ok) {
-      toast.success(nuevoProveedor ? `Proveedor: ${nuevoProveedor}` : "Proveedor removido");
-    } else {
-      setEquipos(es => es.map(e => e.id === id ? { ...e, proveedor: prev } : e));
-      toast.error("Error al cambiar proveedor");
-    }
-  }
-
   async function cambiarEstado(id: string, nuevoEstado: string) {
     const prev = equipos.find(e => e.id === id)?.estado;
     setEquipos(es => es.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
@@ -747,24 +732,6 @@ export default function StockPage() {
       );
     }
 
-    // Proveedor — dropdown always visible
-    if (col.id === "proveedor") {
-      if (isModOrAdmin) {
-        return (
-          <select
-            value={eq.proveedor || ""}
-            onChange={(e) => cambiarProveedor(eq.id, e.target.value)}
-            className="px-1.5 py-0.5 rounded text-[11px] border border-surface-200 bg-white focus:outline-none focus:border-primary-400 cursor-pointer max-w-[130px]"
-          >
-            <option value="">—</option>
-            <option value="OCP">OCP</option>
-            <option value="DINATECH">DINATECH</option>
-          </select>
-        );
-      }
-      return <span className="text-[11px] text-surface-600">{eq.proveedor || "—"}</span>;
-    }
-
     // Asignado — dropdown de técnicos
     if (col.id === "asignado") {
       if (isModOrAdmin) {
@@ -816,7 +783,8 @@ export default function StockPage() {
             <span
               className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium text-white shrink-0 ${isModOrAdmin ? "cursor-pointer" : ""}`}
               style={{ backgroundColor: eq.etiquetaColor || "#6b7280" }}
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (isModOrAdmin) {
                   setEditingEtiqueta(eq.id);
                   setEtiquetaForm({ texto: eq.etiqueta, color: eq.etiquetaColor || ETIQUETA_COLORS[0] });
@@ -1304,11 +1272,17 @@ export default function StockPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Ubicación</label>
-                  <select value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                  <input
+                    value={form.ubicacion}
+                    onChange={(e) => setForm({ ...form, ubicacion: e.target.value })}
+                    list="stock-ubicacion-options"
+                    placeholder="Ej: THNET, Dinatech, Depósito..."
+                    className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400"
+                  />
+                  <datalist id="stock-ubicacion-options">
                     <option value="">— Vacío (predio) —</option>
-                    <option value="THNET">THNET</option>
-                    <option value="Dinatech">Dinatech</option>
-                  </select>
+                    {UBICACION_OPTIONS.map((o) => <option key={o} value={o} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Fecha</label>
@@ -1317,11 +1291,17 @@ export default function StockPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Proveedor</label>
-                <select value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })} className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400">
+                <input
+                  value={form.proveedor}
+                  onChange={(e) => setForm({ ...form, proveedor: e.target.value })}
+                  list="stock-proveedor-options"
+                  placeholder="Ej: OCP, DINATECH u otro proveedor"
+                  className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400"
+                />
+                <datalist id="stock-proveedor-options">
                   <option value="">Sin proveedor</option>
-                  <option value="OCP">OCP</option>
-                  <option value="DINATECH">DINATECH</option>
-                </select>
+                  {PROVEEDOR_OPTIONS.map((o) => <option key={o} value={o} />)}
+                </datalist>
               </div>
               <div>
                 <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Notas</label>
