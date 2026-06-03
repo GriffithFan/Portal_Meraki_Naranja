@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getAllEquipoVariants } from "@/utils/equipoUtils";
+import { appendAndClause, appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 
 export async function GET() {
   const session = await getSession();
@@ -18,19 +19,20 @@ export async function GET() {
     select: { delegadorId: true },
   });
   const idsVisibles = [session.userId, ...delegaciones.map((d) => d.delegadorId)];
-  const equipoMatch = getAllEquipoVariants(session.nombre);
+  const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session);
+  const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
 
-  const where = {
-    OR: [
-      { asignaciones: { some: { userId: { in: idsVisibles } } } },
-      { creadorId: { in: idsVisibles } },
-      {
-        equipoAsignado: equipoMatch.length > 0
-          ? { in: equipoMatch, mode: "insensitive" as const }
-          : { equals: session.nombre, mode: "insensitive" as const },
-      },
-    ],
-  };
+  const where: Record<string, unknown> = {};
+  appendAndClause(where, buildAssignedPredioVisibilityClause(idsVisibles));
+  appendVisibleEstadosClause(where, hiddenEstadoIds);
+  if (restrictedSpaceIds) {
+    appendAndClause(where, {
+      OR: [
+        { espacioId: { in: restrictedSpaceIds } },
+        { espacioId: null },
+      ],
+    });
+  }
 
   const sinGpsWhere = {
     AND: [

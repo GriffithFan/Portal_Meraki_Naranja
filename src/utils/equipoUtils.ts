@@ -2,7 +2,7 @@
  * Fuente única de verdad para el mapeo de técnicos / equipos.
  *
  * Cada entrada define:
- *   key      – Identificador canónico (TH01, Ariel, Gustavo, etc.)
+ *   key      – Identificador canónico que se guarda en DB (nombre visible)
  *   aliases  – Nombres/variantes que aparecen en la DB o que el usuario puede tipear
  *   display  – Nombre para mostrar en la UI
  *
@@ -16,19 +16,18 @@ export interface EquipoEntry {
 }
 
 const EQUIPOS: EquipoEntry[] = [
-  { key: "TH01",    aliases: ["DANIEL", "DANI", "DANIEL C01"],          display: "DANIEL" },
+  { key: "Dani",    aliases: ["TH01", "DANIEL", "DANI", "DANIEL C01"], display: "Dani" },
   { key: "TH02",    aliases: [],                                        display: "TH02" },
-  { key: "TH03",    aliases: ["JORGE"],                                 display: "JORGE" },
-  { key: "TH04",    aliases: ["LUCIO", "ADOLFO"],                       display: "LUCIO" },
-  { key: "TH05",    aliases: [],                                        display: "TH05" },
+  { key: "Jorge",   aliases: ["TH03", "JORGE"],                         display: "Jorge" },
+  { key: "Lucio",   aliases: ["TH04", "LUCIO", "ADOLFO"],               display: "Lucio" },
+  { key: "Gustavo", aliases: ["TH05", "GUSTAVO"],                       display: "Gustavo" },
   { key: "TH06",    aliases: [],                                        display: "TH06" },
-  { key: "TH07",    aliases: ["FEDE", "FEDERICO"],                      display: "FEDE" },
+  { key: "Fede",    aliases: ["TH07", "FEDE", "FEDERICO"],             display: "Fede" },
   { key: "TH08",    aliases: [],                                        display: "TH08" },
   { key: "TH09",    aliases: [],                                        display: "TH09" },
   { key: "TH10",    aliases: [],                                        display: "TH10" },
-  { key: "Gustavo", aliases: ["GUSTAVO"],                               display: "GUSTAVO" },
-  { key: "Ariel",   aliases: ["ARIEL", "ARIEL MAIOLI", "A. MAIOLI", "A.MAIOLI", "MAIOLI"], display: "ARIEL MAIOLI" },
-  { key: "Julian",  aliases: ["JULIAN", "JULIÁN"],                      display: "JULIAN" },
+  { key: "Ariel",   aliases: ["ARIEL", "ARIEL MAIOLI", "A. MAIOLI", "A.MAIOLI", "MAIOLI"], display: "Ariel Maioli" },
+  { key: "Julian",  aliases: ["JULIAN", "JULIÁN"],                      display: "Julian" },
 ];
 
 // ── Índices precalculados ───────────────────────────────────────────
@@ -38,6 +37,32 @@ const NORM_INDEX = new Map<string, EquipoEntry>();
 
 function norm(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim().replace(/[\s_-]+/g, " ");
+}
+
+export function normalizeAssigneeName(name: string): string {
+  return norm(name || "");
+}
+
+function isAliasEmail(email?: string | null): boolean {
+  return /^th\d+@/i.test(email || "");
+}
+
+function preferUser<T extends { id: string; nombre: string; email?: string | null }>(current: T, candidate: T): T {
+  const currentIsAlias = isAliasEmail(current.email);
+  const candidateIsAlias = isAliasEmail(candidate.email);
+  if (currentIsAlias !== candidateIsAlias) return candidateIsAlias ? current : candidate;
+  return current.nombre.localeCompare(candidate.nombre, "es") <= 0 ? current : candidate;
+}
+
+export function dedupeUsersByName<T extends { id: string; nombre: string; email?: string | null }>(users: T[]): T[] {
+  const byName = new Map<string, T>();
+  for (const user of users) {
+    const key = normalizeAssigneeName(user.nombre);
+    if (!key) continue;
+    const current = byName.get(key);
+    byName.set(key, current ? preferUser(current, user) : user);
+  }
+  return Array.from(byName.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
 }
 
 for (const entry of EQUIPOS) {
@@ -62,7 +87,7 @@ export function getAllEquipoVariants(name: string): string[] {
 
 /**
  * Dado un nombre de usuario (session.nombre) o un nombre del CSV,
- * devuelve la key canónica del equipo (ej: "TH01", "Ariel").
+ * devuelve la key canónica del equipo (ej: "Dani", "Ariel").
  * Devuelve null si no se reconoce.
  */
 export function resolveEquipoKey(name: string): string | null {
@@ -98,7 +123,6 @@ export function equipoFilter(name: string): { in: string[]; mode: "insensitive" 
 
 /**
  * Forward map: dado un nombre/alias (UPPERCASE en la DB), devuelve la key TH.
- * Equivalente al viejo EQUIPO_TH_MAP.
  */
 export function aliasToKey(alias: string): string | null {
   const entry = NORM_INDEX.get(norm(alias));
@@ -107,14 +131,13 @@ export function aliasToKey(alias: string): string | null {
 
 /**
  * Inverse map: dado una key TH, devuelve el display name.
- * Equivalente al viejo TH_NOMBRE_MAP.
  */
 export function keyToDisplay(key: string): string {
   const entry = NORM_INDEX.get(norm(key));
   return entry?.display ?? key;
 }
 
-/** Lista de keys disponibles para dropdowns (equivalente al viejo TH_OPTIONS). */
+/** Lista de nombres canónicos disponibles para dropdowns. */
 export const EQUIPO_OPTIONS: string[] = EQUIPOS.map(e => e.key);
 
 /** Acceso directo a todas las entradas (para iteración avanzada). */
@@ -123,7 +146,6 @@ export const EQUIPO_ENTRIES: readonly EquipoEntry[] = EQUIPOS;
 /**
  * Genera opciones dinámicas de equipo: entradas estáticas de EQUIPOS +
  * usuarios activos de la DB que no están ya representados.
- * Útil para que el dropdown incluya automáticamente a todo usuario nuevo.
  */
 export function buildEquipoOptions(
   dbUsers: { nombre: string }[]

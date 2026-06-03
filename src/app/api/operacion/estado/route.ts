@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   const [
     prediosTotal,
     prediosSinEstado,
-    prediosSinEquipo,
+    prediosSinAsignar,
     prediosSinGPS,
     prediosSinEspacio,
     usuariosActivos,
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
   ] = await Promise.all([
     prisma.predio.count(),
     prisma.predio.count({ where: { estadoId: null } }),
-    prisma.predio.count({ where: { OR: [{ equipoAsignado: null }, { equipoAsignado: "" }] } }),
+    prisma.predio.count({ where: { asignaciones: { none: {} } } }),
     prisma.predio.count({
       where: {
         AND: [
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
       total: prediosTotal,
       actualizadosHoy: prediosActualizadosHoy,
       sinEstado: prediosSinEstado,
-      sinEquipo: prediosSinEquipo,
+      sinAsignar: prediosSinAsignar,
       sinGPS: prediosSinGPS,
       sinEspacio: prediosSinEspacio,
       duplicadosCue,

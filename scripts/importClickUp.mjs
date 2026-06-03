@@ -154,7 +154,6 @@ async function main() {
       cue: t["CUE (short text)"] || null,
       cuePredio: t["CUEs (short text)"] || null,
       lacR: t["LAC-R (drop down)"] || null,
-      equipoAsignado: t["Equipo (short text)"] || null, // TH01, TH02, etc.
       provincia: t["Provincia (short text)"] || null,
       gpsPredio: t["GPS_Predio (short text)"] || null,
       merakiNetworkName: t["Meraki_Nombre_Org (short text)"] || null,

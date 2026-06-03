@@ -116,7 +116,6 @@ async function main() {
         caracteristicaTelefonica: p.carTel,
         cuePredio: p.cueCons,
         incidencias: p.incidencias,
-        equipoAsignado: "Daniel",
         estadoId: sinAsignar.id,
         espacioId: pba.id,
         creadorId: admin.id,

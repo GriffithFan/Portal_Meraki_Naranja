@@ -29,7 +29,8 @@ export default function MisTareasPage() {
       if (estado !== "todos" && estadoKey !== estado) return false;
       if (!matchesQuickFilter(t, quickFilter)) return false;
       if (!q) return true;
-      return [t.nombre, t.codigo, t.ciudad, t.provincia, t.equipoAsignado, t.espacio?.nombre]
+      const asignados = t.asignaciones?.map((a: any) => a.usuario?.nombre).filter(Boolean).join(" ");
+      return [t.nombre, t.codigo, t.ciudad, t.provincia, asignados, t.espacio?.nombre]
         .filter(Boolean)
         .some((value: string) => value.toLowerCase().includes(q));
     });
@@ -52,7 +53,7 @@ export default function MisTareasPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Mis tareas</h1>
-          <p className="text-xs text-surface-400">Tareas asignadas, creadas o vinculadas a tu equipo</p>
+          <p className="text-xs text-surface-400">Tareas asignadas o creadas por vos</p>
         </div>
         <button onClick={fetchData} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50">Actualizar</button>
       </div>
@@ -91,7 +92,7 @@ export default function MisTareasPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por predio, codigo, provincia, equipo o espacio"
+            placeholder="Buscar por predio, codigo, provincia, asignado o espacio"
             className="flex-1 px-3 py-2 text-sm border border-surface-200 rounded-md focus:outline-none focus:border-surface-400"
           />
           <select
@@ -121,7 +122,7 @@ export default function MisTareasPage() {
                       {tarea.codigo && <span className="text-[11px] text-surface-400">{tarea.codigo}</span>}
                     </div>
                     <p className="text-xs text-surface-500 mt-1">
-                      {tarea.provincia || "Sin provincia"} · {tarea.equipoAsignado || "Sin equipo"} · {tarea.espacio?.nombre || "Sin espacio"}
+                      {tarea.provincia || "Sin provincia"} · {formatAsignados(tarea)} · {tarea.espacio?.nombre || "Sin espacio"}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {tarea.prioridad === "ALTA" && <Badge tone="red">Alta prioridad</Badge>}
@@ -155,6 +156,11 @@ function SummaryCard({ label, value, tone = "default" }: { label: string; value:
       <p className={`text-2xl font-semibold mt-1 tabular-nums ${valueClass}`}>{value}</p>
     </div>
   );
+}
+
+function formatAsignados(tarea: any) {
+  const nombres = tarea.asignaciones?.map((a: any) => a.usuario?.nombre).filter(Boolean) || [];
+  return nombres.length > 0 ? nombres.join(", ") : "Sin asignar";
 }
 
 function Badge({ children, tone }: { children: React.ReactNode; tone: "red" | "blue" | "amber" | "gray" }) {

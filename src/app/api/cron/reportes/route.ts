@@ -100,7 +100,7 @@ function buildMensaje(data: {
   actualizados: number;
   vencidos: number;
   sinEstado: number;
-  sinEquipo: number;
+  sinAsignar: number;
   sinGPS: number;
   chatsAbiertos: number;
   chatsEnCurso: number;
@@ -109,7 +109,7 @@ function buildMensaje(data: {
 }) {
   return [
     `${data.label}: ${data.prediosTotal} tareas, ${data.actualizados} actualizadas en el periodo y ${data.vencidos} vencidas.`,
-    `Pendientes de calidad: ${data.sinEstado} sin estado, ${data.sinEquipo} sin equipo, ${data.sinGPS} sin GPS.`,
+    `Pendientes de calidad: ${data.sinEstado} sin estado, ${data.sinAsignar} sin asignar, ${data.sinGPS} sin GPS.`,
     `Comunicación: ${data.chatsAbiertos} chats abiertos, ${data.chatsEnCurso} en curso.`,
     `Stock: ${data.stock.alertas} alertas, ${data.stock.noOperativo} no operativos, ${data.stock.sinSerie} sin serie.`,
     `Actividad registrada: ${data.actividad} eventos.`,
@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
       actualizados,
       vencidos,
       sinEstado,
-      sinEquipo,
+      sinAsignar,
       sinGPS,
       chatsAbiertos,
       chatsEnCurso,
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
       prisma.predio.count({ where: { updatedAt: { gte: period.start } } }),
       prisma.predio.count({ where: { fechaHasta: { lt: period.now } } }),
       prisma.predio.count({ where: { estadoId: null } }),
-      prisma.predio.count({ where: { OR: [{ equipoAsignado: null }, { equipoAsignado: "" }] } }),
+      prisma.predio.count({ where: { asignaciones: { none: {} } } }),
       prisma.predio.count({
         where: {
           AND: [
@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
       actualizados,
       vencidos,
       sinEstado,
-      sinEquipo,
+      sinAsignar,
       sinGPS,
       chatsAbiertos,
       chatsEnCurso,
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
         actualizados,
         vencidos,
         sinEstado,
-        sinEquipo,
+        sinAsignar,
         sinGPS,
         chatsAbiertos,
         chatsEnCurso,

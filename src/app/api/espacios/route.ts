@@ -2,10 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { espacioSchema, parseBody, isErrorResponse } from "@/lib/validation";
-import { equipoFilter } from "@/utils/equipoUtils";
 import { withPrivateCatalogCache } from "@/lib/cacheHeaders";
+import { sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+function sanitizeEspacioNode(espacio: any): any {
+  const estadosConfig = espacio.estadosConfig && typeof espacio.estadosConfig === "object" && !Array.isArray(espacio.estadosConfig)
+    ? {
+        ...espacio.estadosConfig,
+        detalleCamposConfig: sanitizeTaskFieldConfigs(espacio.estadosConfig.detalleCamposConfig),
+      }
+    : espacio.estadosConfig;
+
+  return {
+    ...espacio,
+    camposConfig: sanitizeTaskFieldConfigs(espacio.camposConfig),
+    estadosConfig,
+    children: Array.isArray(espacio.children) ? espacio.children.map(sanitizeEspacioNode) : espacio.children,
+  };
+}
 
 // GET /api/espacios — Listar árbol de espacios con conteos
 export async function GET() {
@@ -20,62 +38,48 @@ export async function GET() {
     },
     orderBy: [{ orden: "asc" }, { nombre: "asc" }],
   });
+  const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
+  const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session);
 
   // Filtrar por acceso del usuario (ADMIN siempre ve todo)
   let espaciosFiltrados = espacios;
-  if (!isAdmin(session.rol)) {
-    const accesos = await prisma.accesoEspacio.findMany({
-      where: { userId: session.userId },
-      select: { espacioId: true },
-    });
-
-    if (accesos.length > 0) {
-      // Whitelist explícita (configurada por admin)
-      const idsPermitidos = new Set(accesos.map(a => a.espacioId));
-
-      // Incluir también los padres de los espacios permitidos para mantener el árbol
-      for (const e of espacios) {
-        if (idsPermitidos.has(e.id) && e.parentId) {
-          idsPermitidos.add(e.parentId);
-        }
-      }
-
-      espaciosFiltrados = espacios.filter(e => idsPermitidos.has(e.id));
-    } else if (!isModOrAdmin(session.rol)) {
-      // TECNICOs sin whitelist: solo ven espacios donde tienen predios asignados
-      const prediosAsignados = await prisma.predio.findMany({
-        where: {
-          OR: [
-            { asignaciones: { some: { userId: session.userId } } },
-            { equipoAsignado: equipoFilter(session.nombre) },
-          ],
-        },
-        select: { espacioId: true },
-        distinct: ["espacioId"],
-      });
-
-      const idsConPredios = new Set(
-        prediosAsignados.map(p => p.espacioId).filter(Boolean) as string[]
-      );
-
-      // Incluir padres para mantener el árbol
-      for (const e of espacios) {
-        if (idsConPredios.has(e.id) && e.parentId) {
-          idsConPredios.add(e.parentId);
-        }
-      }
-
-      espaciosFiltrados = espacios.filter(e => idsConPredios.has(e.id));
-    }
-    // MODERADORs sin whitelist: ven todo (no se filtra)
+  if (!isAdmin(session.rol) && restrictedSpaceIds) {
+    const idsPermitidos = new Set(restrictedSpaceIds);
+    espaciosFiltrados = espacios.filter((espacio) => idsPermitidos.has(espacio.id));
   }
+
+  const visiblePredioWhere: Record<string, any> = {};
+  if (restrictedSpaceIds) visiblePredioWhere.espacioId = { in: restrictedSpaceIds };
+  appendVisibleEstadosClause(visiblePredioWhere, hiddenEstadoIds);
+  if (!isModOrAdmin(session.rol)) {
+    const idsVisibles = await getDelegatedVisibleUserIds(session);
+    visiblePredioWhere.AND = [...(visiblePredioWhere.AND || []), buildAssignedPredioVisibilityClause(idsVisibles)];
+  }
+
+  const visibleCounts = await prisma.predio.groupBy({
+    by: ["espacioId"],
+    where: {
+      ...visiblePredioWhere,
+      espacioId: visiblePredioWhere.espacioId || { not: null },
+    },
+    _count: { _all: true },
+  });
+  const directCountBySpaceId = new Map(
+    visibleCounts
+      .filter((row) => row.espacioId)
+      .map((row) => [row.espacioId as string, row._count._all]),
+  );
 
   // Construir árbol
   const map = new Map<string, any>();
   const roots: any[] = [];
 
   for (const e of espaciosFiltrados) {
-    map.set(e.id, { ...e, children: [] });
+    map.set(e.id, {
+      ...e,
+      _count: { ...e._count, predios: directCountBySpaceId.get(e.id) || 0 },
+      children: [],
+    });
   }
 
   for (const e of espaciosFiltrados) {
@@ -87,7 +91,20 @@ export async function GET() {
     }
   }
 
-  return withPrivateCatalogCache(NextResponse.json({ espacios: roots }));
+  const foldCounts = (node: any): any => {
+    const children = Array.isArray(node.children) ? node.children.map(foldCounts) : [];
+    const subtotal = children.reduce((sum: number, child: any) => sum + (child._count?.predios || 0), 0);
+    return {
+      ...node,
+      children,
+      _count: {
+        ...node._count,
+        predios: (node._count?.predios || 0) + subtotal,
+      },
+    };
+  };
+
+  return withPrivateCatalogCache(NextResponse.json({ espacios: roots.map(foldCounts).map(sanitizeEspacioNode) }));
 }
 
 // POST /api/espacios — Crear espacio

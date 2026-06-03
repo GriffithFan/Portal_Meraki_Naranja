@@ -8,7 +8,7 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 ## Aplicado
 
 - [x] Columnas OCP visibles desde Excel importado mediante campos personalizados.
-- [x] Regla global `equipoAsignado` equivalente a asignacion de usuario.
+- [x] Regla global basada en asignaciones de usuario.
 - [x] Backfill de asignaciones desde equipo/asignado en produccion.
 - [x] Cache corto para KPIs de dashboard.
 - [x] Carga dinamica de `xlsx` en Stock para reducir bundle inicial.
@@ -23,9 +23,9 @@ Este documento funciona como checklist vivo. La fase sensible de credenciales/lo
 - [x] Filtros rapidos de Mis tareas: hoy, vencidas, sin GPS, sin estado, sin espacio y alta prioridad.
 - [x] Paginacion server-side inicial en Cronograma: `/dashboard/tareas` carga 500 registros por pagina.
 - [x] Busqueda server-side en Cronograma.
-- [x] Filtros server-side en Cronograma por estado, provincia, equipo, prioridad y filtros rapidos.
+- [x] Filtros server-side en Cronograma por estado, provincia, asignado, prioridad y filtros rapidos.
 - [x] Paginacion server-side inicial en tareas por espacio: `/dashboard/tareas/espacio/[id]/tareas` carga 500 registros por pagina.
-- [x] Filtros server-side en tareas por espacio por estado, provincia, equipo, prioridad y filtros rapidos propios del espacio.
+- [x] Filtros server-side en tareas por espacio por estado, provincia, asignado, prioridad y filtros rapidos propios del espacio.
 - [x] Historial visual por predio en el modal de detalle: comentarios, cambios y archivos/actas en una linea de tiempo.
 - [x] Centro de importaciones en modo lectura/reporte con historial, resumen, errores y duplicados registrados.
 - [x] Modo supervisor por equipo en lectura: carga, vencidas, tareas de hoy, alertas y avance por tecnico/equipo.

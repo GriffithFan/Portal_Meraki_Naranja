@@ -2,28 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
-import { getAllEquipoVariants } from "@/utils/equipoUtils";
+import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 async function buildPredioVisibilityWhere(session: { rol: string; userId: string; nombre: string }) {
   if (isModOrAdmin(session.rol)) return {};
 
-  const delegaciones = await prisma.delegacion.findMany({
-    where: { delegadoId: session.userId, activo: true },
-    select: { delegadorId: true },
-  });
-  const idsVisibles = [session.userId, ...delegaciones.map((delegacion) => delegacion.delegadorId)];
-  const equipoMatch = getAllEquipoVariants(session.nombre);
-  return {
-    OR: [
-      { asignaciones: { some: { userId: { in: idsVisibles } } } },
-      { creadorId: { in: idsVisibles } },
-      { equipoAsignado: equipoMatch.length > 0
-        ? { in: equipoMatch, mode: "insensitive" as const }
-        : { equals: session.nombre, mode: "insensitive" as const } },
-    ],
-  };
+  const idsVisibles = await getDelegatedVisibleUserIds(session);
+  return buildAssignedPredioVisibilityClause(idsVisibles);
 }
 
 export async function GET(request: NextRequest) {
@@ -42,11 +30,16 @@ export async function GET(request: NextRequest) {
       { incidencias: { contains: query, mode: "insensitive" as const } },
       { cue: { contains: query, mode: "insensitive" as const } },
       { provincia: { contains: query, mode: "insensitive" as const } },
-      { equipoAsignado: { contains: query, mode: "insensitive" as const } },
+      { asignaciones: { some: { usuario: { nombre: { contains: query, mode: "insensitive" as const } } } } },
       { nombreInstitucion: { contains: query, mode: "insensitive" as const } },
     ],
   };
   const predioWhere: any = await buildPredioVisibilityWhere(session);
+  appendVisibleEstadosClause(predioWhere, await getHiddenEstadoIdsForSession(session));
+  const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
+  if (restrictedSpaceIds) {
+    predioWhere.espacioId = { in: restrictedSpaceIds };
+  }
   predioWhere.AND = predioWhere.AND ? [...predioWhere.AND, predioSearchWhere] : [predioSearchWhere];
 
   const stockWhere = {
@@ -105,11 +98,11 @@ export async function GET(request: NextRequest) {
         codigo: true,
         incidencias: true,
         provincia: true,
-        equipoAsignado: true,
         prioridad: true,
         espacioId: true,
         estado: { select: { nombre: true, color: true } },
         espacio: { select: { nombre: true } },
+        asignaciones: { include: { usuario: { select: { nombre: true } } } },
       },
       orderBy: [{ prioridad: "desc" }, { updatedAt: "desc" }],
       take: 4,
@@ -183,15 +176,14 @@ export async function GET(request: NextRequest) {
     ...predios.map((predio) => {
       const searchValue = predio.codigo || predio.nombre;
       const params = new URLSearchParams({ search: searchValue });
+      if (predio.id) params.set("openId", predio.id);
       if (predio.codigo) params.set("open", predio.codigo);
-      const baseHref = predio.espacioId
-        ? `/dashboard/tareas/espacio/${predio.espacioId}/tareas`
-        : "/dashboard/tareas";
+      const baseHref = "/dashboard/tareas";
       return {
         id: predio.id,
         type: "PREDIO",
         title: predio.codigo ? `${predio.codigo} · ${predio.nombre}` : predio.nombre,
-        subtitle: [predio.incidencias, predio.provincia, predio.equipoAsignado, predio.espacio?.nombre].filter(Boolean).join(" · "),
+        subtitle: [predio.incidencias, predio.provincia, predio.asignaciones.map((a) => a.usuario.nombre).filter(Boolean).join(", "), predio.espacio?.nombre].filter(Boolean).join(" · "),
         badge: predio.estado?.nombre || predio.prioridad,
         href: `${baseHref}?${params.toString()}`,
       };

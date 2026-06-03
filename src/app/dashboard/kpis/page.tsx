@@ -19,7 +19,7 @@ interface KPIData {
     conformes: number;
     progreso: number;
     byEstado: { nombre: string; color: string; count: number }[];
-    byEquipo: { nombre: string; count: number }[];
+    byAsignado: { nombre: string; count: number }[];
     byProvincia: { nombre: string; count: number }[];
     byAmbito: { nombre: string; count: number }[];
   };
@@ -50,7 +50,7 @@ interface KPIData {
   };
 }
 
-const EQUIPO_COLORS = [
+const ASIGNADO_COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316",
   "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
 ];
@@ -161,7 +161,7 @@ export default function KPIsPage() {
 
   const { predios, tareas, equipos, operacion, produccionSemanal } = data;
   const showProduccionSemanal = isAdmin && Boolean(produccionSemanal);
-  const equipoData = predios.byEquipo.filter((e) => e.nombre !== "Sin asignar").slice(0, 10);
+  const asignadoData = predios.byAsignado.filter((e) => e.nombre !== "Sin asignar").slice(0, 10);
   const totalEquipos = equipos.disponibles + equipos.asignados + equipos.rotos;
   const equipoPieData = [
     { name: "Disponibles", value: equipos.disponibles, color: "#22c55e" },
@@ -201,7 +201,7 @@ export default function KPIsPage() {
               { key: "predios", label: "KPIs Predios" },
               { key: "operacion", label: "KPIs Operación" },
               { key: "recursos", label: "KPIs Recursos" },
-              { key: "graficos1", label: "Gráficos (estado + equipo)" },
+              { key: "graficos1", label: "Gráficos (estado + asignados)" },
               { key: "graficos2", label: "Gráficos (provincia + ámbito)" },
               { key: "actividad", label: "Resumen de actividad" },
             ].map(s => (
@@ -520,11 +520,11 @@ export default function KPIsPage() {
           ) : <EmptyState text="Sin datos de estado" />}
         </ChartCard>
 
-        {/* Carga por equipo - Bar */}
-        <ChartCard title="Carga por Equipo" subtitle={`${equipoData.length} equipos con predios asignados`}>
-          {equipoData.length > 0 ? (
+        {/* Carga por asignado - Bar */}
+        <ChartCard title="Carga por Asignado" subtitle={`${asignadoData.length} personas con predios asignados`}>
+          {asignadoData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={equipoData} layout="vertical" margin={{ left: 10, right: 20 }}>
+              <BarChart data={asignadoData} layout="vertical" margin={{ left: 10, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={dk ? "#334155" : "#f1f5f9"} horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11, fill: dk ? "#94a3b8" : "#94a3b8" }} axisLine={false} />
                 <YAxis dataKey="nombre" type="category" tick={{ fontSize: 11, fill: dk ? "#cbd5e1" : "#64748b" }} width={60} axisLine={false} />
@@ -533,13 +533,13 @@ export default function KPIsPage() {
                   contentStyle={{ borderRadius: "8px", border: dk ? "1px solid #334155" : "1px solid #e2e8f0", fontSize: "12px", backgroundColor: dk ? "#1e293b" : "#fff", color: dk ? "#e2e8f0" : "#1e293b" }}
                 />
                 <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={20}>
-                  {equipoData.map((_, i) => (
-                    <Cell key={i} fill={EQUIPO_COLORS[i % EQUIPO_COLORS.length]} />
+                  {asignadoData.map((_, i) => (
+                    <Cell key={i} fill={ASIGNADO_COLORS[i % ASIGNADO_COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          ) : <EmptyState text="Sin equipos asignados" />}
+          ) : <EmptyState text="Sin asignados" />}
         </ChartCard>
       </motion.div>}
       </AnimatePresence>
@@ -565,7 +565,7 @@ export default function KPIsPage() {
                   />
                   <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={30}>
                     {predios.byProvincia.filter(p => p.nombre !== "Sin provincia").slice(0, 12).map((_, i) => (
-                      <Cell key={i} fill={EQUIPO_COLORS[i % EQUIPO_COLORS.length]} />
+                      <Cell key={i} fill={ASIGNADO_COLORS[i % ASIGNADO_COLORS.length]} />
                     ))}
                   </Bar>
                 </BarChart>

@@ -2,8 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, espacioUpdateSchema } from "@/lib/validation";
+import { sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+function sanitizeEspacioTaskConfig<T extends { camposConfig?: any; estadosConfig?: any }>(espacio: T): T {
+  const estadosConfig = espacio.estadosConfig && typeof espacio.estadosConfig === "object" && !Array.isArray(espacio.estadosConfig)
+    ? {
+        ...espacio.estadosConfig,
+        detalleCamposConfig: sanitizeTaskFieldConfigs((espacio.estadosConfig as any).detalleCamposConfig),
+      }
+    : espacio.estadosConfig;
+
+  return {
+    ...espacio,
+    camposConfig: sanitizeTaskFieldConfigs(espacio.camposConfig),
+    estadosConfig,
+  };
+}
 
 // GET /api/espacios/[id] — Detalle + stats del espacio
 export async function GET(
@@ -14,24 +32,9 @@ export async function GET(
   if (!session)
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  // Validar acceso al espacio (ADMIN siempre tiene acceso)
-  if (!isAdmin(session.rol)) {
-    const accesos = await prisma.accesoEspacio.findMany({
-      where: { userId: session.userId },
-      select: { espacioId: true },
-    });
-    if (accesos.length > 0) {
-      const idsPermitidos = new Set(accesos.map(a => a.espacioId));
-      if (!idsPermitidos.has(params.id)) {
-        // Verificar si es un padre de un espacio permitido
-        const espacioCheck = await prisma.espacioTrabajo.findFirst({
-          where: { parentId: params.id, id: { in: Array.from(idsPermitidos) } },
-        });
-        if (!espacioCheck) {
-          return NextResponse.json({ error: "Sin acceso a este espacio" }, { status: 403 });
-        }
-      }
-    }
+  const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
+  if (!isAdmin(session.rol) && restrictedSpaceIds && !restrictedSpaceIds.includes(params.id)) {
+    return NextResponse.json({ error: "Sin acceso a este espacio" }, { status: 403 });
   }
 
   const espacio = await prisma.espacioTrabajo.findUnique({
@@ -53,21 +56,38 @@ export async function GET(
   const hijoIds = espacio.hijos.map((h) => h.id);
   const allSpaceIds = [espacio.id, ...hijoIds];
 
-  // Stats: predios por estado, por equipo, por provincia
+  // Stats: predios por estado, asignacion, provincia y ambito
+  const predioWhere: Record<string, any> = { espacioId: { in: allSpaceIds } };
+  appendVisibleEstadosClause(predioWhere, await getHiddenEstadoIdsForSession(session));
+  if (!isModOrAdmin(session.rol)) {
+    const idsVisibles = await getDelegatedVisibleUserIds(session);
+    predioWhere.AND = [...(predioWhere.AND || []), buildAssignedPredioVisibilityClause(idsVisibles)];
+  }
+
   const predios = await prisma.predio.findMany({
-    where: { espacioId: { in: allSpaceIds } },
+    where: predioWhere,
     select: {
       id: true,
       estadoId: true,
-      equipoAsignado: true,
       provincia: true,
       ambito: true,
       estado: { select: { id: true, nombre: true, color: true, clave: true } },
       espacioId: true,
+      asignaciones: { include: { usuario: { select: { nombre: true } } } },
     },
   });
 
   const totalPredios = predios.length;
+  const directCounts = await prisma.predio.groupBy({
+    by: ["espacioId"],
+    where: predioWhere,
+    _count: { _all: true },
+  });
+  const directCountBySpaceId = new Map(
+    directCounts
+      .filter((row) => row.espacioId)
+      .map((row) => [row.espacioId as string, row._count._all]),
+  );
 
   // Por estado
   const byEstado: Record<string, { nombre: string; color: string; count: number }> = {};
@@ -83,11 +103,17 @@ export async function GET(
     byEstado[key].count++;
   }
 
-  // Por equipo
-  const byEquipo: Record<string, number> = {};
+  // Por asignado
+  const byAsignado: Record<string, number> = {};
   for (const p of predios) {
-    const eq = p.equipoAsignado || "Sin asignar";
-    byEquipo[eq] = (byEquipo[eq] || 0) + 1;
+    const nombres = p.asignaciones.map((a) => a.usuario.nombre).filter(Boolean);
+    if (nombres.length === 0) {
+      byAsignado["Sin asignar"] = (byAsignado["Sin asignar"] || 0) + 1;
+    } else {
+      for (const nombre of nombres) {
+        byAsignado[nombre] = (byAsignado[nombre] || 0) + 1;
+      }
+    }
   }
 
   // Por provincia
@@ -124,11 +150,18 @@ export async function GET(
   }).catch(() => {});
 
   return NextResponse.json({
-    espacio,
+    espacio: sanitizeEspacioTaskConfig({
+      ...espacio,
+      _count: { ...espacio._count, predios: directCountBySpaceId.get(espacio.id) || 0 },
+      hijos: espacio.hijos.map((hijo) => ({
+        ...hijo,
+        _count: { ...hijo._count, predios: directCountBySpaceId.get(hijo.id) || 0 },
+      })),
+    } as any),
     stats: {
       totalPredios,
       byEstado: Object.values(byEstado).sort((a, b) => b.count - a.count),
-      byEquipo: Object.entries(byEquipo)
+      byAsignado: Object.entries(byAsignado)
         .map(([nombre, count]) => ({ nombre, count }))
         .sort((a, b) => b.count - a.count),
       byProvincia: Object.entries(byProvincia)
@@ -154,12 +187,21 @@ export async function PATCH(
   const data = await parseBody(request, espacioUpdateSchema);
   if (isErrorResponse(data)) return data;
 
+  const cleanData = { ...data } as any;
+  if ("camposConfig" in cleanData) cleanData.camposConfig = sanitizeTaskFieldConfigs(cleanData.camposConfig);
+  if (cleanData.estadosConfig && typeof cleanData.estadosConfig === "object" && !Array.isArray(cleanData.estadosConfig)) {
+    cleanData.estadosConfig = {
+      ...cleanData.estadosConfig,
+      detalleCamposConfig: sanitizeTaskFieldConfigs(cleanData.estadosConfig.detalleCamposConfig),
+    };
+  }
+
   const espacio = await prisma.espacioTrabajo.update({
     where: { id: params.id },
-    data,
+    data: cleanData,
   });
 
-  return NextResponse.json(espacio);
+  return NextResponse.json(sanitizeEspacioTaskConfig(espacio as any));
 }
 
 // DELETE /api/espacios/[id] — Soft-delete

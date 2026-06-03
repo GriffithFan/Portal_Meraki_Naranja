@@ -79,8 +79,18 @@ export async function PATCH(request: NextRequest) {
       case "PREDIO": {
         // Restaurar con los campos básicos (sin relaciones)
         const { id: _id, createdAt, updatedAt, equipos, etiquetas, comentarios, asignaciones, tareas, actas, monitoreos, estado, espacio, creador, ...rest } = datos;
-        void _id; void createdAt; void updatedAt; void equipos; void etiquetas; void comentarios; void asignaciones; void tareas; void actas; void monitoreos; void estado; void espacio; void creador;
-        await prisma.predio.create({ data: rest });
+        void _id; void createdAt; void updatedAt; void equipos; void etiquetas; void comentarios; void tareas; void actas; void monitoreos; void estado; void espacio; void creador;
+        const nuevoPredio = await prisma.predio.create({ data: rest });
+        // Restaurar asignaciones si estaban capturadas en el snapshot
+        if (Array.isArray(asignaciones) && asignaciones.length > 0) {
+          for (const asig of asignaciones as Array<{ userId: string; tipo: string; notas?: string }>) {
+            if (asig.userId) {
+              await prisma.asignacion.create({
+                data: { tipo: asig.tipo || "TAREA", notas: asig.notas ?? null, userId: asig.userId, predioId: nuevoPredio.id },
+              });
+            }
+          }
+        }
         break;
       }
       case "EQUIPO": {

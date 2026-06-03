@@ -15,7 +15,7 @@ interface PredioMapa {
   latitud: number;
   longitud: number;
   tipo: string | null;
-  equipoAsignado: string | null;
+  asignaciones?: { usuario: { id?: string; nombre: string | null } }[];
   ambito: string | null;
   nombreInstitucion: string | null;
   espacioId: string | null;
@@ -54,7 +54,7 @@ const PROVINCIA_COLORS: Record<string, string> = {
 
 const DEFAULT_PROVINCIA_COLOR = "#94a3b8";
 
-// Paleta de colores distinguibles para técnicos/equipos
+// Paleta de colores distinguibles para asignados
 const TECNICO_COLORS = [
   "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
   "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#14b8a6",
@@ -71,9 +71,12 @@ function getProvinciaColor(provincia: string | null): string {
   return PROVINCIA_COLOR_MAP.get(provincia.toUpperCase()) || PROVINCIA_COLORS[provincia] || DEFAULT_PROVINCIA_COLOR;
 }
 
-function getTecnicoColor(tecnico: string | null, tecnicoColorMap: Record<string, string>): string {
-  if (!tecnico) return DEFAULT_PROVINCIA_COLOR;
+function getTecnicoColor(tecnico: string, tecnicoColorMap: Record<string, string>): string {
   return tecnicoColorMap[tecnico] || DEFAULT_PROVINCIA_COLOR;
+}
+
+function getAsignados(predio: PredioMapa) {
+  return (predio.asignaciones || []).map((asignacion) => asignacion.usuario?.nombre).filter(Boolean) as string[];
 }
 
 function createMarkerIcon(color: string, label?: string) {
@@ -104,7 +107,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
   // Build a stable color map for technicians
   const tecnicoColorMap = useMemo(() => {
     const map: Record<string, string> = {};
-    const tecnicos = Array.from(new Set(predios.map(p => p.equipoAsignado).filter(Boolean) as string[])).sort();
+    const tecnicos = Array.from(new Set(predios.flatMap(getAsignados))).sort();
     tecnicos.forEach((t, i) => { map[t] = TECNICO_COLORS[i % TECNICO_COLORS.length]; });
     return map;
   }, [predios]);
@@ -185,15 +188,17 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
 
     for (const p of predios) {
       const prov = obtenerProvincia(p.provincia, p.codigo) || null;
+      const asignados = getAsignados(p);
+      const primaryAsignado = asignados[0] || "";
       const color = colorBy === "provincia"
         ? getProvinciaColor(prov)
         : colorBy === "tecnico"
-        ? getTecnicoColor(p.equipoAsignado, tecnicoColorMap)
+        ? getTecnicoColor(primaryAsignado, tecnicoColorMap)
         : (p.estado?.color || DEFAULT_PROVINCIA_COLOR);
 
       // Label inside marker depends on colorBy mode
       const label = colorBy === "tecnico"
-        ? (p.equipoAsignado ? p.equipoAsignado[0].toUpperCase() : "")
+        ? (primaryAsignado ? primaryAsignado[0].toUpperCase() : "")
         : (prov ? prov[0].toUpperCase() : "");
 
       const marker = L.marker([p.latitud, p.longitud], {
@@ -214,7 +219,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
           ${p.nombreInstitucion ? `<div style="font-size:11px;margin-bottom:6px"><span style="color:#94a3b8;font-weight:600">Colegio</span> <span style="color:#475569">${escapeHtml(p.nombreInstitucion)}</span></div>` : ""}
           <table style="width:100%;border-collapse:collapse">
             <tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Estado</td><td>${estadoLabel}</td></tr>
-            ${p.equipoAsignado ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Equipo</td><td>${escapeHtml(p.equipoAsignado)}</td></tr>` : ""}
+            ${asignados.length > 0 ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Asignados</td><td>${escapeHtml(asignados.join(", "))}</td></tr>` : ""}
             ${p.ciudad ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Ciudad</td><td>${escapeHtml(p.ciudad)}</td></tr>` : ""}
             ${p.direccion ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Dirección</td><td style="display:flex;align-items:center;gap:4px"><span>${escapeHtml(p.direccion)}</span><button onclick="navigator.clipboard.writeText('${escapeHtml(p.direccion).replace(/'/g, "\\'")  }');this.textContent='✓';setTimeout(()=>this.textContent='📋',1200)" style="background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:11px;padding:1px 4px;line-height:1;flex-shrink:0" title="Copiar dirección">📋</button></td></tr>` : ""}
             ${p.ambito ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Ámbito</td><td>${escapeHtml(p.ambito)}</td></tr>` : ""}

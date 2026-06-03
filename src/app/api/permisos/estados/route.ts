@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { materializeEstadoVisibility } from "@/lib/predioVisibility";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,7 +24,7 @@ export async function GET() {
     orderBy: [{ userId: "asc" }, { estadoId: "asc" }],
   });
 
-  return NextResponse.json({ permisos, permisosUsuario });
+  return NextResponse.json(await materializeEstadoVisibility({ permisos, permisosUsuario }));
 }
 
 // PUT /api/permisos/estados — actualizar visibilidad (solo ADMIN)
@@ -94,5 +95,5 @@ export async function PUT(request: NextRequest) {
     orderBy: [{ userId: "asc" }, { estadoId: "asc" }],
   });
 
-  return NextResponse.json({ permisos: allPermisos, permisosUsuario: allPermisosUsuario });
+  return NextResponse.json(await materializeEstadoVisibility({ permisos: allPermisos, permisosUsuario: allPermisosUsuario }));
 }

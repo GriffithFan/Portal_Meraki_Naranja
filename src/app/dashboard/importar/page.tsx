@@ -212,7 +212,6 @@ export default function ImportarPage() {
         incidencias: ["incidencia", "incidencias", "ni", "ni-", "númerodeinci", "numerodeinci"],
         cue:       ["cue", "consolidadodecues", "consolidado"],
         ambito:    ["ambito", "ámbito", "predioambito"],
-        equipoAsignado: ["equipo", "team", "equipo_asignado", "equipoasignado", "tecnico", "técnico"],
         lacR:      ["lac", "lacr", "lac-r", "lac_r"],
         cuePredio: ["cue_predio", "cuepredioconsolidadodecues", "cuePredio"],
         gpsPredio: ["gps", "gps_predio", "gpspredio", "coordenadas", "coordenadasgps", "gpsdecimal"],
@@ -247,6 +246,7 @@ export default function ImportarPage() {
         notas:       ["notas", "nota", "notes", "observaciones", "comentarios"],
         fecha:       ["fecha", "date", "fecha_ingreso", "fecha_alta", "fechaingreso", "fechaalta", "f_ingreso", "ingreso"],
         asignado:    ["asignado", "asignado_a", "asignadoa", "tecnico", "técnico", "technician", "asignacion", "asignación"],
+        etiqueta:    ["etiqueta", "tag", "label", "clasificacion", "clasificación"],
         proveedor:   ["proveedor", "provider", "supplier", "prov"],
       };
 

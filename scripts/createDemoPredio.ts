@@ -20,7 +20,6 @@ async function main() {
         merakiNetworkId: "DEMO_111111",
         merakiNetworkName: "DEMO_111111",
         provincia: "Demo",
-        equipoAsignado: "DEMO",
       },
     });
     console.log("Predio creado:", predio.id);

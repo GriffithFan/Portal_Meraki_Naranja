@@ -51,7 +51,7 @@ export async function GET() {
     prediosTotal,
     prediosConRed,
     prediosPorEstado,
-    prediosPorEquipo,
+    prediosConAsignaciones,
     prediosPorProvincia,
     prediosPorAmbito,
     tareasCompletadasSemana,
@@ -72,9 +72,13 @@ export async function GET() {
       by: ["estadoId"],
       _count: true,
     }),
-    prisma.predio.groupBy({
-      by: ["equipoAsignado"],
-      _count: true,
+    prisma.predio.findMany({
+      select: {
+        asignaciones: {
+          where: { tipo: { in: ["TAREA", "TECNICO"] } },
+          include: { usuario: { select: { nombre: true } } },
+        },
+      },
     }),
     prisma.predio.groupBy({
       by: ["provincia"],
@@ -130,8 +134,17 @@ export async function GET() {
     };
   }).sort((a, b) => b.count - a.count);
 
-  const byEquipo = prediosPorEquipo
-    .map((e) => ({ nombre: e.equipoAsignado || "Sin asignar", count: e._count }))
+  const asignadosCount: Record<string, number> = {};
+  for (const predio of prediosConAsignaciones) {
+    const nombres = predio.asignaciones.map((asignacion) => asignacion.usuario.nombre).filter(Boolean);
+    if (nombres.length === 0) {
+      asignadosCount["Sin asignar"] = (asignadosCount["Sin asignar"] || 0) + 1;
+    } else {
+      for (const nombre of nombres) asignadosCount[nombre] = (asignadosCount[nombre] || 0) + 1;
+    }
+  }
+  const byAsignado = Object.entries(asignadosCount)
+    .map(([nombre, count]) => ({ nombre, count }))
     .sort((a, b) => b.count - a.count);
 
   const byProvincia = prediosPorProvincia
@@ -161,7 +174,6 @@ export async function GET() {
           select: {
             id: true,
             estadoId: true,
-            equipoAsignado: true,
             asignaciones: {
               where: { tipo: { in: ["TAREA", "TECNICO"] } },
               include: { usuario: { select: { id: true, nombre: true } } },
@@ -184,7 +196,7 @@ export async function GET() {
       const tecnicos = predio.asignaciones.map((asignacion) => asignacion.usuario);
       const targets = tecnicos.length > 0
         ? tecnicos.map((tecnico) => ({ id: tecnico.id, nombre: tecnico.nombre }))
-        : [{ id: predio.equipoAsignado || "SIN_ASIGNAR", nombre: predio.equipoAsignado || "Sin asignar" }];
+        : [{ id: "SIN_ASIGNAR", nombre: "Sin asignar" }];
 
       for (const tecnico of targets) {
         const current = porTecnico.get(tecnico.id) || {
@@ -225,7 +237,7 @@ export async function GET() {
       conformes: conformeCount,
       progreso: prediosTotal > 0 ? Math.round((conformeCount / prediosTotal) * 100) : 0,
       byEstado,
-      byEquipo,
+      byAsignado,
       byProvincia,
       byAmbito,
     },

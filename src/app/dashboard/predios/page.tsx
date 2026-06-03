@@ -19,7 +19,7 @@ interface PredioMapa {
   latitud: number;
   longitud: number;
   tipo: string | null;
-  equipoAsignado: string | null;
+  asignaciones?: { usuario: { id?: string; nombre: string | null } }[];
   ambito: string | null;
   nombreInstitucion: string | null;
   espacioId: string | null;
@@ -38,6 +38,12 @@ const PROVINCIA_COLORS: Record<string, string> = {
   "Santa Cruz": "#38bdf8", "Tierra del Fuego": "#c084fc", "CABA": "#818cf8",
   "SGO. DEL ESTERO": "#a855f7", "Demo": "#94a3b8",
 };
+
+const TECNICO_COLORS_LEGEND = [
+  "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
+  "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#14b8a6",
+  "#6366f1", "#d946ef", "#0ea5e9", "#f43f5e", "#eab308",
+];
 const PROVINCIA_COLOR_MAP = new Map(
   Object.entries(PROVINCIA_COLORS).map(([k, v]) => [k.toUpperCase(), v])
 );
@@ -51,7 +57,7 @@ export default function PrediosPage() {
   const [predios, setPredios] = useState<PredioMapa[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState("");
-  const [filtroEquipo, setFiltroEquipo] = useState("");
+  const [filtroAsignado, setFiltroAsignado] = useState("");
   const [filtroProvincia, setFiltroProvincia] = useState("");
   const [search, setSearch] = useState("");
   const [colorBy, setColorBy] = useState<"provincia" | "estado" | "tecnico">("provincia");
@@ -65,23 +71,22 @@ export default function PrediosPage() {
     if (!session || roleInitialized) return;
     if (isTecnico) {
       setColorBy("estado");
-      setFiltroEquipo(session.nombre);
     } else if (isModOrAdmin) {
       setColorBy("tecnico");
     }
     setRoleInitialized(true);
   }, [session, isTecnico, isModOrAdmin, roleInitialized]);
 
-  // For admin/mod: when filtering by specific tech, switch to estado view
-  // When clearing tech filter, revert to tecnico view
+  // For admin/mod: when filtering by assignee, switch to estado view
+  // When clearing assignee filter, revert to tecnico view
   useEffect(() => {
     if (isTecnico || !roleInitialized) return;
-    if (filtroEquipo) {
+    if (filtroAsignado) {
       setColorBy("estado");
     } else {
       setColorBy("tecnico");
     }
-  }, [filtroEquipo, isTecnico, roleInitialized]);
+  }, [filtroAsignado, isTecnico, roleInitialized]);
 
   const fetchPredios = useCallback(async () => {
     setLoading(true);
@@ -89,7 +94,6 @@ export default function PrediosPage() {
     try {
       const params = new URLSearchParams();
       if (filtroEstado) params.set("estadoId", filtroEstado);
-      if (filtroEquipo) params.set("equipo", filtroEquipo);
       const res = await fetch(`/api/dashboard/mapa?${params}`, { credentials: "include" });
       if (res.ok) {
         setPredios(await res.json());
@@ -103,7 +107,7 @@ export default function PrediosPage() {
     } finally {
       setLoading(false);
     }
-  }, [filtroEstado, filtroEquipo]);
+  }, [filtroEstado]);
 
   useEffect(() => { fetchPredios(); }, [fetchPredios]);
 
@@ -113,9 +117,13 @@ export default function PrediosPage() {
     return Array.from(map.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [predios]);
 
-  const equipos = useMemo(() => {
+  const asignados = useMemo(() => {
     const set = new Set<string>();
-    predios.forEach((p) => { if (p.equipoAsignado) set.add(p.equipoAsignado); });
+    predios.forEach((p) => {
+      p.asignaciones?.forEach((asignacion) => {
+        if (asignacion.usuario?.nombre) set.add(asignacion.usuario.nombre);
+      });
+    });
     return Array.from(set).sort();
   }, [predios]);
 
@@ -130,25 +138,22 @@ export default function PrediosPage() {
       .map(([nombre, count]) => ({ nombre, count }));
   }, [predios]);
 
-  // Colors for tecnico mode (mirrors MapView's TECNICO_COLORS)
-  const TECNICO_COLORS_LEGEND = [
-    "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6",
-    "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#14b8a6",
-    "#6366f1", "#d946ef", "#0ea5e9", "#f43f5e", "#eab308",
-  ];
-
   const tecnicosList = useMemo(() => {
     const map = new Map<string, number>();
     predios.forEach((p) => {
-      const eq = p.equipoAsignado || "Sin asignar";
-      map.set(eq, (map.get(eq) || 0) + 1);
+      const nombres = p.asignaciones?.map((asignacion) => asignacion.usuario?.nombre).filter(Boolean) as string[] | undefined;
+      if (!nombres || nombres.length === 0) {
+        map.set("Sin asignar", (map.get("Sin asignar") || 0) + 1);
+      } else {
+        nombres.forEach((nombre) => map.set(nombre, (map.get(nombre) || 0) + 1));
+      }
     });
     const sorted = Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([nombre, count]) => ({ nombre, count }));
     // Build color map mirroring MapView
     const colorMap: Record<string, string> = {};
-    const tecNames = Array.from(new Set(predios.map(p => p.equipoAsignado).filter(Boolean) as string[])).sort();
+    const tecNames = Array.from(new Set(predios.flatMap((p) => p.asignaciones?.map((asignacion) => asignacion.usuario?.nombre).filter(Boolean) || []) as string[])).sort();
     tecNames.forEach((t, i) => { colorMap[t] = TECNICO_COLORS_LEGEND[i % TECNICO_COLORS_LEGEND.length]; });
     return sorted.map(s => ({ ...s, color: colorMap[s.nombre] || "#94a3b8" }));
   }, [predios]);
@@ -157,6 +162,9 @@ export default function PrediosPage() {
     let result = predios;
     if (filtroProvincia) {
       result = result.filter(p => obtenerProvincia(p.provincia, p.codigo) === filtroProvincia);
+    }
+    if (filtroAsignado) {
+      result = result.filter(p => p.asignaciones?.some((asignacion) => asignacion.usuario?.nombre === filtroAsignado));
     }
     if (search) {
       const q = search.toLowerCase();
@@ -169,7 +177,7 @@ export default function PrediosPage() {
       );
     }
     return result;
-  }, [predios, search, filtroProvincia]);
+  }, [predios, search, filtroProvincia, filtroAsignado]);
 
   return (
     <div className="animate-fade-in-up flex flex-col overflow-hidden" style={{ height: "calc(100vh - 120px)" }}>
@@ -201,13 +209,13 @@ export default function PrediosPage() {
             ))}
           </select>
           <select
-            value={filtroEquipo}
-            onChange={(e) => setFiltroEquipo(e.target.value)}
+            value={filtroAsignado}
+            onChange={(e) => setFiltroAsignado(e.target.value)}
             className="min-w-0 flex-1 sm:flex-none px-2 py-1.5 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400"
           >
-            <option value="">Todos los equipos</option>
-            {equipos.map((eq) => (
-              <option key={eq} value={eq}>{eq}</option>
+            <option value="">Todos los asignados</option>
+            {asignados.map((nombre) => (
+              <option key={nombre} value={nombre}>{nombre}</option>
             ))}
           </select>
           <select
@@ -250,9 +258,9 @@ export default function PrediosPage() {
           </div>
 
           {/* Limpiar filtros */}
-          {(filtroEstado || filtroEquipo || filtroProvincia || search) && (
+          {(filtroEstado || filtroAsignado || filtroProvincia || search) && (
             <button
-              onClick={() => { setFiltroEstado(""); setFiltroEquipo(""); setFiltroProvincia(""); setSearch(""); }}
+              onClick={() => { setFiltroEstado(""); setFiltroAsignado(""); setFiltroProvincia(""); setSearch(""); }}
               className="px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-md transition-colors whitespace-nowrap"
             >
               Limpiar filtros
@@ -294,7 +302,7 @@ export default function PrediosPage() {
         {!loading && filtered.length > 0 && (
           <div className="md:w-44 shrink-0 bg-white rounded-lg border border-surface-200 overflow-hidden flex flex-col max-h-[140px] md:max-h-none">
             <h3 className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider px-3 pt-2 pb-1 shrink-0">
-              {colorBy === "provincia" ? "Provincias" : colorBy === "tecnico" ? "Técnicos" : "Estados"}
+              {colorBy === "provincia" ? "Provincias" : colorBy === "tecnico" ? "Asignados" : "Estados"}
             </h3>
             <div className="flex-1 overflow-y-auto px-3 pb-2 scrollbar-thin">
               <div className="flex flex-row flex-wrap md:flex-col gap-0.5">
@@ -317,8 +325,8 @@ export default function PrediosPage() {
                   tecnicosList.map(({ nombre, count, color }) => (
                     <button
                       key={nombre}
-                      onClick={() => setFiltroEquipo(nombre === "Sin asignar" ? "" : nombre)}
-                      className={`flex items-center gap-1.5 md:gap-2 md:w-full text-left px-1.5 py-1 rounded text-xs hover:bg-surface-50 transition-colors whitespace-nowrap ${filtroEquipo === nombre ? "bg-surface-100 font-medium" : ""}`}
+                      onClick={() => setFiltroAsignado(nombre === "Sin asignar" ? "" : nombre)}
+                      className={`flex items-center gap-1.5 md:gap-2 md:w-full text-left px-1.5 py-1 rounded text-xs hover:bg-surface-50 transition-colors whitespace-nowrap ${filtroAsignado === nombre ? "bg-surface-100 font-medium" : ""}`}
                     >
                       <span
                         className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shrink-0"

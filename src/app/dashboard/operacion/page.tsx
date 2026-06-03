@@ -48,7 +48,7 @@ export default function OperacionPage() {
 
   const issues = [
     { label: "Predios sin estado", value: data.predios.sinEstado, href: "/dashboard/tareas" },
-    { label: "Predios sin equipo", value: data.predios.sinEquipo, href: "/dashboard/tareas" },
+    { label: "Predios sin asignar", value: data.predios.sinAsignar, href: "/dashboard/tareas" },
     { label: "Predios sin GPS", value: data.predios.sinGPS, href: "/dashboard/predios" },
     { label: "Predios sin espacio", value: data.predios.sinEspacio, href: "/dashboard/tareas" },
   ];

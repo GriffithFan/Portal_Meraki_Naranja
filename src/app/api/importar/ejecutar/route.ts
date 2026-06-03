@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, importarEjecutarSchema } from "@/lib/validation";
 import { detectarProvincia } from "@/utils/provinciaUtils";
-import { resolveEquipoKey } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,7 +40,6 @@ const PREDIO_FIELDS: Record<string, string> = {
   fechaDesde: "Fecha DESDE",
   fechaHasta: "Fecha HASTA",
   ambito: "Ámbito (Urbano/Rural)",
-  equipoAsignado: "Equipo (TH01-TH10)",
   provincia: "Provincia",
   cuePredio: "CUE_Predio",
   gpsPredio: "GPS_Predio",
@@ -82,6 +80,7 @@ const EQUIPO_FIELDS: Record<string, string> = {
   notas: "Notas",
   fecha: "Fecha",
   asignado: "Asignado (Técnico)",
+  etiqueta: "Etiqueta",
   proveedor: "Proveedor",
 };
 
@@ -193,29 +192,10 @@ export async function POST(request: NextRequest) {
 
       const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[\s_-]+/g, " ");
 
-      // Mapeo de nombres/alias de t\u00e9cnicos → código de equipo (TH01, TH02, etc.)
-      // Usa el módulo centralizado equipoUtils
-
-      /** Detectar equipo a partir de un nombre de técnico */
-      const detectEquipoFromName = (val: string): string | null => {
-        if (!val) return null;
-        return resolveEquipoKey(val);
-      };
-
       /** Match usuario por nombre, email o alias (ej: "Daniel c01" → th01@thnet.com) */
       const matchUser = (val: string): string | null => {
         if (!val || predioUsers.length === 0) return null;
         const needle = norm(val);
-
-        // 1. Intento con equipo detectado → buscar user por email que empiece con THxx
-        const equipo = detectEquipoFromName(val);
-        if (equipo) {
-          const eqLower = equipo.toLowerCase();
-          const byEmail = predioUsers.find(u => norm(u.email).split("@")[0] === eqLower);
-          if (byEmail) return byEmail.id;
-        }
-
-        // 2. Match por nombre directo
         const match = predioUsers.find(u => {
           const n = norm(u.nombre);
           const e = norm(u.email).split("@")[0]; // th01, th07, etc.
@@ -296,8 +276,6 @@ export async function POST(request: NextRequest) {
           if (cue) data.cue = cue;
           const ambito = safeGet(row, fieldMap.get("ambito"));
           if (ambito) data.ambito = ambito;
-          const equipoAsignado = safeGet(row, fieldMap.get("equipoAsignado"));
-          if (equipoAsignado) data.equipoAsignado = equipoAsignado.toUpperCase();
           const provincia = safeGet(row, fieldMap.get("provincia"));
           if (provincia) data.provincia = provincia;
           const cuePredio = safeGet(row, fieldMap.get("cuePredio"));
@@ -327,16 +305,6 @@ export async function POST(request: NextRequest) {
           if (estadoText) {
             const matchedEstadoId = matchEstado(estadoText);
             if (matchedEstadoId) data.estadoId = matchedEstadoId;
-          }
-
-          // ── Auto-detectar equipoAsignado desde nombre de asignado ──
-          // Si no viene equipo explícito pero sí hay columna "asignado" con nombre de técnico
-          if (!data.equipoAsignado) {
-            const asignadoRaw = safeGet(row, fieldMap.get("asignado"));
-            if (asignadoRaw) {
-              const detectedEquipo = detectEquipoFromName(asignadoRaw);
-              if (detectedEquipo) data.equipoAsignado = detectedEquipo;
-            }
           }
 
           // Campos adicionales
@@ -500,11 +468,10 @@ export async function POST(request: NextRequest) {
           if (ub) data.ubicacion = ub;
           const notas = safeGet(row, fieldMap.get("notas"));
           if (notas) data.notas = notas;
+          const etiquetaVal = safeGet(row, fieldMap.get("etiqueta"));
+          if (etiquetaVal) data.etiqueta = etiquetaVal;
           const proveedorVal = safeGet(row, fieldMap.get("proveedor"));
-          if (proveedorVal) {
-            const pNorm = proveedorVal.toUpperCase().trim();
-            if (pNorm === "OCP" || pNorm === "DINATECH") data.proveedor = pNorm;
-          }
+          if (proveedorVal) data.proveedor = proveedorVal.toUpperCase().trim();
           const fecha = safeGet(row, fieldMap.get("fecha"));
           // Auto-rellenar fecha con hoy si está vacía
           data.fecha = fecha || fechaHoy;
@@ -513,7 +480,7 @@ export async function POST(request: NextRequest) {
           if (cantStr) { const v = parseInt(cantStr); if (!isNaN(v) && v > 0) data.cantidad = v; }
 
           // Matching de estado: normalizar y buscar coincidencia parcial entre estados válidos
-          const ESTADOS_VALIDOS = ["DISPONIBLE", "INSTALADO", "EN_TRANSITO", "ROTO", "PERDIDO", "EN_REPARACION"];
+          const ESTADOS_VALIDOS = ["DISPONIBLE", "INSTALADO", "EN_TRANSITO", "ROTO", "PERDIDO", "EN_REPARACION", "BAJA"];
           const estadoVal = safeGet(row, fieldMap.get("estado"));
           if (estadoVal) {
             const normE = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim().replace(/[\s_-]+/g, "_");
@@ -543,7 +510,7 @@ export async function POST(request: NextRequest) {
           if (ns) {
             const existing = await prisma.equipo.findUnique({ where: { numeroSerie: ns }, include: { asignado: { select: { nombre: true } } } });
             if (existing) {
-              const COMPARE_FIELDS = ["nombre", "modelo", "estado", "ubicacion", "fecha", "notas", "marca", "categoria"];
+              const COMPARE_FIELDS = ["nombre", "modelo", "estado", "ubicacion", "fecha", "notas", "marca", "categoria", "etiqueta", "proveedor"];
               const nuevoObj: Record<string, string> = {};
               const existenteObj: Record<string, string> = {};
               const iguales: string[] = [];
@@ -563,6 +530,13 @@ export async function POST(request: NextRequest) {
               existenteObj.asignado = oldAsignado;
               if (newAsignado && oldAsignado && newAsignado.toLowerCase() === oldAsignado.toLowerCase()) iguales.push("asignado");
               else if (newAsignado || oldAsignado) diferentes.push("asignado");
+
+              const newEtiqueta = String((data.etiqueta ?? "") as string).trim();
+              const oldEtiqueta = String((existing as any).etiqueta ?? "").trim();
+              nuevoObj.etiqueta = newEtiqueta;
+              existenteObj.etiqueta = oldEtiqueta;
+              if (newEtiqueta && oldEtiqueta && newEtiqueta.toLowerCase() === oldEtiqueta.toLowerCase()) iguales.push("etiqueta");
+              else if (newEtiqueta || oldEtiqueta) diferentes.push("etiqueta");
 
               duplicates.push({ fila: i + 2, serial: ns, nuevo: nuevoObj, existente: existenteObj, iguales, diferentes });
 

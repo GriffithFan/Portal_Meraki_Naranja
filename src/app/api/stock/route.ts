@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
 import { stockCreateSchema, parseBody, isErrorResponse } from "@/lib/validation";
-import { withPrivateCatalogCache } from "@/lib/cacheHeaders";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -51,14 +51,14 @@ export async function GET(request: NextRequest) {
     where: { categoria: { not: null } },
   });
 
-  return withPrivateCatalogCache(NextResponse.json({
+  return NextResponse.json({
     equipos,
     total,
     page,
     limit,
     totalPages: Math.ceil(total / limit),
     categorias: categorias.map((c) => c.categoria).filter(Boolean),
-  }));
+  }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     const data = await parseBody(request, stockCreateSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor } = data;
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor, camposExtra } = data;
 
     if (numeroSerie) {
       const existing = await prisma.equipo.findUnique({ where: { numeroSerie } });
@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
         etiqueta: etiqueta || null,
         etiquetaColor: etiquetaColor || null,
         proveedor: proveedor || null,
+        camposExtra: camposExtra ? camposExtra as Prisma.InputJsonValue : undefined,
       },
     });
 

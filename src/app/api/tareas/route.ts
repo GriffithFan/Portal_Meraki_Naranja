@@ -5,9 +5,124 @@ import { sanitizeSearch } from "@/lib/sanitize";
 import { parseBody, isErrorResponse, tareaCreateSchema } from "@/lib/validation";
 import { registrarEnPapelera } from "@/lib/papelera";
 import { detectarProvincia } from "@/utils/provinciaUtils";
-import { getAllEquipoVariants } from "@/utils/equipoUtils";
+import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
+import { isLegacyEquipoField, normalizeTaskQuickFilter } from "@/utils/taskFieldConfig";
+import { appendAndClause, appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+const FIELD_LABELS: Record<string, string> = {
+  estadoId: "Estado",
+  espacioId: "Espacio",
+  asignadoIds: "Asignados",
+  replaceAsignadoIds: "Asignados",
+  removeAsignadoIds: "Asignados",
+  provincia: "Provincia",
+  prioridad: "Prioridad",
+  ambito: "Ambito",
+  enFacturacion: "Facturacion",
+  latitud: "Latitud",
+  longitud: "Longitud",
+};
+
+function displayActivityValue(value: unknown) {
+  if (value == null || value === "") return "Sin valor";
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "Sin asignados";
+  if (typeof value === "boolean") return value ? "Si" : "No";
+  return String(value);
+}
+
+function valuesDiffer(before: unknown, after: unknown) {
+  return displayActivityValue(before) !== displayActivityValue(after);
+}
+
+function activityValueFor(predio: any, field: string) {
+  if (field === "estadoId") return predio.estado?.nombre || null;
+  if (field === "espacioId") return predio.espacio?.nombre || null;
+  if (["asignadoIds", "replaceAsignadoIds", "removeAsignadoIds"].includes(field)) {
+    return (predio.asignaciones || []).map((asignacion: any) => asignacion.usuario?.nombre || asignacion.userId).filter(Boolean);
+  }
+  return predio[field];
+}
+
+function buildBulkChanges(before: any, after: any, fields: string[]) {
+  return fields
+    .map((field) => {
+      const beforeValue = activityValueFor(before, field);
+      const afterValue = activityValueFor(after, field);
+      if (!valuesDiffer(beforeValue, afterValue)) return null;
+      return {
+        field,
+        label: FIELD_LABELS[field] || field,
+        before: displayActivityValue(beforeValue),
+        after: displayActivityValue(afterValue),
+      };
+    })
+    .filter(Boolean) as Array<{ field: string; label: string; before: string; after: string }>;
+}
+
+function fieldsForBulkAction(action: string) {
+  if (["asignadoIds", "replaceAsignadoIds", "removeAsignadoIds"].includes(action)) return [action];
+  if (action === "autoProvince") return ["provincia"];
+  if (action === "autoGPS") return ["latitud", "longitud"];
+  return [action];
+}
+
+type EtiquetaInput = string | { id?: string | null; nombre?: string | null; color?: string | null };
+
+function normalizarEtiquetas(input: unknown): Array<{ id?: string; nombre: string; color: string }> | null {
+  if (!Array.isArray(input)) return null;
+  const byKey = new Map<string, { id?: string; nombre: string; color: string }>();
+  for (const raw of input as EtiquetaInput[]) {
+    const id = typeof raw === "object" && raw ? raw.id?.trim() || undefined : undefined;
+    const nombre = (typeof raw === "string" ? raw : raw?.nombre || "").trim();
+    if (!nombre) continue;
+    const color = (typeof raw === "object" && raw?.color ? raw.color : "#3b82f6").trim() || "#3b82f6";
+    byKey.set(id || nombre.toLowerCase(), { id, nombre, color });
+  }
+  return Array.from(byKey.values()).slice(0, 12);
+}
+
+async function replacePredioEtiquetas(predioId: string, input: unknown) {
+  const etiquetas = normalizarEtiquetas(input);
+  if (etiquetas === null) return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.predioEtiqueta.deleteMany({ where: { predioId } });
+    for (const item of etiquetas) {
+      let etiqueta = item.id
+        ? await tx.etiqueta.findUnique({ where: { id: item.id } })
+        : null;
+      if (!etiqueta) {
+        etiqueta = await tx.etiqueta.upsert({
+          where: { nombre: item.nombre },
+          update: { color: item.color },
+          create: { nombre: item.nombre, color: item.color },
+        });
+      }
+      await tx.predioEtiqueta.create({
+        data: { predioId, etiquetaId: etiqueta.id },
+      });
+    }
+  });
+}
+
+function mergeCamposConfig(current: unknown, incoming: unknown) {
+  const base = Array.isArray(current) ? current : [];
+  const next = Array.isArray(incoming) ? incoming : [];
+  const byId = new Map<string, any>();
+  for (const field of base) {
+    if (isLegacyEquipoField(field)) continue;
+    if (field?.id && field?.field) byId.set(field.id, field);
+  }
+  for (const field of next) {
+    if (isLegacyEquipoField(field)) continue;
+    if (!field?.id || !field?.field) continue;
+    if (!byId.has(field.id)) byId.set(field.id, { ...field, visible: field.visible !== false });
+  }
+  return Array.from(byId.values());
+}
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -19,9 +134,8 @@ export async function GET(request: NextRequest) {
   const asignadoId = searchParams.get("asignadoId");
   const espacioId = searchParams.get("espacioId");
   const provincia = sanitizeSearch(searchParams.get("provincia"));
-  const equipo = sanitizeSearch(searchParams.get("equipo"));
   const prioridad = searchParams.get("prioridad");
-  const quick = searchParams.get("quick");
+  const quick = normalizeTaskQuickFilter(searchParams.get("quick"));
   const groupBy = searchParams.get("groupBy") || "estado";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
   const limitParam = searchParams.get("limit");
@@ -29,27 +143,34 @@ export async function GET(request: NextRequest) {
   const pageParam = searchParams.get("page");
   const page = Math.max(parseInt(pageParam || "1") || 1, 1);
   const skip = (page - 1) * limit;
+  const sortByParam = searchParams.get("sortBy") || "";
+  const sortDirParam = searchParams.get("sortDir") === "desc" ? "desc" : "asc";
+  const SORTABLE_PREDIO_FIELDS: Record<string, true> = {
+    codigo: true, incidencias: true, lacR: true, cue: true, ambito: true,
+    provincia: true, ciudad: true, cuePredio: true, tipoRed: true,
+    codigoPostal: true, lab: true, nombreInstitucion: true, correo: true,
+    orden: true, nombre: true, fechaDesde: true, fechaHasta: true,
+    fechaActualizacion: true, updatedAt: true, gpsPredio: true,
+    caracteristicaTelefonica: true, telefono: true,
+  };
+  const orderBy: any = sortByParam && SORTABLE_PREDIO_FIELDS[sortByParam]
+    ? [{ [sortByParam]: sortDirParam }]
+    : [{ asignaciones: { _count: "desc" } }, { prioridad: "desc" }, { updatedAt: "desc" }];
 
   const where: any = {};
+  const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
+  const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session);
 
-  // Técnicos solo ven sus propias tareas + las de usuarios que les delegaron acceso
+  if (restrictedSpaceIds && !espacioId && quick !== "sin-espacio") {
+    where.espacioId = { in: restrictedSpaceIds };
+  }
+
+  appendVisibleEstadosClause(where, hiddenEstadoIds);
+
+  // Técnicos solo ven tareas asignadas a ellos o a usuarios que les delegaron visibilidad.
   if (!isModOrAdmin(session.rol)) {
-    const delegaciones = await prisma.delegacion.findMany({
-      where: { delegadoId: session.userId, activo: true },
-      select: { delegadorId: true },
-    });
-    const idsVisibles = [session.userId, ...delegaciones.map(d => d.delegadorId)];
-
-    // Buscar también por equipoAsignado (nombres almacenados en la DB)
-    const equipoMatch = getAllEquipoVariants(session.nombre);
-
-    where.OR = [
-      { asignaciones: { some: { userId: { in: idsVisibles } } } },
-      { creadorId: { in: idsVisibles } },
-      { equipoAsignado: equipoMatch.length > 0
-        ? { in: equipoMatch, mode: "insensitive" }
-        : { equals: session.nombre, mode: "insensitive" } },
-    ];
+    const idsVisibles = await getDelegatedVisibleUserIds(session);
+    appendAndClause(where, buildAssignedPredioVisibilityClause(idsVisibles));
   }
 
   // Filtrar por espacio de trabajo
@@ -74,30 +195,61 @@ export async function GET(request: NextRequest) {
         ids.add(id);
         stack.push(...(byParent.get(id) || []));
       }
-      where.espacioId = { in: Array.from(ids) };
+      const requestedIds = Array.from(ids);
+      where.espacioId = restrictedSpaceIds
+        ? { in: requestedIds.filter((id) => restrictedSpaceIds.includes(id)) }
+        : { in: requestedIds };
     } else {
-      where.espacioId = espacioId;
+      where.espacioId = restrictedSpaceIds
+        ? { in: restrictedSpaceIds.includes(espacioId) ? [espacioId] : [] }
+        : espacioId;
     }
   }
 
   if (estado) where.estado = { clave: estado };
+  const estadoIdParam = searchParams.get("estadoId");
+  if (estadoIdParam === "null") {
+    where.estadoId = null;
+  } else if (estadoIdParam) {
+    where.estadoId = estadoIdParam;
+  }
   if (asignadoId) where.asignaciones = { some: { userId: asignadoId } };
   if (provincia) where.provincia = { contains: provincia, mode: "insensitive" };
-  if (equipo) where.equipoAsignado = { contains: equipo, mode: "insensitive" };
   if (prioridad && ["BAJA", "MEDIA", "ALTA", "URGENTE"].includes(prioridad)) where.prioridad = prioridad;
   if (buscar) {
+    const camposExtraMatches = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT "id"
+      FROM "Predio"
+      WHERE "camposExtra"::text ILIKE ${`%${buscar}%`}
+      LIMIT 2000
+    `;
+    const searchOr: any[] = [
+      { nombre: { contains: buscar, mode: "insensitive" } },
+      { codigo: { contains: buscar, mode: "insensitive" } },
+      { incidencias: { contains: buscar, mode: "insensitive" } },
+      { cue: { contains: buscar, mode: "insensitive" } },
+      { direccion: { contains: buscar, mode: "insensitive" } },
+      { ciudad: { contains: buscar, mode: "insensitive" } },
+      { provincia: { contains: buscar, mode: "insensitive" } },
+      { nombreInstitucion: { contains: buscar, mode: "insensitive" } },
+      { cuePredio: { contains: buscar, mode: "insensitive" } },
+      { gpsPredio: { contains: buscar, mode: "insensitive" } },
+      { tipoRed: { contains: buscar, mode: "insensitive" } },
+      { codigoPostal: { contains: buscar, mode: "insensitive" } },
+      { caracteristicaTelefonica: { contains: buscar, mode: "insensitive" } },
+      { telefono: { contains: buscar, mode: "insensitive" } },
+      { lab: { contains: buscar, mode: "insensitive" } },
+      { correo: { contains: buscar, mode: "insensitive" } },
+      { ambito: { contains: buscar, mode: "insensitive" } },
+      { lacR: { contains: buscar, mode: "insensitive" } },
+      { notas: { contains: buscar, mode: "insensitive" } },
+      { etiquetas: { some: { etiqueta: { nombre: { contains: buscar, mode: "insensitive" } } } } },
+    ];
+    const camposExtraIds = Array.from(new Set(camposExtraMatches.map((row) => row.id)));
+    if (camposExtraIds.length > 0) searchOr.push({ id: { in: camposExtraIds } });
+
     const searchWhere = {
-      OR: [
-        { nombre: { contains: buscar, mode: "insensitive" } },
-        { codigo: { contains: buscar, mode: "insensitive" } },
-        { incidencias: { contains: buscar, mode: "insensitive" } },
-        { cue: { contains: buscar, mode: "insensitive" } },
-        { direccion: { contains: buscar, mode: "insensitive" } },
-        { ciudad: { contains: buscar, mode: "insensitive" } },
-        { provincia: { contains: buscar, mode: "insensitive" } },
-        { equipoAsignado: { contains: buscar, mode: "insensitive" } },
-        { nombreInstitucion: { contains: buscar, mode: "insensitive" } },
-      ],
+      OR: searchOr,
     };
     where.AND = where.AND ? [...where.AND, searchWhere] : [searchWhere];
   }
@@ -117,9 +269,12 @@ export async function GET(request: NextRequest) {
     };
     where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
   } else if (quick === "sin-espacio") {
-    where.espacioId = null;
+    where.espacioId = restrictedSpaceIds ? { in: [] } : null;
   } else if (quick === "sin-estado") {
     where.estadoId = null;
+  } else if (quick === "sin-asignar") {
+    const quickWhere = { asignaciones: { none: {} } };
+    where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
   } else if (quick === "vencidas") {
     const quickWhere = {
       OR: [
@@ -138,7 +293,13 @@ export async function GET(request: NextRequest) {
     where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
   }
 
-  const [predios, total, groupCounts] = await Promise.all([
+  // Modo conteo rápido para lazy loading — solo devuelve agrupaciones sin datos de predios
+  if (searchParams.get("countOnly") === "true") {
+    const counts = await getGroupCounts(where, "estado");
+    return NextResponse.json({ groupCounts: counts });
+  }
+
+  const [predios, total, groupCounts, espacioSummaryRaw] = await Promise.all([
     prisma.predio.findMany({
       where,
       include: {
@@ -147,14 +308,22 @@ export async function GET(request: NextRequest) {
         asignaciones: {
           select: { id: true, usuario: { select: { id: true, nombre: true } } },
         },
+        etiquetas: {
+          include: { etiqueta: true },
+        },
         _count: { select: { comentarios: true, equipos: true } },
       },
-      orderBy: [{ prioridad: "desc" }, { updatedAt: "desc" }],
+      orderBy,
       skip,
       take: limit,
     }),
     prisma.predio.count({ where }),
     getGroupCounts(where, groupBy),
+    (buscar && !espacioId) ? prisma.predio.groupBy({
+      by: ["espacioId"],
+      where,
+      _count: { _all: true },
+    }) : Promise.resolve([]),
   ]);
 
   // Registrar consulta de predios (auditoría) — fire-and-forget
@@ -165,9 +334,28 @@ export async function GET(request: NextRequest) {
       accion: "CONSULTA_PREDIO",
       detalle: espacioId ? `Espacio ${espacioId}` : "Vista general de tareas",
       ip,
-      metadata: { espacioId: espacioId || null, includeSubspaces, total, buscar: buscar || null, estado: estado || null, provincia: provincia || null, equipo: equipo || null, prioridad: prioridad || null, quick: quick || null },
+      metadata: { espacioId: espacioId || null, includeSubspaces, total, buscar: buscar || null, estado: estado || null, provincia: provincia || null, prioridad: prioridad || null, quick: quick || null },
     },
   }).catch(() => {});
+
+  let espacioSummary: Record<string, { nombre: string; total: number }> | null = null;
+  if (buscar && !espacioId && Array.isArray(espacioSummaryRaw) && espacioSummaryRaw.length > 0) {
+    const espacioIds = espacioSummaryRaw.map((e) => e.espacioId).filter(Boolean) as string[];
+    const espaciosInfo = await prisma.espacioTrabajo.findMany({
+      where: { id: { in: espacioIds } },
+      select: { id: true, nombre: true },
+    });
+    const espacioMap = Object.fromEntries(espaciosInfo.map((e) => [e.id, e.nombre]));
+    espacioSummary = Object.fromEntries(
+      espacioSummaryRaw.map((row) => [
+        row.espacioId || "sin-espacio",
+        {
+          nombre: espacioMap[row.espacioId!] || "Sin espacio",
+          total: row._count._all,
+        },
+      ])
+    );
+  }
 
   return NextResponse.json({
     predios,
@@ -177,6 +365,7 @@ export async function GET(request: NextRequest) {
     totalPages: Math.max(1, Math.ceil(total / limit)),
     hasMore: skip + predios.length < total,
     groupCounts,
+    ...(espacioSummary && { espacioSummary }),
   });
 }
 
@@ -190,10 +379,9 @@ async function getGroupCounts(where: any, groupBy: string) {
     return Object.fromEntries(rows.map((row) => [row.estadoId || "sin-estado", row._count._all]));
   }
 
-  const fieldMap: Record<string, "provincia" | "lacR" | "equipoAsignado" | "ambito" | "ciudad"> = {
+  const fieldMap: Record<string, "provincia" | "lacR" | "ambito" | "ciudad"> = {
     provincia: "provincia",
     lacR: "lacR",
-    equipoAsignado: "equipoAsignado",
     ambito: "ambito",
     ciudad: "ciudad",
   };
@@ -219,10 +407,11 @@ export async function POST(request: NextRequest) {
     const parsed = await parseBody(request, tareaCreateSchema);
     if (isErrorResponse(parsed)) return parsed;
     const { 
-      nombre, codigo, direccion, ciudad, tipo, notas, prioridad, 
+      nombre, codigo, direccion, ciudad, tipo, notas, notasTecnico, prioridad, 
       asignadoIds, fechaProgramada, estadoId, espacioId,
-      incidencias, lacR, cue, ambito, equipoAsignado,
-      provincia, cuePredio, gpsPredio, fechaDesde, fechaHasta
+      incidencias, lacR, cue, ambito,
+      provincia, cuePredio, gpsPredio, fechaDesde, fechaHasta,
+      camposExtra, etiquetas
     } = parsed;
 
     const data: any = {
@@ -232,10 +421,12 @@ export async function POST(request: NextRequest) {
       ciudad: ciudad || null,
       tipo: tipo || null,
       notas: notas || null,
+      notasTecnico: notasTecnico || null,
       prioridad: prioridad || "MEDIA",
       fechaProgramada: fechaProgramada ? new Date(fechaProgramada) : null,
       creadorId: session.userId,
       fechaActualizacion: new Date(),
+      camposExtra: camposExtra && Object.keys(camposExtra).length > 0 ? camposExtra : undefined,
     };
 
     // Conectar estado si se proporciona
@@ -249,14 +440,24 @@ export async function POST(request: NextRequest) {
     if (lacR) data.lacR = lacR.toUpperCase();
     if (cue) data.cue = cue;
     if (ambito) data.ambito = ambito;
-    if (equipoAsignado) data.equipoAsignado = equipoAsignado.toUpperCase();
     if (provincia) data.provincia = provincia;
     if (cuePredio) data.cuePredio = cuePredio;
     if (gpsPredio) data.gpsPredio = gpsPredio;
     if (fechaDesde) data.fechaDesde = new Date(fechaDesde);
     if (fechaHasta) data.fechaHasta = new Date(fechaHasta);
 
-    const predio = await prisma.predio.create({ data });
+    const predio = await prisma.predio.create({
+      data,
+      include: { etiquetas: { include: { etiqueta: true } } },
+    });
+
+    if (etiquetas !== undefined) {
+      await replacePredioEtiquetas(predio.id, etiquetas);
+      predio.etiquetas = await prisma.predioEtiqueta.findMany({
+        where: { predioId: predio.id },
+        include: { etiqueta: true },
+      });
+    }
 
     // Asignar usuarios si se proporcionan
     if (asignadoIds && Array.isArray(asignadoIds) && asignadoIds.length > 0) {
@@ -337,7 +538,10 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const predios = await prisma.predio.findMany({ where });
+    const predios = await prisma.predio.findMany({
+      where,
+      include: { asignaciones: { select: { userId: true, tipo: true, notas: true } } },
+    });
 
     // Registrar en papelera
     for (const p of predios) {
@@ -365,7 +569,7 @@ export async function DELETE(request: NextRequest) {
 
 // PATCH /api/tareas — Edición masiva (ADMIN/MODERADOR)
 // Body: { ids: string[], action: string, value: any }
-// Acciones: "estadoId", "espacioId", "equipoAsignado", "provincia", "asignadoIds", "autoProvince", "autoGPS"
+// Acciones: "estadoId", "espacioId", "provincia", "asignadoIds", "replaceAsignadoIds", "removeAsignadoIds", "autoProvince", "autoGPS"
 export async function PATCH(request: NextRequest) {
   const session = await getSession();
   if (!session || !isModOrAdmin(session.rol)) {
@@ -386,6 +590,15 @@ export async function PATCH(request: NextRequest) {
     // Limitar a 500 IDs por seguridad
     const safeIds = ids.slice(0, 500);
     let count = 0;
+    const beforePredios = await prisma.predio.findMany({
+      where: { id: { in: safeIds } },
+      include: {
+        estado: { select: { id: true, nombre: true } },
+        espacio: { select: { id: true, nombre: true } },
+        asignaciones: { include: { usuario: { select: { id: true, nombre: true } } } },
+      },
+    });
+    const beforeById = new Map(beforePredios.map((predio) => [predio.id, predio]));
 
     if (action === "autoProvince") {
       // Auto-detectar provincia desde código para todos los seleccionados
@@ -419,29 +632,49 @@ export async function PATCH(request: NextRequest) {
           }
         }
       }
-    } else if (action === "asignadoIds") {
-      // Asignar usuarios a múltiples predios (sin duplicados)
-      console.log("[BULK ASSIGN] value:", JSON.stringify(value), "type:", typeof value, "isArray:", Array.isArray(value));
+    } else if (["asignadoIds", "replaceAsignadoIds", "removeAsignadoIds"].includes(action)) {
+      // Gestionar asignados en múltiples predios: agregar, reemplazar o quitar.
       if (!Array.isArray(value) || value.length === 0) {
-        console.log("[BULK ASSIGN] REJECTED — not array or empty");
         return NextResponse.json({ error: "IDs de usuarios requeridos" }, { status: 400 });
       }
       const validUsers = await prisma.user.findMany({
         where: { id: { in: value }, activo: true },
-        select: { id: true },
+        select: { id: true, nombre: true },
       });
       const validUserIds = validUsers.map(u => u.id);
+      if (validUserIds.length === 0) {
+        return NextResponse.json({ error: "Ningún usuario válido" }, { status: 400 });
+      }
+
       for (const predioId of safeIds) {
         const existing = await prisma.asignacion.findMany({
           where: { predioId },
           select: { userId: true },
         });
-        const existingIds = new Set(existing.map(a => a.userId));
-        const newIds = validUserIds.filter(uid => !existingIds.has(uid));
-        if (newIds.length > 0) {
+        const existingUserIds = existing.map(a => a.userId);
+        const existingIds = new Set(existingUserIds);
+
+        if (action === "asignadoIds") {
+          const newIds = validUserIds.filter(uid => !existingIds.has(uid));
+          if (newIds.length === 0) continue;
           await prisma.asignacion.createMany({
             data: newIds.map(uid => ({ tipo: "TAREA", userId: uid, predioId })),
           });
+          count++;
+        } else if (action === "replaceAsignadoIds") {
+          const sameIds = existingUserIds.length === validUserIds.length && validUserIds.every((uid) => existingIds.has(uid));
+          if (sameIds) continue;
+          await prisma.$transaction(async (tx) => {
+            await tx.asignacion.deleteMany({ where: { predioId } });
+            await tx.asignacion.createMany({
+              data: validUserIds.map(uid => ({ tipo: "TAREA", userId: uid, predioId })),
+            });
+          });
+          count++;
+        } else if (action === "removeAsignadoIds") {
+          const removeIds = validUserIds.filter(uid => existingIds.has(uid));
+          if (removeIds.length === 0) continue;
+          await prisma.asignacion.deleteMany({ where: { predioId, userId: { in: removeIds } } });
           count++;
         }
       }
@@ -455,11 +688,35 @@ export async function PATCH(request: NextRequest) {
         data: { enFacturacion: value === true || value === "true" },
       });
       count = result.count;
-    } else if (["estadoId", "espacioId", "equipoAsignado", "provincia", "prioridad", "ambito"].includes(action)) {
-      // Actualización directa de un campo
+    } else if (action === "espacioId") {
+      const moveOptions = value && typeof value === "object" && !Array.isArray(value) ? value : null;
+      const nextEspacioId = moveOptions ? moveOptions.espacioId : value;
+      const keepCamposExtra = moveOptions?.keepCamposExtra !== false;
+      const updateData: any = { espacioId: nextEspacioId || null };
+      if (!keepCamposExtra) updateData.camposExtra = null;
       const result = await prisma.predio.updateMany({
         where: { id: { in: safeIds } },
-        data: { [action]: value || null },
+        data: updateData,
+      });
+      count = result.count;
+      if (nextEspacioId && moveOptions?.addCamposToTarget && Array.isArray(moveOptions.camposConfig) && moveOptions.camposConfig.length > 0) {
+        const target = await prisma.espacioTrabajo.findUnique({
+          where: { id: nextEspacioId },
+          select: { camposConfig: true },
+        });
+        if (target) {
+          await prisma.espacioTrabajo.update({
+            where: { id: nextEspacioId },
+            data: { camposConfig: mergeCamposConfig(target.camposConfig, moveOptions.camposConfig) },
+          });
+        }
+      }
+    } else if (["estadoId", "provincia", "prioridad", "ambito"].includes(action)) {
+      // Actualización directa de un campo
+      const nextValue = value || null;
+      const result = await prisma.predio.updateMany({
+        where: { id: { in: safeIds } },
+        data: { [action]: nextValue },
       });
       count = result.count;
     } else {
@@ -467,6 +724,47 @@ export async function PATCH(request: NextRequest) {
     }
 
     try {
+      const afterPredios = await prisma.predio.findMany({
+        where: { id: { in: safeIds } },
+        include: {
+          estado: { select: { id: true, nombre: true } },
+          espacio: { select: { id: true, nombre: true } },
+          asignaciones: { include: { usuario: { select: { id: true, nombre: true } } } },
+        },
+      });
+      const detailFields = fieldsForBulkAction(action);
+      const detailedActivities = afterPredios
+        .map((afterPredio) => {
+          const beforePredio = beforeById.get(afterPredio.id);
+          if (!beforePredio) return null;
+          const changes = buildBulkChanges(beforePredio, afterPredio, detailFields);
+          if (changes.length === 0) return null;
+          return {
+            accion: "EDITAR",
+            descripcion: changes.map((change) => `${change.label}: ${change.before} -> ${change.after}`).join("; "),
+            entidad: "PREDIO",
+            entidadId: afterPredio.id,
+            userId: session.userId,
+            metadata: {
+              bulkAction: action,
+              bulkValue: value,
+              changes,
+            },
+          };
+        })
+        .filter(Boolean) as Array<{
+          accion: string;
+          descripcion: string;
+          entidad: string;
+          entidadId: string;
+          userId: string;
+          metadata: any;
+        }>;
+
+      if (detailedActivities.length > 0) {
+        await prisma.actividad.createMany({ data: detailedActivities });
+      }
+
       await prisma.actividad.create({
         data: {
           accion: "EDITAR",
@@ -474,6 +772,12 @@ export async function PATCH(request: NextRequest) {
           entidad: "PREDIO",
           entidadId: "bulk",
           userId: session.userId,
+          metadata: {
+            action,
+            value,
+            count,
+            detailedActivities: detailedActivities.length,
+          },
         },
       });
     } catch { /* no bloquear */ }

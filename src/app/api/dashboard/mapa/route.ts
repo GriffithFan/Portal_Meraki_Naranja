@@ -1,9 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
-import { equipoFilter, getAllEquipoVariants } from "@/utils/equipoUtils";
+import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+function parseGpsPair(value: string | null | undefined): { lat: number; lng: number } | null {
+  if (!value) return null;
+  const normalized = value
+    .trim()
+    .replace(/;/g, ",")
+    .replace(/\s+/g, " ");
+  const match = normalized.match(/-?\d+(?:[.,]\d+)?/g);
+  if (!match || match.length < 2) return null;
+  const lat = Number(match[0].replace(",", "."));
+  const lng = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (value == null) return null;
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : null;
+}
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -12,75 +34,47 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const espacioId = searchParams.get("espacioId");
-  const equipoParam = searchParams.get("equipo");
   const provincia = searchParams.get("provincia");
   const estadoId = searchParams.get("estadoId");
+  const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session);
+  const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
 
   const where: any = {
-    latitud: { not: null },
-    longitud: { not: null },
+    AND: [
+      {
+        OR: [
+          {
+            latitud: { not: null },
+            longitud: { not: null },
+          },
+          {
+            gpsPredio: { not: null },
+          },
+        ],
+      },
+    ],
   };
 
   if (espacioId) where.espacioId = espacioId;
-
-  // Mapear código TH a nombres reales de la DB si corresponde
-  if (equipoParam) {
-    where.equipoAsignado = equipoFilter(equipoParam);
-  }
+  if (!espacioId && restrictedSpaceIds) where.espacioId = { in: restrictedSpaceIds };
 
   if (provincia) where.provincia = provincia;
   if (estadoId) where.estadoId = estadoId;
 
-  // Filtrar por estados ocultos según permisos del usuario (admin ve todo)
-  if (session.rol !== "ADMIN") {
-    const [permsRol, permsUsuario] = await Promise.all([
-      prisma.permisoEstado.findMany({
-        where: { rol: session.rol as any, visible: false },
-        select: { estadoId: true },
-      }),
-      prisma.permisoEstadoUsuario.findMany({
-        where: { userId: session.userId },
-        select: { estadoId: true, visible: true },
-      }),
-    ]);
-
-    const hidden = new Set(permsRol.map((p) => p.estadoId));
-    // Permisos por usuario tienen prioridad
-    for (const p of permsUsuario) {
-      if (!p.visible) hidden.add(p.estadoId);
-      else hidden.delete(p.estadoId);
+  if (hiddenEstadoIds.length > 0) {
+    if (estadoId && hiddenEstadoIds.includes(estadoId)) {
+      return NextResponse.json([]);
     }
-    if (hidden.size > 0) {
-      const notIn = Array.from(hidden);
-      if (estadoId) {
-        // Si ya hay filtro de estadoId específico, verificar que no esté oculto
-        if (hidden.has(estadoId)) {
-          return NextResponse.json([]); // Estado solicitado está oculto para este usuario
-        }
-      } else {
-        // notIn excluye NULLs en SQL — incluirlos explícitamente para no ocultar predios sin estado
-        where.AND = [...(where.AND || []), {
-          OR: [
-            { estadoId: { notIn } },
-            { estadoId: null },
-          ],
-        }];
-      }
-    }
+    appendVisibleEstadosClause(where, hiddenEstadoIds);
   }
 
-  // Usuarios normales (no mod/admin): solo ver predios de su equipo o asignados
+  // Usuarios normales (no mod/admin): solo ver predios asignados
   if (!isModOrAdmin(session.rol)) {
-    const variants = getAllEquipoVariants(session.nombre);
-    where.OR = [
-      { equipoAsignado: variants.length > 0
-        ? { in: variants, mode: "insensitive" }
-        : { equals: session.nombre, mode: "insensitive" } },
-      { asignaciones: { some: { userId: session.userId } } },
-    ];
+    const idsVisibles = await getDelegatedVisibleUserIds(session);
+    where.AND = [...(where.AND || []), buildAssignedPredioVisibilityClause(idsVisibles)];
   }
 
-  const predios = await prisma.predio.findMany({
+  const prediosRaw = await prisma.predio.findMany({
     where,
     select: {
       id: true,
@@ -91,15 +85,41 @@ export async function GET(request: NextRequest) {
       provincia: true,
       latitud: true,
       longitud: true,
+      gpsPredio: true,
       tipo: true,
-      equipoAsignado: true,
       ambito: true,
       nombreInstitucion: true,
       espacioId: true,
       estado: { select: { id: true, nombre: true, color: true } },
+      asignaciones: { include: { usuario: { select: { id: true, nombre: true } } } },
     },
     take: 5000,
   });
+
+  const predios = prediosRaw
+    .map((predio) => {
+      const base: any = { ...predio };
+      delete base.gpsPredio;
+      const lat = toFiniteNumber(predio.latitud);
+      const lng = toFiniteNumber(predio.longitud);
+      if (lat != null && lng != null) {
+        return {
+          ...base,
+          latitud: lat,
+          longitud: lng,
+        };
+      }
+
+      const parsed = parseGpsPair(predio.gpsPredio);
+      if (!parsed) return null;
+
+      return {
+        ...base,
+        latitud: parsed.lat,
+        longitud: parsed.lng,
+      };
+    })
+    .filter((predio): predio is NonNullable<typeof predio> => Boolean(predio));
 
   return NextResponse.json(predios);
 }

@@ -99,10 +99,9 @@ export async function POST() {
         codigo: true,
         provincia: true,
         incidencias: true,
-        equipoAsignado: true,
         fechaActualizacion: true,
         asignaciones: {
-          where: { tipo: "TECNICO" },
+          where: { tipo: { in: ["TAREA", "TECNICO"] } },
           include: { usuario: { select: { id: true, nombre: true } } },
         },
       },
@@ -128,9 +127,8 @@ export async function POST() {
 
       const tecnicos = predio.asignaciones.map((a) => a.usuario);
       if (tecnicos.length === 0) {
-        // Fallback: usar equipoAsignado si no hay asignaciones formales
-        const key = predio.equipoAsignado || "SIN_ASIGNAR";
-        const label = predio.equipoAsignado || "Sin asignar";
+        const key = "SIN_ASIGNAR";
+        const label = "Sin asignar";
         if (!porTecnico[key]) {
           porTecnico[key] = { tecnicoId: key, tecnicoNombre: label, cantidad: 0, tareas: [] };
         }

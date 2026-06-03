@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
-import { buildEquipoOptions, getAllEquipoVariants } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function equipoWhere(key: string, display?: string) {
-  const variants = getAllEquipoVariants(key);
-  const values = variants.length > 0 ? variants : [key, display].filter(Boolean) as string[];
-  if (values.length === 0) return { OR: [{ equipoAsignado: null }, { equipoAsignado: "" }] };
-  return {
-    OR: values.map((value) => ({ equipoAsignado: { equals: value, mode: "insensitive" as const } })),
-  };
+function asignadoWhere(userId: string | null) {
+  if (!userId) return { asignaciones: { none: {} } };
+  return { asignaciones: { some: { userId } } };
 }
 
 function missingGpsWhere(baseWhere: any) {
@@ -45,13 +40,13 @@ export async function GET() {
     select: { id: true, nombre: true, rol: true },
     orderBy: { nombre: "asc" },
   });
-  const equipoOptions = buildEquipoOptions(users).map((item) => ({ key: item.key, display: item.display }));
-  const options = [...equipoOptions, { key: "SIN_EQUIPO", display: "SIN EQUIPO" }];
+  const options = [
+    ...users.map((user) => ({ key: user.id, display: user.nombre, userId: user.id })),
+    { key: "SIN_ASIGNAR", display: "Sin asignar", userId: null },
+  ];
 
-  const equipos = await Promise.all(options.map(async (option) => {
-    const baseWhere = option.key === "SIN_EQUIPO"
-      ? { OR: [{ equipoAsignado: null }, { equipoAsignado: "" }] }
-      : equipoWhere(option.key, option.display);
+  const asignados = await Promise.all(options.map(async (option) => {
+    const baseWhere = asignadoWhere(option.userId);
     const vencidasWhere = {
       AND: [
         baseWhere,
@@ -122,7 +117,7 @@ export async function GET() {
     };
   }));
 
-  const activos = equipos.filter((item) => item.total > 0 || item.key === "SIN_EQUIPO");
+  const activos = asignados.filter((item) => item.total > 0 || item.key === "SIN_ASIGNAR");
   const resumen = activos.reduce((acc, item) => {
     acc.total += item.total;
     acc.vencidas += item.vencidas;
@@ -133,5 +128,5 @@ export async function GET() {
     return acc;
   }, { total: 0, vencidas: 0, hoy: 0, sinGPS: 0, sinEstado: 0, alta: 0 });
 
-  return NextResponse.json({ generatedAt: now.toISOString(), resumen, equipos: activos.sort((a, b) => b.total - a.total) });
+  return NextResponse.json({ generatedAt: now.toISOString(), resumen, asignados: activos.sort((a, b) => b.total - a.total) });
 }

@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     const files = formData.getAll("file").filter((entry): entry is File => entry instanceof File && entry.size > 0);
     const conversacionId = formData.get("conversacionId") as string | null;
     const mensaje = (formData.get("mensaje") as string)?.trim() || "";
+    const replyToId = (formData.get("replyToId") as string | null)?.trim() || null;
 
     if (files.length === 0) {
       return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
@@ -72,6 +73,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Conversación cerrada" }, { status: 400 });
     }
 
+    if (replyToId) {
+      const replyTarget = await prisma.chatMensaje.findUnique({
+        where: { id: replyToId },
+        select: { id: true, conversacionId: true },
+      });
+      if (!replyTarget || replyTarget.conversacionId !== conversacionId) {
+        return NextResponse.json({ error: "Mensaje de respuesta inválido" }, { status: 400 });
+      }
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
       select: { esMesa: true },
@@ -102,6 +113,7 @@ export async function POST(request: NextRequest) {
           contenido: mensaje && files.length === 1 ? mensaje : file.name,
           conversacionId,
           autorId: session.userId,
+          replyToId: files.length === 1 ? replyToId : null,
           archivoUrl: `uploads/chat/${safeName}`,
           archivoNombre: sanitizeFileName(file.name),
           archivoTipo: validated.mime,
@@ -109,6 +121,16 @@ export async function POST(request: NextRequest) {
         },
         include: {
           autor: { select: { id: true, nombre: true, esMesa: true } },
+          replyTo: {
+            select: {
+              id: true,
+              contenido: true,
+              archivoNombre: true,
+              archivoTipo: true,
+              autor: { select: { id: true, nombre: true, esMesa: true } },
+            },
+          },
+          reacciones: { select: { id: true, userId: true, emoji: true } },
         },
       });
       mensajesCreados.push(nuevoMensaje);

@@ -3,11 +3,16 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
-import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconClock, IconSort, IconTrash } from "@/components/ui/Icons";
+import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
+import TareaDetalleModal from "@/components/TareaDetalleModal";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
+import SavedViewsBar from "@/components/tareas/SavedViewsBar";
+import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
-import { buildEquipoOptions, aliasToKey, getEquipoDisplayName } from "@/utils/equipoUtils";
+import { dedupeUsersByName } from "@/utils/asignacionUtils";
+import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { toast } from "sonner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -29,14 +34,25 @@ const CopyBtn = ({ text }: { text: string }) => {
 };
 
 // ── Indicador de notas/comentarios ──────────────────────────
-const NotesIndicator = ({ notas, comentarios }: { notas?: string; comentarios?: number }) => {
-  if (!notas && !(comentarios && comentarios > 0)) return null;
-  const tip = [notas ? "Tiene notas" : "", comentarios ? `${comentarios} comentario${comentarios > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
+const NotesIndicator = ({ notas, notasTecnico, comentarios }: { notas?: string; notasTecnico?: string; comentarios?: number }) => {
+  if (!notas && !notasTecnico && !(comentarios && comentarios > 0)) return null;
+  const taskTip = [notas ? "Tiene notas" : "", comentarios ? `${comentarios} comentario${comentarios > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
   return (
-    <span className="shrink-0" title={tip}>
-      <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-      </svg>
+    <span className="inline-flex shrink-0 items-center gap-0.5">
+      {(notas || (comentarios && comentarios > 0)) && (
+        <span title={taskTip || "Tiene notas"} aria-label="Nota de tarea">
+          <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+          </svg>
+        </span>
+      )}
+      {notasTecnico && (
+        <span title="Tiene nota de tecnico" aria-label="Nota del tecnico">
+          <svg className="w-3 h-3 text-primary-500" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+          </svg>
+        </span>
+      )}
     </span>
   );
 };
@@ -49,12 +65,11 @@ const GROUP_BY_OPTIONS = [
   { value: "provincia", label: "Provincia" },
   { value: "asignados", label: "Persona asignada" },
   { value: "lacR", label: "LAC-R" },
-  { value: "equipoAsignado", label: "Equipo" },
   { value: "ambito", label: "Ámbito" },
   { value: "ciudad", label: "Departamento" },
 ];
 
-const SERVER_PAGE_SIZE = 500;
+const SERVER_PAGE_SIZE = 1000;
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -66,20 +81,39 @@ interface Column {
   width: number;
   visible: boolean;
   editable: boolean;
-  type: "text" | "badge" | "date" | "select";
+  type: "text" | "badge" | "date" | "select" | "multiselect" | "colored-select";
   options?: string[];
+  optionColors?: Record<string, string>;
+  showInCreate?: boolean;
+}
+
+interface TareasSavedView {
+  id: string;
+  name: string;
+  search: string;
+  filters: {
+    filterEstado: string;
+    filterProvincia: string;
+    filterPrioridad: string;
+    quickFilter: string;
+    groupBy: string;
+    includeSubspaces?: boolean;
+  };
+  sortConfig: { field: string; dir: "asc" | "desc" } | null;
+  columns: Array<{ id: string; visible: boolean; order: number; width?: number }>;
+  updatedAt?: string;
 }
 
 const DEFAULT_COLUMNS: Column[] = [
   { id: "codigoPredio", label: "Predio", field: "codigo", width: 100, visible: true, editable: false, type: "text" },
   { id: "predio", label: "Incidencia", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
   { id: "fechaActualizacion", label: "Fecha de actualización", field: "updatedAt", width: 110, visible: true, editable: false, type: "date" },
+  { id: "etiquetas", label: "Etiquetas", field: "etiquetas", width: 150, visible: true, editable: false, type: "text" },
   { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO", "PEDIDO"] },
   { id: "cue", label: "CUE", field: "cue", width: 100, visible: true, editable: true, type: "text" },
   { id: "fechaDesde", label: "DESDE", field: "fechaDesde", width: 90, visible: true, editable: true, type: "date" },
   { id: "fechaHasta", label: "HASTA", field: "fechaHasta", width: 90, visible: true, editable: true, type: "date" },
   { id: "ambito", label: "Ámbito", field: "ambito", width: 80, visible: true, editable: true, type: "select", options: ["Urbano", "Rural"] },
-  { id: "equipoAsignado", label: "Equipo", field: "equipoAsignado", width: 70, visible: true, editable: true, type: "text" },
   { id: "asignados", label: "Asignados", field: "asignaciones", width: 120, visible: true, editable: false, type: "text" },
   { id: "provincia", label: "Provincia", field: "provincia", width: 100, visible: true, editable: true, type: "text" },
   { id: "cuePredio", label: "CUE_Predio", field: "cuePredio", width: 100, visible: true, editable: true, type: "text" },
@@ -109,11 +143,12 @@ export default function TareasPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
   const [groupCounts, setGroupCounts] = useState<Record<string, number> | null>(null);
+  const [espacioSummary, setEspacioSummary] = useState<Record<string, { nombre: string; total: number }> | null>(null);
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterProvincia, setFilterProvincia] = useState("");
-  const [filterEquipo, setFilterEquipo] = useState("");
   const [filterPrioridad, setFilterPrioridad] = useState("todas");
   const [quickFilter, setQuickFilter] = useState("todos");
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Read URL params on mount (client-side only)
   const urlParamsRef = useRef<URLSearchParams | null>(null);
@@ -122,19 +157,54 @@ export default function TareasPage() {
   }
   const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
   const [serverSearch, setServerSearch] = useState(() => urlParamsRef.current?.get("search") || "");
+  const openTargetRef = useRef<string | null>(urlParamsRef.current?.get("open") || null);
+  const openHandled = useRef(false);
 
   // Sincronizar búsqueda del Header global
-  useEffect(() => { if (headerSearch !== undefined) setSearch(headerSearch); }, [headerSearch]);
+  useEffect(() => {
+    if (headerSearch === undefined) return;
+    setSearch(headerSearch);
+    setServerSearch(headerSearch.trim());
+    if (headerSearch.trim()) {
+      setFilterEstado("todos");
+      setFilterProvincia("");
+      setFilterPrioridad("todas");
+      setQuickFilter("todos");
+    }
+  }, [headerSearch]);
   useEffect(() => {
     const timer = setTimeout(() => setServerSearch(search.trim()), 350);
     return () => clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const href = (event as CustomEvent<{ href?: string }>).detail?.href;
+      if (!href || typeof window === "undefined") return;
+      const url = new URL(href, window.location.origin);
+      if (url.pathname !== window.location.pathname) return;
+      const nextSearch = url.searchParams.get("search") || "";
+      const nextOpen = url.searchParams.get("open");
+      openTargetRef.current = nextOpen;
+      if (nextOpen) openHandled.current = false;
+      if (nextSearch) {
+        setSearch(nextSearch);
+        setServerSearch(nextSearch.trim());
+      }
+    };
+    window.addEventListener("pmn-global-result-selected", handler);
+    return () => window.removeEventListener("pmn-global-result-selected", handler);
+  }, []);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
   const [groupBy, setGroupBy] = useState("estado");
   const filtersLoadedRef = useRef(false);
   const filterSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savedViews, setSavedViews] = useState<TareasSavedView[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [newViewName, setNewViewName] = useState("");
+  const [savingView, setSavingView] = useState(false);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [createDefaults, setCreateDefaults] = useState<{ estadoId?: string; espacioId?: string }>({});
@@ -208,7 +278,7 @@ export default function TareasPage() {
     if (!isModOrAdmin) return; // Técnicos no guardan
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const config = columns.map((c, i) => ({ id: c.id, visible: c.visible, order: i, width: c.width }));
+      const config = sanitizeTaskFieldConfigs(columns).map((c, i) => ({ id: c.id, visible: c.visible, order: i, width: c.width }));
       fetch("/api/config-vista", {
         method: "PUT",
         credentials: "include",
@@ -231,6 +301,7 @@ export default function TareasPage() {
   const [bulkAction, setBulkAction] = useState<string>("");
   const [bulkValue, setBulkValue] = useState<string>("");
   const [bulkExecuting, setBulkExecuting] = useState(false);
+  const selectedBulkUserIds = useMemo(() => bulkValue ? bulkValue.split(",").filter(Boolean) : [], [bulkValue]);
 
   // Mostrar/ocultar estados vacíos
   const [showEmptyStates, setShowEmptyStates] = useState(false);
@@ -261,29 +332,12 @@ export default function TareasPage() {
 
   // Usuarios para asignación
   const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
-  const equipoOpts = useMemo(() => buildEquipoOptions(allUsers), [allUsers]);
-
-  /** Resuelve un valor guardado de equipoAsignado al key canónico de equipoOpts */
-  const resolveEquipoKey = useCallback((val: string | null | undefined): string => {
-    if (!val) return "";
-    const byAlias = aliasToKey(val);
-    if (byAlias) return byAlias;
-    const match = equipoOpts.find(o => o.key.toUpperCase() === val.toUpperCase() || o.display.toUpperCase() === val.toUpperCase());
-    return match?.key || val;
-  }, [equipoOpts]);
 
   const [espacios, setEspacios] = useState<any[]>([]);
-  const [showUserPicker, setShowUserPicker] = useState(false);
 
   // Modal de detalle
   const [selectedTarea, setSelectedTarea] = useState<any>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [actividades, setActividades] = useState<any[]>([]);
-  const [comentarios, setComentarios] = useState<any[]>([]);
-  const [nuevoComentario, setNuevoComentario] = useState("");
-  const [estadoDropdown, setEstadoDropdown] = useState(false);
   const [inlineEstado, setInlineEstado] = useState<{ id: string; x: number; y: number } | null>(null);
-  const detailRequestRef = useRef(0);
 
   // Cerrar dropdown inline al click fuera
   useEffect(() => {
@@ -307,9 +361,11 @@ export default function TareasPage() {
 
   // Cargar datos
   const autoHideDone = useRef(false);
+  const fetchTareasRequestRef = useRef(0);
   const fetchTareas = useCallback(async (options?: { page?: number; append?: boolean }) => {
     const pageToLoad = options?.page || 1;
     const append = options?.append || false;
+    const requestId = ++fetchTareasRequestRef.current;
     if (append) setLoadingMore(true);
     else setLoading(true);
 
@@ -321,10 +377,11 @@ export default function TareasPage() {
           const cfgData = await cfgRes.json();
           if (cfgData?.config) {
             hadSavedConfig.current = true;
-            const config: { id: string; visible: boolean; order: number; width?: number }[] = cfgData.config;
+            const config = sanitizeTaskFieldConfigs(cfgData.config as { id: string; visible: boolean; order: number; width?: number }[]);
             setColumns(prev => {
+              const safePrev = sanitizeTaskFieldConfigs(prev);
               const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
-              return [...prev]
+              return [...safePrev]
                 .map(col => {
                   const cfg = orderMap.get(col.id);
                   return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
@@ -341,17 +398,20 @@ export default function TareasPage() {
       colConfigLoaded.current = true;
     }
 
+    if (fetchTareasRequestRef.current !== requestId) return;
+
     const params = new URLSearchParams({ limit: String(SERVER_PAGE_SIZE), page: String(pageToLoad) });
     if (serverSearch) params.set("buscar", serverSearch);
     if (filterEstado !== "todos") params.set("estado", filterEstado);
     if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
-    if (filterEquipo.trim()) params.set("equipo", filterEquipo.trim());
     if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
     params.set("groupBy", groupBy);
     const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
+    if (fetchTareasRequestRef.current !== requestId) return;
     if (res.ok) {
       const data = await res.json();
+      if (fetchTareasRequestRef.current !== requestId) return;
       const predios = data.predios || [];
       setTareas(prev => {
         if (!append) return predios;
@@ -360,6 +420,7 @@ export default function TareasPage() {
       });
       setPagination({ page: data.page || pageToLoad, total: data.total || predios.length, hasMore: Boolean(data.hasMore), limit: data.limit || SERVER_PAGE_SIZE });
       setGroupCounts(data.groupCounts || null);
+      setEspacioSummary(data.espacioSummary || null);
       if (!append) {
         setSelectedIds(new Set());
         setRenderLimits({});
@@ -368,21 +429,22 @@ export default function TareasPage() {
       // Auto-ocultar columnas sin datos (solo si NO hay config guardada en servidor)
       if (!autoHideDone.current && !hadSavedConfig.current && predios.length > 0) {
         autoHideDone.current = true;
-        const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "lacR", "equipoAsignado", "asignados"]);
+        const ESSENTIAL = new Set(["codigoPredio", "predio", "fechaActualizacion", "etiquetas", "lacR", "asignados"]);
         setColumns(prev => prev.map(col => {
           if (ESSENTIAL.has(col.id)) return col;
-          if (col.id.startsWith("custom_")) return col;
           const hasData = predios.some((t: any) => {
-            const v = t[col.field];
+            const v = col.field.startsWith("_custom_") ? t.camposExtra?.[col.field.substring(8)] : t[col.field];
             return v != null && v !== "" && v !== 0;
           });
           return hasData ? { ...col, visible: true } : { ...col, visible: false };
         }));
       }
     }
-    if (append) setLoadingMore(false);
-    else setLoading(false);
-  }, [filterEquipo, filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, serverSearch]);
+    if (fetchTareasRequestRef.current === requestId) {
+      if (append) setLoadingMore(false);
+      else setLoading(false);
+    }
+  }, [filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, serverSearch]);
 
   useEffect(() => {
     fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
@@ -392,13 +454,19 @@ export default function TareasPage() {
         if (!cfg) return;
         setFilterEstado(cfg.filterEstado || "todos");
         setFilterProvincia(cfg.filterProvincia || "");
-        setFilterEquipo(cfg.filterEquipo || "");
         setFilterPrioridad(cfg.filterPrioridad || "todas");
-        setQuickFilter(cfg.quickFilter || "todos");
-        setGroupBy(cfg.groupBy || "estado");
+        setQuickFilter(normalizeTaskQuickFilter(cfg.quickFilter));
+        setGroupBy(normalizeTaskGroupBy(cfg.groupBy));
       })
       .catch(() => {})
       .finally(() => { filtersLoadedRef.current = true; });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/preferencias/tareas-vistas?scope=general", { credentials: "include" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setSavedViews(Array.isArray(data?.views) ? data.views : []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -409,11 +477,11 @@ export default function TareasPage() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filterEstado, filterProvincia, filterEquipo, filterPrioridad, quickFilter, groupBy }),
+        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, quickFilter, groupBy }),
       }).catch(() => {});
     }, 900);
     return () => { if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current); };
-  }, [filterEquipo, filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter]);
+  }, [filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
@@ -477,7 +545,7 @@ export default function TareasPage() {
                 type: (c.tipo || "text") as "text" | "badge" | "date" | "select",
                 options: c.opciones?.length ? c.opciones : undefined,
               }));
-            return newCols.length > 0 ? [...prev, ...newCols] : prev;
+            return sanitizeTaskFieldConfigs(newCols.length > 0 ? [...prev, ...newCols] : prev);
           });
         }
       })
@@ -486,7 +554,7 @@ export default function TareasPage() {
     if (isModOrAdmin) {
       fetch("/api/catalogos/usuarios", { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
-        .then(setAllUsers)
+        .then((data) => setAllUsers(dedupeUsersByName(Array.isArray(data) ? data : [])))
         .catch(() => {});
       fetch("/api/espacios", { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
@@ -514,18 +582,34 @@ export default function TareasPage() {
     return () => window.removeEventListener("espacios-updated", handler);
   }, [fetchTareas]);
 
-  // Auto-open predio detail from URL ?open=CODIGO
-  const openHandled = useRef(false);
+  // Auto-open predio detail from URL ?openId=ID (preferent) o ?open=CODIGO
   useEffect(() => {
-    if (openHandled.current || loading || tareas.length === 0) return;
-    const openCode = urlParamsRef.current?.get("open");
-    if (!openCode) return;
-    openHandled.current = true;
-    const tarea = tareas.find(t => t.codigo === openCode);
-    if (tarea) openDetail(tarea);
-    // Clean URL params without reload
-    window.history.replaceState({}, "", window.location.pathname);
-  }, [loading, tareas]);
+    if (openHandled.current) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const openId = urlParams.get("openId");
+    const openCode = urlParams.get("open");
+    
+    if (!openId && !openCode) return;
+    
+    if (openId) {
+      const tarea = tareas.find(t => t.id === openId);
+      if (tarea) {
+        openHandled.current = true;
+        openDetail(tarea);
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
+    }
+    
+    if (openCode && !loading && tareas.length > 0) {
+      const tarea = tareas.find(t => t.codigo === openCode);
+      if (tarea) {
+        openHandled.current = true;
+        openDetail(tarea);
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+  }, [tareas, loading]);
 
   // Agrupar tareas
   const groupedTareas = useMemo(() => {
@@ -540,7 +624,8 @@ export default function TareasPage() {
           t.incidencias?.toLowerCase().includes(s) ||
           t.cue?.toLowerCase().includes(s) ||
           prov.toLowerCase().includes(s) ||
-          t.equipoAsignado?.toLowerCase().includes(s)
+          t.asignaciones?.some((a: any) => a.usuario?.nombre?.toLowerCase().includes(s)) ||
+          t.etiquetas?.some((rel: any) => rel.etiqueta?.nombre?.toLowerCase().includes(s))
         ) return true;
         if (t.camposExtra) {
           for (const val of Object.values(t.camposExtra)) {
@@ -609,50 +694,16 @@ export default function TareasPage() {
     return groupCounts?.[key] ?? loadedCount;
   }, [groupCounts]);
 
-  // Abrir modal de detalle
-  async function openDetail(tarea: any) {
-    const requestId = detailRequestRef.current + 1;
-    detailRequestRef.current = requestId;
+  // Abrir modal de detalle compartido con vistas de espacios/subcarpetas
+  function openDetail(tarea: any) {
     setSelectedTarea(tarea);
-    setDetailLoading(false);
-    setActividades([]);
-    setComentarios([]);
-    setEstadoDropdown(false);
-    setShowUserPicker(false);
-
-    const [tareaRes, actRes, comRes] = await Promise.all([
-      fetch(`/api/tareas/${tarea.id}`, { credentials: "include" }),
-      isModOrAdmin ? fetch(`/api/actividad?entidad=PREDIO&entidadId=${tarea.id}&limite=30`, { credentials: "include" }) : null,
-      fetch(`/api/comentarios?predioId=${tarea.id}`, { credentials: "include" }),
-    ]);
-
-    if (tareaRes.ok) {
-      const fullTarea = await tareaRes.json();
-      if (detailRequestRef.current !== requestId) return;
-      setSelectedTarea(fullTarea);
-    }
-    
-    if (actRes?.ok) {
-      const actData = await actRes.json();
-      if (detailRequestRef.current !== requestId) return;
-      setActividades(actData.actividades || []);
-    }
-    
-    if (comRes.ok) {
-      const comData = await comRes.json();
-      if (detailRequestRef.current !== requestId) return;
-      setComentarios(comData.comentarios || []);
-    }
   }
 
   function closeDetail() {
-    detailRequestRef.current += 1;
     setSelectedTarea(null);
-    setEstadoDropdown(false);
-    setShowUserPicker(false);
   }
 
-  // Cambiar estado
+  // Cambiar estado desde el selector inline de la tabla
   async function changeEstado(tareaId: string, estadoId: string) {
     const newEstado = estados.find(e => e.id === estadoId);
 
@@ -664,111 +715,60 @@ export default function TareasPage() {
     });
 
     if (res.ok) {
-      if (selectedTarea?.id === tareaId) {
-        setSelectedTarea((prev: any) => ({ ...prev, estadoId, estado: newEstado }));
-      }
+      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, estadoId, estado: newEstado } : t));
       fetchTareas();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "Error al cambiar estado");
     }
-    setEstadoDropdown(false);
     setInlineEstado(null);
-  }
-
-  // Guardar comentario
-  async function saveComentario() {
-    if (!nuevoComentario.trim() || !selectedTarea) return;
-
-    const res = await fetch("/api/comentarios", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ contenido: nuevoComentario, predioId: selectedTarea.id }),
-    });
-
-    if (res.ok) {
-      const newCom = await res.json();
-      setComentarios(prev => [newCom, ...prev]);
-      setNuevoComentario("");
-    }
-  }
-
-  // Guardar asignados
-  async function saveAsignados(userIds: string[]) {
-    if (!selectedTarea) return;
-    const res = await fetch(`/api/tareas/${selectedTarea.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ asignadoIds: userIds }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setSelectedTarea((prev: any) => ({ ...prev, asignaciones: updated.asignaciones }));
-      setTareas(prev => prev.map(t => t.id === selectedTarea.id ? { ...t, asignaciones: updated.asignaciones } : t));
-    }
-  }
-
-  // Guardar campo editable
-  async function saveField(field: string, value: any) {
-    if (!selectedTarea) return;
-
-    // Campos personalizados se guardan en camposExtra
-    if (field.startsWith("_custom_")) {
-      const clave = field.substring(8);
-      const newExtra = { ...(selectedTarea.camposExtra || {}), [clave]: value };
-      const res = await fetch(`/api/tareas/${selectedTarea.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ camposExtra: newExtra }),
-      });
-      if (res.ok) {
-        setSelectedTarea((prev: any) => ({ ...prev, camposExtra: newExtra }));
-        setTareas(prev => prev.map(t => t.id === selectedTarea.id ? { ...t, camposExtra: newExtra } : t));
-      }
-      return;
-    }
-
-    const res = await fetch(`/api/tareas/${selectedTarea.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ [field]: value }),
-    });
-
-    if (res.ok) {
-      const extra: Record<string, any> = {};
-      if (field === "gpsPredio") {
-        const parts = String(value).split(",").map((s: string) => parseFloat(s.trim()));
-        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-          extra.latitud = parts[0];
-          extra.longitud = parts[1];
-        }
-      }
-      setSelectedTarea((prev: any) => ({ ...prev, [field]: value, ...extra }));
-      setTareas(prev => prev.map(t => t.id === selectedTarea.id ? { ...t, [field]: value, ...extra } : t));
-    }
   }
 
   // Guardar campo inline (desde la tabla, sin abrir detalle)
   async function saveCellField(tareaId: string, field: string, value: string) {
+    const toastId = toast.loading("Guardando cambio...");
+    try {
+      const res = await fetch(`/api/tareas/${tareaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (res.ok) {
+        const extra: Record<string, any> = {};
+        if (field === "gpsPredio") {
+          const parts = value.split(",").map(s => parseFloat(s.trim()));
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            extra.latitud = parts[0];
+            extra.longitud = parts[1];
+          }
+        }
+        setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value, ...extra } : t));
+        if (selectedTarea?.id === tareaId) {
+          setSelectedTarea((prev: any) => ({ ...prev, [field]: value, ...extra }));
+        }
+        toast.success("Cambio guardado", { id: toastId });
+      } else {
+        toast.error("No se pudo guardar el cambio", { id: toastId });
+      }
+    } catch {
+      toast.error("No se pudo guardar el cambio", { id: toastId });
+    }
+  }
+
+  async function saveEtiquetas(tareaId: string, etiquetas: TareaEtiquetaValue[]) {
     const res = await fetch(`/api/tareas/${tareaId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ [field]: value }),
+      body: JSON.stringify({ etiquetas }),
     });
     if (res.ok) {
-      const extra: Record<string, any> = {};
-      if (field === "gpsPredio") {
-        const parts = value.split(",").map(s => parseFloat(s.trim()));
-        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-          extra.latitud = parts[0];
-          extra.longitud = parts[1];
-        }
-      }
-      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, [field]: value, ...extra } : t));
+      const updated = await res.json();
+      const nextEtiquetas = updated.etiquetas || etiquetas.map((etiqueta) => ({ etiqueta }));
+      setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, etiquetas: nextEtiquetas } : t));
       if (selectedTarea?.id === tareaId) {
-        setSelectedTarea((prev: any) => ({ ...prev, [field]: value, ...extra }));
+        setSelectedTarea((prev: any) => ({ ...prev, etiquetas: nextEtiquetas }));
       }
     }
   }
@@ -890,6 +890,12 @@ export default function TareasPage() {
         actionKey = "espacioId";
         actionValue = facturadoEsp.id;
       }
+      if (bulkAction === "asignadoIds") {
+        actionValue = bulkValue.split(",").filter(Boolean);
+      }
+      if (bulkAction === "replaceAsignadoIds" || bulkAction === "removeAsignadoIds") {
+        actionValue = bulkValue.split(",").filter(Boolean);
+      }
 
       const res = await fetch("/api/tareas", {
         method: "PATCH",
@@ -908,6 +914,12 @@ export default function TareasPage() {
       }
     } catch { /* ignore */ }
     setBulkExecuting(false);
+  }
+
+  function toggleBulkUser(userId: string) {
+    const next = new Set(selectedBulkUserIds);
+    if (next.has(userId)) next.delete(userId); else next.add(userId);
+    setBulkValue(Array.from(next).join(","));
   }
 
   // Crear columna personalizada inline
@@ -956,6 +968,7 @@ export default function TareasPage() {
     e.dataTransfer.setData("text/x-predio-ids", JSON.stringify(ids));
     // Guardar en window para que el sidebar pueda leerlos en el drop
     (window as any).__draggedPredioIds = ids;
+    (window as any).__draggedPredioFields = visibleColumns.filter((col) => col.id.startsWith("custom_"));
   }
 
   function handleColDragStart(e: React.DragEvent, colId: string) {
@@ -1053,12 +1066,12 @@ export default function TareasPage() {
   };
 
   const formatDate = (d: string | null) => {
-    if (!d) return "—";
+    if (!d) return "-";
     return new Date(d).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
   };
 
   const formatRelativeDate = (d: string | null) => {
-    if (!d) return "—";
+    if (!d) return "-";
     const now = new Date();
     const date = new Date(d);
     const diffMs = now.getTime() - date.getTime();
@@ -1074,12 +1087,6 @@ export default function TareasPage() {
     return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
   };
 
-  const formatDateTime = (d: string) => {
-    return new Date(d).toLocaleDateString("es-AR", { 
-      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
-    });
-  };
-
   // Render de celda en tabla
   const renderCell = (t: any, col: Column) => {
     // Campos personalizados: leer desde camposExtra JSON
@@ -1092,20 +1099,18 @@ export default function TareasPage() {
     if (col.id === "fechaActualizacion") {
       return <span className="text-surface-500 text-[10px]" title={t.updatedAt ? new Date(t.updatedAt).toLocaleString("es-AR") : ""}>{formatRelativeDate(t.updatedAt)}</span>;
     }
+    if (col.id === "etiquetas") {
+      return (
+        <TareaEtiquetasEditor
+          etiquetas={t.etiquetas}
+          canEdit={Boolean(isModOrAdmin)}
+          onSave={(next) => saveEtiquetas(t.id, next)}
+        />
+      );
+    }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
       if (asigns.length === 0) {
-        // Fallback: si el predio tiene equipoAsignado, mostrarlo como asignado (regla equipo = asignado)
-        if (t.equipoAsignado) {
-          const disp = getEquipoDisplayName(t.equipoAsignado);
-          return (
-            <span className="flex items-center gap-1 flex-wrap">
-              <span className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]" title={`Equipo: ${t.equipoAsignado}`}>
-                {disp.split(" ")[0]}
-              </span>
-            </span>
-          );
-        }
         return <span className="text-surface-300">&mdash;</span>;
       }
       return (
@@ -1165,7 +1170,7 @@ export default function TareasPage() {
             </span>
           ) : null}
           <span className="text-surface-800 font-medium truncate">{displayCode}</span>
-          <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
+          <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} />
           <CopyBtn text={t.codigo || ""} />
         </span>
       );
@@ -1194,19 +1199,131 @@ export default function TareasPage() {
 
   // Columnas visibles: respetar configuración del usuario (toggle del drawer)
   const visibleColumns = useMemo(() => {
-    return columns.filter(c => c.visible);
-  }, [columns]);
+    return sanitizeTaskFieldConfigs(columns).filter(c => {
+      if (!c.visible) return false;
+      if (!c.id.startsWith("custom_")) return true;
+      return tareas.some((t: any) => {
+        const clave = c.field.startsWith("_custom_") ? c.field.substring(8) : c.id.replace(/^custom_/, "");
+        const v = t.camposExtra?.[clave];
+        return v != null && v !== "";
+      });
+    });
+  }, [columns, tareas]);
 
-  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterEquipo.trim() || filterPrioridad !== "todas" || quickFilter !== "todos");
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
     setServerSearch("");
     setFilterEstado("todos");
     setFilterProvincia("");
-    setFilterEquipo("");
     setFilterPrioridad("todas");
     setQuickFilter("todos");
   };
+
+  const activeView = useMemo(() => savedViews.find((view) => view.id === activeViewId) || null, [activeViewId, savedViews]);
+
+  const createViewSnapshot = useCallback((name: string, id?: string): TareasSavedView => ({
+    id: id || `tareas-view-${Date.now()}`,
+    name: name.trim().slice(0, 60) || "Vista de tareas",
+    search,
+    filters: { filterEstado, filterProvincia, filterPrioridad, quickFilter: normalizeTaskQuickFilter(quickFilter), groupBy: normalizeTaskGroupBy(groupBy) },
+    sortConfig,
+    columns: sanitizeTaskFieldConfigs(columns).map((col, index) => ({ id: col.id, visible: col.visible, order: index, width: col.width })),
+    updatedAt: new Date().toISOString(),
+  }), [columns, filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, search, sortConfig]);
+
+  const persistSavedViews = useCallback(async (nextViews: TareasSavedView[]) => {
+    setSavingView(true);
+    try {
+      const res = await fetch("/api/preferencias/tareas-vistas", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ scope: "general", views: nextViews }),
+      });
+      if (!res.ok) throw new Error("save-failed");
+      const data = await res.json();
+      const views = Array.isArray(data.views) ? data.views : nextViews;
+      setSavedViews(views);
+      return views as TareasSavedView[];
+    } finally {
+      setSavingView(false);
+    }
+  }, []);
+
+  async function saveNewView() {
+    const view = createViewSnapshot(newViewName || `Vista ${savedViews.length + 1}`);
+    try {
+      const views = await persistSavedViews([view, ...savedViews].slice(0, 20));
+      setActiveViewId(views[0]?.id || view.id);
+      setNewViewName("");
+      toast.success("Vista guardada");
+    } catch {
+      toast.error("No se pudo guardar la vista");
+    }
+  }
+
+  async function updateActiveView() {
+    const current = savedViews.find((view) => view.id === activeViewId);
+    if (!current) return;
+    const updated = createViewSnapshot(current.name, current.id);
+    try {
+      await persistSavedViews(savedViews.map((view) => view.id === current.id ? updated : view));
+      toast.success("Vista actualizada");
+    } catch {
+      toast.error("No se pudo actualizar la vista");
+    }
+  }
+
+  function applySavedView(view: TareasSavedView) {
+    const nextSearch = view.search || "";
+    const filters = view.filters || {} as TareasSavedView["filters"];
+    setSearch(nextSearch);
+    setServerSearch(nextSearch.trim());
+    setFilterEstado(filters.filterEstado || "todos");
+    setFilterProvincia(filters.filterProvincia || "");
+    setFilterPrioridad(filters.filterPrioridad || "todas");
+    setQuickFilter(normalizeTaskQuickFilter(filters.quickFilter));
+    setGroupBy(normalizeTaskGroupBy(filters.groupBy));
+    setSortConfig(view.sortConfig || null);
+    if (Array.isArray(view.columns) && view.columns.length > 0) {
+      setColumns((current) => {
+        const safeCurrent = sanitizeTaskFieldConfigs(current);
+        const safeViewColumns = sanitizeTaskFieldConfigs(view.columns);
+        const byId = new Map(safeCurrent.map((col) => [col.id, col]));
+        const used = new Set<string>();
+        const ordered = [...safeViewColumns]
+          .sort((a, b) => a.order - b.order)
+          .map((savedCol) => {
+            const col = byId.get(savedCol.id);
+            if (!col) return null;
+            used.add(savedCol.id);
+            return { ...col, visible: savedCol.visible !== false, ...(savedCol.width ? { width: savedCol.width } : {}) };
+          })
+          .filter(Boolean) as Column[];
+        return [...ordered, ...safeCurrent.filter((col) => !used.has(col.id))];
+      });
+    }
+    setActiveViewId(view.id);
+    toast.success(`Vista aplicada: ${view.name}`);
+  }
+
+  async function deleteSavedView(id: string) {
+    const next = savedViews.filter((view) => view.id !== id);
+    try {
+      await persistSavedViews(next);
+      if (activeViewId === id) setActiveViewId(null);
+      toast.success("Vista eliminada");
+    } catch {
+      toast.error("No se pudo eliminar la vista");
+    }
+  }
+
+  const getSavedViewSummary = useCallback((view: TareasSavedView) => {
+    const filters = view.filters || {} as TareasSavedView["filters"];
+    const count = [filters.filterEstado !== "todos", Boolean(filters.filterProvincia), filters.filterPrioridad !== "todas", filters.quickFilter !== "todos"].filter(Boolean).length;
+    return `${count} filtros · ${filters.groupBy ? `agrupa por ${filters.groupBy}` : "sin agrupacion"} · ${view.search ? `busca ${view.search}` : "sin busqueda"}`;
+  }, []);
 
   // Suprimir warning de session no usada
   void session;
@@ -1214,27 +1331,43 @@ export default function TareasPage() {
   // Mobile card list for task items (< md breakpoint)
   const MobileTaskList = ({ items: taskItems }: { items: any[] }) => (
     <div className="md:hidden divide-y divide-surface-100">
-      {taskItems.map((t) => (
+      {taskItems.map((t) => {
+        const selected = selectedIds.has(t.id);
+        return (
         <div
           key={t.id}
           onClick={() => openDetail(t)}
-          className="w-full text-left px-3 py-3.5 hover:bg-surface-50 active:bg-surface-100 transition-colors cursor-pointer"
+          className={`w-full text-left px-3 py-3.5 active:bg-surface-100 transition-colors cursor-pointer ${selected ? "bg-primary-50/70" : "hover:bg-surface-50"}`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
+            {isModOrAdmin && (
+              <input
+                type="checkbox"
+                checked={selected}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleSelect(t.id)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary-600"
+                aria-label="Seleccionar tarea"
+              />
+            )}
             {t.estado ? (
               <span className="cursor-pointer active:opacity-60" onClick={(e) => abrirInlineEstado(e, t.id)}>
                 <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />
               </span>
             ) : null}
-            {t.codigo && <span className="text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
-            <NotesIndicator notas={t.notas} comentarios={t._count?.comentarios} />
-            <p className="text-sm font-medium text-surface-700 truncate">
-              {t.incidencias || t.nombre || "Sin nombre"}
-            </p>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                {t.codigo && <span className="shrink-0 text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
+                <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} />
+                <p className="min-w-0 truncate text-sm font-medium text-surface-700">
+                  {t.incidencias || t.nombre || "Sin nombre"}
+                </p>
+              </div>
+              {t.nombre && t.incidencias && (
+                <p className="mt-0.5 truncate text-xs text-surface-400">{t.nombre}</p>
+              )}
+            </div>
           </div>
-          {t.nombre && t.incidencias && (
-            <p className="text-xs text-surface-400 truncate mt-0.5">{t.nombre}</p>
-          )}
           <div className="flex items-center gap-2.5 mt-1.5 text-xs text-surface-500 flex-wrap">
             <span className="tabular-nums">{formatDate(t.fechaActualizacion)}</span>
             {t.lacR && (
@@ -1242,18 +1375,19 @@ export default function TareasPage() {
                 LAC-R: {t.lacR}
               </span>
             )}
-            {t.equipoAsignado && (
-              <span className="px-1.5 py-0.5 bg-primary-50 text-primary-700 rounded text-[11px] font-medium">{t.equipoAsignado}</span>
-            )}
             {t.asignaciones?.length > 0 && (
               <span className="px-1.5 py-0.5 bg-violet-50 text-violet-700 rounded text-[11px] font-medium">
                 {t.asignaciones.map((a: any) => a.usuario?.nombre?.split(" ")[0]).join(", ")}
               </span>
             )}
+            {(t.etiquetas?.length > 0 || isModOrAdmin) && (
+              <TareaEtiquetasEditor etiquetas={t.etiquetas} canEdit={Boolean(isModOrAdmin)} compact onSave={(next) => saveEtiquetas(t.id, next)} />
+            )}
             {t.provincia && <span className="text-surface-400">{t.provincia}</span>}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 
@@ -1263,15 +1397,15 @@ export default function TareasPage() {
   return (
     <div className="animate-fade-in-up">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-5 gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800 tracking-tight">Cronograma</h1>
           <p className="text-surface-400 text-xs mt-0.5">
             {tareas.length} de {pagination.total || tareas.length} registros cargados{serverSearch ? ` · filtro: ${serverSearch}` : ""}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="relative flex-1 sm:flex-initial">
+        <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto sm:flex-nowrap">
+          <div className="relative min-w-0 flex-[1_1_100%] sm:flex-initial">
             <input
               type="text"
               value={search}
@@ -1291,7 +1425,7 @@ export default function TareasPage() {
               setGroupBy(e.target.value);
               setExpandedSections(new Set(Object.keys(groupedTareas)));
             }}
-            className="px-2 py-1.5 border border-surface-200 rounded-md text-xs bg-white focus:outline-none focus:border-surface-400 text-surface-600 cursor-pointer"
+            className="min-w-0 flex-1 px-2 py-1.5 border border-surface-200 rounded-md text-xs bg-white focus:outline-none focus:border-surface-400 text-surface-600 cursor-pointer sm:flex-none"
             title="Agrupar por"
           >
             {GROUP_BY_OPTIONS.map(o => (
@@ -1319,7 +1453,35 @@ export default function TareasPage() {
         </div>
       </div>
 
-      <div className="mb-4 bg-white border border-surface-200 rounded-lg p-3 space-y-3">
+      <SavedViewsBar
+        activeView={activeView}
+        views={savedViews}
+        saving={savingView}
+        newViewName={newViewName}
+        onNewViewNameChange={setNewViewName}
+        onSave={saveNewView}
+        onUpdate={updateActiveView}
+        onApply={applySavedView}
+        onDelete={deleteSavedView}
+        getSummary={getSavedViewSummary}
+      />
+
+      <div className="mb-2 flex items-center justify-between sm:hidden">
+        <button
+          type="button"
+          onClick={() => setShowMobileFilters((value) => !value)}
+          className="rounded-md border border-surface-200 bg-white px-3 py-2 text-xs font-medium text-surface-600"
+        >
+          {showMobileFilters ? "Ocultar filtros" : "Mostrar filtros"}{hasServerFilters ? " activos" : ""}
+        </button>
+        {hasServerFilters && (
+          <button type="button" onClick={clearServerFilters} className="text-xs text-primary-600">
+            Limpiar
+          </button>
+        )}
+      </div>
+
+      <div className={`mb-4 bg-white border border-surface-200 rounded-lg p-3 space-y-3 ${showMobileFilters ? "block" : "hidden"} sm:block`}>
         <div className="flex flex-wrap gap-2">
           {[
             { key: "todos", label: "Todos" },
@@ -1338,7 +1500,7 @@ export default function TareasPage() {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           <select
             value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
@@ -1353,14 +1515,6 @@ export default function TareasPage() {
             placeholder="Provincia"
             className="px-3 py-2 text-xs border border-surface-200 rounded-md focus:outline-none focus:border-surface-400"
           />
-          <select
-            value={filterEquipo}
-            onChange={(e) => setFilterEquipo(e.target.value)}
-            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
-          >
-            <option value="">Todos los equipos</option>
-            {equipoOpts.map(opt => <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>)}
-          </select>
           <select
             value={filterPrioridad}
             onChange={(e) => setFilterPrioridad(e.target.value)}
@@ -1387,7 +1541,7 @@ export default function TareasPage() {
         <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setShowColumnConfig(false)}>
           <div className="absolute inset-0 bg-black/20" />
           <div
-            className="relative w-80 max-w-[85vw] bg-white shadow-xl flex flex-col animate-slide-in-right"
+            className="relative w-full sm:w-80 sm:max-w-[85vw] bg-white shadow-xl flex flex-col animate-slide-in-right"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -1551,23 +1705,18 @@ export default function TareasPage() {
                   {estados.map(e => {
                     const isHidden = userHiddenEstados.has(e.id);
                     return (
-                      <button
-                        key={e.id}
-                        type="button"
-                        onClick={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })}
-                        aria-pressed={!isHidden}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
-                        style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}
-                      >
+                      <label key={e.id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
+                        style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}>
+                        <input type="checkbox" checked={!isHidden} onChange={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })} className="sr-only" />
                         <StatusIcon clave={e.clave} color={e.color} size={12} />
                         {e.nombre}
                         {session?.rol === "ADMIN" && (
-                          <button onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
+                          <button onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
                             className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all" title="Eliminar estado">
                             <IconX className="w-3 h-3" />
                           </button>
                         )}
-                      </button>
+                      </label>
                     );
                   })}
                 </div>
@@ -1579,7 +1728,7 @@ export default function TareasPage() {
 
       {/* Barra de acciones masivas */}
       {isModOrAdmin && selectedIds.size > 0 && (
-        <div className="mb-3 p-2.5 bg-primary-50 border border-primary-200 rounded-lg flex items-center gap-2 flex-wrap animate-fade-in-up">
+        <div className="sticky top-14 z-20 mb-3 p-2.5 bg-primary-50 border border-primary-200 rounded-lg flex items-center gap-2 flex-wrap shadow-sm animate-fade-in-up sm:top-auto sm:shadow-none">
           <span className="text-xs font-semibold text-primary-700">
             {selectedIds.size} seleccionado{selectedIds.size > 1 ? "s" : ""}
           </span>
@@ -1598,7 +1747,9 @@ export default function TareasPage() {
             <option value="">— Acción masiva —</option>
             <option value="estadoId">Cambiar estado</option>
             <option value="espacioId">Mover a espacio</option>
-            <option value="equipoAsignado">Asignar técnico</option>
+            <option value="asignadoIds">Agregar asignados</option>
+            <option value="replaceAsignadoIds">Reemplazar asignados</option>
+            <option value="removeAsignadoIds">Quitar asignados</option>
             <option value="provincia">Cambiar provincia</option>
             <option value="ambito">Cambiar ámbito</option>
             <option value="prioridad">Cambiar prioridad</option>
@@ -1623,14 +1774,38 @@ export default function TareasPage() {
               )) : <option disabled>Cargando...</option>}
             </select>
           )}
-          {bulkAction === "equipoAsignado" && (
-            <select value={bulkValue} onChange={(e) => setBulkValue(e.target.value)}
-              className="px-2 py-1 border border-primary-300 rounded text-xs bg-white focus:outline-none focus:border-primary-500">
-              <option value="">— Equipo —</option>
-              {equipoOpts.map(opt => (
-                <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
-              ))}
-            </select>
+          {["asignadoIds", "replaceAsignadoIds", "removeAsignadoIds"].includes(bulkAction) && (
+            <div className="min-w-[280px] max-w-[560px] rounded-md border border-primary-300 bg-white p-2 shadow-sm">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-surface-600">
+                  {bulkAction === "asignadoIds" ? "Agregar" : bulkAction === "replaceAsignadoIds" ? "Dejar solo" : "Quitar"}: {selectedBulkUserIds.length || 0}
+                </span>
+                {selectedBulkUserIds.length > 0 && (
+                  <button type="button" onClick={() => setBulkValue("")} className="text-[11px] text-primary-600 hover:text-primary-800">
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <div className="grid max-h-32 grid-cols-2 gap-1 overflow-y-auto pr-1 sm:grid-cols-3">
+                {allUsers.map(user => {
+                  const checked = selectedBulkUserIds.includes(user.id);
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => toggleBulkUser(user.id)}
+                      className={`flex items-center gap-1.5 rounded border px-2 py-1 text-left text-[11px] transition-colors ${checked ? "border-primary-400 bg-primary-50 text-primary-700" : "border-surface-200 bg-white text-surface-600 hover:border-primary-200 hover:bg-primary-50/50"}`}
+                      title={user.nombre}
+                    >
+                      <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${checked ? "border-primary-500 bg-primary-500 text-white" : "border-surface-300 bg-white"}`}>
+                        {checked && <IconCheck className="h-2.5 w-2.5" />}
+                      </span>
+                      <span className="truncate">{user.nombre}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
           {bulkAction === "provincia" && (
             <input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} placeholder="Ej: BUENOS AIRES"
@@ -1674,6 +1849,20 @@ export default function TareasPage() {
         <div className="space-y-2">
           {groupBy === "estado" ? (
           <>
+          {/* Resumen de espacios cuando hay búsqueda global */}
+          {serverSearch && espacioSummary && Object.keys(espacioSummary).length > 0 && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs">
+              <div className="font-semibold text-blue-900 mb-2">📂 Resultados por espacio/carpeta:</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {Object.entries(espacioSummary).map(([spaceId, data]: any) => (
+                  <div key={spaceId} className="flex items-center justify-between px-2 py-1 bg-blue-100 rounded text-blue-800">
+                    <span className="truncate">{data.nombre || spaceId}</span>
+                    <span className="font-semibold ml-1 flex-shrink-0">{data.total}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Toggle para mostrar estados vacíos */}
           {estados.some(e => (groupedTareas[e.id] || []).length === 0) && (
             <div className="flex justify-end mb-1">
@@ -2060,360 +2249,32 @@ export default function TareasPage() {
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════
-          MODAL DETALLE
-          ═══════════════════════════════════════════════════════════ */}
       {selectedTarea && (
-        <div className="fixed inset-0 z-50 flex flex-col md:flex-row bg-black/40">
-          {/* Panel principal */}
-          <div className="flex-1 flex justify-center items-start pt-4 md:pt-8 pb-4 md:pb-8 overflow-y-auto">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 md:mx-4 animate-fade-in-up">
-              {/* Header */}
-              <div className="px-5 py-4 border-b border-surface-100">
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-surface-400 uppercase tracking-wider mb-1">Detalle</p>
-                    <h2 className="text-base font-semibold text-surface-800 truncate">
-                      {selectedTarea.incidencias || selectedTarea.nombre || "Sin nombre"}
-                    </h2>
-                  </div>
-                  <button
-                    onClick={closeDetail}
-                    className="p-1.5 hover:bg-surface-100 rounded-md transition-colors ml-3 flex-shrink-0"
-                  >
-                    <IconX className="w-4 h-4 text-surface-400" />
-                  </button>
-                </div>
-                {session?.rol === "ADMIN" && (
-                  <button
-                    onClick={() => setConfirmDelete({ type: "tarea", id: selectedTarea.id, label: selectedTarea.incidencias || selectedTarea.nombre || "esta tarea" })}
-                    className="mt-2 flex items-center gap-1 text-[11px] text-red-400 hover:text-red-600 transition-colors"
-                  >
-                    <IconTrash className="w-3.5 h-3.5" />
-                    Eliminar tarea
-                  </button>
-                )}
-              </div>
-
-              {detailLoading ? (
-                <div className="flex justify-center py-12">
-                  <div className="w-5 h-5 border-2 border-surface-200 border-t-surface-500 rounded-full animate-spin" />
-                </div>
-              ) : (
-                <div className="px-5 py-4 space-y-4">
-                  {/* Estado */}
-                  <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-surface-400 uppercase tracking-wider w-16">Estado</span>
-                    <div className="relative">
-                      <button
-                        onClick={() => setEstadoDropdown(!estadoDropdown)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border"
-                        style={{
-                          borderColor: selectedTarea.estado?.color ? `${selectedTarea.estado.color}40` : "#e2e8f0",
-                          color: selectedTarea.estado?.color || "#64748b"
-                        }}
-                      >
-                        <StatusIcon clave={selectedTarea.estado?.clave} color={selectedTarea.estado?.color || "#94a3b8"} size={12} />
-                        {selectedTarea.estado?.nombre || "Sin estado"}
-                        <IconChevron className="w-2.5 h-2.5" />
-                      </button>
-
-                      {estadoDropdown && (
-                        <div className="absolute top-full left-0 mt-1 bg-white border border-surface-200 rounded-lg shadow-lg py-1 min-w-[160px] z-10 animate-fade-in-up">
-                          <div className="max-h-48 overflow-y-auto">
-                            {estados.map(e => (
-                              <button
-                                key={e.id}
-                                onClick={() => changeEstado(selectedTarea.id, e.id)}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 transition-colors text-left"
-                              >
-                                <StatusIcon clave={e.clave} color={e.color} size={14} />
-                                <span className="text-surface-700">{e.nombre}</span>
-                                {selectedTarea.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Asignados */}
-                  <div className="flex items-start gap-3">
-                    <span className="text-[11px] text-surface-400 uppercase tracking-wider w-16 pt-1">Asignados</span>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {(selectedTarea.asignaciones || []).map((a: any) => (
-                          <span key={a.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-full text-[11px] font-medium">
-                            {a.usuario?.nombre || "?"}
-                            {isModOrAdmin && (
-                              <button
-                                onClick={() => {
-                                  const ids = selectedTarea.asignaciones
-                                    .filter((x: any) => x.id !== a.id)
-                                    .map((x: any) => x.usuario?.id || x.userId);
-                                  saveAsignados(ids);
-                                }}
-                                className="ml-0.5 text-primary-400 hover:text-red-500 transition-colors"
-                              >
-                                <IconX className="w-3 h-3" />
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                        {(selectedTarea.asignaciones || []).length === 0 && (
-                          selectedTarea.equipoAsignado ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-full text-[11px] font-medium" title={`Equipo: ${selectedTarea.equipoAsignado}`}>
-                              {getEquipoDisplayName(selectedTarea.equipoAsignado)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-surface-400">Sin asignar</span>
-                          )
-                        )}
-                        {isModOrAdmin && (
-                          <div className="relative">
-                            <button
-                              onClick={() => setShowUserPicker(!showUserPicker)}
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] text-surface-400 hover:text-primary-600 hover:bg-primary-50 rounded-full border border-dashed border-surface-300 hover:border-primary-300 transition-colors"
-                            >
-                              <IconPlus className="w-3 h-3" />
-                              Asignar
-                            </button>
-                            {showUserPicker && (
-                              <div className="absolute top-full left-0 mt-1 bg-white border border-surface-200 rounded-lg shadow-lg py-1 min-w-[180px] z-10 animate-fade-in-up max-h-48 overflow-y-auto">
-                                {allUsers
-                                  .filter(u => !(selectedTarea.asignaciones || []).some((a: any) => (a.usuario?.id || a.userId) === u.id))
-                                  .map(u => (
-                                    <button
-                                      key={u.id}
-                                      onClick={() => {
-                                        const currentIds = (selectedTarea.asignaciones || []).map((a: any) => a.usuario?.id || a.userId);
-                                        saveAsignados([...currentIds, u.id]);
-                                        setShowUserPicker(false);
-                                      }}
-                                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 transition-colors text-left"
-                                    >
-                                      <span className="w-5 h-5 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-[10px] font-semibold shrink-0">
-                                        {u.nombre.charAt(0)}
-                                      </span>
-                                      <span className="text-surface-700">{u.nombre}</span>
-                                    </button>
-                                  ))}
-                                {allUsers.filter(u => !(selectedTarea.asignaciones || []).some((a: any) => (a.usuario?.id || a.userId) === u.id)).length === 0 && (
-                                  <p className="text-xs text-surface-400 text-center py-2">Todos asignados</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Campos */}
-                  <div className="border border-surface-200 rounded-lg">
-                    <div className="px-3 py-2 border-b border-surface-100">
-                      <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Campos</span>
-                    </div>
-                    <div className="divide-y divide-surface-50">
-                      {[
-                        { label: "Ámbito", field: "ambito", editable: true },
-                        { label: "CUE", field: "cue", editable: true },
-                        { label: "CUE_Predio", field: "cuePredio", editable: true },
-                        { label: "Departamento", field: "ciudad", editable: true },
-                        { label: "Dirección", field: "direccion", editable: true },
-                        { label: "Equipo", field: "equipoAsignado", editable: true },
-                        { label: "DESDE", field: "fechaDesde", type: "date", editable: true },
-                        { label: "HASTA", field: "fechaHasta", type: "date", editable: true },
-                        { label: "GPS_Predio", field: "gpsPredio", editable: true },
-                        { label: "Latitud", field: "latitud", editable: true },
-                        { label: "Longitud", field: "longitud", editable: true },
-                        { label: "LAC-R", field: "lacR", type: "badge", editable: true },
-                        { label: "Provincia", field: "provincia", editable: true },
-                      ].map(f => (
-                        <div key={f.field} className="flex items-center gap-3 px-3 py-2">
-                          <span className="text-[11px] text-surface-400 w-24 flex-shrink-0">{f.label}</span>
-                          {isModOrAdmin && f.editable ? (
-                            f.field === "equipoAsignado" ? (
-                              <select
-                                value={resolveEquipoKey(selectedTarea[f.field])}
-                                onChange={(e) => {
-                                  setSelectedTarea((p: any) => ({ ...p, [f.field]: e.target.value }));
-                                  saveField(f.field, e.target.value);
-                                }}
-                                className="flex-1 text-xs border-0 bg-transparent focus:ring-0 p-0 cursor-pointer text-surface-700"
-                              >
-                                <option value="">—</option>
-                                {equipoOpts.map(opt => (
-                                  <option key={opt.key} value={opt.key}>{opt.key}{opt.display !== opt.key ? ` (${opt.display})` : ""}</option>
-                                ))}
-                              </select>
-                            ) : f.type === "badge" ? (
-                              <select
-                                value={selectedTarea[f.field] || ""}
-                                onChange={(e) => saveField(f.field, e.target.value)}
-                                className="text-xs border-0 bg-transparent focus:ring-0 p-0 cursor-pointer text-surface-700"
-                              >
-                                <option value="">—</option>
-                                <option value="SI">SI</option>
-                                <option value="PEDIDO">Pedido</option>
-                                <option value="NO">NO</option>
-                              </select>
-                            ) : f.type === "date" ? (
-                              <input
-                                type="date"
-                                value={selectedTarea[f.field] ? new Date(selectedTarea[f.field]).toISOString().split("T")[0] : ""}
-                                onChange={(e) => saveField(f.field, e.target.value)}
-                                className="text-xs border-0 bg-transparent focus:ring-0 p-0 cursor-pointer text-surface-700"
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                value={selectedTarea[f.field] || ""}
-                                onChange={(e) => setSelectedTarea((p: any) => ({ ...p, [f.field]: e.target.value }))}
-                                onBlur={(e) => saveField(f.field, e.target.value)}
-                                className="flex-1 text-xs border-0 bg-transparent focus:ring-0 p-0 text-surface-700"
-                                placeholder="—"
-                              />
-                            )
-                          ) : (
-                            <span className="text-xs text-surface-600">
-                              {f.type === "date" && selectedTarea[f.field]
-                                ? new Date(selectedTarea[f.field]).toLocaleDateString("es-AR")
-                                : selectedTarea[f.field] || "—"}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Notas */}
-                  <div className="border border-surface-200 rounded-lg">
-                    <div className="px-3 py-2 border-b border-surface-100">
-                      <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Notas</span>
-                    </div>
-                    {isModOrAdmin ? (
-                      <textarea
-                        value={selectedTarea.notas || ""}
-                        onChange={(e) => setSelectedTarea((p: any) => ({ ...p, notas: e.target.value }))}
-                        onBlur={(e) => saveField("notas", e.target.value)}
-                        placeholder="Agregar notas..."
-                        rows={3}
-                        className="w-full text-xs border-0 bg-transparent p-3 focus:ring-0 resize-none text-surface-700 placeholder:text-surface-300"
-                      />
-                    ) : (
-                      <p className="text-xs text-surface-600 p-3">
-                        {selectedTarea.notas || "Sin notas"}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Comentarios — visible para todos */}
-                  <div className="border border-surface-200 rounded-lg">
-                    <div className="px-3 py-2 border-b border-surface-100">
-                      <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Comentarios</span>
-                      {comentarios.length > 0 && (
-                        <span className="ml-1.5 text-[10px] bg-primary-50 text-primary-600 px-1.5 py-0.5 rounded-full font-medium">
-                          {comentarios.length}
-                        </span>
-                      )}
-                    </div>
-                    <div className="p-3 space-y-3">
-                      {/* Input de comentario */}
-                      <div className="space-y-1.5">
-                        <textarea
-                          value={nuevoComentario}
-                          onChange={(e) => setNuevoComentario(e.target.value)}
-                          placeholder="Escribe un comentario..."
-                          rows={2}
-                          className="w-full text-xs border border-surface-200 rounded-lg p-2.5 focus:outline-none focus:border-primary-400 resize-none placeholder:text-surface-300"
-                        />
-                        {nuevoComentario.trim() && (
-                          <div className="flex justify-end">
-                            <button
-                              onClick={saveComentario}
-                              className="px-3 py-1 bg-primary-600 text-white rounded-md text-[11px] font-medium hover:bg-primary-700 transition-colors"
-                            >
-                              Comentar
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Lista de comentarios */}
-                      {comentarios.length > 0 ? (
-                        <div className="space-y-2.5 max-h-60 overflow-y-auto">
-                          {comentarios.map(c => (
-                            <div key={c.id} className="flex items-start gap-2">
-                              <div className="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center text-[10px] font-bold text-primary-600 shrink-0 mt-0.5">
-                                {c.usuario?.nombre?.charAt(0) || "?"}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-baseline gap-1.5">
-                                  <span className="text-xs font-medium text-surface-700">{c.usuario?.nombre || "Usuario"}</span>
-                                  <span className="text-[10px] text-surface-400">{formatDateTime(c.createdAt)}</span>
-                                </div>
-                                <p className="text-xs text-surface-600 mt-0.5 break-words">{c.contenido}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-surface-400 text-center py-2">Sin comentarios aún</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Panel lateral */}
-          {isModOrAdmin && (
-            <div className="hidden md:flex w-72 bg-surface-800 text-white flex-col border-l border-surface-700">
-              <div className="p-3 border-b border-surface-700">
-                <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Actividad</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {/* Lista de actividades */}
-                <div className="space-y-2.5">
-                  {actividades.map(a => (
-                    <div key={a.id} className="text-[11px]">
-                      <div className="flex items-start gap-2">
-                        <div className="w-5 h-5 rounded-full bg-surface-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <IconClock className="w-2.5 h-2.5 text-surface-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-surface-300">
-                            <span className="text-white font-medium">{a.usuario?.nombre || "Sistema"}</span>
-                            {" "}{a.descripcion || a.accion}
-                          </p>
-                          <p className="text-surface-500 text-[10px] mt-0.5">{formatDateTime(a.createdAt)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {actividades.length === 0 && (
-                    <p className="text-surface-500 text-center text-[11px] py-6">Sin actividad</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <TareaDetalleModal
+          tareaId={selectedTarea.id}
+          estados={estados}
+          isModOrAdmin={isModOrAdmin}
+          onClose={closeDetail}
+          onUpdated={fetchTareas}
+          listColumns={sanitizeTaskFieldConfigs(columns)}
+          variant="drawer"
+        />
       )}
 
       {showModal && (
         <CreateTareaModal
           estados={estados}
-          equipoOpts={equipoOpts}
+          fieldsConfig={sanitizeTaskFieldConfigs(columns.filter((column) => column.visible))}
+          espacios={espacios}
+          allowSpaceSelection
+          requireSpaceSelection
+          isAdmin={session?.rol === "ADMIN"}
           initialEstadoId={createDefaults.estadoId}
           initialEspacioId={createDefaults.espacioId}
+          espacioNombre={createDefaults.espacioId ? espacios.find((espacio: any) => espacio.id === createDefaults.espacioId)?.nombre : undefined}
           onClose={() => setShowModal(false)}
           onCreated={() => fetchTareas()}
+          onSpaceCreated={(space) => setEspacios((prev) => prev.some((item: any) => item.id === space.id) ? prev : [...prev, space])}
         />
       )}
 

@@ -258,7 +258,9 @@ export default function PermisosPage() {
   // ── Per-user estado helpers ──
   const getPermisoUsuario = (estadoId: string, userId: string): boolean => {
     const found = permisosUsuario.find((p) => p.estadoId === estadoId && p.userId === userId);
-    return found ? found.visible : true;
+    if (found) return found.visible;
+    const user = allUsers.find((item) => item.id === userId);
+    return getPermisoEstado(estadoId, user?.rol || "TECNICO");
   };
 
   const togglePermisoUsuario = (estadoId: string, userId: string) => {

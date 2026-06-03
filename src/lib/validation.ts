@@ -32,7 +32,7 @@ export function isErrorResponse(value: unknown): value is NextResponse {
 
 const str = (max = 500) => z.string().max(max).trim();
 const strOpt = (max = 500) => str(max).optional();
-const cuid = () => z.string().min(1).max(30);
+const cuid = () => z.string().min(1).max(36);
 const cuidOpt = () => cuid().optional().nullable().or(z.literal(""));
 const dateStr = () => z.string().regex(/^\d{4}-\d{2}-\d{2}/, "Formato de fecha inválido");
 const dateStrOpt = () => dateStr().optional().or(z.literal(""));
@@ -43,6 +43,12 @@ const boolOpt = () => z.boolean().optional();
 const ROLES = ["ADMIN", "MODERADOR", "TECNICO"] as const;
 const PRIORIDADES = ["ALTA", "MEDIA", "BAJA"] as const;
 const CATEGORIAS_CALENDARIO = ["GENERAL", "INSTALACION", "MANTENIMIENTO", "REUNION", "VISITA", "GUARDIA", "RECORDATORIO", "OTRO"] as const;
+
+const etiquetaPayloadSchema = z.object({
+  id: cuidOpt(),
+  nombre: str(50).min(1, "Nombre de etiqueta requerido"),
+  color: strOpt(20),
+});
 
 /* ── Schemas de API ─────────────────────────────────────── */
 
@@ -102,6 +108,7 @@ export const stockCreateSchema = z.object({
   etiqueta: strOpt(50),
   etiquetaColor: strOpt(20),
   proveedor: strOpt(50),
+  camposExtra: z.record(z.string(), z.unknown()).optional(),
 });
 
 // PUT /api/stock/[id]
@@ -147,6 +154,14 @@ export const espacioSchema = z.object({
   color: strOpt(20),
   icono: strOpt(50),
   parentId: cuidOpt(),
+  camposConfig: z.array(z.record(z.string(), z.unknown())).max(100).optional(),
+  estadosConfig: z.object({
+    estadoIds: z.array(cuid()).max(100).optional(),
+  }).passthrough().optional(),
+  nuevosEstados: z.array(z.object({
+    nombre: str(100).min(1, "Nombre requerido"),
+    color: strOpt(20),
+  })).max(50).optional(),
 });
 
 // PUT /api/permisos
@@ -170,6 +185,7 @@ export const tareaCreateSchema = z.object({
   ciudad: strOpt(200),
   tipo: strOpt(50),
   notas: strOpt(5000),
+  notasTecnico: strOpt(5000),
   prioridad: z.enum(PRIORIDADES).optional(),
   asignadoIds: z.array(cuid()).max(50).optional(),
   fechaProgramada: strOpt(100),
@@ -179,12 +195,13 @@ export const tareaCreateSchema = z.object({
   lacR: strOpt(100),
   cue: strOpt(100),
   ambito: strOpt(100),
-  equipoAsignado: strOpt(200),
   provincia: strOpt(200),
   cuePredio: strOpt(100),
   gpsPredio: strOpt(200),
   fechaDesde: strOpt(100),
   fechaHasta: strOpt(100),
+  camposExtra: z.record(z.string(), z.unknown()).optional(),
+  etiquetas: z.array(etiquetaPayloadSchema).max(20).optional(),
 });
 
 // PATCH /api/tareas/[id]

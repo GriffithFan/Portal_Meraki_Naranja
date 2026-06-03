@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const desde = searchParams.get("desde");
   const hasta = searchParams.get("hasta");
   const limitParam = searchParams.get("limit");
-  const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 500);
+  const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 3000);
   const pageParam = searchParams.get("page");
   const page = Math.max(parseInt(pageParam || "1") || 1, 1);
   const skip = (page - 1) * limit;

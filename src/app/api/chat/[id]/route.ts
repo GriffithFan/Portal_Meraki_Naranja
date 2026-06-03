@@ -45,6 +45,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           createdAt: true,
           editadoAt: true,
           autor: { select: { id: true, nombre: true, esMesa: true } },
+          replyTo: {
+            select: {
+              id: true,
+              contenido: true,
+              archivoNombre: true,
+              archivoTipo: true,
+              autor: { select: { id: true, nombre: true, esMesa: true } },
+            },
+          },
+          reacciones: { select: { id: true, userId: true, emoji: true } },
         },
       },
     },
@@ -82,6 +92,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         autor: m.autor.esMesa || m.autorId !== session.userId
           ? { id: m.autorId === session.userId ? session.userId : "mesa", nombre: m.autorId === session.userId ? session.nombre : "Mesa de Ayuda", esMesa: m.autor.esMesa }
           : m.autor,
+        replyTo: m.replyTo
+          ? {
+              ...m.replyTo,
+              autor: m.replyTo.autor?.esMesa
+                ? { id: "mesa", nombre: "Mesa de Ayuda", esMesa: true }
+                : m.replyTo.autor,
+            }
+          : null,
       })),
     };
     return NextResponse.json(anonimizado);
@@ -107,7 +125,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   try {
     const body = await request.json();
-    const { mensaje } = body;
+    const { mensaje, replyToId } = body;
 
     if (!mensaje?.trim()) {
       return NextResponse.json({ error: "Mensaje requerido" }, { status: 400 });
@@ -124,6 +142,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (conversacion.estado === "CERRADA") {
       return NextResponse.json({ error: "Esta conversación ya está cerrada" }, { status: 400 });
+    }
+
+    if (replyToId) {
+      const replyTarget = await prisma.chatMensaje.findUnique({
+        where: { id: replyToId },
+        select: { id: true, conversacionId: true },
+      });
+      if (!replyTarget || replyTarget.conversacionId !== id) {
+        return NextResponse.json({ error: "Mensaje de respuesta inválido" }, { status: 400 });
+      }
     }
 
     // Verificar acceso: creador, agente, o cualquier usuario Mesa en conversación EN_CURSO
@@ -146,9 +174,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         contenido: mensaje.trim().slice(0, 2000),
         conversacionId: id,
         autorId: session.userId,
+        replyToId: replyToId || null,
       },
       include: {
         autor: { select: { id: true, nombre: true, esMesa: true } },
+        replyTo: {
+          select: {
+            id: true,
+            contenido: true,
+            archivoNombre: true,
+            archivoTipo: true,
+            autor: { select: { id: true, nombre: true, esMesa: true } },
+          },
+        },
+        reacciones: { select: { id: true, userId: true, emoji: true } },
       },
     });
 

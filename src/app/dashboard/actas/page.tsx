@@ -48,6 +48,9 @@ const IconFolderOpen = () => (
 );
 
 export default function ActasPage() {
+  const LIST_LIMIT = 500;
+  const SEARCH_LIMIT = 3000;
+
   const { isModOrAdmin } = useSession();
   const { puedeEditar } = usePermisos();
   const canEdit = isModOrAdmin || puedeEditar("actas");
@@ -91,11 +94,12 @@ export default function ActasPage() {
   const fetchActas = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
+    const hasSearch = !!search.trim();
     if (search) params.set("buscar", search);
     if (filterProvincia) params.set("provincia", filterProvincia);
     if (filterDesde) params.set("desde", filterDesde);
     if (filterHasta) params.set("hasta", filterHasta);
-    params.set("limit", "500");
+    params.set("limit", String(hasSearch ? SEARCH_LIMIT : LIST_LIMIT));
     const res = await fetch(`/api/actas?${params}`, { credentials: "include" });
     if (res.ok) {
       const data = await res.json();
@@ -258,10 +262,23 @@ export default function ActasPage() {
     if (bulkFiles.length === 0) return;
     setBulkChecking(true);
 
-    const res = await fetch("/api/actas?limit=500", { credentials: "include" });
-    const data = res.ok ? await res.json() : { actas: [] };
+    const allActas: any[] = [];
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const res = await fetch(`/api/actas?limit=${SEARCH_LIMIT}&page=${page}`, { credentials: "include" });
+      if (!res.ok) break;
+      const data = await res.json();
+      const pageActas = Array.isArray(data?.actas) ? data.actas : [];
+      allActas.push(...pageActas);
+      const total = Number(data?.total || allActas.length);
+      totalPages = Math.max(1, Math.ceil(total / SEARCH_LIMIT));
+      page += 1;
+    }
+
     const existingMap = new Map<string, any>();
-    for (const a of (data.actas || [])) {
+    for (const a of allActas) {
       existingMap.set(a.nombre.toLowerCase(), a);
     }
 
@@ -286,7 +303,32 @@ export default function ActasPage() {
     const dupNames = new Set(bulkDuplicates.map(d => d.file.name));
     setBulkProgress({ done: 0, failed: 0, skipped: 0, overwritten: 0, total: bulkFiles.length });
 
-    const BATCH = 5;
+    const BATCH = 2;
+    const RETRIES = 2;
+
+    async function uploadWithRetry(file: File, isDup: boolean): Promise<"skipped" | "overwritten" | "ok"> {
+      for (let attempt = 0; attempt <= RETRIES; attempt++) {
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const nombre = file.name.replace(/\.(pdf|docx|doc)$/i, "").trim();
+          fd.append("nombre", nombre || file.name);
+          if (isDup && overwriteDups) fd.append("overwrite", "true");
+
+          const res = await fetch("/api/actas", { method: "POST", credentials: "include", body: fd });
+          if (res.status === 409) return "skipped";
+          if (res.ok) return isDup ? "overwritten" : "ok";
+
+          // Reintento para errores transitorios de servidor/gateway.
+          if ((res.status >= 500 || res.status === 429) && attempt < RETRIES) continue;
+          throw new Error(`upload failed (${res.status})`);
+        } catch {
+          if (attempt >= RETRIES) throw new Error("upload failed");
+        }
+      }
+
+      throw new Error("upload failed");
+    }
     let done = 0;
     let failed = 0;
     let skipped = 0;
@@ -298,22 +340,14 @@ export default function ActasPage() {
         batch.map(async (file) => {
           const isDup = dupNames.has(file.name);
           if (isDup && !overwriteDups) {
-            skipped++;
             return "skipped";
           }
-          const fd = new FormData();
-          fd.append("file", file);
-          const nombre = file.name.replace(/\.(pdf|docx|doc)$/i, "").trim();
-          fd.append("nombre", nombre || file.name);
-          if (isDup && overwriteDups) fd.append("overwrite", "true");
-          const res = await fetch("/api/actas", { method: "POST", credentials: "include", body: fd });
-          if (!res.ok) throw new Error("upload failed");
-          return isDup ? "overwritten" : "ok";
+          return uploadWithRetry(file, isDup);
         })
       );
       for (const r of results) {
         if (r.status === "fulfilled") {
-          if (r.value === "skipped") { /* already counted */ }
+          if (r.value === "skipped") { skipped++; }
           else if (r.value === "overwritten") { overwritten++; done++; }
           else { done++; }
         } else { failed++; }

@@ -5,7 +5,7 @@ import Link from "next/link";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export default function SupervisorEquiposPage() {
+export default function SupervisorAsignadosPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +15,7 @@ export default function SupervisorEquiposPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/supervisor/equipos", { credentials: "include" });
+      const res = await fetch("/api/supervisor/asignados", { credentials: "include" });
       if (!res.ok) throw new Error(res.status === 403 ? "Sin permisos para ver este panel" : "No se pudo cargar el panel supervisor");
       setData(await res.json());
     } catch (err: any) {
@@ -27,8 +27,8 @@ export default function SupervisorEquiposPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const equipos = useMemo(() => {
-    const all = data?.equipos || [];
+  const asignados = useMemo(() => {
+    const all = data?.asignados || [];
     if (filter === "vencidas") return all.filter((item: any) => item.vencidas > 0);
     if (filter === "hoy") return all.filter((item: any) => item.hoy > 0);
     if (filter === "alertas") return all.filter((item: any) => item.sinGPS > 0 || item.sinEstado > 0 || item.alta > 0);
@@ -60,8 +60,8 @@ export default function SupervisorEquiposPage() {
     <div className="animate-fade-in-up space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-surface-800">Supervisor por equipo</h1>
-          <p className="text-xs text-surface-400">Carga de trabajo, vencidas, avance y pendientes por tecnico/equipo</p>
+          <h1 className="text-xl font-semibold text-surface-800">Supervisor por asignado</h1>
+          <p className="text-xs text-surface-400">Carga de trabajo, vencidas, avance y pendientes por persona asignada</p>
         </div>
         <button onClick={fetchData} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50">Actualizar</button>
       </div>
@@ -77,10 +77,10 @@ export default function SupervisorEquiposPage() {
 
       <div className="bg-white border border-surface-200 rounded-lg p-3 flex flex-wrap gap-2">
         {[
-          { key: "todos", label: "Todos", count: data.equipos.length },
-          { key: "hoy", label: "Con tareas hoy", count: data.equipos.filter((item: any) => item.hoy > 0).length },
-          { key: "vencidas", label: "Con vencidas", count: data.equipos.filter((item: any) => item.vencidas > 0).length },
-          { key: "alertas", label: "Con alertas", count: data.equipos.filter((item: any) => item.sinGPS > 0 || item.sinEstado > 0 || item.alta > 0).length },
+          { key: "todos", label: "Todos", count: data.asignados.length },
+          { key: "hoy", label: "Con tareas hoy", count: data.asignados.filter((item: any) => item.hoy > 0).length },
+          { key: "vencidas", label: "Con vencidas", count: data.asignados.filter((item: any) => item.vencidas > 0).length },
+          { key: "alertas", label: "Con alertas", count: data.asignados.filter((item: any) => item.sinGPS > 0 || item.sinEstado > 0 || item.alta > 0).length },
         ].map((item) => (
           <button
             key={item.key}
@@ -93,37 +93,37 @@ export default function SupervisorEquiposPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        {equipos.map((equipo: any) => (
-          <section key={equipo.key} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+        {asignados.map((asignado: any) => (
+          <section key={asignado.key} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
             <div className="p-4 border-b border-surface-100">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-sm font-semibold text-surface-800">{equipo.display}</h2>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-surface-100 text-surface-500 font-medium">{equipo.key}</span>
+                    <h2 className="text-sm font-semibold text-surface-800">{asignado.display}</h2>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-surface-100 text-surface-500 font-medium">{asignado.key}</span>
                   </div>
-                  <p className="text-[11px] text-surface-400 mt-0.5">{equipo.actualizadasSemana} actualizadas en los ultimos 7 dias</p>
+                  <p className="text-[11px] text-surface-400 mt-0.5">{asignado.actualizadasSemana} actualizadas en los ultimos 7 dias</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-2xl font-semibold text-surface-800 tabular-nums">{equipo.total}</p>
+                  <p className="text-2xl font-semibold text-surface-800 tabular-nums">{asignado.total}</p>
                   <p className="text-[10px] text-surface-400 uppercase tracking-wider">tareas</p>
                 </div>
               </div>
 
               <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-                <MiniMetric label="Hoy" value={equipo.hoy} tone="primary" />
-                <MiniMetric label="Vencidas" value={equipo.vencidas} tone="warn" />
-                <MiniMetric label="Alta" value={equipo.alta} tone="danger" />
-                <MiniMetric label="Sin GPS" value={equipo.sinGPS} tone="warn" />
+                <MiniMetric label="Hoy" value={asignado.hoy} tone="primary" />
+                <MiniMetric label="Vencidas" value={asignado.vencidas} tone="warn" />
+                <MiniMetric label="Alta" value={asignado.alta} tone="danger" />
+                <MiniMetric label="Sin GPS" value={asignado.sinGPS} tone="warn" />
               </div>
 
               <div className="mt-3">
                 <div className="flex items-center justify-between text-[11px] mb-1">
                   <span className="text-surface-400">Avance operativo</span>
-                  <span className="font-medium text-surface-700">{Math.max(0, Math.min(equipo.avance, 100))}%</span>
+                  <span className="font-medium text-surface-700">{Math.max(0, Math.min(asignado.avance, 100))}%</span>
                 </div>
                 <div className="h-2 bg-surface-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(equipo.avance, 100))}%` }} />
+                  <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(asignado.avance, 100))}%` }} />
                 </div>
               </div>
             </div>
@@ -132,9 +132,9 @@ export default function SupervisorEquiposPage() {
               <div>
                 <h3 className="text-[11px] font-semibold text-surface-400 uppercase tracking-wider mb-2">Estados principales</h3>
                 <div className="space-y-2">
-                  {equipo.byEstado.length === 0 ? (
+                  {asignado.byEstado.length === 0 ? (
                     <p className="text-xs text-surface-400">Sin estados registrados</p>
-                  ) : equipo.byEstado.map((estado: any) => (
+                  ) : asignado.byEstado.map((estado: any) => (
                     <div key={estado.estadoId} className="flex items-center justify-between gap-2 text-xs">
                       <span className="flex items-center gap-1.5 min-w-0">
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: estado.color }} />
@@ -149,9 +149,9 @@ export default function SupervisorEquiposPage() {
               <div>
                 <h3 className="text-[11px] font-semibold text-surface-400 uppercase tracking-wider mb-2">Pendientes recientes</h3>
                 <div className="space-y-2">
-                  {equipo.recientes.length === 0 ? (
+                  {asignado.recientes.length === 0 ? (
                     <p className="text-xs text-surface-400">Sin tareas recientes</p>
-                  ) : equipo.recientes.map((tarea: any) => (
+                  ) : asignado.recientes.map((tarea: any) => (
                     <Link key={tarea.id} href={`/dashboard/tareas?open=${encodeURIComponent(tarea.codigo || tarea.nombre || "")}`} className="block rounded-md border border-surface-100 px-2 py-1.5 hover:bg-surface-50">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-medium text-surface-700 truncate">{tarea.codigo || tarea.nombre || "Sin codigo"}</span>

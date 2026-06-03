@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { stockUpdateSchema, parseBody, isErrorResponse } from "@/lib/validation";
@@ -46,16 +47,16 @@ export async function PUT(
     const data = await parseBody(request, stockUpdateSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor } = data;
+    const { nombre, descripcion, numeroSerie, modelo, marca, cantidad, estado, categoria, ubicacion, predioId, notas, fecha, asignadoId, etiqueta, etiquetaColor, proveedor, camposExtra } = data;
 
     const existing = await prisma.equipo.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: "Equipo no encontrado" }, { status: 404 });
     }
 
-    const equipo = await prisma.equipo.update({
-      where: { id },
-      data: {
+    const today = new Date().toISOString().split("T")[0];
+    const updateData: Prisma.EquipoUncheckedUpdateInput = {
+        fecha: fecha !== undefined ? (fecha || null) : today,
         ...(nombre !== undefined && { nombre }),
         ...(descripcion !== undefined && { descripcion }),
         ...(numeroSerie !== undefined && { numeroSerie: numeroSerie || null }),
@@ -67,22 +68,62 @@ export async function PUT(
         ...(ubicacion !== undefined && { ubicacion }),
         ...(predioId !== undefined && { predioId: predioId || null }),
         ...(notas !== undefined && { notas }),
-        ...(fecha !== undefined && { fecha: fecha || null }),
         ...(asignadoId !== undefined && { asignadoId: asignadoId || null }),
         ...(etiqueta !== undefined && { etiqueta: etiqueta || null }),
         ...(etiquetaColor !== undefined && { etiquetaColor: etiquetaColor || null }),
         ...(proveedor !== undefined && { proveedor: proveedor || null }),
-      },
+        ...(camposExtra !== undefined && { camposExtra: camposExtra as Prisma.InputJsonValue }),
+    };
+
+    const equipo = await prisma.equipo.update({
+      where: { id },
+      data: updateData,
     });
 
-    const desc =
-      estado && estado !== existing.estado
-        ? `Equipo "${equipo.nombre}" cambió estado: ${existing.estado} → ${estado}`
-        : `Equipo "${equipo.nombre}" actualizado`;
+    // Resolver nombres de relaciones para el log
+    const [asigOld, asigNew, predOld, predNew] = await Promise.all([
+      existing.asignadoId ? prisma.user.findUnique({ where: { id: existing.asignadoId }, select: { nombre: true } }) : Promise.resolve(null),
+      asignadoId ? prisma.user.findUnique({ where: { id: asignadoId }, select: { nombre: true } }) : Promise.resolve(null),
+      existing.predioId ? prisma.predio.findUnique({ where: { id: existing.predioId }, select: { nombre: true } }) : Promise.resolve(null),
+      predioId ? prisma.predio.findUnique({ where: { id: predioId }, select: { nombre: true } }) : Promise.resolve(null),
+    ]);
+
+    // Construir descripción detallada de cambios
+    const FIELD_LABELS: Record<string, string> = {
+      nombre: "Nombre", descripcion: "Descripción", numeroSerie: "Serial", modelo: "Modelo",
+      marca: "Marca", cantidad: "Cantidad", estado: "Estado", categoria: "Categoría",
+      ubicacion: "Ubicación", predioId: "Predio", notas: "Notas", fecha: "Fecha",
+      asignadoId: "Asignado", etiqueta: "Etiqueta", proveedor: "Proveedor",
+    };
+    const changes: string[] = [];
+    for (const [key, newVal] of Object.entries(updateData)) {
+      const oldVal = (existing as any)[key];
+      const newStr = String(newVal ?? "").trim();
+      const oldStr = String(oldVal ?? "").trim();
+      if (newStr !== oldStr && FIELD_LABELS[key]) {
+        if (key === "asignadoId") {
+          const oldName = asigOld?.nombre || (oldStr ? "Sin asignar" : "—");
+          const newName = asigNew?.nombre || (newStr ? "Sin asignar" : "—");
+          changes.push(`Asignado: ${oldName} → ${newName}`);
+          continue;
+        }
+        if (key === "predioId") {
+          const oldName = predOld?.nombre || (oldStr ? oldStr.slice(0, 8) + "…" : "—");
+          const newName = predNew?.nombre || (newStr ? newStr.slice(0, 8) + "…" : "—");
+          changes.push(`Predio: ${oldName} → ${newName}`);
+          continue;
+        }
+        changes.push(`${FIELD_LABELS[key]}: ${oldStr || "—"} → ${newStr || "—"}`);
+      }
+    }
+    const accion = estado && estado !== existing.estado ? "CAMBIO_ESTADO" : "ACTUALIZAR";
+    const desc = changes.length > 0
+      ? `Equipo "${equipo.nombre}" modificado — ${changes.join("; ")}`
+      : `Equipo "${equipo.nombre}" actualizado`;
 
     await prisma.actividad.create({
       data: {
-        accion: estado && estado !== existing.estado ? "CAMBIO_ESTADO" : "ACTUALIZAR",
+        accion,
         descripcion: desc,
         entidad: "EQUIPO",
         entidadId: equipo.id,

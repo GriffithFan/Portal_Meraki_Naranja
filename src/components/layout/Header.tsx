@@ -238,13 +238,9 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       setHeaderSearch(query);
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => globalSearch(query), 300);
-      // Si está en subpágina de tareas (espacio), navegar a la vista global para buscar entre todas
-      if (query && pathname.startsWith("/dashboard/tareas/espacio")) {
-        router.push("/dashboard/tareas");
-      }
       return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     }
-  }, [globalSearch, isMonitoring, pathname, query, router, search, setHeaderSearch]);
+  }, [globalSearch, isMonitoring, query, search, setHeaderSearch]);
 
   // Limpiar búsqueda al cambiar de página
   useEffect(() => {

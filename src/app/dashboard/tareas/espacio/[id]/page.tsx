@@ -87,8 +87,8 @@ export default function EspacioOverviewPage() {
           color="accent"
         />
         <KPICard
-          label="Equipos"
-          value={stats.byEquipo.filter((e: any) => e.nombre !== "Sin asignar").length}
+          label="Asignados"
+          value={(stats.byAsignado || []).filter((e: any) => e.nombre !== "Sin asignar").length}
           color="green"
         />
         <KPICard
@@ -121,16 +121,16 @@ export default function EspacioOverviewPage() {
           )}
         </div>
 
-        {/* Distribución por equipo/técnico */}
+        {/* Distribución por asignado */}
         <div className="bg-white rounded-lg border border-surface-200 p-3 sm:p-5">
           <h3 className="text-xs font-medium text-surface-500 uppercase tracking-wider mb-4">
-            Por equipo / técnico
+            Por asignado
           </h3>
-          {stats.byEquipo.length === 0 ? (
+          {(stats.byAsignado || []).length === 0 ? (
             <EmptyMsg />
           ) : (
             <div className="space-y-3">
-              {stats.byEquipo.slice(0, 10).map((e: any) => (
+              {stats.byAsignado.slice(0, 10).map((e: any) => (
                 <BarRow
                   key={e.nombre}
                   label={e.nombre}

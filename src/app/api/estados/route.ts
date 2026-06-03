@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSession, isModOrAdmin } from '@/lib/auth';
 import { parseBody, isErrorResponse, estadoCreateSchema } from '@/lib/validation';
 import { withPrivateCatalogCache } from '@/lib/cacheHeaders';
+import { getHiddenEstadoIdsForSession } from '@/lib/predioVisibility';
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -18,7 +19,12 @@ export async function GET(request: NextRequest) {
     orderBy: { orden: 'asc' },
   });
 
-  return withPrivateCatalogCache(NextResponse.json({ estados }));
+  const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session, entidad);
+  const visibles = hiddenEstadoIds.length > 0
+    ? estados.filter((estado) => !hiddenEstadoIds.includes(estado.id))
+    : estados;
+
+  return withPrivateCatalogCache(NextResponse.json({ estados: visibles }));
 }
 
 export async function POST(request: NextRequest) {

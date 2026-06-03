@@ -175,14 +175,19 @@ export async function GET(request: NextRequest) {
       }
     } catch (e) { console.error("[Search] DB query failed:", e); /* fallback to API */ }
 
-    // Fast path 2: network ID directo
-    if (/^L_\d+$/.test(q)) {
+    // Fast path 2: network ID directo (L_xxx, N_xxx, o numérico puro ≥12 dígitos)
+    if (/^[LN]_\d+$/.test(q) || /^\d{12,}$/.test(q)) {
       const cached = getFromCache<unknown>("networkById", q);
-      if (cached) return NextResponse.json([cached]);
+      if (cached) {
+        const predio = await prisma.predio.findFirst({ where: { merakiNetworkId: q } });
+        const net: any = cached;
+        return NextResponse.json([{ ...net, predioCode: predio?.codigo || "", predioNombre: predio?.nombre || "" }]);
+      }
       try {
-        const net = await getNetworkInfo(q);
+        const net: any = await getNetworkInfo(q);
         setInCache("networkById", q, net);
-        return NextResponse.json([net]);
+        const predio = await prisma.predio.findFirst({ where: { merakiNetworkId: q } });
+        return NextResponse.json([{ ...net, predioCode: predio?.codigo || "", predioNombre: predio?.nombre || "" }]);
       } catch (e) { console.error(`[Search] getNetworkInfo(${q}):`, e); /* continuar búsqueda */ }
     }
 

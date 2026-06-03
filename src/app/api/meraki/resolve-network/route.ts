@@ -121,18 +121,27 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 2. Si parece un network ID, intentar directo con la API
-    if (/^[LN]_\d+$/.test(q)) {
+    // 2. Si parece un network ID (L_xxx, N_xxx, o numérico puro ≥12 dígitos), intentar directo con la API
+    if (/^[LN]_\d+$/.test(q) || /^\d{12,}$/.test(q)) {
       const cached = getFromCache<any>("networkById", q);
+      const predio = await prisma.predio.findFirst({ where: { merakiNetworkId: q } });
       if (cached) {
-        return NextResponse.json({ source: "cache", network: cached });
+        return NextResponse.json({
+          source: "cache",
+          predio: predio ? { codigo: predio.codigo, nombre: predio.nombre, networkId: predio.merakiNetworkId, orgId: predio.merakiOrgId, region: predio.seccion } : null,
+          network: cached,
+        });
       }
       try {
         const net = await getNetworkInfo(q);
         setInCache("networkById", q, net);
-        return NextResponse.json({ source: "api", network: net });
+        return NextResponse.json({
+          source: "api",
+          predio: predio ? { codigo: predio.codigo, nombre: predio.nombre, networkId: predio.merakiNetworkId, orgId: predio.merakiOrgId, region: predio.seccion } : null,
+          network: net,
+        });
       } catch {
-        return NextResponse.json({ error: "Red no encontrada" }, { status: 404 });
+        return NextResponse.json({ error: "Red no encontrada en Meraki con ID " + q }, { status: 404 });
       }
     }
 

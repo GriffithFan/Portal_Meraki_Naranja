@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { normalizeTaskGroupBy, normalizeTaskQuickFilter } from "@/utils/taskFieldConfig";
 
 const DEFAULT_CONFIG = {
   filterEstado: "todos",
   filterProvincia: "",
-  filterEquipo: "",
   filterPrioridad: "todas",
   quickFilter: "todos",
   groupBy: "estado",
@@ -17,10 +17,9 @@ function normalizeConfig(value: unknown) {
   return {
     filterEstado: String(input.filterEstado || DEFAULT_CONFIG.filterEstado).slice(0, 80),
     filterProvincia: String(input.filterProvincia || DEFAULT_CONFIG.filterProvincia).slice(0, 80),
-    filterEquipo: String(input.filterEquipo || DEFAULT_CONFIG.filterEquipo).slice(0, 80),
     filterPrioridad: String(input.filterPrioridad || DEFAULT_CONFIG.filterPrioridad).slice(0, 20),
-    quickFilter: String(input.quickFilter || DEFAULT_CONFIG.quickFilter).slice(0, 40),
-    groupBy: String(input.groupBy || DEFAULT_CONFIG.groupBy).slice(0, 40),
+    quickFilter: normalizeTaskQuickFilter(input.quickFilter),
+    groupBy: normalizeTaskGroupBy(input.groupBy),
   };
 }
 

@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+
+function isTaskColumnConfigKey(clave: string) {
+  return clave === "col-config-tareas" || clave.startsWith("col-config-espacio-");
+}
+
+type TaskColumnConfigValue = {
+  id?: unknown;
+  field?: unknown;
+  label?: unknown;
+  nombre?: unknown;
+  visible?: unknown;
+  order?: unknown;
+  width?: unknown;
+};
 
 // GET /api/config-vista?clave=col-config-tareas
 export async function GET(request: NextRequest) {
@@ -13,6 +28,10 @@ export async function GET(request: NextRequest) {
 
   const config = await prisma.configuracionVista.findUnique({ where: { clave } });
   if (!config) return NextResponse.json(null);
+
+  if (isTaskColumnConfigKey(clave) && Array.isArray(config.config)) {
+    return NextResponse.json({ ...config, config: sanitizeTaskFieldConfigs(config.config as TaskColumnConfigValue[]) });
+  }
 
   return NextResponse.json(config);
 }
@@ -35,10 +54,12 @@ export async function PUT(request: NextRequest) {
   if (!clave || !config || !Array.isArray(config))
     return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
 
+  const safeConfig = isTaskColumnConfigKey(clave) ? sanitizeTaskFieldConfigs(config as TaskColumnConfigValue[]) : config;
+
   const result = await prisma.configuracionVista.upsert({
     where: { clave },
-    update: { config: config as Prisma.InputJsonValue, updatedBy: session.userId },
-    create: { clave, config: config as Prisma.InputJsonValue, updatedBy: session.userId },
+    update: { config: safeConfig as Prisma.InputJsonValue, updatedBy: session.userId },
+    create: { clave, config: safeConfig as Prisma.InputJsonValue, updatedBy: session.userId },
   });
 
   return NextResponse.json(result);

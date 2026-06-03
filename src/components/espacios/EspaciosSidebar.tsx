@@ -41,6 +41,36 @@ const PRESET_COLORS = [
   "#06b6d4", "#eab308", "#ec4899", "#6366f1", "#14b8a6",
 ];
 
+const SPACE_FIELD_PRESETS = [
+  { id: "codigoPredio", label: "Predio/Codigo", field: "codigo", width: 100, visible: true, editable: false, type: "text" },
+  { id: "predio", label: "Incidencia", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
+  { id: "fechaActualizacion", label: "Fecha", field: "fechaActualizacion", width: 80, visible: true, editable: false, type: "date" },
+  { id: "etiquetas", label: "Etiquetas", field: "etiquetas", width: 150, visible: true, editable: false, type: "text" },
+  { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO", "PEDIDO"] },
+  { id: "cue", label: "CUE", field: "cue", width: 100, visible: true, editable: true, type: "text" },
+  { id: "fechaDesde", label: "DESDE", field: "fechaDesde", width: 90, visible: true, editable: true, type: "date" },
+  { id: "fechaHasta", label: "HASTA", field: "fechaHasta", width: 90, visible: true, editable: true, type: "date" },
+  { id: "ambito", label: "Ambito", field: "ambito", width: 80, visible: true, editable: true, type: "select", options: ["Urbano", "Rural", "Rural Disperso"] },
+  { id: "asignados", label: "Asignados", field: "asignaciones", width: 120, visible: true, editable: false, type: "text" },
+  { id: "provincia", label: "Provincia", field: "provincia", width: 100, visible: true, editable: true, type: "text" },
+  { id: "ciudad", label: "Departamento", field: "ciudad", width: 120, visible: true, editable: true, type: "text" },
+  { id: "direccion", label: "Direccion", field: "direccion", width: 140, visible: true, editable: true, type: "text" },
+  { id: "cuePredio", label: "CUE_Predio", field: "cuePredio", width: 100, visible: true, editable: true, type: "text" },
+  { id: "gpsPredio", label: "GPS", field: "gpsPredio", width: 120, visible: true, editable: true, type: "text" },
+  { id: "notas", label: "Notas", field: "notas", width: 160, visible: true, editable: true, type: "text" },
+] as const;
+
+const DEFAULT_SPACE_FIELD_IDS = new Set<string>();
+
+function slugFieldName(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "") || `campo_${Date.now()}`;
+}
+
 // ─── Modal crear espacio ───────────────────────────────
 function CreateSpaceModal({
   parentId,
@@ -57,6 +87,74 @@ function CreateSpaceModal({
   const [color, setColor] = useState("#3b82f6");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [existingFields, setExistingFields] = useState<any[]>([]);
+  const [existingEstados, setExistingEstados] = useState<any[]>([]);
+  const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string>>(() => new Set(DEFAULT_SPACE_FIELD_IDS));
+  const [selectedEstadoIds, setSelectedEstadoIds] = useState<Set<string>>(new Set());
+  const [newFields, setNewFields] = useState<Array<{ nombre: string; tipo: string; opciones: string }>>([]);
+  const [newEstados, setNewEstados] = useState<Array<{ nombre: string; color: string }>>([]);
+
+  useEffect(() => {
+    fetch("/api/campos-personalizados", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : { campos: [] })
+      .then((data) => setExistingFields(data.campos || []))
+      .catch(() => {});
+    fetch("/api/estados", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : { estados: [] })
+      .then((data) => setExistingEstados(data.estados || []))
+      .catch(() => {});
+  }, []);
+
+  function toggleField(id: string) {
+    setSelectedFieldIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleEstado(id: string) {
+    setSelectedEstadoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function buildCamposConfig() {
+    const base = SPACE_FIELD_PRESETS.filter((field) => selectedFieldIds.has(field.id)).map((field) => ({ ...field }));
+    const existing = existingFields
+      .filter((field) => selectedFieldIds.has(`custom_${field.clave}`))
+      .map((field) => ({
+        id: `custom_${field.clave}`,
+        label: field.nombre,
+        field: `_custom_${field.clave}`,
+        width: field.ancho || 100,
+        visible: true,
+        editable: true,
+        type: field.tipo || "text",
+        options: field.opciones?.length ? field.opciones : undefined,
+        showInCreate: false,
+      }));
+    const local = newFields
+      .filter((field) => field.nombre.trim())
+      .map((field, index) => {
+        const clave = `${slugFieldName(field.nombre)}_${Date.now()}_${index}`;
+        const options = field.opciones.split(",").map((item) => item.trim()).filter(Boolean);
+        return {
+          id: `custom_${clave}`,
+          label: field.nombre.trim(),
+          field: `_custom_${clave}`,
+          width: 120,
+          visible: true,
+          editable: true,
+          type: field.tipo || "text",
+          options: options.length ? options : undefined,
+          showInCreate: false,
+        };
+      });
+    return [...base, ...existing, ...local];
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,7 +166,14 @@ function CreateSpaceModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ nombre: nombre.trim(), color, parentId }),
+        body: JSON.stringify({
+          nombre: nombre.trim(),
+          color,
+          parentId,
+          camposConfig: buildCamposConfig(),
+          estadosConfig: { estadoIds: Array.from(selectedEstadoIds) },
+          nuevosEstados: newEstados.filter((estado) => estado.nombre.trim()),
+        }),
       });
       if (res.ok) {
         onCreated();
@@ -88,7 +193,7 @@ function CreateSpaceModal({
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
-        className="bg-white rounded-lg shadow-soft-lg w-full max-w-sm p-5 animate-scale-in"
+        className="bg-white rounded-lg shadow-soft-lg w-full max-w-2xl p-5 animate-scale-in max-h-[90vh] overflow-y-auto"
       >
         <h3 className="text-sm font-semibold text-surface-800 mb-1">
           {parentId ? `Nuevo espacio en "${parentName}"` : "Nuevo espacio de trabajo"}
@@ -119,11 +224,99 @@ function CreateSpaceModal({
           ))}
         </div>
 
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-lg border border-surface-200 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-surface-700">Campos iniciales</span>
+              <button type="button" onClick={() => setSelectedFieldIds(new Set(SPACE_FIELD_PRESETS.map((field) => field.id)))} className="text-[10px] text-primary-600 hover:text-primary-700">Predios</button>
+            </div>
+            <div className="grid max-h-44 grid-cols-2 gap-1 overflow-y-auto pr-1">
+              {SPACE_FIELD_PRESETS.map((field) => (
+                <button
+                  key={field.id}
+                  type="button"
+                  onClick={() => toggleField(field.id)}
+                  className={`rounded border px-2 py-1 text-left text-[11px] transition-colors ${selectedFieldIds.has(field.id) ? "border-primary-300 bg-primary-50 text-primary-700" : "border-surface-200 text-surface-600 hover:bg-surface-50"}`}
+                >
+                  {field.label}
+                </button>
+              ))}
+              {existingFields.map((field) => {
+                const id = `custom_${field.clave}`;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleField(id)}
+                    className={`rounded border px-2 py-1 text-left text-[11px] transition-colors ${selectedFieldIds.has(id) ? "border-primary-300 bg-primary-50 text-primary-700" : "border-surface-200 text-surface-600 hover:bg-surface-50"}`}
+                    title="Campo personalizado existente"
+                  >
+                    {field.nombre}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-surface-500">Campos propios nuevos</span>
+                <button type="button" onClick={() => setNewFields((prev) => [...prev, { nombre: "", tipo: "text", opciones: "" }])} className="text-[11px] text-primary-600 hover:text-primary-700">+ Campo</button>
+              </div>
+              {newFields.map((field, index) => (
+                <div key={index} className="grid grid-cols-[1fr_auto] gap-1">
+                  <input value={field.nombre} onChange={(e) => setNewFields((prev) => prev.map((item, i) => i === index ? { ...item, nombre: e.target.value } : item))} placeholder="Nombre del campo" className="min-w-0 rounded border border-surface-200 px-2 py-1 text-[11px]" />
+                  <select value={field.tipo} onChange={(e) => setNewFields((prev) => prev.map((item, i) => i === index ? { ...item, tipo: e.target.value } : item))} className="rounded border border-surface-200 px-2 py-1 text-[11px]">
+                    <option value="text">Texto</option>
+                    <option value="date">Fecha</option>
+                    <option value="select">Desplegable</option>
+                    <option value="badge">Seleccionable</option>
+                  </select>
+                  {field.tipo !== "text" && field.tipo !== "date" && (
+                    <input value={field.opciones} onChange={(e) => setNewFields((prev) => prev.map((item, i) => i === index ? { ...item, opciones: e.target.value } : item))} placeholder="Opciones separadas por coma" className="col-span-2 rounded border border-surface-200 px-2 py-1 text-[11px]" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-surface-200 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-surface-700">Estados iniciales</span>
+              <button type="button" onClick={() => setSelectedEstadoIds(new Set(existingEstados.map((estado) => estado.id)))} className="text-[10px] text-primary-600 hover:text-primary-700">Seleccionar todos</button>
+            </div>
+            <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
+              {existingEstados.map((estado) => (
+                <button
+                  key={estado.id}
+                  type="button"
+                  onClick={() => toggleEstado(estado.id)}
+                  className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left text-[11px] transition-colors ${selectedEstadoIds.has(estado.id) ? "border-primary-300 bg-primary-50 text-primary-700" : "border-surface-200 text-surface-600 hover:bg-surface-50"}`}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: estado.color || "#94a3b8" }} />
+                  <span className="truncate">{estado.nombre}</span>
+                </button>
+              ))}
+              {existingEstados.length === 0 && <p className="py-4 text-center text-[11px] text-surface-400">No hay estados creados</p>}
+            </div>
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-surface-500">Estados nuevos</span>
+                <button type="button" onClick={() => setNewEstados((prev) => [...prev, { nombre: "", color: "#3b82f6" }])} className="text-[11px] text-primary-600 hover:text-primary-700">+ Estado</button>
+              </div>
+              {newEstados.map((estado, index) => (
+                <div key={index} className="grid grid-cols-[1fr_auto] gap-1">
+                  <input value={estado.nombre} onChange={(e) => setNewEstados((prev) => prev.map((item, i) => i === index ? { ...item, nombre: e.target.value } : item))} placeholder="Nombre del estado" className="min-w-0 rounded border border-surface-200 px-2 py-1 text-[11px]" />
+                  <input type="color" value={estado.color} onChange={(e) => setNewEstados((prev) => prev.map((item, i) => i === index ? { ...item, color: e.target.value } : item))} className="h-7 w-9 rounded border border-surface-200 p-0" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {error && (
-          <p className="text-xs text-red-500 mb-2">{error}</p>
+          <p className="text-xs text-red-500 mt-3 mb-2">{error}</p>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 mt-4">
           <button type="button" onClick={onClose} className="text-xs text-surface-500 px-3 py-1.5 hover:bg-surface-100 rounded">
             Cancelar
           </button>
@@ -144,6 +337,7 @@ function SpaceNode({
   pathname,
   isModOrAdmin,
   isAdmin,
+  onNavigate,
   onAdd,
   onDelete,
   onClear,
@@ -155,6 +349,7 @@ function SpaceNode({
   pathname: string;
   isModOrAdmin: boolean;
   isAdmin: boolean;
+  onNavigate?: () => void;
   onAdd: (parentId: string, parentName: string) => void;
   onDelete: (id: string, nombre: string) => void;
   onClear: (id: string, nombre: string) => void;
@@ -180,7 +375,7 @@ function SpaceNode({
   const childCount = countDescendants(node.children || []);
   const totalCount = taskCount + childCount;
 
-  const isActive = pathname === `/dashboard/tareas/espacio/${node.id}`;
+  const isActive = pathname === `/dashboard/tareas/espacio/${node.id}` || pathname === `/dashboard/tareas/espacio/${node.id}/tareas`;
   const isParentActive = pathname.startsWith(`/dashboard/tareas/espacio/${node.id}`);
 
   function handleDragOver(e: React.DragEvent) {
@@ -250,6 +445,7 @@ function SpaceNode({
           <Link
             href={`/dashboard/tareas/espacio/${node.id}/tareas`}
             className="flex-1 flex items-center gap-1.5 min-w-0 text-xs"
+            onClick={onNavigate}
             onDoubleClick={(e) => {
               if (!isModOrAdmin) return;
               e.preventDefault();
@@ -314,6 +510,7 @@ function SpaceNode({
               pathname={pathname}
               isModOrAdmin={isModOrAdmin}
               isAdmin={isAdmin}
+              onNavigate={onNavigate}
               onAdd={onAdd}
               onDelete={onDelete}
               onClear={onClear}
@@ -407,13 +604,31 @@ export default function EspaciosSidebar() {
     // Leer IDs del dataTransfer guardado en window.__draggedPredioIds
     const ids: string[] = (window as any).__draggedPredioIds || [];
     if (ids.length === 0) return;
+    const sourceFields = Array.isArray((window as any).__draggedPredioFields) ? (window as any).__draggedPredioFields : [];
+    let keepCamposExtra = true;
+    let addCamposToTarget = false;
+    if (sourceFields.length > 0) {
+      keepCamposExtra = window.confirm(`Estas moviendo ${ids.length} tarea(s) a "${nombre}". ¿Queres mantener los campos propios de esas tareas?`);
+      if (keepCamposExtra) {
+        addCamposToTarget = window.confirm(`¿Queres agregar esos campos a la lista de "${nombre}"? Si elegis No, los valores quedan guardados y se veran al abrir la tarea, pero no como columnas.`);
+      }
+    }
 
     try {
       const res = await fetch("/api/tareas", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ids, action: "espacioId", value: espacioId }),
+        body: JSON.stringify({
+          ids,
+          action: "espacioId",
+          value: {
+            espacioId,
+            keepCamposExtra,
+            addCamposToTarget,
+            camposConfig: sourceFields,
+          },
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -425,6 +640,7 @@ export default function EspaciosSidebar() {
       }
     } catch { /* ignore */ }
     (window as any).__draggedPredioIds = null;
+    (window as any).__draggedPredioFields = null;
   }
 
   const fetchEspacios = useCallback(async () => {
@@ -444,42 +660,60 @@ export default function EspaciosSidebar() {
 
   const [mobileExpanded, setMobileExpanded] = useState(false);
 
+  const findActiveSpace = useCallback((nodes: any[]): any | null => {
+    for (const node of nodes) {
+      if (pathname.startsWith(`/dashboard/tareas/espacio/${node.id}`)) return node;
+      const child = findActiveSpace(node.children || []);
+      if (child) return child;
+    }
+    return null;
+  }, [pathname]);
+
+  const activeMobileSpace = findActiveSpace(espacios);
+
+  useEffect(() => {
+    setMobileExpanded(false);
+  }, [pathname]);
+
   return (
     <>
-      {/* ── Mobile: compact horizontal strip ── */}
+      {/* ── Mobile: space picker ── */}
       <div className="md:hidden shrink-0">
-        <div className="border-b border-surface-200 bg-white px-3 py-2 flex items-center gap-2 overflow-x-auto">
+        <div className="border-b border-surface-200 bg-white px-3 py-2 flex items-center gap-2">
           <Link
             href="/dashboard/tareas"
-            className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${
-              isAllTareas ? "bg-primary-100 text-primary-700 ring-2 ring-primary-400" : "bg-surface-100 text-surface-500"
+            className={`shrink-0 h-9 rounded-lg px-3 flex items-center gap-2 text-xs font-medium transition-colors ${
+              isAllTareas ? "bg-primary-100 text-primary-700 ring-2 ring-primary-300" : "bg-surface-100 text-surface-600"
             }`}
             title="Todas las tareas"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
             </svg>
+            Todas
           </Link>
-          {!loading && espacios.map((node) => {
-            const active = pathname.startsWith(`/dashboard/tareas/espacio/${node.id}`);
-            return (
-              <Link
-                key={node.id}
-                href={`/dashboard/tareas/espacio/${node.id}/tareas`}
-                className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white transition-all ${
-                  active ? "ring-2 ring-offset-1 ring-surface-500 scale-110" : ""
-                }`}
-                style={{ backgroundColor: node.color || "#94a3b8" }}
-                title={node.nombre}
-              >
-                {node.nombre?.charAt(0).toUpperCase()}
-              </Link>
-            );
-          })}
+          <button
+            type="button"
+            onClick={() => setMobileExpanded((value) => !value)}
+            className={`min-w-0 flex-1 h-9 rounded-lg border px-3 flex items-center justify-between gap-2 text-xs transition-colors ${
+              mobileExpanded || activeMobileSpace ? "border-primary-200 bg-primary-50 text-primary-700" : "border-surface-200 bg-white text-surface-600"
+            }`}
+            aria-expanded={mobileExpanded}
+          >
+            <span className="min-w-0 flex items-center gap-2">
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d={ICON_MAP.folder} />
+              </svg>
+              <span className="truncate">{activeMobileSpace?.nombre || "Elegir espacio"}</span>
+            </span>
+            <ChevronIcon open={mobileExpanded} />
+          </button>
           {isModOrAdmin && (
             <button
-              onClick={() => setMobileExpanded(!mobileExpanded)}
-              className="shrink-0 w-8 h-8 rounded-lg bg-surface-50 border border-dashed border-surface-300 flex items-center justify-center text-surface-400"
+              type="button"
+              onClick={() => setCreateModal({ parentId: null, parentName: null })}
+              className="shrink-0 h-9 w-9 rounded-lg border border-dashed border-surface-300 bg-surface-50 flex items-center justify-center text-surface-400 hover:text-surface-600"
+              title="Nuevo espacio"
             >
               <PlusIcon />
             </button>
@@ -488,8 +722,28 @@ export default function EspaciosSidebar() {
 
         {/* Mobile expand: full space list */}
         {mobileExpanded && (
-          <div className="border-b border-surface-200 bg-white px-3 py-2">
-            <div className="space-y-1">
+          <div className="border-b border-surface-200 bg-white px-3 py-2 shadow-sm">
+            <div className="max-h-[55vh] space-y-1 overflow-y-auto pr-1 scrollbar-thin">
+              {loading && (
+                <div className="space-y-2 px-2 py-2">
+                  {[...Array(4)].map((_, i) => <div key={i} className="h-7 rounded bg-surface-100 animate-pulse" />)}
+                </div>
+              )}
+              {!loading && espacios.length === 0 && (
+                <p className="py-4 text-center text-xs text-surface-400">Sin espacios creados</p>
+              )}
+              {!loading && (
+                <Link
+                  href="/dashboard/tareas"
+                  onClick={() => setMobileExpanded(false)}
+                  className={`mb-1 flex items-center gap-2 rounded-md px-2 py-2 text-xs transition-colors ${isAllTareas ? "bg-primary-50 text-primary-700 font-medium" : "text-surface-600 hover:bg-surface-100"}`}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d={ICON_MAP.list} />
+                  </svg>
+                  Todas las tareas
+                </Link>
+              )}
               {espacios.map((node) => (
                 <SpaceNode
                   key={node.id}
@@ -498,6 +752,7 @@ export default function EspaciosSidebar() {
                   pathname={pathname}
                   isModOrAdmin={isModOrAdmin}
                   isAdmin={isAdmin}
+                  onNavigate={() => setMobileExpanded(false)}
                   onAdd={(parentId, parentName) => setCreateModal({ parentId, parentName })}
                   onDelete={(id, nombre) => setDeleteConfirm({ id, nombre })}
                   onClear={(id, nombre) => setClearConfirm({ id, nombre })}
@@ -506,12 +761,14 @@ export default function EspaciosSidebar() {
                 />
               ))}
             </div>
-            <button
-              onClick={() => setCreateModal({ parentId: null, parentName: null })}
-              className="w-full mt-2 py-1.5 text-xs text-primary-600 hover:bg-primary-50 rounded transition-colors"
-            >
-              + Nuevo espacio
-            </button>
+            {isModOrAdmin && (
+              <button
+                onClick={() => setCreateModal({ parentId: null, parentName: null })}
+                className="w-full mt-2 py-1.5 text-xs text-primary-600 hover:bg-primary-50 rounded transition-colors"
+              >
+                + Nuevo espacio
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -68,10 +68,9 @@ export async function GET(request: NextRequest) {
         nombre: true,
         codigo: true,
         provincia: true,
-        equipoAsignado: true,
         fechaActualizacion: true,
         asignaciones: {
-          where: { tipo: "TAREA" },
+          where: { tipo: { in: ["TAREA", "TECNICO"] } },
           include: { usuario: { select: { id: true, nombre: true } } },
         },
       },
