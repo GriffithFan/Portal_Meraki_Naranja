@@ -47,6 +47,7 @@ function buildCaptureLayout(
   sectionName: string,
   predioCode: string,
   networkId: string,
+  shellWidth: number,
 ): HTMLElement {
   const now = new Date();
   const dateStr = now.toLocaleString("es-MX", {
@@ -85,7 +86,7 @@ function buildCaptureLayout(
   // Shell — posicionado VISIBLE para que html-to-image lo capture correctamente
   const shell = document.createElement("div");
   shell.style.cssText =
-    "position:fixed;top:0;left:0;z-index:99999;width:1500px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#F1F5F9;";
+    `position:fixed;top:0;left:0;z-index:99999;width:${shellWidth}px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#F1F5F9;`;
 
   shell.innerHTML = `
     <!-- TopBar — compacto, matching captura original -->
@@ -241,6 +242,8 @@ function buildCaptureLayout(
   // Force light background for summary chips container
   styleTag.textContent += "\n[data-capture-content] .summary-chips-container { background: #f1f5f9 !important; border: none !important; }";
   styleTag.textContent += "\n[data-capture-content] .summary-chip { background: #f1f5f9 !important; border-color: #cbd5e1 !important; }";
+  // Evita barras de scroll internas en capturas de tablas anchas (ultrawide).
+  styleTag.textContent += "\n[data-capture-content] .table-container { overflow-x: visible !important; overflow-y: visible !important; }";
   // Force desktop table display
   styleTag.textContent += "\n[data-capture-content] table { display: table !important; }";
   styleTag.textContent += "\n[data-capture-content] thead { display: table-header-group !important; }";
@@ -372,9 +375,13 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
 
     const predioCode = selectedNetwork?.predioCode || selectedNetwork?.name || "---";
     const networkId = selectedNetwork?.id || "";
+    // Mantiene la captura consistente con el ancho real del contenido visible.
+    // En monitores ultrawide evita comprimir el layout a 1500px y mostrar scroll interno.
+    const liveContentWidth = Math.ceil(el.getBoundingClientRect().width);
+    const captureShellWidth = Math.max(1500, Math.min(2600, liveContentWidth + 360));
 
     // Construir layout completo estilo auditoría
-    const shell = buildCaptureLayout(el, sectionName, predioCode, networkId);
+    const shell = buildCaptureLayout(el, sectionName, predioCode, networkId, captureShellWidth);
 
     // Force light mode for capture — temporarily remove dark class from <html>
     // so CSS .dark selectors don't match, then fix inline React dark styles.
