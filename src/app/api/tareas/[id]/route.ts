@@ -327,13 +327,30 @@ export async function PATCH(
     if (isErrorResponse(body)) return body;
     const bodyAny = body as Record<string, unknown>;
 
-    // Usuarios normales solo pueden cambiar estadoId
+    // Usuarios normales: solo estado, observaciones y el flag de +20 AP.
     if (!isModOrAdmin(session.rol)) {
-      const allowedFields = ["estadoId", "notasTecnico"];
+      const allowedFields = ["estadoId", "notasTecnico", "camposExtra"];
       const requestedFields = Object.keys(bodyAny).filter(k => bodyAny[k] !== undefined);
       const forbidden = requestedFields.filter(f => !allowedFields.includes(f));
       if (forbidden.length > 0) {
         return NextResponse.json({ error: "Sin permisos para editar estos campos" }, { status: 403 });
+      }
+
+      if (bodyAny.camposExtra !== undefined) {
+        const incoming = bodyAny.camposExtra;
+        if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+          return NextResponse.json({ error: "Formato inválido para camposExtra" }, { status: 400 });
+        }
+        const entries = Object.entries(incoming as Record<string, unknown>);
+        const invalid = entries.some(([key, value]) => {
+          if (key !== "tieneMas20Ap") return true;
+          if (value === null || value === "") return false;
+          const normalized = String(value).trim().toUpperCase();
+          return normalized !== "SI" && normalized !== "NO";
+        });
+        if (invalid) {
+          return NextResponse.json({ error: "Sin permisos para editar campos personalizados" }, { status: 403 });
+        }
       }
     }
 
@@ -358,7 +375,12 @@ export async function PATCH(
           const prev = (existing.camposExtra && typeof existing.camposExtra === "object")
             ? existing.camposExtra as Record<string, unknown>
             : {};
-          data[field] = { ...prev, ...(bodyAny[field] as Record<string, unknown>) };
+          const incoming = { ...(bodyAny[field] as Record<string, unknown>) };
+          if (Object.prototype.hasOwnProperty.call(incoming, "tieneMas20Ap")) {
+            const normalized = String(incoming.tieneMas20Ap || "").trim().toUpperCase();
+            incoming.tieneMas20Ap = normalized === "SI" || normalized === "NO" ? normalized : null;
+          }
+          data[field] = { ...prev, ...incoming };
         }
         // Valores normales
         else {

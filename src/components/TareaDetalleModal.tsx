@@ -75,6 +75,12 @@ const DEFAULT_DETAIL_FIELDS: DetailFieldDef[] = [
 ];
 
 const NOTES_DETAIL_FIELD: DetailFieldDef = { id: "notas", label: "Notas", field: "notas", editable: true };
+const MAS_20_AP_KEY = "tieneMas20Ap";
+
+function normalizeMas20Ap(value: unknown): "SI" | "NO" | "" {
+  const normalized = String(value || "").trim().toUpperCase();
+  return normalized === "SI" || normalized === "NO" ? normalized : "";
+}
 
 function labelFromKey(key: string) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -129,6 +135,9 @@ export default function TareaDetalleModal({
   const [editingDetailField, setEditingDetailField] = useState<DetailFieldDef | null>(null);
   const [editingDetailLabel, setEditingDetailLabel] = useState("");
   const [hidingDetailField, setHidingDetailField] = useState<DetailFieldDef | null>(null);
+  const [notasTecnicoDraft, setNotasTecnicoDraft] = useState("");
+  const [savingNotasTecnico, setSavingNotasTecnico] = useState(false);
+  const [savingMas20Ap, setSavingMas20Ap] = useState(false);
 
   const formatDateTime = (d: string) =>
     new Date(d).toLocaleDateString("es-AR", {
@@ -174,6 +183,10 @@ export default function TareaDetalleModal({
   useEffect(() => {
     fetchDetail();
   }, [fetchDetail]);
+
+  useEffect(() => {
+    setNotasTecnicoDraft(String(tarea?.notasTecnico || ""));
+  }, [tarea?.id, tarea?.notasTecnico]);
 
   useEffect(() => {
     if (!isModOrAdmin) return;
@@ -244,20 +257,30 @@ export default function TareaDetalleModal({
   }
 
   // ── Guardar campo inline ──────────────────────────────
-  async function saveField(field: string, value: any) {
-    const res = await fetch(`/api/tareas/${tareaId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ [field]: value }),
-    });
-    if (res.ok) {
+  async function saveField(field: string, value: any): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/tareas/${tareaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error || "No se pudo guardar el cambio");
+        return false;
+      }
+
       const updated = await res.json().catch(() => null);
       setTarea((prev: any) => updated?.id ? updated : (field === "camposExtra"
         ? { ...prev, camposExtra: { ...(prev?.camposExtra || {}), ...(value || {}) } }
         : { ...prev, [field]: value }));
       await refreshTimeline();
       onUpdated?.();
+      return true;
+    } catch {
+      toast.error("No se pudo guardar el cambio");
+      return false;
     }
   }
 
@@ -276,6 +299,27 @@ export default function TareaDetalleModal({
       setNuevoComentario("");
       await refreshTimeline();
     }
+  }
+
+  async function saveNotasTecnico() {
+    if (savingNotasTecnico) return;
+    const current = String(tarea?.notasTecnico || "");
+    if (notasTecnicoDraft === current) return;
+    setSavingNotasTecnico(true);
+    const ok = await saveField("notasTecnico", notasTecnicoDraft);
+    if (ok) toast.success("Observaciones guardadas");
+    setSavingNotasTecnico(false);
+  }
+
+  async function saveMas20Ap(value: "SI" | "NO" | "") {
+    if (savingMas20Ap) return;
+    const current = normalizeMas20Ap(tarea?.camposExtra?.[MAS_20_AP_KEY]);
+    if (value === current) return;
+    setSavingMas20Ap(true);
+    const payload = value ? value : null;
+    const ok = await saveField("camposExtra", { [MAS_20_AP_KEY]: payload });
+    if (ok) toast.success("Campo guardado");
+    setSavingMas20Ap(false);
   }
 
   const timelineItems = useMemo(() => {
@@ -579,6 +623,9 @@ export default function TareaDetalleModal({
       .filter((field: DetailFieldDef) => !isHiddenByListStructure(field));
     return [...hiddenBase, ...hiddenCustom];
   }, [baseDetailFields, detalleCamposConfig, getColumnConfig, getDetailConfig, hasOwnCamposConfig, isHiddenByListStructure]);
+
+  const notasTecnicoDirty = notasTecnicoDraft !== String(tarea?.notasTecnico || "");
+  const mas20ApValue = normalizeMas20Ap(tarea?.camposExtra?.[MAS_20_AP_KEY]);
 
   // ── Render ──────────────────────────────
   const isDrawer = variant === "drawer";
@@ -887,21 +934,64 @@ export default function TareaDetalleModal({
                       )}
                     </div>
                     {!isModOrAdmin ? (
-                      <textarea
-                        key={tarea.notasTecnico}
-                        defaultValue={tarea.notasTecnico || ""}
-                        onBlur={(e) => {
-                          if (e.target.value !== (tarea.notasTecnico || "")) {
-                            saveField("notasTecnico", e.target.value);
-                          }
-                        }}
-                        placeholder="Escribir observaciones..."
-                        rows={3}
-                        className="w-full text-xs border-0 bg-transparent p-3 focus:ring-0 resize-none text-surface-700 placeholder:text-surface-300"
-                      />
+                      <div className="p-3 space-y-2">
+                        <textarea
+                          value={notasTecnicoDraft}
+                          onChange={(e) => setNotasTecnicoDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                              e.preventDefault();
+                              void saveNotasTecnico();
+                            }
+                          }}
+                          placeholder="Escribir observaciones..."
+                          rows={3}
+                          className="w-full text-xs border border-surface-200 bg-white rounded-md p-2.5 focus:outline-none focus:border-primary-400 resize-none text-surface-700 placeholder:text-surface-300"
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[11px] ${notasTecnicoDirty ? "text-amber-600" : "text-surface-400"}`}>
+                            {notasTecnicoDirty ? "Cambios sin guardar" : "Sin cambios pendientes"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => { void saveNotasTecnico(); }}
+                            disabled={!notasTecnicoDirty || savingNotasTecnico}
+                            className="rounded-md bg-surface-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {savingNotasTecnico ? "Guardando..." : "Guardar"}
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <p className="text-xs text-surface-600 p-3 whitespace-pre-wrap">{tarea.notasTecnico || <span className="text-surface-300 italic">Sin observaciones</span>}</p>
                     )}
+                  </div>
+
+                  {/* Tiene más de 20 AP */}
+                  <div className="border border-surface-200 rounded-lg">
+                    <div className="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">
+                        Tiene más de 20 AP
+                      </span>
+                      {mas20ApValue === "SI" && (
+                        <span className="text-[10px] text-violet-600 font-medium">● Marcado SI</span>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={mas20ApValue}
+                          onChange={(e) => { void saveMas20Ap(normalizeMas20Ap(e.target.value)); }}
+                          disabled={savingMas20Ap}
+                          className="w-full max-w-[220px] rounded-md border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 focus:outline-none focus:border-primary-400 disabled:opacity-50"
+                        >
+                          <option value="">Sin dato</option>
+                          <option value="SI">Sí</option>
+                          <option value="NO">No</option>
+                        </select>
+                        {savingMas20Ap && <span className="text-[11px] text-surface-400">Guardando...</span>}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Info de creación */}

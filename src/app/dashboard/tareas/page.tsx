@@ -34,14 +34,26 @@ const CopyBtn = ({ text }: { text: string }) => {
 };
 
 // ── Indicador de notas/comentarios ──────────────────────────
-const NotesIndicator = ({ notas, notasTecnico, comentarios }: { notas?: string; notasTecnico?: string; comentarios?: number }) => {
-  if (!notas && !notasTecnico && !(comentarios && comentarios > 0)) return null;
-  const taskTip = [notas ? "Tiene notas" : "", comentarios ? `${comentarios} comentario${comentarios > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ");
+const NotesIndicator = ({ notas, notasTecnico, comentarios, tieneMas20Ap }: { notas?: string; notasTecnico?: string; comentarios?: number; tieneMas20Ap?: unknown }) => {
+  const showMas20Ap = String(tieneMas20Ap || "").trim().toUpperCase() === "SI";
+  if (!notas && !notasTecnico && !showMas20Ap && !(comentarios && comentarios > 0)) return null;
+  const taskTip = [
+    notas ? "Tiene notas" : "",
+    comentarios ? `${comentarios} comentario${comentarios > 1 ? "s" : ""}` : "",
+    showMas20Ap ? "Tiene más de 20 AP" : "",
+  ].filter(Boolean).join(" · ");
   return (
     <span className="inline-flex shrink-0 items-center gap-0.5">
       {(notas || (comentarios && comentarios > 0)) && (
         <span title={taskTip || "Tiene notas"} aria-label="Nota de tarea">
           <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+          </svg>
+        </span>
+      )}
+      {showMas20Ap && (
+        <span title="Tiene más de 20 AP" aria-label="Más de 20 AP">
+          <svg className="w-3 h-3 text-violet-500" fill="currentColor" viewBox="0 0 24 24">
             <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
           </svg>
         </span>
@@ -1170,7 +1182,7 @@ export default function TareasPage() {
             </span>
           ) : null}
           <span className="text-surface-800 font-medium truncate">{displayCode}</span>
-          <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} />
+          <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} />
           <CopyBtn text={t.codigo || ""} />
         </span>
       );
@@ -1358,7 +1370,7 @@ export default function TareasPage() {
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 {t.codigo && <span className="shrink-0 text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
-                <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} />
+                <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} />
                 <p className="min-w-0 truncate text-sm font-medium text-surface-700">
                   {t.incidencias || t.nombre || "Sin nombre"}
                 </p>
