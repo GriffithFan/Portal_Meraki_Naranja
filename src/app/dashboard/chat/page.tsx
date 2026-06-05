@@ -13,6 +13,7 @@ import clsx from "clsx";
 
 const MAX_AUDIO_SECONDS = 120;
 const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/zip,application/x-zip-compressed";
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏", "🎉"];
 const PARTICIPANT_COLORS = [
   "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:ring-blue-700",
   "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:ring-emerald-700",
@@ -100,6 +101,57 @@ const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
   CERRADA: { label: "Cerrada", className: "bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400" },
 };
 
+function messagePreview(msg: any) {
+  if (!msg) return "Mensaje";
+  if (msg.archivoNombre) return msg.contenido && msg.contenido !== msg.archivoNombre ? msg.contenido : msg.archivoNombre;
+  return msg.contenido || "Mensaje";
+}
+
+function ReplyQuote({ msg, esMio, onClick }: { msg: any; esMio: boolean; onClick?: () => void }) {
+  if (!msg) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx("mb-1.5 w-full rounded-md border-l-2 px-2 py-1 text-left", esMio ? "border-blue-200 bg-white/15" : "border-blue-400 bg-white/70 dark:bg-surface-600/70")}
+    >
+      <p className={clsx("text-[10px] font-semibold", esMio ? "text-blue-100" : "text-blue-600 dark:text-blue-300")}>{msg.autor?.nombre || "Mensaje"}</p>
+      <p className={clsx("line-clamp-2 text-[11px]", esMio ? "text-blue-50" : "text-surface-500 dark:text-surface-300")}>{messagePreview(msg)}</p>
+    </button>
+  );
+}
+
+function ReactionSummary({ msg, sessionUserId, onReact }: { msg: any; sessionUserId?: string; onReact: (msg: any, emoji: string) => void }) {
+  const reacciones = msg.reacciones || [];
+  if (reacciones.length === 0) return null;
+  const counts = QUICK_REACTIONS
+    .map((emoji) => ({ emoji, count: reacciones.filter((r: any) => r.emoji === emoji).length, mine: reacciones.some((r: any) => r.emoji === emoji && r.userId === sessionUserId) }))
+    .filter((item) => item.count > 0);
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {counts.map((item) => (
+        <button key={item.emoji} type="button" onClick={() => onReact(msg, item.emoji)} className={clsx("inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] shadow-sm", item.mine ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200" : "border-surface-200 bg-white text-surface-600 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200")} title={item.mine ? "Quitar reaccion" : "Reaccionar"}>
+          <span>{item.emoji}</span>
+          <span className="font-semibold">{item.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReactionPicker({ msg, onReact, placement }: { msg: any; onReact: (msg: any, emoji: string) => void; placement: "top" | "bottom" }) {
+  return (
+    <div className={clsx("absolute z-20 flex rounded-full border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-800", placement === "bottom" ? "top-full mt-1" : "bottom-full mb-1")}>
+      {QUICK_REACTIONS.map((emoji) => (
+        <button key={emoji} type="button" onClick={() => onReact(msg, emoji)} className="rounded-full px-1.5 py-1 text-sm hover:bg-surface-100 dark:hover:bg-surface-700" title={`Reaccionar ${emoji}`}>
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const { session, isMesa, isModOrAdmin } = useSession();
   useChatReminders(Boolean(session), session?.userId || "default");
@@ -122,9 +174,15 @@ export default function ChatPage() {
     urlParamsRef.current = new URLSearchParams(window.location.search);
   }
   const [busqueda, setBusqueda] = useState(() => urlParamsRef.current?.get("search") || "");
+  const [resultadosBusqueda, setResultadosBusqueda] = useState<any[] | null>(null);
+  const [buscandoHistorial, setBuscandoHistorial] = useState(false);
+  const [respondiendoA, setRespondiendoA] = useState<any | null>(null);
+  const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
+  const [reactionPickerMsg, setReactionPickerMsg] = useState<{ id: string; placement: "top" | "bottom" } | null>(null);
   const [editandoMsgId, setEditandoMsgId] = useState<string | null>(null);
   const [editandoTxt, setEditandoTxt] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevMsgCountRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +199,20 @@ export default function ChatPage() {
       for (const msg of nuevos) byId.set(msg.id, msg);
       return Array.from(byId.values()).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     });
+  }, []);
+
+  const scrollToMessage = useCallback((id: string) => {
+    const node = messageRefs.current.get(id);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightMsgId(id);
+    window.setTimeout(() => setHighlightMsgId((current) => current === id ? null : current), 1400);
+  }, []);
+
+  const toggleReactionPicker = useCallback((id: string, event: any) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const placement = rect.top < 120 ? "bottom" : "top";
+    setReactionPickerMsg((current) => current?.id === id ? null : { id, placement });
   }, []);
 
   // soloLectura se calcula por conversación: MOD puede escribir en las suyas
@@ -197,6 +269,34 @@ export default function ChatPage() {
     cargarConversaciones().finally(() => setLoading(false));
   }, [cargarConversaciones]);
 
+  useEffect(() => {
+    const query = busqueda.trim();
+    if (!query) {
+      setResultadosBusqueda(null);
+      setBuscandoHistorial(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams();
+    params.set("search", query);
+    if (filtroEstado !== "TODAS") params.set("estado", filtroEstado);
+
+    setBuscandoHistorial(true);
+    fetch(`/api/chat?${params.toString()}`, { credentials: "include", signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!controller.signal.aborted) setResultadosBusqueda(Array.isArray(data) ? data : []);
+      })
+      .catch(() => { /* silenciar */ })
+      .finally(() => {
+        if (!controller.signal.aborted) setBuscandoHistorial(false);
+      });
+
+    return () => controller.abort();
+  }, [busqueda, filtroEstado]);
+
   // Polling cada 5s para mensajes nuevos
   useEffect(() => {
     pollRef.current = setInterval(() => {
@@ -220,14 +320,53 @@ export default function ChatPage() {
     if (seleccionada?.estado === "CERRADA" && !isMesa && !soloLectura) {
       setSeleccionada(null);
       setMensajes([]);
+      setRespondiendoA(null);
+      setReactionPickerMsg(null);
       setVistaMovil("lista");
     }
   }, [seleccionada?.estado, isMesa, soloLectura]);
 
   const seleccionarConv = (conv: any) => {
     setSeleccionada(conv);
+    setRespondiendoA(null);
+    setReactionPickerMsg(null);
     cargarMensajes(conv.id);
     setVistaMovil("chat");
+  };
+
+  const enviarTextoConversacion = async (textoInput: string) => {
+    const texto = textoInput.trim();
+    if (!texto || enviando || !seleccionada) return false;
+
+    setEnviando(true);
+    try {
+      const res = await fetch(`/api/chat/${seleccionada.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mensaje: texto, replyToId: respondiendoA?.id || undefined }),
+      });
+      if (res.ok) {
+        setNuevoMensaje("");
+        setRespondiendoA(null);
+        await cargarMensajes(seleccionada.id);
+        return true;
+      }
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || "Error al enviar mensaje");
+      return false;
+    } catch (err) {
+      console.error("[Chat] Error enviando mensaje:", err);
+      alert("Error de conexión");
+      return false;
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const enviarEmojiRapido = async (emoji: string) => {
+    if (!seleccionada) return;
+    await enviarTextoConversacion(emoji);
   };
 
   const enviarMensaje = async (e: React.FormEvent) => {
@@ -243,24 +382,7 @@ export default function ChatPage() {
     }
 
     if (!seleccionada) return;
-    setEnviando(true);
-    try {
-      const res = await fetch(`/api/chat/${seleccionada.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ mensaje: texto }),
-      });
-      if (res.ok) {
-        setNuevoMensaje("");
-        await cargarMensajes(seleccionada.id);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al enviar mensaje");
-      }
-    } catch (err) { console.error("[Chat] Error enviando mensaje:", err); alert("Error de conexión"); } finally {
-      setEnviando(false);
-    }
+    await enviarTextoConversacion(texto);
   };
 
   const crearConsulta = async (primerMensaje: string) => {
@@ -276,6 +398,7 @@ export default function ChatPage() {
       if (res.ok) {
         const data = await res.json();
         await cargarConversaciones();
+        setResultadosBusqueda(null);
         seleccionarConv(data);
       } else {
         const err = await res.json();
@@ -313,6 +436,8 @@ export default function ChatPage() {
       if (res.ok) {
         setSeleccionada(null);
         setMensajes([]);
+        setRespondiendoA(null);
+        setReactionPickerMsg(null);
         setVistaMovil("lista");
         await cargarConversaciones();
       }
@@ -328,7 +453,13 @@ export default function ChatPage() {
     try {
       const res = await fetch(`/api/chat/${id}`, { method: "DELETE", credentials: "include" });
       if (res.ok) {
-        if (seleccionada?.id === id) { setSeleccionada(null); setMensajes([]); setVistaMovil("lista"); }
+        if (seleccionada?.id === id) {
+          setSeleccionada(null);
+          setMensajes([]);
+          setRespondiendoA(null);
+          setReactionPickerMsg(null);
+          setVistaMovil("lista");
+        }
         await cargarConversaciones();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -338,14 +469,10 @@ export default function ChatPage() {
   };
 
   // Filtrar y ordenar conversaciones
-  const convsFiltradas = conversaciones.filter((c) => {
+  const convSource = resultadosBusqueda ?? conversaciones;
+  const convsFiltradas = convSource.filter((c) => {
+    if (resultadosBusqueda) return true;
     if (filtroEstado !== "TODAS" && c.estado !== filtroEstado) return false;
-    if (busqueda.trim()) {
-      const q = busqueda.toLowerCase();
-      const nombre = (c.creador?.nombre || "").toLowerCase();
-      const preview = (c.mensajes?.[0]?.contenido || "").toLowerCase();
-      if (!nombre.includes(q) && !preview.includes(q)) return false;
-    }
     return true;
   }).sort((a, b) => {
     const tA = new Date(a.updatedAt).getTime();
@@ -369,8 +496,10 @@ export default function ChatPage() {
       const fd = new FormData();
       files.forEach((file) => fd.append("file", file));
       fd.append("conversacionId", seleccionada.id);
+      if (respondiendoA?.id) fd.append("replyToId", respondiendoA.id);
       const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
       if (res.ok) {
+        setRespondiendoA(null);
         await cargarMensajes(seleccionada.id);
       } else {
         const err = await res.json();
@@ -489,6 +618,27 @@ export default function ChatPage() {
     } catch { alert("Error de conexión"); }
   };
 
+  const reaccionarMensaje = async (msg: any, emoji: string) => {
+    setReactionPickerMsg(null);
+    try {
+      const res = await fetch(`/api/chat/mensaje/${msg.id}/reaccion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ emoji }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Error al reaccionar");
+        return;
+      }
+      const data = await res.json();
+      setMensajes((prev) => prev.map((item: any) => item.id === data.mensajeId ? { ...item, reacciones: data.reacciones } : item));
+    } catch {
+      alert("Error de conexión");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -560,11 +710,16 @@ export default function ChatPage() {
             {/* Búsqueda */}
             <input
               type="text"
-              placeholder="Buscar por nombre o mensaje..."
+              placeholder="Buscar en historial (abiertos y cerrados)..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-full px-2 py-1 rounded border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-700 dark:text-surface-200 text-xs placeholder:text-surface-400 focus:ring-1 focus:ring-blue-500 outline-none"
             />
+            {busqueda.trim() && (
+              <p className="text-[10px] text-surface-400">
+                {buscandoHistorial ? "Buscando en chats abiertos y cerrados..." : "Resultados de historial"}
+              </p>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {conversaciones.length === 0 ? (
@@ -578,7 +733,7 @@ export default function ChatPage() {
               </div>
             ) : convsFiltradas.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-surface-400 dark:text-surface-500 p-4 text-center">
-                <p className="text-sm">Sin resultados para este filtro</p>
+                <p className="text-sm">{busqueda.trim() ? "Sin coincidencias en el historial" : "Sin resultados para este filtro"}</p>
               </div>
             ) : (
               convsFiltradas.map((conv) => (
@@ -744,10 +899,21 @@ export default function ChatPage() {
                     : false;
                   const editando = editandoMsgId === msg.id;
                   return (
-                    <div key={msg.id} className={clsx("group/msg flex", esMio ? "justify-end" : "justify-start")}>
+                    <div
+                      key={msg.id}
+                      ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
+                      className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
+                    >
                       {/* Botones de acción (hover) — lado izquierdo para mensajes míos */}
-                      {esMio && !editando && seleccionada.estado !== "CERRADA" && (
-                        <div className="flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
+                      {esMio && !editando && seleccionada.estado !== "CERRADA" && !soloLectura && (
+                        <div className="relative flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
+                          {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
+                          <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
+                            <span className="text-sm leading-none">🙂</span>
+                          </button>
+                          <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                          </button>
                           {!msg.archivoUrl && (
                             <button onClick={() => iniciarEdicion(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Editar">
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
@@ -793,6 +959,7 @@ export default function ChatPage() {
                           </div>
                         ) : (
                           <>
+                            <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
                             {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
                             <ChatArchivo msg={msg} esMio={esMio} />
                           </>
@@ -820,13 +987,23 @@ export default function ChatPage() {
                             </svg>
                           )}
                         </div>
+                        <ReactionSummary msg={msg} sessionUserId={session?.userId} onReact={reaccionarMensaje} />
                       </div>
                       {/* Botones de acción (hover) — lado derecho para mensajes ajenos (solo Mesa/Admin) */}
-                      {!esMio && (isMesa || session?.rol === "ADMIN") && !editando && seleccionada.estado !== "CERRADA" && (
-                        <div className="flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
-                          <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                      {!esMio && !editando && seleccionada.estado !== "CERRADA" && !soloLectura && (
+                        <div className="relative flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
+                          {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
+                          <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
+                            <span className="text-sm leading-none">🙂</span>
                           </button>
+                          <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                          </button>
+                          {(isMesa || session?.rol === "ADMIN") && (
+                            <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -857,39 +1034,63 @@ export default function ChatPage() {
                         <span className="text-sm text-surface-500">Subiendo archivo...</span>
                       </div>
                     ) : (
-                      <form onSubmit={enviarMensaje} className="flex items-center gap-2 touch-manipulation">
-                        {/* Adjuntar archivo */}
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivos (foto, video, audio, zip)">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-                          </svg>
-                        </button>
-                        {/* Grabar audio */}
-                        <button type="button" onClick={iniciarGrabacion} className="p-2 text-surface-400 hover:text-red-500 transition" title="Grabar audio (máx 2 min)">
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                          </svg>
-                        </button>
-                        <input
-                          type="text"
-                          placeholder="Escribí un mensaje..."
-                          disabled={false}
-                          value={nuevoMensaje}
-                          onChange={(e) => setNuevoMensaje(e.target.value)}
-                          onPaste={handlePaste}
-                          maxLength={2000}
-                          className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
-                        />
-                        <button
-                          type="submit"
-                          disabled={!nuevoMensaje.trim() || enviando}
-                          onMouseDown={(e) => e.preventDefault()}
-                          className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition touch-manipulation"
-                        >
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                          </svg>
-                        </button>
+                      <form onSubmit={enviarMensaje} className="space-y-2 touch-manipulation">
+                        {respondiendoA && (
+                          <div className="flex items-start justify-between rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 dark:border-blue-800/60 dark:bg-blue-900/20">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold text-blue-600 dark:text-blue-300">
+                                Respondiendo a {respondiendoA.autor?.nombre || "mensaje"}
+                              </p>
+                              <p className="truncate text-xs text-blue-700/90 dark:text-blue-200/80">{messagePreview(respondiendoA)}</p>
+                            </div>
+                            <button type="button" onClick={() => setRespondiendoA(null)} className="ml-2 p-1 text-blue-500 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-100" title="Cancelar respuesta">
+                              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-1">
+                          {QUICK_REACTIONS.map((emoji) => (
+                            <button key={emoji} type="button" onClick={() => enviarEmojiRapido(emoji)} className="rounded-full border border-surface-200 bg-white px-2 py-0.5 text-sm hover:border-blue-300 hover:bg-blue-50 dark:border-surface-600 dark:bg-surface-700 dark:hover:border-blue-600 dark:hover:bg-blue-900/30" title={`Enviar ${emoji}`}>
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* Adjuntar archivo */}
+                          <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivos (foto, video, audio, zip)">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                            </svg>
+                          </button>
+                          {/* Grabar audio */}
+                          <button type="button" onClick={iniciarGrabacion} className="p-2 text-surface-400 hover:text-red-500 transition" title="Grabar audio (máx 2 min)">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                            </svg>
+                          </button>
+                          <input
+                            type="text"
+                            placeholder={respondiendoA ? "Escribí tu respuesta..." : "Escribí un mensaje..."}
+                            disabled={false}
+                            value={nuevoMensaje}
+                            onChange={(e) => setNuevoMensaje(e.target.value)}
+                            onPaste={handlePaste}
+                            maxLength={2000}
+                            className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!nuevoMensaje.trim() || enviando}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition touch-manipulation"
+                          >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                            </svg>
+                          </button>
+                        </div>
                       </form>
                     )}
                   </div>

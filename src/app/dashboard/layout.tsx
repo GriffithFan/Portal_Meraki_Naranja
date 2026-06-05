@@ -34,7 +34,7 @@ export default function DashboardLayout({
           <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
           <div className="flex-1 flex flex-col min-w-0">
             <Header onMenuToggle={() => setMobileMenuOpen((v) => !v)} />
-            <main className="flex-1 p-3 sm:p-4 md:p-6">
+            <main className="dashboard-main flex-1 p-3 sm:p-4 lg:p-5 2xl:p-6">
               <Breadcrumbs />
               {children}
             </main>

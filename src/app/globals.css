@@ -492,3 +492,34 @@
 
 /* ── Card subtitle ─────────────────────────────────── */
 .dark .modern-card-subtitle { color: #94a3b8; }
+
+/* ── Laptop density tuning (14" / 2K) ──────────────── */
+@layer utilities {
+  @media (min-width: 1024px) and (max-width: 1519px) {
+    .dashboard-main .lg\:grid-cols-6 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .dashboard-main .lg\:grid-cols-5 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-main .lg\:grid-cols-4 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1280px) and (max-width: 1519px) {
+    .dashboard-main .xl\:grid-cols-6 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .dashboard-main .xl\:grid-cols-5 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-main .xl\:grid-cols-4 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+}

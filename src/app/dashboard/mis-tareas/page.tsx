@@ -21,6 +21,12 @@ export default function MisTareasPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const totalActivas = data?.total || 0;
+  const noConformesCount = data?.quickCounts?.noConformes || 0;
+  const avanceOperativo = totalActivas > 0
+    ? Math.round(((totalActivas - noConformesCount) / totalActivas) * 100)
+    : 100;
+
   const filtered = useMemo(() => {
     const tareas = data?.predios || [];
     const q = search.trim().toLowerCase();
@@ -30,11 +36,21 @@ export default function MisTareasPage() {
       if (!matchesQuickFilter(t, quickFilter)) return false;
       if (!q) return true;
       const asignados = t.asignaciones?.map((a: any) => a.usuario?.nombre).filter(Boolean).join(" ");
-      return [t.nombre, t.codigo, t.ciudad, t.provincia, asignados, t.espacio?.nombre]
+      return [t.nombre, t.codigo, t.ciudad, t.provincia, asignados, t.espacio?.nombre, t.motivoNoConforme, t.incidencias]
         .filter(Boolean)
         .some((value: string) => value.toLowerCase().includes(q));
     });
   }, [data, search, estado, quickFilter]);
+
+  const noConformesFiltradas = useMemo(
+    () => filtered.filter((t: any) => t.isNoConforme),
+    [filtered],
+  );
+
+  const noConformesConMotivo = useMemo(
+    () => noConformesFiltradas.filter((t: any) => Boolean(t.motivoNoConforme)).length,
+    [noConformesFiltradas],
+  );
 
   if (loading) {
     return (
@@ -53,14 +69,32 @@ export default function MisTareasPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-800">Mis tareas</h1>
-          <p className="text-xs text-surface-400">Tareas asignadas o creadas por vos</p>
+          <p className="text-xs text-surface-400">Seguimiento de tareas asignadas activas (sin conformes)</p>
         </div>
         <button onClick={fetchData} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50">Actualizar</button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <SummaryCard label="Total visibles" value={data?.total || 0} />
+      <div className="bg-white border border-surface-200 rounded-lg p-4">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-surface-500">Progreso operativo</p>
+          <p className="text-xs text-surface-500">
+            {totalActivas - noConformesCount} en curso estable · {noConformesCount} no conformes
+          </p>
+        </div>
+        <div className="h-2.5 bg-surface-100 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(avanceOperativo, 100))}%` }} />
+        </div>
+        <div className="mt-2 flex items-center justify-between text-[11px]">
+          <span className="text-surface-400">Sin conformes en el panel</span>
+          <span className="font-semibold text-surface-700 tabular-nums">{avanceOperativo}%</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        <SummaryCard label="Asignadas activas" value={totalActivas} />
         <SummaryCard label="Mostradas" value={filtered.length} />
+        <SummaryCard label="No conformes" value={noConformesCount} tone="danger" />
+        <SummaryCard label="NC con motivo" value={noConformesConMotivo} tone="danger" />
         <SummaryCard label="Estados" value={data?.byEstado?.length || 0} />
         <SummaryCard label="Vencidas" value={data?.quickCounts?.vencidas || 0} tone="warn" />
         <SummaryCard label="Sin GPS" value={data?.quickCounts?.sinGPS || 0} tone="warn" />
@@ -71,7 +105,8 @@ export default function MisTareasPage() {
         <div className="p-3 border-b border-surface-100 space-y-3">
           <div className="flex flex-wrap gap-2">
             {[
-              { key: "todas", label: "Todas", count: data?.total || 0 },
+              { key: "todas", label: "Todas", count: totalActivas },
+              { key: "no-conformes", label: "No conformes", count: noConformesCount },
               { key: "hoy", label: "Hoy", count: data?.quickCounts?.hoy || 0 },
               { key: "vencidas", label: "Vencidas", count: data?.quickCounts?.vencidas || 0 },
               { key: "sin-gps", label: "Sin GPS", count: data?.quickCounts?.sinGPS || 0 },
@@ -92,7 +127,7 @@ export default function MisTareasPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por predio, codigo, provincia, asignado o espacio"
+            placeholder="Buscar por predio, codigo, motivo, provincia, asignado o espacio"
             className="flex-1 px-3 py-2 text-sm border border-surface-200 rounded-md focus:outline-none focus:border-surface-400"
           />
           <select
@@ -114,16 +149,35 @@ export default function MisTareasPage() {
         ) : (
           <div className="divide-y divide-surface-100">
             {filtered.map((tarea: any) => (
-              <Link key={tarea.id} href={`/dashboard/tareas?open=${encodeURIComponent(tarea.codigo || tarea.nombre)}`} className="block px-4 py-3 hover:bg-surface-50 transition-colors">
+              <Link
+                key={tarea.id}
+                href={`/dashboard/tareas?open=${encodeURIComponent(tarea.codigo || tarea.nombre)}`}
+                className={`block px-4 py-3 transition-colors ${tarea.isNoConforme ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-surface-50"}`}
+              >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-surface-800 truncate">{tarea.nombre}</span>
                       {tarea.codigo && <span className="text-[11px] text-surface-400">{tarea.codigo}</span>}
+                      {tarea.isNoConforme && <Badge tone="red">No conforme</Badge>}
                     </div>
                     <p className="text-xs text-surface-500 mt-1">
                       {tarea.provincia || "Sin provincia"} · {formatAsignados(tarea)} · {tarea.espacio?.nombre || "Sin espacio"}
                     </p>
+                    {tarea.isNoConforme && (
+                      <div className="mt-2 rounded-md border border-red-100 bg-white/80 p-2">
+                        <p className="text-[11px] font-semibold text-red-600 uppercase tracking-wide">Motivo no conforme</p>
+                        <p className="text-xs text-surface-700 mt-0.5 line-clamp-2">
+                          {tarea.motivoNoConforme || "Sin motivo cargado"}
+                        </p>
+                        {tarea.motivoFuente && (
+                          <p className="text-[10px] text-surface-400 mt-1">Fuente: {formatReasonSource(tarea.motivoFuente)}</p>
+                        )}
+                        {tarea.comentarioReciente?.autor && (
+                          <p className="text-[10px] text-surface-400">Ultimo comentario: {tarea.comentarioReciente.autor}</p>
+                        )}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-1 mt-2">
                       {tarea.prioridad === "ALTA" && <Badge tone="red">Alta prioridad</Badge>}
                       {isDueToday(tarea) && <Badge tone="blue">Hoy</Badge>}
@@ -148,8 +202,14 @@ export default function MisTareasPage() {
   );
 }
 
-function SummaryCard({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "warn" | "primary" }) {
-  const valueClass = tone === "warn" ? "text-amber-600" : tone === "primary" ? "text-primary-600" : "text-surface-800";
+function SummaryCard({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "warn" | "primary" | "danger" }) {
+  const valueClass = tone === "warn"
+    ? "text-amber-600"
+    : tone === "primary"
+      ? "text-primary-600"
+      : tone === "danger"
+        ? "text-red-600"
+        : "text-surface-800";
   return (
     <div className="bg-white border border-surface-200 rounded-lg p-4">
       <p className="text-xs text-surface-400">{label}</p>
@@ -175,6 +235,7 @@ function Badge({ children, tone }: { children: React.ReactNode; tone: "red" | "b
 
 function matchesQuickFilter(tarea: any, filter: string) {
   if (filter === "todas") return true;
+  if (filter === "no-conformes") return Boolean(tarea.isNoConforme);
   if (filter === "hoy") return isDueToday(tarea);
   if (filter === "vencidas") return isOverdue(tarea);
   if (filter === "sin-gps") return isMissingGps(tarea);
@@ -206,4 +267,12 @@ function isDueToday(tarea: any) {
   const desde = tarea.fechaDesde ? new Date(tarea.fechaDesde) : null;
   const hasta = tarea.fechaHasta ? new Date(tarea.fechaHasta) : null;
   return Boolean(desde && hasta && desde <= end && hasta >= start);
+}
+
+function formatReasonSource(source: string) {
+  if (source === "incidencia") return "Incidencia";
+  if (source === "nota-tecnico") return "Nota tecnico";
+  if (source === "nota") return "Nota general";
+  if (source === "comentario") return "Comentario";
+  return source;
 }

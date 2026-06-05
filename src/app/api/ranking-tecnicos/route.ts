@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getEquipoDisplayName, resolveEquipoKey } from "@/utils/equipoUtils";
+import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -104,19 +104,31 @@ export async function GET() {
       .map((asignacion) => asignacion.usuario)
       .filter((usuario) => !!usuario && usuario.activo !== false && usuario.rol === "TECNICO");
 
+    const uniqueTargets = new Map<string, { tecnicoId: string; tecnicoNombre: string; equipoKey: string }>();
     for (const usuario of assignedUsers) {
-      const equipoKey = resolveEquipoKey(usuario.nombre) || usuario.nombre;
-      const current = ranking.get(usuario.id) || {
-        tecnicoId: usuario.id,
-        tecnicoNombre: getEquipoDisplayName(usuario.nombre),
+      const resolvedKey = resolveEquipoKey(usuario.nombre);
+      const mergeKey = resolvedKey || normalizeAssigneeName(usuario.nombre) || usuario.id;
+      if (!mergeKey || uniqueTargets.has(mergeKey)) continue;
+      const equipoKey = resolvedKey || usuario.nombre;
+      uniqueTargets.set(mergeKey, {
+        tecnicoId: mergeKey,
+        tecnicoNombre: getEquipoDisplayName(equipoKey),
         equipoKey,
+      });
+    }
+
+    for (const target of Array.from(uniqueTargets.values())) {
+      const current = ranking.get(target.tecnicoId) || {
+        tecnicoId: target.tecnicoId,
+        tecnicoNombre: target.tecnicoNombre,
+        equipoKey: target.equipoKey,
         instaladosAuditar: 0,
         conformes: 0,
         noConformes: 0,
         total: 0,
       };
       addMetric(current, bucket);
-      ranking.set(usuario.id, current);
+      ranking.set(target.tecnicoId, current);
     }
   }
 

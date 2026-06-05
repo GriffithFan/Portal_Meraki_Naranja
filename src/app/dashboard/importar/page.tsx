@@ -433,7 +433,7 @@ export default function ImportarPage() {
 
       {viewMode === "historial" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
             {[
               { label: "Importaciones", value: historySummary?.totalImportaciones || 0, tone: "text-surface-800" },
               { label: "Filas", value: historySummary?.totalFilas || 0, tone: "text-surface-800" },

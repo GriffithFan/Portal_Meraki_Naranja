@@ -39,6 +39,33 @@ interface KPIData {
     actividadSemana: number;
     notificacionesPendientes: number;
   };
+  noConformidadesSemanales: {
+    semana: string;
+    desde: string;
+    hasta: string;
+    totalNoConformes: number;
+    conMotivo: number;
+    sinMotivo: number;
+    similitudes: {
+      categoria: string;
+      count: number;
+      tecnicosAfectados: number;
+      tecnicos: { tecnicoId: string; tecnicoNombre: string; cantidad: number }[];
+      ejemplos: { predio: string; motivo: string; tecnicoNombre: string }[];
+    }[];
+    topPalabras: { termino: string; count: number }[];
+    porTecnico: {
+      tecnicoId: string;
+      tecnicoNombre: string;
+      totalNoConformes: number;
+      conMotivo: number;
+      sinMotivo: number;
+      principalCategoria: string;
+      principalCategoriaCount: number;
+      categorias: { categoria: string; count: number }[];
+      palabrasClave: { termino: string; count: number }[];
+    }[];
+  };
   produccionSemanal?: {
     semana: string;
     desde: string;
@@ -85,7 +112,7 @@ export default function KPIsPage() {
 
   // Secciones visibles (persistencia en localStorage)
   const KPI_SECTIONS_KEY = "pmn-kpi-sections";
-  const defaultSections = { progreso: true, produccionSemanal: true, predios: true, operacion: true, recursos: true, graficos1: true, graficos2: true, actividad: true };
+  const defaultSections = { progreso: true, produccionSemanal: true, noConformidades: true, predios: true, operacion: true, recursos: true, graficos1: true, graficos2: true, actividad: true };
   const [sections, setSections] = useState(defaultSections);
 
   useEffect(() => {
@@ -159,7 +186,7 @@ export default function KPIsPage() {
     );
   }
 
-  const { predios, tareas, equipos, operacion, produccionSemanal } = data;
+  const { predios, tareas, equipos, operacion, produccionSemanal, noConformidadesSemanales } = data;
   const showProduccionSemanal = isAdmin && Boolean(produccionSemanal);
   const asignadoData = predios.byAsignado.filter((e) => e.nombre !== "Sin asignar").slice(0, 10);
   const totalEquipos = equipos.disponibles + equipos.asignados + equipos.rotos;
@@ -198,6 +225,7 @@ export default function KPIsPage() {
             {[
               { key: "progreso", label: "Progreso general" },
               ...(showProduccionSemanal ? [{ key: "produccionSemanal", label: "Producción semanal" }] : []),
+              { key: "noConformidades", label: "No conformidades semanales" },
               { key: "predios", label: "KPIs Predios" },
               { key: "operacion", label: "KPIs Operación" },
               { key: "recursos", label: "KPIs Recursos" },
@@ -356,9 +384,133 @@ export default function KPIsPage() {
       </motion.div>}
       </AnimatePresence>
 
+      <AnimatePresence>
+      {sections.noConformidades && <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-3">
+          <SectionTitle title="No conformidades semanales" />
+          <p className="text-[11px] text-surface-400">
+            Semana {noConformidadesSemanales.semana} · desde {formatShortDate(noConformidadesSemanales.desde)} · hasta hoy
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3 sm:gap-4">
+            <KPICard
+              label="No conformes (semana)"
+              value={noConformidadesSemanales.totalNoConformes}
+              icon="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"
+              color="red"
+              highlight={noConformidadesSemanales.totalNoConformes > 0}
+            />
+            <KPICard
+              label="Con motivo cargado"
+              value={noConformidadesSemanales.conMotivo}
+              icon="M9 12.75L11.25 15 15 9.75"
+              color="green"
+              progress={noConformidadesSemanales.totalNoConformes > 0 ? (noConformidadesSemanales.conMotivo / noConformidadesSemanales.totalNoConformes) * 100 : 0}
+            />
+            <KPICard
+              label="Sin detalle"
+              value={noConformidadesSemanales.sinMotivo}
+              icon="M11.25 11.25l.041-.02a.75.75 0 011.06.852l-.708 2.836a.75.75 0 001.06.852l.041-.02M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              color="amber"
+              highlight={noConformidadesSemanales.sinMotivo > 0}
+            />
+          </div>
+
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Similitudes detectadas en comentarios/notas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {noConformidadesSemanales.similitudes.length > 0 ? (
+                <div className="space-y-3">
+                  {noConformidadesSemanales.similitudes.slice(0, 5).map((similitud) => (
+                    <div key={similitud.categoria} className="rounded-lg border border-surface-200 p-3">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <p className="text-sm font-semibold text-surface-700">{similitud.categoria}</p>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{similitud.count} casos</span>
+                      </div>
+                      <p className="text-[11px] text-surface-500 mb-2">{similitud.tecnicosAfectados} técnicos impactados</p>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {similitud.tecnicos.slice(0, 4).map((tec) => (
+                          <span key={tec.tecnicoId} className="text-[11px] px-2 py-0.5 rounded-full bg-surface-100 text-surface-600">
+                            {tec.tecnicoNombre}: {tec.cantidad}
+                          </span>
+                        ))}
+                      </div>
+                      {similitud.ejemplos[0] && (
+                        <p className="text-[11px] text-surface-500 truncate">
+                          Ejemplo: <span className="font-medium text-surface-700">{similitud.ejemplos[0].predio}</span> · {similitud.ejemplos[0].motivo}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState text="Sin similitudes registradas esta semana" />}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Palabras frecuentes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {noConformidadesSemanales.topPalabras.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {noConformidadesSemanales.topPalabras.slice(0, 18).map((word) => (
+                    <span key={word.termino} className="inline-flex items-center gap-1 rounded-full border border-surface-200 bg-surface-50 px-2 py-1 text-[11px] text-surface-600">
+                      {word.termino}
+                      <span className="font-semibold text-surface-700">{word.count}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : <EmptyState text="Sin palabras clave" />}
+            </CardContent>
+          </Card>
+
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Enfoque por técnico</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {noConformidadesSemanales.porTecnico.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-surface-400 border-b border-surface-100">
+                        <th className="py-2 pr-3 font-medium">Técnico</th>
+                        <th className="py-2 px-3 font-medium text-right">NC</th>
+                        <th className="py-2 px-3 font-medium text-right">Con motivo</th>
+                        <th className="py-2 px-3 font-medium text-right">Sin detalle</th>
+                        <th className="py-2 pl-3 font-medium">Patrón principal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-100">
+                      {noConformidadesSemanales.porTecnico.slice(0, 12).map((item) => (
+                        <tr key={item.tecnicoId} className="text-surface-700">
+                          <td className="py-2.5 pr-3 font-medium">{item.tecnicoNombre}</td>
+                          <td className="py-2.5 px-3 text-right font-semibold tabular-nums">{item.totalNoConformes}</td>
+                          <td className="py-2.5 px-3 text-right text-emerald-600 font-semibold tabular-nums">{item.conMotivo}</td>
+                          <td className="py-2.5 px-3 text-right text-amber-600 font-semibold tabular-nums">{item.sinMotivo}</td>
+                          <td className="py-2.5 pl-3 text-surface-600">{item.principalCategoria} ({item.principalCategoriaCount})</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <EmptyState text="Sin no conformidades por técnico esta semana" />}
+            </CardContent>
+          </Card>
+        </div>
+      </motion.div>}
+      </AnimatePresence>
+
       {/* ── KPI Cards: Predios ───────────────────────── */}
       <AnimatePresence>
-      {sections.predios && <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+      {sections.predios && <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Predios" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
@@ -392,7 +544,7 @@ export default function KPIsPage() {
 
       {/* ── KPI Cards: Operación ─────────────────────── */}
       <AnimatePresence>
-      {sections.operacion && <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+      {sections.operacion && <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Operación" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
@@ -420,7 +572,7 @@ export default function KPIsPage() {
 
       {/* ── KPI Cards: Recursos ──────────────────────── */}
       <AnimatePresence>
-      {sections.recursos && <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
+      {sections.recursos && <motion.div custom={5} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}>
         <SectionTitle title="Recursos" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger-children">
           <KPICard
@@ -450,7 +602,7 @@ export default function KPIsPage() {
 
       {/* ── Gráficos fila 1 ────────────────────────── */}
       <AnimatePresence>
-      {sections.graficos1 && <motion.div custom={5} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
+      {sections.graficos1 && <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
         {/* Distribución por estado - Donut */}
         <ChartCard title="Distribución por Estado" subtitle={`${predios.byEstado.length} estados configurados`}>
           {predios.byEstado.length > 0 ? (
@@ -546,7 +698,7 @@ export default function KPIsPage() {
 
       {/* ── Gráficos fila 2 ────────────────────────── */}
       <AnimatePresence>
-      {sections.graficos2 && <motion.div custom={6} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+      {sections.graficos2 && <motion.div custom={7} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Predios por Provincia - Bar */}
         <div className="lg:col-span-2">
           <ChartCard title="Predios por Provincia" subtitle="Distribución geográfica">
@@ -629,7 +781,7 @@ export default function KPIsPage() {
 
       {/* ── Resumen actividad + Quick links ───────────── */}
       <AnimatePresence>
-      {sections.actividad && <motion.div custom={7} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+      {sections.actividad && <motion.div custom={8} variants={sectionVariants} initial="hidden" animate="visible" exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }} className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Activity summary */}
         <Card className="lg:col-span-2">
           <CardHeader>

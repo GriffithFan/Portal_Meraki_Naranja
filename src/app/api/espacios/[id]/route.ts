@@ -5,6 +5,7 @@ import { parseBody, isErrorResponse, espacioUpdateSchema } from "@/lib/validatio
 import { sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
+import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -106,12 +107,21 @@ export async function GET(
   // Por asignado
   const byAsignado: Record<string, number> = {};
   for (const p of predios) {
-    const nombres = p.asignaciones.map((a) => a.usuario.nombre).filter(Boolean);
-    if (nombres.length === 0) {
+    const assigned = new Map<string, string>();
+    for (const asignacion of p.asignaciones) {
+      const nombre = asignacion.usuario.nombre;
+      if (!nombre) continue;
+      const resolvedKey = resolveEquipoKey(nombre);
+      const mergeKey = resolvedKey || normalizeAssigneeName(nombre);
+      if (!mergeKey || assigned.has(mergeKey)) continue;
+      assigned.set(mergeKey, getEquipoDisplayName(resolvedKey || nombre));
+    }
+
+    if (assigned.size === 0) {
       byAsignado["Sin asignar"] = (byAsignado["Sin asignar"] || 0) + 1;
     } else {
-      for (const nombre of nombres) {
-        byAsignado[nombre] = (byAsignado[nombre] || 0) + 1;
+      for (const displayName of Array.from(assigned.values())) {
+        byAsignado[displayName] = (byAsignado[displayName] || 0) + 1;
       }
     }
   }

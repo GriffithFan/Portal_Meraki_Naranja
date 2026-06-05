@@ -97,11 +97,14 @@ interface SidebarProps {
   onMobileClose?: () => void;
 }
 
+const AUTO_COLLAPSE_MAX_WIDTH = 1680;
+
 export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const { session } = useSession();
   const { puedeVer } = usePermisos();
   const [collapsed, setCollapsed] = useState(false);
+  const userCollapseOverride = useRef(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
     () => Object.fromEntries(sections.map((s) => [s.title, true]))
   );
@@ -168,6 +171,20 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     );
   };
 
+  // En laptops/2K, colapsar por defecto para liberar ancho de contenido.
+  useEffect(() => {
+    const applyAdaptiveCollapse = () => {
+      if (typeof window === "undefined") return;
+      if (window.innerWidth < 1024) return;
+      if (userCollapseOverride.current) return;
+      setCollapsed(window.innerWidth <= AUTO_COLLAPSE_MAX_WIDTH);
+    };
+
+    applyAdaptiveCollapse();
+    window.addEventListener("resize", applyAdaptiveCollapse);
+    return () => window.removeEventListener("resize", applyAdaptiveCollapse);
+  }, []);
+
   const formatDateTime = (date: Date): string =>
     date.toLocaleString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
@@ -222,7 +239,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           "h-screen flex flex-col bg-surface-900 text-surface-300 border-r border-surface-800 overflow-hidden",
           // Desktop: sticky sidebar
           "hidden lg:sticky lg:top-0 lg:flex transition-[width] duration-300",
-          collapsed ? "lg:w-[68px]" : "lg:w-64",
+          collapsed ? "lg:w-[72px]" : "lg:w-60 xl:w-64",
           // Móvil: drawer fijo con slide
           "max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:w-64 max-lg:transition-transform max-lg:duration-300 max-lg:ease-out max-lg:shadow-2xl",
           mobileOpen ? "max-lg:!flex max-lg:translate-x-0" : "max-lg:!flex max-lg:-translate-x-full max-lg:pointer-events-none"
@@ -235,6 +252,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             if (mobileOpen && onMobileClose) {
               onMobileClose();
             } else {
+              userCollapseOverride.current = true;
               setCollapsed(!collapsed);
             }
           }}

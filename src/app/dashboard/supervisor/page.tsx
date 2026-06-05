@@ -39,7 +39,7 @@ export default function SupervisorAsignadosPage() {
     return (
       <div className="animate-fade-in-up space-y-5">
         <div className="h-7 w-56 bg-surface-200 rounded animate-pulse" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {[...Array(5)].map((_, index) => <div key={index} className="h-24 bg-white border border-surface-200 rounded-lg animate-pulse" />)}
         </div>
         <div className="h-96 bg-white border border-surface-200 rounded-lg animate-pulse" />
@@ -66,13 +66,15 @@ export default function SupervisorAsignadosPage() {
         <button onClick={fetchData} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50">Actualizar</button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
         <Stat label="Tareas" value={data.resumen.total} />
         <Stat label="Para hoy" value={data.resumen.hoy} tone="primary" />
         <Stat label="Vencidas" value={data.resumen.vencidas} tone="warn" />
         <Stat label="Alta/Urgente" value={data.resumen.alta} tone="danger" />
         <Stat label="Sin GPS" value={data.resumen.sinGPS} tone="warn" />
         <Stat label="Sin estado" value={data.resumen.sinEstado} tone="warn" />
+        <Stat label="Conformes historicos" value={data.resumen.conformesHistoricos || 0} tone="primary" />
+        <Stat label="Pendientes de auditar" value={data.resumen.auditar || 0} tone="danger" />
       </div>
 
       <div className="bg-white border border-surface-200 rounded-lg p-3 flex flex-wrap gap-2">
@@ -126,6 +128,35 @@ export default function SupervisorAsignadosPage() {
                   <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(asignado.avance, 100))}%` }} />
                 </div>
               </div>
+
+              <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2">
+                <MiniMetric label="Conformes actuales" value={asignado.historico?.conformesActuales || 0} tone="primary" />
+                <MiniMetric label="Facturados historicos" value={asignado.historico?.facturadosHistoricos || 0} tone="primary" />
+                <MiniMetric label="Conformes acumulados" value={asignado.historico?.conformesHistoricos || 0} tone="primary" />
+                <MiniMetric label="Auditar" value={asignado.historico?.auditar || 0} tone="danger" />
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+                <div className="rounded-md bg-surface-50 px-2 py-1.5 text-surface-500">NC actuales: <span className="font-semibold text-red-600">{asignado.historico?.noConformesActuales || 0}</span></div>
+                <div className="rounded-md bg-surface-50 px-2 py-1.5 text-surface-500">NC con motivo: <span className="font-semibold text-emerald-600">{asignado.historico?.noConformesConDetalle || 0}</span></div>
+                <div className="rounded-md bg-surface-50 px-2 py-1.5 text-surface-500">NC sin detalle: <span className="font-semibold text-amber-600">{asignado.historico?.noConformesSinDetalle || 0}</span></div>
+                <div className="rounded-md bg-surface-50 px-2 py-1.5 text-surface-500">Mov. 30 dias: <span className="font-semibold text-surface-700">{asignado.historico?.actividad30d || 0}</span></div>
+              </div>
+
+              {Array.isArray(asignado.noConformesMuestra) && asignado.noConformesMuestra.length > 0 && (
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/40 p-2">
+                  <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider mb-1">Muestra no conformes recientes</p>
+                  <div className="space-y-1.5">
+                    {asignado.noConformesMuestra.slice(0, 3).map((nc: any) => (
+                      <div key={nc.id} className="text-xs text-surface-600">
+                        <span className="font-medium text-surface-700">{nc.codigo || "Sin codigo"}</span>
+                        <span className="mx-1 text-surface-300">•</span>
+                        <span className="text-surface-500">{nc.motivo || "Sin motivo cargado"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">

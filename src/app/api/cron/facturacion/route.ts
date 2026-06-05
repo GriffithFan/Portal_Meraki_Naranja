@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { verifyCronAuth } from "@/lib/cronAuth";
+import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -85,8 +86,19 @@ export async function GET(request: NextRequest) {
     }> = {};
 
     for (const predio of prediosConforme) {
-      const tecnicos = predio.asignaciones.map((a) => a.usuario);
-      if (tecnicos.length === 0) {
+      const uniqueTechnicians = new Map<string, { id: string; nombre: string }>();
+      for (const asignacion of predio.asignaciones) {
+        const tecnico = asignacion.usuario;
+        const resolvedKey = resolveEquipoKey(tecnico.nombre);
+        const mergeKey = resolvedKey || normalizeAssigneeName(tecnico.nombre) || tecnico.id;
+        if (!mergeKey || uniqueTechnicians.has(mergeKey)) continue;
+        uniqueTechnicians.set(mergeKey, {
+          id: mergeKey,
+          nombre: getEquipoDisplayName(resolvedKey || tecnico.nombre),
+        });
+      }
+
+      if (uniqueTechnicians.size === 0) {
         const key = "SIN_ASIGNAR";
         if (!porTecnico[key]) {
           porTecnico[key] = { tecnicoId: "SIN_ASIGNAR", tecnicoNombre: "Sin asignar", cantidad: 0, tareas: [] };
@@ -94,7 +106,7 @@ export async function GET(request: NextRequest) {
         porTecnico[key].cantidad++;
         porTecnico[key].tareas.push({ id: predio.id, nombre: predio.nombre, codigo: predio.codigo, provincia: predio.provincia });
       } else {
-        for (const tec of tecnicos) {
+        for (const tec of Array.from(uniqueTechnicians.values())) {
           if (!porTecnico[tec.id]) {
             porTecnico[tec.id] = { tecnicoId: tec.id, tecnicoNombre: tec.nombre, cantidad: 0, tareas: [] };
           }

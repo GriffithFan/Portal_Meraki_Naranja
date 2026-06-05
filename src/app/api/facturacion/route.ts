@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import * as XLSX from "xlsx";
+import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -125,8 +126,19 @@ export async function POST() {
         fecha: predio.fechaActualizacion ? predio.fechaActualizacion.toISOString() : null,
       };
 
-      const tecnicos = predio.asignaciones.map((a) => a.usuario);
-      if (tecnicos.length === 0) {
+      const uniqueTechnicians = new Map<string, { id: string; nombre: string }>();
+      for (const asignacion of predio.asignaciones) {
+        const tecnico = asignacion.usuario;
+        const resolvedKey = resolveEquipoKey(tecnico.nombre);
+        const mergeKey = resolvedKey || normalizeAssigneeName(tecnico.nombre) || tecnico.id;
+        if (!mergeKey || uniqueTechnicians.has(mergeKey)) continue;
+        uniqueTechnicians.set(mergeKey, {
+          id: mergeKey,
+          nombre: getEquipoDisplayName(resolvedKey || tecnico.nombre),
+        });
+      }
+
+      if (uniqueTechnicians.size === 0) {
         const key = "SIN_ASIGNAR";
         const label = "Sin asignar";
         if (!porTecnico[key]) {
@@ -135,7 +147,7 @@ export async function POST() {
         porTecnico[key].cantidad++;
         porTecnico[key].tareas.push(tareaData);
       } else {
-        for (const tec of tecnicos) {
+        for (const tec of Array.from(uniqueTechnicians.values())) {
           if (!porTecnico[tec.id]) {
             porTecnico[tec.id] = { tecnicoId: tec.id, tecnicoNombre: tec.nombre, cantidad: 0, tareas: [] };
           }
@@ -148,6 +160,8 @@ export async function POST() {
     const resumen = Object.values(porTecnico);
     const totalTareas = prediosConforme.length;
 
+    const escapeCsv = (value: string) => value.replace(/"/g, '""');
+
     // ── Generar CSV ──
     const csvLines = [
       "Predio,Incidencia,Técnico,Fecha,Provincia",
@@ -155,8 +169,9 @@ export async function POST() {
     for (const grupo of resumen) {
       for (const t of grupo.tareas) {
         const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "";
+        const predioCodigo = t.codigo || "";
         csvLines.push(
-          `"${t.nombre.replace(/"/g, '""')}","${t.incidencia || ""}","${grupo.tecnicoNombre}","${fecha}","${t.provincia || ""}"`
+          `"${escapeCsv(predioCodigo)}","${escapeCsv(t.incidencia || "")}","${escapeCsv(grupo.tecnicoNombre)}","${escapeCsv(fecha)}","${escapeCsv(t.provincia || "")}"`
         );
       }
     }
@@ -175,7 +190,7 @@ export async function POST() {
     for (const grupo of resumen) {
       for (const t of grupo.tareas) {
         xlsxRows.push({
-          Predio: t.nombre,
+          Predio: t.codigo || "",
           Incidencia: t.incidencia || "",
           "Técnico asignado": grupo.tecnicoNombre,
           Fecha: t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "",
