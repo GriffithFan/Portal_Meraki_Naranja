@@ -878,7 +878,15 @@ async function buildApplianceSection(
       let ports: any[] = [];
       try {
         ports = await getDeviceAppliancePortsStatuses(dev.serial);
-      } catch (e) { console.error(`[Section:appliance] getDeviceAppliancePortsStatuses(${dev.serial}):`, e); }
+      } catch (e) {
+        const status = (e as any)?.response?.status ?? (e as any)?.status;
+        if (status === 404) {
+          // Dispositivo sin appliance ports (comportamiento normal de la API Meraki): se usa el fallback de config.
+          console.warn(`[Section:appliance] getDeviceAppliancePortsStatuses(${dev.serial}): 404 sin port statuses, usando config`);
+        } else {
+          console.error(`[Section:appliance] getDeviceAppliancePortsStatuses(${dev.serial}):`, e);
+        }
+      }
 
       // If device-level statuses are empty, use network-level config as base
       // Note: config only tells if port is enabled, NOT if something is connected
