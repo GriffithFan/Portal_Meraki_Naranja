@@ -117,7 +117,14 @@ export async function POST(request: NextRequest) {
     const data = await parseBody(request, espacioSchema);
     if (isErrorResponse(data)) return data;
 
-    const { nombre, descripcion, color, icono, parentId } = data;
+    const { nombre, descripcion, color, icono, parentId, camposConfig, estadosConfig } = data;
+
+    const cleanEstadosConfig = estadosConfig && typeof estadosConfig === "object" && !Array.isArray(estadosConfig)
+      ? {
+          ...estadosConfig,
+          detalleCamposConfig: sanitizeTaskFieldConfigs((estadosConfig as any).detalleCamposConfig),
+        }
+      : estadosConfig;
 
     // Calcular siguiente orden
     const maxOrden = await prisma.espacioTrabajo.aggregate({
@@ -132,6 +139,8 @@ export async function POST(request: NextRequest) {
         color: color || "#3b82f6",
         icono: icono || "folder",
         parentId: parentId || null,
+        camposConfig: camposConfig ? (sanitizeTaskFieldConfigs(camposConfig) as any) : undefined,
+        estadosConfig: cleanEstadosConfig ? (cleanEstadosConfig as any) : undefined,
         orden: (maxOrden._max.orden ?? -1) + 1,
         creadorId: session.userId,
       },

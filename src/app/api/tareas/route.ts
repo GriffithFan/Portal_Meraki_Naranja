@@ -433,7 +433,16 @@ export async function POST(request: NextRequest) {
     if (estadoId) data.estadoId = estadoId;
 
     // Conectar espacio si se proporciona
-    if (espacioId) data.espacioId = espacioId;
+    if (espacioId) {
+      const espacio = await prisma.espacioTrabajo.findFirst({
+        where: { id: espacioId, activo: true },
+        select: { id: true },
+      });
+      if (!espacio) {
+        return NextResponse.json({ error: "El espacio seleccionado no existe o esta inactivo" }, { status: 400 });
+      }
+      data.espacioId = espacioId;
+    }
 
     // Campos del cronograma
     if (incidencias) data.incidencias = incidencias;
@@ -506,6 +515,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(predio, { status: 201 });
   } catch (error) {
     console.error("Error creando tarea:", error);
+    if (error && typeof error === "object" && "code" in error) {
+      const code = (error as { code?: string }).code;
+      if (code === "P2002") {
+        return NextResponse.json({ error: "Ya existe una tarea con ese codigo" }, { status: 409 });
+      }
+      if (code === "P2003") {
+        return NextResponse.json({ error: "Alguna referencia de la tarea no existe" }, { status: 400 });
+      }
+    }
     return NextResponse.json({ error: "Error al crear tarea" }, { status: 500 });
   }
 }

@@ -854,6 +854,37 @@ export default function TareasPage() {
     setBulkDeleteGroup(null);
   }
 
+  function tareaDeleteLabel(tarea: any) {
+    return tarea.codigo || tarea.incidencias || tarea.nombre || "esta tarea";
+  }
+
+  async function handleDeleteSelectedTasks() {
+    if (session?.rol !== "ADMIN" || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    if (!window.confirm(`Eliminar ${ids.length} tarea${ids.length !== 1 ? "s" : ""} seleccionada${ids.length !== 1 ? "s" : ""}?`)) return;
+    setBulkDeleting(true);
+    const toastId = toast.loading("Eliminando tareas...");
+    try {
+      const res = await fetch(`/api/tareas?ids=${encodeURIComponent(ids.join(","))}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "No se pudieron eliminar las tareas", { id: toastId });
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setSelectedIds(new Set());
+      await fetchTareas();
+      toast.success(`${data.count || ids.length} tarea${(data.count || ids.length) !== 1 ? "s" : ""} eliminada${(data.count || ids.length) !== 1 ? "s" : ""}`, { id: toastId });
+    } catch {
+      toast.error("No se pudieron eliminar las tareas", { id: toastId });
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
   // Toggle selección individual
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -1379,6 +1410,20 @@ export default function TareasPage() {
                 <p className="mt-0.5 truncate text-xs text-surface-400">{t.nombre}</p>
               )}
             </div>
+            {session?.rol === "ADMIN" && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) });
+                }}
+                className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                title="Eliminar tarea"
+                aria-label="Eliminar tarea"
+              >
+                <IconTrash className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2.5 mt-1.5 text-xs text-surface-500 flex-wrap">
             <span className="tabular-nums">{formatDate(t.fechaActualizacion)}</span>
@@ -1750,6 +1795,18 @@ export default function TareasPage() {
           >
             Deseleccionar
           </button>
+          {session?.rol === "ADMIN" && (
+            <button
+              type="button"
+              onClick={handleDeleteSelectedTasks}
+              disabled={bulkDeleting}
+              className="inline-flex items-center gap-1 rounded border border-red-200 bg-white px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              title="Eliminar tareas seleccionadas"
+            >
+              <IconTrash className="h-3 w-3" />
+              Eliminar seleccionadas
+            </button>
+          )}
           <span className="text-surface-300 mx-1">|</span>
           <select
             value={bulkAction}
@@ -1964,7 +2021,7 @@ export default function TareasPage() {
                         <table className="w-full min-w-max text-[11px] hidden md:table">
                           <thead>
                             <tr className="border-b border-surface-100">
-                              {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
+                              {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
                               {visibleColumns.map(renderColHeader)}
                             </tr>
                           </thead>
@@ -1975,7 +2032,7 @@ export default function TareasPage() {
                                 onClick={() => openDetail(t)}
                                 className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                               >
-                                {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                              {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center gap-1">
                                     <span
                                       draggable
@@ -1986,6 +2043,17 @@ export default function TareasPage() {
                                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
                                     </span>
                                     <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                                    {session?.rol === "ADMIN" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
+                                        className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                        title="Eliminar tarea"
+                                        aria-label="Eliminar tarea"
+                                      >
+                                        <IconTrash className="h-3 w-3" />
+                                      </button>
+                                    )}
                                   </div>
                                 </td>}
                                 {visibleColumns.map((col) => (
@@ -2065,7 +2133,7 @@ export default function TareasPage() {
                   <table className="w-full min-w-max text-[11px] hidden md:table">
                     <thead>
                       <tr className="border-b border-surface-100">
-                        {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={groupedTareas["sin-estado"].length > 0 && groupedTareas["sin-estado"].every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(groupedTareas["sin-estado"])} className="accent-primary-600 cursor-pointer" /></th>}
+                        {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={groupedTareas["sin-estado"].length > 0 && groupedTareas["sin-estado"].every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(groupedTareas["sin-estado"])} className="accent-primary-600 cursor-pointer" /></th>}
                         {visibleColumns.map(renderColHeader)}
                       </tr>
                     </thead>
@@ -2076,7 +2144,7 @@ export default function TareasPage() {
                           onClick={() => openDetail(t)}
                           className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                         >
-                          {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                          {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center gap-1">
                               <span
                                 draggable
@@ -2087,6 +2155,17 @@ export default function TareasPage() {
                                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
                               </span>
                               <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                              {session?.rol === "ADMIN" && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
+                                  className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                  title="Eliminar tarea"
+                                  aria-label="Eliminar tarea"
+                                >
+                                  <IconTrash className="h-3 w-3" />
+                                </button>
+                              )}
                             </div>
                           </td>}
                           {visibleColumns.map((col) => (
@@ -2134,7 +2213,7 @@ export default function TareasPage() {
                       <table className="w-full min-w-max text-[11px] hidden md:table">
                         <thead>
                           <tr className="border-b border-surface-100">
-                            {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
+                            {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
                             {visibleColumns.map(renderColHeader)}
                           </tr>
                         </thead>
@@ -2145,7 +2224,7 @@ export default function TareasPage() {
                               onClick={() => openDetail(t)}
                               className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                             >
-                              {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                              {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
                                   <span
                                     draggable
@@ -2156,6 +2235,17 @@ export default function TareasPage() {
                                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
                                   </span>
                                   <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                                  {session?.rol === "ADMIN" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
+                                      className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                      title="Eliminar tarea"
+                                      aria-label="Eliminar tarea"
+                                    >
+                                      <IconTrash className="h-3 w-3" />
+                                    </button>
+                                  )}
                                 </div>
                               </td>}
                               {visibleColumns.map((col) => (
@@ -2196,7 +2286,7 @@ export default function TareasPage() {
                 <table className="w-full min-w-max text-[11px] hidden md:table">
                   <thead>
                     <tr className="border-b border-surface-100">
-                      {isModOrAdmin && <th className="w-8 px-1 text-center"><input type="checkbox" checked={tareas.length > 0 && tareas.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(tareas)} className="accent-primary-600 cursor-pointer" /></th>}
+                      {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={tareas.length > 0 && tareas.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(tareas)} className="accent-primary-600 cursor-pointer" /></th>}
                       {visibleColumns.map(renderColHeader)}
                     </tr>
                   </thead>
@@ -2212,7 +2302,7 @@ export default function TareasPage() {
                         onClick={() => openDetail(t)}
                         className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
                       >
-                        {isModOrAdmin && <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                        {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <span
                               draggable
@@ -2223,6 +2313,17 @@ export default function TareasPage() {
                               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
                             </span>
                             <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+                            {session?.rol === "ADMIN" && (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
+                                className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                title="Eliminar tarea"
+                                aria-label="Eliminar tarea"
+                              >
+                                <IconTrash className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
                         </td>}
                         {visibleColumns.map((col) => (

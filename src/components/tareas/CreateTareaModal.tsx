@@ -102,12 +102,15 @@ export default function CreateTareaModal({
   useEffect(() => setLocalEspacios(espacios), [espacios]);
 
   const selectedSpace = useMemo(() => localEspacios.find((space) => space.id === form.espacioId) || null, [form.espacioId, localEspacios]);
-  const rawSpaceFieldsConfig = Array.isArray(selectedSpace?.camposConfig) ? sanitizeTaskFieldConfigs(selectedSpace.camposConfig as TaskFieldConfig[]) : undefined;
-  const spaceFieldsConfig = rawSpaceFieldsConfig && rawSpaceFieldsConfig.length > 0 ? rawSpaceFieldsConfig : undefined;
-  const sanitizedFieldsConfig = Array.isArray(fieldsConfig) ? sanitizeTaskFieldConfigs(fieldsConfig as TaskFieldConfig[]) : undefined;
-  const effectiveFieldsConfig = allowSpaceSelection && form.espacioId && useSpaceFormat
-    ? (spaceFieldsConfig || sanitizedFieldsConfig)
-    : sanitizedFieldsConfig;
+  const spaceCamposConfig = selectedSpace?.camposConfig;
+  const effectiveFieldsConfig = useMemo(() => {
+    const rawSpaceFieldsConfig = Array.isArray(spaceCamposConfig) ? sanitizeTaskFieldConfigs(spaceCamposConfig as TaskFieldConfig[]) : undefined;
+    const spaceFieldsConfig = rawSpaceFieldsConfig && rawSpaceFieldsConfig.length > 0 ? rawSpaceFieldsConfig : undefined;
+    const sanitizedFieldsConfig = Array.isArray(fieldsConfig) ? sanitizeTaskFieldConfigs(fieldsConfig as TaskFieldConfig[]) : undefined;
+    return allowSpaceSelection && form.espacioId && useSpaceFormat
+      ? (spaceFieldsConfig || sanitizedFieldsConfig)
+      : sanitizedFieldsConfig;
+  }, [spaceCamposConfig, fieldsConfig, allowSpaceSelection, form.espacioId, useSpaceFormat]);
 
   const effectiveEstados = useMemo(() => {
     if (!allowSpaceSelection || !form.espacioId || !useSpaceFormat) return estados;
@@ -221,28 +224,39 @@ export default function CreateTareaModal({
   }
 
   async function persistFields(fields: TaskFieldConfig[], closeEditor = true) {
-    if (savingFields) return;
+    if (savingFields) return false;
     setSavingFields(true);
-    const normalized = normalizeFields(fields);
-    if (onFieldsConfigChange) {
-      await onFieldsConfigChange(normalized);
-    } else if (allowSpaceSelection && form.espacioId) {
-      const res = await fetch(`/api/espacios/${form.espacioId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ camposConfig: normalized }),
-      });
-      if (res.ok) {
+    setFormError("");
+    try {
+      const normalized = normalizeFields(fields);
+      if (onFieldsConfigChange) {
+        await onFieldsConfigChange(normalized);
+      } else if (allowSpaceSelection && form.espacioId) {
+        const res = await fetch(`/api/espacios/${form.espacioId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ camposConfig: normalized }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setFormError(data.error || "No se pudieron guardar los campos.");
+          return false;
+        }
         setLocalEspacios((prev) => prev.map((space) => space.id === form.espacioId ? { ...space, camposConfig: normalized } : space));
+      } else if (allowSpaceSelection && showNewSpaceForm) {
+        setDraftFields(normalized);
       }
-    } else if (allowSpaceSelection && showNewSpaceForm) {
-      setDraftFields(normalized);
-    }
-    setSavingFields(false);
-    if (closeEditor) {
-      setEditingFields(false);
-      setEditingFieldId(null);
+      if (closeEditor) {
+        setEditingFields(false);
+        setEditingFieldId(null);
+      }
+      return true;
+    } catch {
+      setFormError("No se pudieron guardar los campos.");
+      return false;
+    } finally {
+      setSavingFields(false);
     }
   }
 
@@ -289,6 +303,23 @@ export default function CreateTareaModal({
     );
   }
 
+  function buildCreatePayload() {
+    const payload: Record<string, unknown> = {};
+    Object.entries(form).forEach(([key, value]) => {
+      if (typeof value === "string" && value.trim() === "") return;
+      payload[key] = value;
+    });
+    payload.prioridad = form.prioridad || "MEDIA";
+    if (initialEspacioId && !payload.espacioId) payload.espacioId = initialEspacioId;
+    if (initialEstadoId && !payload.estadoId) payload.estadoId = initialEstadoId;
+
+    const cleanCustomValues = Object.fromEntries(
+      Object.entries(customValues).filter(([, value]) => Array.isArray(value) ? value.length > 0 : String(value || "").trim() !== "")
+    );
+    if (Object.keys(cleanCustomValues).length > 0) payload.camposExtra = cleanCustomValues;
+    return payload;
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (creating) return;
@@ -298,16 +329,25 @@ export default function CreateTareaModal({
     }
     setFormError("");
     setCreating(true);
-    const res = await fetch("/api/tareas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ ...form, camposExtra: customValues }),
-    });
-    setCreating(false);
-    if (res.ok) {
-      onClose();
-      void onCreated();
+    try {
+      const res = await fetch("/api/tareas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(buildCreatePayload()),
+      });
+      if (res.ok) {
+        onClose();
+        void onCreated();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      const details = Array.isArray(data.detalles) && data.detalles.length ? ` (${data.detalles.join("; ")})` : "";
+      setFormError(`${data.error || "No se pudo crear la tarea."}${details}`);
+    } catch {
+      setFormError("No se pudo crear la tarea.");
+    } finally {
+      setCreating(false);
     }
   }
 

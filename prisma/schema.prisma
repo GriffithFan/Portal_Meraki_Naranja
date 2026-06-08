@@ -135,6 +135,7 @@ model Predio {
   latitud         Float?
   longitud        Float?
   notas           String?
+  notasTecnico    String?
   orden           Int       @default(0)
   fechaProgramada DateTime?
   prioridad       Prioridad @default(MEDIA)

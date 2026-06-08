@@ -41,8 +41,14 @@ const timeStrOpt = () => timeStr().optional().or(z.literal(""));
 const boolOpt = () => z.boolean().optional();
 
 const ROLES = ["ADMIN", "MODERADOR", "TECNICO"] as const;
-const PRIORIDADES = ["ALTA", "MEDIA", "BAJA"] as const;
+const PRIORIDADES = ["ALTA", "MEDIA", "BAJA", "URGENTE"] as const;
 const CATEGORIAS_CALENDARIO = ["GENERAL", "INSTALACION", "MANTENIMIENTO", "REUNION", "VISITA", "GUARDIA", "RECORDATORIO", "OTRO"] as const;
+
+const camposConfigSchema = z.array(z.record(z.string(), z.unknown())).max(100);
+const estadosConfigSchema = z.object({
+  estadoIds: z.array(cuid()).max(100).optional(),
+  detalleCamposConfig: camposConfigSchema.optional(),
+}).passthrough();
 
 const etiquetaPayloadSchema = z.object({
   id: cuidOpt(),
@@ -154,10 +160,8 @@ export const espacioSchema = z.object({
   color: strOpt(20),
   icono: strOpt(50),
   parentId: cuidOpt(),
-  camposConfig: z.array(z.record(z.string(), z.unknown())).max(100).optional(),
-  estadosConfig: z.object({
-    estadoIds: z.array(cuid()).max(100).optional(),
-  }).passthrough().optional(),
+  camposConfig: camposConfigSchema.optional(),
+  estadosConfig: estadosConfigSchema.optional(),
   nuevosEstados: z.array(z.object({
     nombre: str(100).min(1, "Nombre requerido"),
     color: strOpt(20),
@@ -263,6 +267,8 @@ export const espacioUpdateSchema = z.object({
   icono: strOpt(50),
   orden: z.number().int().min(0).max(9999).optional(),
   activo: boolOpt(),
+  camposConfig: camposConfigSchema.optional(),
+  estadosConfig: estadosConfigSchema.optional(),
 });
 
 // PUT /api/calendario/[id] — rama asignatario (solo completada)

@@ -1053,7 +1053,17 @@ export default function EspacioTareasPage() {
     if (!confirmDelete) return;
     const { type, id } = confirmDelete;
     setConfirmDelete(null);
-    if (type === "estado") {
+    if (type === "tarea") {
+      const res = await fetch(`/api/tareas/${id}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) {
+        setTareas(prev => prev.filter(t => t.id !== id));
+        if (selectedTareaId === id) setSelectedTareaId(null);
+        toast.success("Tarea eliminada");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "No se pudo eliminar la tarea");
+      }
+    } else if (type === "estado") {
       const res = await fetch(`/api/estados/${id}`, { method: "DELETE", credentials: "include" });
       if (res.ok) { setEstados(prev => prev.filter(e => e.id !== id)); fetchData(); }
     } else if (type === "campo") {
@@ -1254,6 +1264,37 @@ export default function EspacioTareasPage() {
     setBulkDeleting(false);
     setBulkDeleteGroup(null);
   };
+
+  function tareaDeleteLabel(tarea: any) {
+    return tarea.codigo || tarea.incidencias || tarea.nombre || "esta tarea";
+  }
+
+  async function handleDeleteSelectedTasks() {
+    if (session?.rol !== "ADMIN" || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    if (!window.confirm(`Eliminar ${ids.length} tarea${ids.length !== 1 ? "s" : ""} seleccionada${ids.length !== 1 ? "s" : ""}?`)) return;
+    setBulkDeleting(true);
+    const toastId = toast.loading("Eliminando tareas...");
+    try {
+      const res = await fetch(`/api/tareas?ids=${encodeURIComponent(ids.join(","))}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "No se pudieron eliminar las tareas", { id: toastId });
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setSelectedIds(new Set());
+      await fetchData();
+      toast.success(`${data.count || ids.length} tarea${(data.count || ids.length) !== 1 ? "s" : ""} eliminada${(data.count || ids.length) !== 1 ? "s" : ""}`, { id: toastId });
+    } catch {
+      toast.error("No se pudieron eliminar las tareas", { id: toastId });
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
 
   // Reordenar estados (drag & drop)
   const handleEstadoDrop = async (targetId: string) => {
@@ -1622,6 +1663,20 @@ export default function EspacioTareasPage() {
                 <p className="mt-0.5 truncate text-xs text-surface-400">{t.nombre}</p>
               )}
             </div>
+            {session?.rol === "ADMIN" && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) });
+                }}
+                className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                title="Eliminar tarea"
+                aria-label="Eliminar tarea"
+              >
+                <IconTrash className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2.5 mt-1.5 text-xs text-surface-500 flex-wrap">
             <span className="tabular-nums">{formatRelativeDate(t.updatedAt)}</span>
@@ -1655,7 +1710,7 @@ export default function EspacioTareasPage() {
         <thead>
           <tr className="border-b border-surface-100">
             {isModOrAdmin && (
-              <th className="w-8 px-1 text-center">
+              <th className="w-16 px-1 text-center">
                 <input
                   type="checkbox"
                   checked={items.length > 0 && items.every(t => selectedIds.has(t.id))}
@@ -1701,7 +1756,7 @@ export default function EspacioTareasPage() {
               className={`cursor-pointer hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"} ${selectedIds.has(t.id) ? "bg-primary-50/60" : ""}`}
             >
               {isModOrAdmin && (
-                <td className="w-8 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <span
                       draggable
@@ -1717,6 +1772,17 @@ export default function EspacioTareasPage() {
                       onChange={() => toggleSelect(t.id)}
                       className="accent-primary-600 cursor-pointer w-3.5 h-3.5"
                     />
+                    {session?.rol === "ADMIN" && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
+                        className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                        title="Eliminar tarea"
+                        aria-label="Eliminar tarea"
+                      >
+                        <IconTrash className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                 </td>
               )}
@@ -2200,6 +2266,18 @@ export default function EspacioTareasPage() {
           >
             Deseleccionar
           </button>
+          {session?.rol === "ADMIN" && (
+            <button
+              type="button"
+              onClick={handleDeleteSelectedTasks}
+              disabled={bulkDeleting}
+              className="inline-flex items-center gap-1 rounded border border-red-200 bg-white px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              title="Eliminar tareas seleccionadas"
+            >
+              <IconTrash className="h-3 w-3" />
+              Eliminar seleccionadas
+            </button>
+          )}
           <span className="text-surface-300 mx-1">|</span>
           <select
             value={bulkAction}
@@ -2337,7 +2415,7 @@ export default function EspacioTareasPage() {
                   </span>
                   <span className="text-[11px] text-surface-400 tabular-nums">{groupCounts[estado.id] ?? items.length}{groupLoadState[estado.id] === "loading" && " ..."}</span>
                 </button>
-                {isModOrAdmin && items.length > 0 && (
+                {session?.rol === "ADMIN" && items.length > 0 && (
                   <button
                     onClick={() => { if (confirm(`¿Eliminar ${items.length} tareas de "${estado.nombre}"?`)) handleBulkDelete(estado.id); }}
                     disabled={bulkDeleting && bulkDeleteGroup === estado.id}
