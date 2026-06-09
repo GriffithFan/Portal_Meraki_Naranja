@@ -405,6 +405,20 @@ export default function ChatFloatingWidget() {
     e.target.value = "";
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const files: File[] = [];
+    for (const item of Array.from(e.clipboardData.items)) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      void subirArchivos(files);
+    }
+  };
+
   // ── Grabación de audio ──
   const iniciarGrabacion = async () => {
     try {
@@ -673,6 +687,7 @@ export default function ChatFloatingWidget() {
                         placeholder={conversacion.estado === "ABIERTA" ? "Responder y tomar..." : "Escribí una respuesta..."}
                         value={nuevoMensaje}
                         onChange={(e) => setNuevoMensaje(e.target.value)}
+                        onPaste={handlePaste}
                         maxLength={2000}
                         className="min-w-0 flex-1 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-800 outline-none focus:ring-2 focus:ring-blue-500 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
@@ -918,6 +933,7 @@ export default function ChatFloatingWidget() {
                     disabled={false}
                     value={nuevoMensaje}
                     onChange={(e) => setNuevoMensaje(e.target.value)}
+                    onPaste={handlePaste}
                     maxLength={2000}
                     className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
                   />
