@@ -4,7 +4,9 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
 import { useSearchContext } from "@/contexts/SearchContext";
-import { IconPlus, IconX, IconTrash, IconEdit } from "@/components/ui/Icons";
+import { IconPlus, IconTrash, IconEdit } from "@/components/ui/Icons";
+import Modal from "@/components/ui/Modal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -293,17 +295,7 @@ export default function HospedajesPage() {
       )}
 
       {/* Modal Crear/Editar */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-surface-800">
-                {editingId ? "Editar hospedaje" : "Nuevo hospedaje"}
-              </h2>
-              <button onClick={() => setShowModal(false)} className="text-surface-400 hover:text-surface-600">
-                <IconX className="w-5 h-5" />
-              </button>
-            </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editingId ? "Editar hospedaje" : "Nuevo hospedaje"}>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -403,29 +395,17 @@ export default function HospedajesPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Modal confirmar eliminación */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30" onClick={() => setConfirmDelete(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-surface-800 mb-2">Eliminar hospedaje</h3>
-            <p className="text-xs text-surface-500 mb-4">
-              ¿Eliminar <strong>{confirmDelete.nombre}</strong>? Esta acción no se puede deshacer.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmDelete(null)} className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 rounded-md">
-                Cancelar
-              </button>
-              <button onClick={handleDelete} className="px-3 py-1.5 bg-red-600 text-white rounded-md text-xs font-medium hover:bg-red-700">
-                Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title="Eliminar hospedaje"
+        confirmLabel="Eliminar"
+        message={<>¿Eliminar <strong>{confirmDelete?.nombre}</strong>? Esta acción no se puede deshacer.</>}
+      />
     </div>
   );
 }

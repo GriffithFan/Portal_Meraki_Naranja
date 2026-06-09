@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
+import { getDefaultPermisoSeccion } from "@/lib/permisos";
 import clsx from "clsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -83,12 +84,9 @@ const ROL_STYLE: Record<string, { label: string; bg: string; text: string; borde
   TECNICO:   { label: "Técnico",   bg: "bg-teal-50 dark:bg-teal-900/20",   text: "text-teal-700 dark:text-teal-300",   border: "border-teal-200 dark:border-teal-700",   dot: "bg-teal-500" },
 };
 
+// Defaults centralizados en src/lib/permisos.ts (misma fuente que usa el hook usePermisos).
 function getDefaults(seccion: string, rol: string): Permiso {
-  const base = { seccion, rol, ver: false, crear: false, editar: false, eliminar: false, exportar: false };
-  if (rol === "MODERADOR") return { ...base, ver: true, crear: true, editar: true, eliminar: true, exportar: true };
-  const verDefault = ["tareas", "mis-tareas", "calendario", "bandeja", "instructivo", "predios", "chat", "hospedajes", "actas", "anuncios"].includes(seccion);
-  const editDefault = ["tareas", "calendario"].includes(seccion);
-  return { ...base, ver: verDefault, crear: editDefault, editar: editDefault, eliminar: false, exportar: false };
+  return getDefaultPermisoSeccion(seccion, rol);
 }
 
 export default function PermisosPage() {

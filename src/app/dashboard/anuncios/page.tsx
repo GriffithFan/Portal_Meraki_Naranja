@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
-import { IconPlus, IconX, IconTrash, IconEdit, IconCheck, IconClock } from "@/components/ui/Icons";
+import { IconPlus, IconTrash, IconEdit, IconCheck, IconClock } from "@/components/ui/Icons";
+import Modal from "@/components/ui/Modal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import clsx from "clsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -91,12 +94,10 @@ export default function AnunciosPage() {
     fijado: false, notificar: true, intervaloHoras: 1, fechaExpiracion: "",
   });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Anuncio | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   const marcadoRef = useRef(false);
-
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
   const fetchAnuncios = useCallback(async () => {
     const res = await fetch("/api/anuncios", { credentials: "include" });
@@ -147,10 +148,10 @@ export default function AnunciosPage() {
     });
     if (res.ok) {
       await fetchJornada();
-      showToast(accion === "ingreso" ? "Ingreso registrado. ¡Buen trabajo!" : "Salida registrada.");
+      toast.success(accion === "ingreso" ? "Ingreso registrado. ¡Buen trabajo!" : "Salida registrada.");
     } else {
       const err = await res.json().catch(() => ({}));
-      showToast(err.error || "No se pudo registrar.");
+      toast.error(err.error || "No se pudo registrar.");
     }
     setMarcando(false);
   }
@@ -198,11 +199,11 @@ export default function AnunciosPage() {
     });
     if (res.ok) {
       setShowModal(false);
-      showToast(editing ? "Anuncio actualizado" : "Anuncio publicado y notificado");
+      toast.success(editing ? "Anuncio actualizado" : "Anuncio publicado y notificado");
       fetchAnuncios();
     } else {
       const err = await res.json().catch(() => ({}));
-      showToast(err.error || "No se pudo guardar");
+      toast.error(err.error || "No se pudo guardar");
     }
     setSaving(false);
   }
@@ -219,12 +220,16 @@ export default function AnunciosPage() {
 
   async function handleDelete() {
     if (!confirmDelete) return;
+    setDeleting(true);
     const res = await fetch(`/api/anuncios/${confirmDelete.id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) {
       setConfirmDelete(null);
-      showToast("Anuncio eliminado");
+      toast.success("Anuncio eliminado");
       fetchAnuncios();
+    } else {
+      toast.error("No se pudo eliminar");
     }
+    setDeleting(false);
   }
 
   const minutosHoy = jornadasHoy.reduce((acc, j) => {
@@ -398,21 +403,8 @@ export default function AnunciosPage() {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] px-4 py-2 bg-surface-800 text-white text-xs rounded-lg shadow-lg animate-fade-in-up">
-          {toast}
-        </div>
-      )}
-
       {/* Modal crear/editar */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white dark:bg-surface-800 rounded-xl shadow-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-surface-800 dark:text-surface-100">{editing ? "Editar anuncio" : "Nuevo anuncio"}</h2>
-              <button onClick={() => setShowModal(false)} className="text-surface-400 hover:text-surface-600"><IconX className="w-5 h-5" /></button>
-            </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? "Editar anuncio" : "Nuevo anuncio"} maxWidth="max-w-lg">
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
                 <label className="block text-[11px] font-medium text-surface-500 mb-1">Título *</label>
@@ -464,23 +456,18 @@ export default function AnunciosPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Confirmar eliminación */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4" onClick={() => setConfirmDelete(null)}>
-          <div className="bg-white dark:bg-surface-800 rounded-xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-100 mb-2">Eliminar anuncio</h3>
-            <p className="text-xs text-surface-500 mb-4">¿Eliminar <strong>{confirmDelete.titulo}</strong>? Esta acción no se puede deshacer.</p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmDelete(null)} className="px-3 py-1.5 text-xs text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-md">Cancelar</button>
-              <button onClick={handleDelete} className="px-3 py-1.5 bg-red-600 text-white rounded-md text-xs font-medium hover:bg-red-700">Eliminar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        loading={deleting}
+        title="Eliminar anuncio"
+        confirmLabel="Eliminar"
+        message={<>¿Eliminar <strong>{confirmDelete?.titulo}</strong>? Esta acción no se puede deshacer.</>}
+      />
     </div>
   );
 }

@@ -1,25 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
-
-// Argentina = UTC-3 (sin horario de verano)
-const TZ_OFFSET_MIN = -180;
-
-/** Rango [inicio, fin) del día calendario argentino, como instantes UTC. */
-function dayRangeAR(fechaStr?: string | null) {
-  let y: number, m: number, d: number;
-  if (fechaStr && /^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) {
-    [y, m, d] = fechaStr.split("-").map(Number);
-  } else {
-    const nowAr = new Date(Date.now() + TZ_OFFSET_MIN * 60000);
-    y = nowAr.getUTCFullYear();
-    m = nowAr.getUTCMonth() + 1;
-    d = nowAr.getUTCDate();
-  }
-  const start = new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - TZ_OFFSET_MIN * 60000);
-  const end = new Date(start.getTime() + 24 * 3600 * 1000);
-  return { start, end };
-}
+import { dayRangeAR } from "@/lib/fechas";
 
 function toNum(v: unknown): number | null {
   const n = Number(v);

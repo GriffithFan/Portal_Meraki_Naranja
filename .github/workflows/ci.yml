@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # Variables dummy: el build importa middleware/auth (lanzan si falta JWT_SECRET).
+    # PrismaClient no conecta en build y envCheck solo corre al arrancar el server.
+    env:
+      JWT_SECRET: ci-dummy-jwt-secret-0123456789abcdef
+      CRON_SECRET: ci-dummy-cron-secret-0123456789abcdef
+      MERAKI_API_KEY: ci-dummy-meraki-key
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate --schema ./prisma/schema.prisma
+
+      - name: Guard de drift de schema
+        run: node scripts/check-prisma-client.mjs
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

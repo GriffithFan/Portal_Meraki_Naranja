@@ -1,26 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "./useSession";
-
-interface PermisoSeccion {
-  seccion: string;
-  rol: string;
-  ver: boolean;
-  crear: boolean;
-  editar: boolean;
-  eliminar: boolean;
-  exportar: boolean;
-}
-
-interface PermisoSeccionUsuario {
-  seccion: string;
-  userId: string;
-  ver: boolean;
-  crear: boolean;
-  editar: boolean;
-  eliminar: boolean;
-  exportar: boolean;
-}
+import { resolvePermiso, type PermisoSeccion, type PermisoSeccionUsuario, type CampoPermiso } from "@/lib/permisos";
 
 interface PermisosResult {
   /** Puede el usuario actual ver esta sección? */
@@ -44,12 +25,6 @@ interface PermisosResult {
   loading: boolean;
 }
 
-// Secciones de monitoreo — siempre visibles para todos
-const SECCIONES_MONITOREO = ["topologia", "switches", "aps", "appliance"];
-
-// Secciones restringidas — por defecto ocultas para no-admin
-const SECCIONES_RESTRINGIDAS = ["permisos", "auditoria", "papelera"];
-
 export function usePermisos(): PermisosResult {
   const { session } = useSession();
   const [permisos, setPermisos] = useState<PermisoSeccion[]>([]);
@@ -67,48 +42,11 @@ export function usePermisos(): PermisosResult {
       .finally(() => setLoading(false));
   }, []);
 
-  // Buscar permiso per-user (override) para una sección + campo
-  const getPermisoUsuario = useCallback(
-    (seccion: string, campo: "ver" | "crear" | "editar" | "eliminar" | "exportar"): boolean | null => {
-      if (!session?.userId) return null;
-      const p = permisosUsuario.find((x) => x.seccion === seccion && x.userId === session.userId);
-      if (!p) return null; // No hay override per-user
-      return p[campo];
-    },
-    [session, permisosUsuario]
-  );
-
-  // Buscar permiso por rol para una sección + campo, con fallback a defaults
-  const getPermisoRol = useCallback(
-    (seccion: string, campo: "ver" | "crear" | "editar" | "eliminar" | "exportar"): boolean => {
-      if (!session) return false;
-      const p = permisos.find((x) => x.seccion === seccion && x.rol === session.rol);
-      if (p) return p[campo];
-      // Defaults
-      if (session.rol === "MODERADOR") {
-        if (SECCIONES_RESTRINGIDAS.includes(seccion)) return false;
-        return campo === "ver" || campo === "crear" || campo === "editar" || campo === "eliminar" || campo === "exportar";
-      }
-      // TECNICO defaults
-      if (campo === "ver") return ["tareas", "mis-tareas", "calendario", "bandeja", "instructivo", "predios", "chat", "hospedajes", "actas", "anuncios"].includes(seccion);
-      if (campo === "crear" || campo === "editar") return ["tareas", "calendario"].includes(seccion);
-      return false;
-    },
-    [session, permisos]
-  );
-
-  // Resolver permiso: monitoreo → admin → per-user override → per-rol → default
+  // Resolver permiso: delega en la lógica pura compartida (src/lib/permisos.ts)
   const resolve = useCallback(
-    (seccion: string, campo: "ver" | "crear" | "editar" | "eliminar" | "exportar"): boolean => {
-      if (SECCIONES_MONITOREO.includes(seccion)) return campo === "ver";
-      if (!session || session.rol === "ADMIN") return true;
-      // Per-user override tiene prioridad
-      const userOverride = getPermisoUsuario(seccion, campo);
-      if (userOverride !== null) return userOverride;
-      // Fallback al permiso por rol
-      return getPermisoRol(seccion, campo);
-    },
-    [session, getPermisoUsuario, getPermisoRol]
+    (seccion: string, campo: CampoPermiso): boolean =>
+      resolvePermiso(seccion, campo, { session, permisos, permisosUsuario }),
+    [session, permisos, permisosUsuario]
   );
 
   const puedeVer = useCallback((seccion: string) => resolve(seccion, "ver"), [resolve]);
