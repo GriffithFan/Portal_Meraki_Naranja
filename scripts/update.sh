@@ -48,8 +48,14 @@ ok "Dependencias actualizadas"
 
 # ── Prisma ───────────────────────────────────────────────────
 step "3/5  Sincronizando base de datos"
-npx prisma generate 2>&1 | tail -1
-npx prisma db push --accept-data-loss 2>&1 | tail -3
+# --schema explícito: evita que un schema.prisma suelto en la raíz secuestre
+# generate/db push (Prisma toma el de la raíz por defecto si existe).
+PRISMA_SCHEMA="./prisma/schema.prisma"
+if [[ -f ./schema.prisma ]]; then
+  warn "Detectado ./schema.prisma en la raíz (no canónico) — se ignora; el válido es ${PRISMA_SCHEMA}"
+fi
+npx prisma generate --schema "$PRISMA_SCHEMA" 2>&1 | tail -1
+npx prisma db push --schema "$PRISMA_SCHEMA" --accept-data-loss 2>&1 | tail -3
 ok "Schema de BD actualizado"
 
 # ── Build ────────────────────────────────────────────────────
