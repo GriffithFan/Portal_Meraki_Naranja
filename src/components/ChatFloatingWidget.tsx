@@ -567,7 +567,7 @@ export default function ChatFloatingWidget() {
                   </button>
                 )}
                 <a
-                  href="/dashboard/chat"
+                  href={conversacion ? `/dashboard/chat?id=${conversacion.id}` : "/dashboard/chat"}
                   className="rounded-md p-1.5 text-blue-100 transition hover:bg-white/10 hover:text-white"
                   title="Abrir chat completo"
                 >
@@ -733,9 +733,11 @@ export default function ChatFloatingWidget() {
     );
   }
 
-  // Widget para técnicos ÔÇö chat directo
+  // Widget para técnicos — chat directo
   return (
     <div className="fixed bottom-4 right-4 z-50 sm:bottom-5 sm:right-5">
+      {/* Input oculto siempre montado para que el ref esté disponible en mobile */}
+      <input ref={fileInputRef} id="chat-file-widget" type="file" accept={ALLOWED_FILE_TYPES} multiple className="sr-only" onChange={handleFileSelect} />
       {open && (
         <div className="fixed inset-x-3 bottom-20 top-20 flex flex-col overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl animate-in slide-in-from-bottom-2 dark:border-surface-700 dark:bg-surface-800 sm:absolute sm:inset-auto sm:bottom-16 sm:right-0 sm:h-[480px] sm:w-96">
           {/* Header */}
@@ -750,7 +752,7 @@ export default function ChatFloatingWidget() {
             </div>
             <div className="flex items-center gap-1">
               <a
-                href="/dashboard/chat"
+                href={conversacion ? `/dashboard/chat?id=${conversacion.id}` : "/dashboard/chat"}
                 className="p-1.5 text-blue-200 hover:text-white transition"
                 title="Abrir chat completo"
               >
@@ -836,11 +838,9 @@ export default function ChatFloatingWidget() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input ÔÇö siempre visible */}
+          {/* Input — siempre visible */}
           {(!conversacion || conversacion.estado !== "CERRADA") ? (
             <div className="p-2 border-t border-surface-200 dark:border-surface-700">
-              <input ref={fileInputRef} type="file" accept={ALLOWED_FILE_TYPES} capture={undefined} multiple className="hidden" onChange={handleFileSelect} />
-
               {respondiendoA && (
                 <div className="mb-2 flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1.5 dark:border-blue-900/50 dark:bg-blue-900/20">
                   <div className="min-w-0 flex-1 border-l-2 border-blue-500 pl-2">
@@ -883,11 +883,11 @@ export default function ChatFloatingWidget() {
                   {/* Adjuntar archivo */}
                   {(!conversacion || conversacion.estado !== "CERRADA") && (
                     <>
-                      <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo">
+                      <label htmlFor="chat-file-widget" className="p-1.5 text-surface-400 hover:text-blue-500 transition cursor-pointer" title="Adjuntar archivo">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
                         </svg>
-                      </button>
+                      </label>
                       {/* Grabar audio */}
                       <button type="button" onClick={iniciarGrabacion} className="p-1.5 text-surface-400 hover:text-red-500 transition" title="Grabar audio (máx 2 min)">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>

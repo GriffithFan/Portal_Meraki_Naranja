@@ -173,6 +173,7 @@ export default function ChatPage() {
   if (typeof window !== "undefined" && !urlParamsRef.current) {
     urlParamsRef.current = new URLSearchParams(window.location.search);
   }
+  const autoOpenIdRef = useRef<string | null>(urlParamsRef.current?.get("id") || null);
   const [busqueda, setBusqueda] = useState(() => urlParamsRef.current?.get("search") || "");
   const [resultadosBusqueda, setResultadosBusqueda] = useState<any[] | null>(null);
   const [buscandoHistorial, setBuscandoHistorial] = useState(false);
@@ -268,6 +269,18 @@ export default function ChatPage() {
   useEffect(() => {
     cargarConversaciones().finally(() => setLoading(false));
   }, [cargarConversaciones]);
+
+  // Auto-abrir conversación pasada por ?id= desde el widget flotante
+  useEffect(() => {
+    const id = autoOpenIdRef.current;
+    if (!id || conversaciones.length === 0) return;
+    autoOpenIdRef.current = null;
+    const conv = conversaciones.find((c: any) => c.id === id);
+    if (conv) {
+      cargarMensajes(id);
+      setVistaMovil("chat");
+    }
+  }, [conversaciones, cargarMensajes]);
 
   useEffect(() => {
     const query = busqueda.trim();
