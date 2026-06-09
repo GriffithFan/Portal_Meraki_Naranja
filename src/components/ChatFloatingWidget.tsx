@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
@@ -40,7 +40,7 @@ function ChatArchivo({ msg, onOpenMedia }: { msg: any; onOpenMedia: (msg: any) =
           <Image src={inlineUrl} alt={msg.archivoNombre} width={200} height={150} unoptimized className="max-w-[200px] max-h-[150px] w-auto h-auto rounded-lg object-cover cursor-pointer hover:opacity-90" />
         </button>
         <div className="flex items-center gap-2">
-          <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} ┬À {formatFileSize(msg.archivoTamanio)}</p>
+          <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
           <DownloadBtn />
         </div>
       </div>
@@ -51,7 +51,7 @@ function ChatArchivo({ msg, onOpenMedia }: { msg: any; onOpenMedia: (msg: any) =
       <div className="mt-1">
         <video src={inlineUrl} controls playsInline className="max-w-[220px] max-h-[160px] rounded-lg" preload="metadata" />
         <div className="flex items-center gap-2">
-          <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} ┬À {formatFileSize(msg.archivoTamanio)}</p>
+          <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
           <DownloadBtn />
         </div>
       </div>
@@ -61,7 +61,7 @@ function ChatArchivo({ msg, onOpenMedia }: { msg: any; onOpenMedia: (msg: any) =
     return (
       <div className="mt-1">
         <audio src={inlineUrl} controls className="max-w-[220px] h-8" preload="metadata" />
-        <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} ┬À {formatFileSize(msg.archivoTamanio)}</p>
+        <p className="text-[10px] opacity-60 mt-0.5">{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
       </div>
     );
   }
@@ -129,7 +129,7 @@ function ReactionSummary({ msg, sessionUserId, onReact }: { msg: any; sessionUse
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {counts.map((item) => (
-        <button key={item.emoji} type="button" onClick={() => onReact(msg, item.emoji)} className={clsx("inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] shadow-sm", item.mine ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200" : "border-surface-200 bg-white text-surface-600 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200")} title={item.mine ? "Quitar reacci├│n" : "Reaccionar"}>
+        <button key={item.emoji} type="button" onClick={() => onReact(msg, item.emoji)} className={clsx("inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] shadow-sm", item.mine ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200" : "border-surface-200 bg-white text-surface-600 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200")} title={item.mine ? "Quitar reacción" : "Reaccionar"}>
           <span>{item.emoji}</span>
           <span className="font-semibold">{item.count}</span>
         </button>
@@ -287,7 +287,7 @@ export default function ChatFloatingWidget() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert(err.error || "No se pudo tomar la conversaci├│n");
+      alert(err.error || "No se pudo tomar la conversación");
       return null;
     }
     const updated = await res.json();
@@ -359,13 +359,13 @@ export default function ChatFloatingWidget() {
     }
   };
 
-  // ÔöÇÔöÇ Upload de archivos ÔöÇÔöÇ
+  // ── Upload de archivos ──
   const subirArchivos = async (files: File[]) => {
     if (files.length === 0) return;
     setSubiendo(true);
     try {
       let convId = conversacion?.id;
-      // Si no hay conversaci├│n activa, crear una con mensaje descriptivo
+      // Si no hay conversación activa, crear una con mensaje descriptivo
       if (!convId) {
         const label = files.length === 1 ? files[0].name : `${files.length} archivos`;
         const res = await fetch("/api/chat", {
@@ -374,10 +374,10 @@ export default function ChatFloatingWidget() {
           credentials: "include",
           body: JSON.stringify({ mensaje: `[Archivo adjunto: ${label}]` }),
         });
-        if (!res.ok) { const err = await res.json(); alert(err.error || "Error al crear conversaci├│n"); setSubiendo(false); return; }
+        if (!res.ok) { const err = await res.json(); alert(err.error || "Error al crear conversación"); setSubiendo(false); return; }
         const created = await res.json();
         convId = created.id;
-        if (!convId) { alert("No se pudo crear la conversaci├│n"); setSubiendo(false); return; }
+        if (!convId) { alert("No se pudo crear la conversación"); setSubiendo(false); return; }
         await cargarConvActiva();
       }
       const fd = new FormData();
@@ -393,7 +393,7 @@ export default function ChatFloatingWidget() {
         const err = await res.json();
         alert(err.error || "Error al subir archivo");
       }
-    } catch (err) { console.error("[ChatWidget] Error subiendo archivo:", err); alert("Error al subir archivo. Intent├í de nuevo."); }
+    } catch (err) { console.error("[ChatWidget] Error subiendo archivo:", err); alert("Error al subir archivo. Intentá de nuevo."); }
     setSubiendo(false);
   };
 
@@ -405,7 +405,7 @@ export default function ChatFloatingWidget() {
     e.target.value = "";
   };
 
-  // ÔöÇÔöÇ Grabaci├│n de audio ÔöÇÔöÇ
+  // ── Grabación de audio ──
   const iniciarGrabacion = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -435,7 +435,7 @@ export default function ChatFloatingWidget() {
         });
       }, 1000);
     } catch {
-      alert("No se pudo acceder al micr├│fono");
+      alert("No se pudo acceder al micrófono");
     }
   };
 
@@ -451,7 +451,7 @@ export default function ChatFloatingWidget() {
     try {
       if (isSupportUser && !conversacion) return;
       if (isSupportUser && conversacion?.estado === "CERRADA") {
-        alert("Esta conversaci├│n est├í cerrada. Abr├¡ el chat completo para revisar el historial.");
+        alert("Esta conversación está cerrada. Abrí el chat completo para revisar el historial.");
         return;
       }
       if (isSupportUser && conversacion?.estado === "ABIERTA") {
@@ -460,7 +460,7 @@ export default function ChatFloatingWidget() {
       }
 
       if (!conversacion) {
-        // Crear nueva conversaci├│n con el primer mensaje
+        // Crear nueva conversación con el primer mensaje
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -475,7 +475,7 @@ export default function ChatFloatingWidget() {
           alert(err.error || "Error");
         }
       } else {
-        // Conversaci├│n existente: enviar mensaje
+        // Conversación existente: enviar mensaje
         const res = await fetch(`/api/chat/${conversacion.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -521,7 +521,7 @@ export default function ChatFloatingWidget() {
       const data = await res.json();
       setMensajes((prev) => prev.map((item: any) => item.id === data.mensajeId ? { ...item, reacciones: data.reacciones } : item));
     } catch {
-      alert("Error de conexi├│n");
+      alert("Error de conexión");
     }
   };
 
@@ -603,7 +603,7 @@ export default function ChatFloatingWidget() {
                         {esMio && conversacion.estado !== "CERRADA" && (
                           <div className="relative mr-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                             {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
-                            <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar"><span className="text-sm leading-none">Ôÿ║</span></button>
+                            <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar"><span className="text-sm leading-none">😊</span></button>
                             <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500" title="Responder">
                               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
                             </button>
@@ -620,7 +620,7 @@ export default function ChatFloatingWidget() {
                         {!esMio && conversacion.estado !== "CERRADA" && (
                           <div className="relative ml-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                             {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
-                            <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar"><span className="text-sm leading-none">Ôÿ║</span></button>
+                            <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar"><span className="text-sm leading-none">😊</span></button>
                             <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500" title="Responder">
                               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
                             </button>
@@ -635,7 +635,7 @@ export default function ChatFloatingWidget() {
                 {conversacion.estado !== "CERRADA" ? (
                   <div className="border-t border-surface-100 p-2 dark:border-surface-700">
                     {conversacion.estado === "ABIERTA" && (
-                      <p className="mb-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700 dark:bg-amber-900/20 dark:text-amber-200">Al responder se toma la conversaci├│n autom├íticamente.</p>
+                      <p className="mb-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700 dark:bg-amber-900/20 dark:text-amber-200">Al responder se toma la conversación automáticamente.</p>
                     )}
                     {respondiendoA && (
                       <div className="mb-2 flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1.5 dark:border-blue-900/50 dark:bg-blue-900/20">
@@ -656,7 +656,7 @@ export default function ChatFloatingWidget() {
                     <form onSubmit={enviarMensaje} className="flex items-center gap-2 touch-manipulation">
                       <input
                         type="text"
-                        placeholder={conversacion.estado === "ABIERTA" ? "Responder y tomar..." : "Escrib├¡ una respuesta..."}
+                        placeholder={conversacion.estado === "ABIERTA" ? "Responder y tomar..." : "Escribí una respuesta..."}
                         value={nuevoMensaje}
                         onChange={(e) => setNuevoMensaje(e.target.value)}
                         maxLength={2000}
@@ -679,7 +679,7 @@ export default function ChatFloatingWidget() {
                   {supportLoading && supportConversations.length === 0 ? (
                     <div className="flex h-full items-center justify-center gap-2 text-xs text-surface-400"><div className="h-4 w-4 animate-spin rounded-full border-2 border-surface-200 border-t-blue-500" />Cargando chats...</div>
                   ) : supportConversations.length === 0 ? (
-                    <div className="flex h-full flex-col items-center justify-center px-5 text-center"><p className="text-sm font-medium text-surface-700 dark:text-surface-100">Sin conversaciones recientes</p><p className="mt-1 text-xs text-surface-400">Cuando entre una consulta nueva va a aparecer ac├í.</p></div>
+                    <div className="flex h-full flex-col items-center justify-center px-5 text-center"><p className="text-sm font-medium text-surface-700 dark:text-surface-100">Sin conversaciones recientes</p><p className="mt-1 text-xs text-surface-400">Cuando entre una consulta nueva va a aparecer acá.</p></div>
                   ) : (
                     <div className="space-y-1">
                       {supportConversations.map((conv) => {
@@ -733,7 +733,7 @@ export default function ChatFloatingWidget() {
     );
   }
 
-  // Widget para t├®cnicos ÔÇö chat directo
+  // Widget para técnicos ÔÇö chat directo
   return (
     <div className="fixed bottom-4 right-4 z-50 sm:bottom-5 sm:right-5">
       {open && (
@@ -745,7 +745,7 @@ export default function ChatFloatingWidget() {
               <p className="text-blue-200 text-[11px]">
                 {conversacion
                   ? conversacion.estado === "EN_CURSO" ? "Conectado" : conversacion.estado === "ABIERTA" ? "Esperando agente..." : "Cerrada"
-                  : "Escrib├¡ tu consulta"}
+                  : "Escribí tu consulta"}
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -779,7 +779,7 @@ export default function ChatFloatingWidget() {
                   </svg>
                 </div>
                 <p className="text-xs text-surface-500 dark:text-surface-400">
-                  Escrib├¡ tu mensaje y Mesa de Ayuda te responder├í
+                  Escribí tu mensaje y Mesa de Ayuda te responderá
                 </p>
               </div>
             )}
@@ -795,7 +795,7 @@ export default function ChatFloatingWidget() {
                     <div className="relative mr-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                       {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                       <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar">
-                        <span className="text-sm leading-none">Ôÿ║</span>
+                        <span className="text-sm leading-none">😊</span>
                       </button>
                       <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500" title="Responder">
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
@@ -823,7 +823,7 @@ export default function ChatFloatingWidget() {
                     <div className="relative ml-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                       {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                       <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar">
-                        <span className="text-sm leading-none">Ôÿ║</span>
+                        <span className="text-sm leading-none">😊</span>
                       </button>
                       <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500" title="Responder">
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
@@ -881,7 +881,7 @@ export default function ChatFloatingWidget() {
                 </div>
                 <form onSubmit={enviarMensaje} className="flex items-center gap-1 touch-manipulation">
                   {/* Adjuntar archivo */}
-                  {(!conversacion || conversacion.estado !== "ABIERTA") && (
+                  {(!conversacion || conversacion.estado !== "CERRADA") && (
                     <>
                       <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1.5 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -889,7 +889,7 @@ export default function ChatFloatingWidget() {
                         </svg>
                       </button>
                       {/* Grabar audio */}
-                      <button type="button" onClick={iniciarGrabacion} className="p-1.5 text-surface-400 hover:text-red-500 transition" title="Grabar audio (m├íx 2 min)">
+                      <button type="button" onClick={iniciarGrabacion} className="p-1.5 text-surface-400 hover:text-red-500 transition" title="Grabar audio (máx 2 min)">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
                         </svg>
@@ -898,7 +898,7 @@ export default function ChatFloatingWidget() {
                   )}
                   <input
                     type="text"
-                    placeholder="Escrib├¡ tu consulta..."
+                    placeholder="Escribí tu consulta..."
                     disabled={false}
                     value={nuevoMensaje}
                     onChange={(e) => setNuevoMensaje(e.target.value)}
@@ -933,7 +933,7 @@ export default function ChatFloatingWidget() {
         </div>
       )}
 
-      {/* Bot├│n flotante */}
+      {/* Botón flotante */}
       <button
         onClick={() => open ? setOpen(false) : handleOpen()}
         className={clsx(
