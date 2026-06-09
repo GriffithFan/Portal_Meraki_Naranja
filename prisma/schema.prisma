@@ -60,6 +60,9 @@ model User {
   permisosSeccion      PermisoSeccionUsuario[]
   registrosAcceso      RegistroAcceso[]
   accesosEspacio       AccesoEspacio[]
+  anuncios             Anuncio[]          @relation("AutorAnuncio")
+  lecturasAnuncio      AnuncioLectura[]
+  jornadas             JornadaLaboral[]
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -701,6 +704,67 @@ model AccesoEspacioRol {
   @@unique([rol, espacioId])
   @@index([rol])
   @@index([espacioId])
+}
+
+// ─── TABLERO DE ANUNCIOS ────────────────────────────
+model Anuncio {
+  id                 String    @id @default(cuid())
+  titulo             String
+  contenido          String    @db.Text
+  prioridad          Prioridad @default(MEDIA)
+  fijado             Boolean   @default(false) // Anclado arriba del tablero
+  activo             Boolean   @default(true)
+  notificar          Boolean   @default(true)  // Enviar push periódico a técnicos
+  intervaloHoras     Int       @default(1)     // Cada cuántas horas re-notificar
+  ultimaNotificacion DateTime?                  // Último envío del cron
+  fechaExpiracion    DateTime?                  // Deja de notificar/ocultar tras esta fecha
+
+  autorId   String
+  autor     User      @relation("AutorAnuncio", fields: [autorId], references: [id], onDelete: Cascade)
+  lecturas  AnuncioLectura[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([activo, fijado, createdAt])
+  @@index([activo, notificar])
+  @@index([autorId])
+}
+
+model AnuncioLectura {
+  id        String  @id @default(cuid())
+  anuncioId String
+  userId    String
+  anuncio   Anuncio @relation(fields: [anuncioId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([anuncioId, userId])
+  @@index([userId])
+  @@index([anuncioId])
+}
+
+// ─── JORNADA LABORAL (INGRESO / SALIDA EN CAMPO) ────
+model JornadaLaboral {
+  id         String    @id @default(cuid())
+  userId     String
+  usuario    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inicio     DateTime  @default(now())
+  fin        DateTime?
+  notaInicio String?
+  notaFin    String?
+  latInicio  Float?
+  lngInicio  Float?
+  latFin     Float?
+  lngFin     Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, inicio])
+  @@index([inicio])
+  @@index([fin])
 }
 
 // ─── REGISTRO DE ACCESOS (AUDITORÍA) ────────────────

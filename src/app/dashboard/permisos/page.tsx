@@ -58,6 +58,8 @@ const SECCIONES = [
   { clave: "hospedajes",  label: "Hospedajes",   grupo: "Gestión",        icono: "M8.25 21v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21m0 0h4.5V3.545M12.75 21h7.5V10.75M2.25 21h1.5m18 0h-18M2.25 9l4.5-1.636M18.75 3l-1.5.545m0 6.205l3 1m1.5.5l-1.5-.5M6.75 7.364V3h-3v18m3-13.636l10.5-3.819" },
   { clave: "stock",       label: "Stock",        grupo: "Gestión",        icono: "M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" },
   { clave: "importar",    label: "Importar",     grupo: "Gestión",        icono: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" },
+  { clave: "anuncios",    label: "Anuncios",     grupo: "Gestión",        icono: "M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535m0 0A23.74 23.74 0 0019.5 3.27M18.825 9.075a23.91 23.91 0 010 5.85" },
+  { clave: "asistencia",  label: "Asistencia",   grupo: "Gestión",        icono: "M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" },
   { clave: "mapa",        label: "Mapa",         grupo: "Gestión",        icono: "M9 6.75V15m0-8.25a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V1.875c0-.621-.504-1.125-1.125-1.125H5.625c-.621 0-1.125.504-1.125 1.125v17.25" },
   { clave: "bandeja",     label: "Bandeja",      grupo: "Comunicación",   icono: "M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" },
   { clave: "actividad",   label: "Actividad",    grupo: "Comunicación",   icono: "M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" },
@@ -84,7 +86,7 @@ const ROL_STYLE: Record<string, { label: string; bg: string; text: string; borde
 function getDefaults(seccion: string, rol: string): Permiso {
   const base = { seccion, rol, ver: false, crear: false, editar: false, eliminar: false, exportar: false };
   if (rol === "MODERADOR") return { ...base, ver: true, crear: true, editar: true, eliminar: true, exportar: true };
-  const verDefault = ["tareas", "mis-tareas", "calendario", "bandeja", "instructivo", "predios", "chat", "hospedajes", "actas"].includes(seccion);
+  const verDefault = ["tareas", "mis-tareas", "calendario", "bandeja", "instructivo", "predios", "chat", "hospedajes", "actas", "anuncios"].includes(seccion);
   const editDefault = ["tareas", "calendario"].includes(seccion);
   return { ...base, ver: verDefault, crear: editDefault, editar: editDefault, eliminar: false, exportar: false };
 }
