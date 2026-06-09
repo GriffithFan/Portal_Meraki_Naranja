@@ -531,6 +531,8 @@ export default function ChatFloatingWidget() {
   if (isSupportUser) {
     return (
       <div className="fixed bottom-4 right-4 z-50 sm:bottom-5 sm:right-5">
+        {/* Input oculto — mismo ref que técnico, ramas mutuamente excluyentes */}
+        <input ref={fileInputRef} id="chat-file-support" type="file" accept={ALLOWED_FILE_TYPES} multiple className="sr-only" onChange={handleFileSelect} />
         {open && (
           <div className="fixed inset-x-3 bottom-20 flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl animate-in slide-in-from-bottom-2 dark:border-surface-700 dark:bg-surface-800 sm:absolute sm:inset-auto sm:bottom-16 sm:right-0 sm:h-[430px] sm:w-[380px]">
             <div className="flex items-center justify-between border-b border-surface-100 bg-blue-600 px-3 py-3 dark:border-surface-700">
@@ -648,12 +650,24 @@ export default function ChatFloatingWidget() {
                         </button>
                       </div>
                     )}
+                    {subiendo ? (
+                      <div className="flex items-center justify-center gap-2 py-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
+                        <span className="text-xs text-surface-500">Subiendo archivo...</span>
+                      </div>
+                    ) : (
+                    <>
                     <div className="mb-2 flex gap-1">
                       {QUICK_REACTIONS.map((emoji) => (
                         <button key={emoji} type="button" onClick={() => enviarTexto(emoji)} className="rounded-full border border-surface-200 bg-white px-2 py-1 text-xs shadow-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:bg-surface-700" title={`Enviar ${emoji}`}>{emoji}</button>
                       ))}
                     </div>
                     <form onSubmit={enviarMensaje} className="flex items-center gap-2 touch-manipulation">
+                      <label htmlFor="chat-file-support" className="shrink-0 cursor-pointer p-1.5 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo">
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                        </svg>
+                      </label>
                       <input
                         type="text"
                         placeholder={conversacion.estado === "ABIERTA" ? "Responder y tomar..." : "Escribí una respuesta..."}
@@ -666,6 +680,8 @@ export default function ChatFloatingWidget() {
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                       </button>
                     </form>
+                    </>
+                    )}
                   </div>
                 ) : (
                   <div className="border-t border-surface-100 p-2 dark:border-surface-700">

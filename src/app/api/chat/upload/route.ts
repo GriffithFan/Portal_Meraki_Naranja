@@ -85,14 +85,15 @@ export async function POST(request: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
-      select: { esMesa: true },
+      select: { esMesa: true, rol: true },
     });
 
     const esCreador = conversacion.creadorId === session.userId;
     const esAgente = conversacion.agenteId === session.userId;
     const esMesa = user?.esMesa === true;
+    const esAdmin = user?.rol === "ADMIN" || user?.rol === "MODERADOR";
 
-    if (!esCreador && !esAgente && !esMesa) {
+    if (!esCreador && !esAgente && !esMesa && !esAdmin) {
       return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
     }
 
