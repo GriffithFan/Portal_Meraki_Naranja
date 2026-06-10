@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ar.com.thnet.carrot",
+      "sha256_cert_fingerprints": [
+        "FF:97:7F:61:C6:ED:24:3E:37:DC:1E:5B:A9:CA:2A:AE:70:6D:86:44:AF:5D:B8:4D:3D:E1:9A:5D:DB:9E:BA:FC"
+      ]
+    }
+  }
+]
