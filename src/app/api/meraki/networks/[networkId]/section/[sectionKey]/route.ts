@@ -58,12 +58,18 @@ export async function GET(
     }
 
     // Cuando force=true, invalidar sub-caches para obtener datos frescos de la API
+    // (p. ej. cuando se reemplaza un equipo físico y cambia su serial)
     if (forceRefresh) {
       invalidateCache("networkById", `statuses:${networkId}`);
       invalidateCache("networkById", `devices:${networkId}`);
       invalidateCache("networkById", `topology:${networkId}`);
       invalidateCache("networkById", `swPortStatuses:${networkId}`);
       invalidateCache("networkById", `availHistory:${networkId}`);
+      invalidateCache("networkById", `ethStatuses:${networkId}`);
+      invalidateCache("networkById", `wirelessStats:${networkId}`);
+      invalidateCache("networkById", `signalByDevice:${networkId}`);
+      invalidateCache("networkById", `signalHistory:${networkId}`);
+      invalidateCache("networkById", `failedConns:${networkId}`);
     }
 
     const network = await getOrFetch("networkById", `info:${networkId}`, () => getNetworkInfo(networkId), TTL.SLOW);

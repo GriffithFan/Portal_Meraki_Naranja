@@ -36,6 +36,14 @@ const NAV_ITEMS = [
   { label: "Estado (appliances)", key: "Appliance Status", iconFn: serverIconSVG },
 ];
 
+/** Mapea el sectionName (display) al sectionKey usado por la API/NetworkContext */
+const SECTION_KEY_BY_NAME: Record<string, string> = {
+  Topologia: "topology",
+  Switches: "switches",
+  "Access Points en Gigas": "access_points",
+  "Appliance Status": "appliance_status",
+};
+
 /**
  * Construye un contenedor temporal en el DOM con el layout idéntico a
  * SidebarTopBar.details.jsx (TopBar 64px + Sidebar 280px + Content).
@@ -360,9 +368,17 @@ function forceLightInlineStyles(root: HTMLElement) {
 /* ─── Componente principal ─── */
 
 export default function ExportableSection({ sectionName, title, subtitle, children }: ExportableSectionProps) {
-  const { selectedNetwork } = useNetworkContext();
+  const { selectedNetwork, loadSection, sectionsLoading } = useNetworkContext();
   const [exporting, setExporting] = useState<"jpg" | "pdf" | null>(null);
   const sectionRef = useRef<HTMLDivElement>(null);
+
+  const sectionKey = SECTION_KEY_BY_NAME[sectionName];
+  const isRefreshing = sectionKey ? sectionsLoading.has(sectionKey) : false;
+
+  const handleRefresh = () => {
+    if (!sectionKey || !selectedNetwork || isRefreshing) return;
+    void loadSection(sectionKey, { force: true });
+  };
 
   const getFileName = (ext: string) => {
     const code = selectedNetwork?.predioCode || selectedNetwork?.name || selectedNetwork?.id || "export";
@@ -475,6 +491,19 @@ export default function ExportableSection({ sectionName, title, subtitle, childr
           {subtitle && <p className="text-xs text-surface-400">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2 shrink-0" data-export-buttons>
+          {sectionKey && (
+            <button
+              onClick={handleRefresh}
+              disabled={!selectedNetwork || isRefreshing}
+              title="Actualizar datos desde Meraki (ignora la caché)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-surface-100 text-surface-700 hover:bg-surface-200 disabled:opacity-50 transition-colors dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
+            >
+              <svg className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              {isRefreshing ? "Actualizando..." : "Actualizar"}
+            </button>
+          )}
           <button
             onClick={downloadJPG}
             disabled={!!exporting}
