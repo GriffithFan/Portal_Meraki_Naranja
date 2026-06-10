@@ -368,7 +368,19 @@ export default function EspacioTareasPage() {
     e.stopPropagation();
     if (inlineEstado?.id === tareaId) { setInlineEstado(null); return; }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setInlineEstado({ id: tareaId, x: rect.left, y: rect.bottom + 4 });
+    const DROPDOWN_WIDTH = 170;
+    const DROPDOWN_MAX_HEIGHT = 240;
+    const margin = 8;
+    let x = rect.left;
+    let y = rect.bottom + 4;
+    if (x + DROPDOWN_WIDTH > window.innerWidth - margin) {
+      x = Math.max(margin, window.innerWidth - DROPDOWN_WIDTH - margin);
+    }
+    if (y + DROPDOWN_MAX_HEIGHT > window.innerHeight - margin) {
+      // No entra abajo: abrir hacia arriba del icono
+      y = Math.max(margin, rect.top - DROPDOWN_MAX_HEIGHT - 4);
+    }
+    setInlineEstado({ id: tareaId, x, y });
   };
 
   async function changeEstadoInline(tareaId: string, estadoId: string) {
