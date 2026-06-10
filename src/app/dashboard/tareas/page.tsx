@@ -5,6 +5,7 @@ import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
+import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
@@ -349,33 +350,13 @@ export default function TareasPage() {
 
   // Modal de detalle
   const [selectedTarea, setSelectedTarea] = useState<any>(null);
-  const [inlineEstado, setInlineEstado] = useState<{ id: string; x: number; y: number } | null>(null);
 
-  // Cerrar dropdown inline al click fuera
-  useEffect(() => {
-    if (!inlineEstado) return;
-    const handler = () => setInlineEstado(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [inlineEstado]);
+  // Dropdown inline de estado en la lista (estado propio, no re-renderiza la tabla al abrir/cerrar)
+  const estadoDropdownRef = useRef<EstadoInlineDropdownHandle>(null);
 
   const abrirInlineEstado = (e: React.MouseEvent, tareaId: string) => {
     e.stopPropagation();
-    if (inlineEstado?.id === tareaId) { setInlineEstado(null); return; }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const DROPDOWN_WIDTH = 170;
-    const DROPDOWN_MAX_HEIGHT = 240;
-    const margin = 8;
-    let x = rect.left;
-    let y = rect.bottom + 4;
-    if (x + DROPDOWN_WIDTH > window.innerWidth - margin) {
-      x = Math.max(margin, window.innerWidth - DROPDOWN_WIDTH - margin);
-    }
-    if (y + DROPDOWN_MAX_HEIGHT > window.innerHeight - margin) {
-      // No entra abajo: abrir hacia arriba del icono
-      y = Math.max(margin, rect.top - DROPDOWN_MAX_HEIGHT - 4);
-    }
-    setInlineEstado({ id: tareaId, x, y });
+    estadoDropdownRef.current?.toggle(tareaId, e.currentTarget as HTMLElement);
   };
 
   const openCreateModal = useCallback((defaults: { estadoId?: string; espacioId?: string } = {}) => {
@@ -745,7 +726,6 @@ export default function TareasPage() {
       const data = await res.json().catch(() => ({}));
       toast.error(data.error || "Error al cambiar estado");
     }
-    setInlineEstado(null);
   }
 
   // Guardar campo inline (desde la tabla, sin abrir detalle)
@@ -2495,27 +2475,7 @@ export default function TareasPage() {
       )}
 
       {/* Dropdown inline de estado (fixed, fuera de tablas) */}
-      {inlineEstado && (() => {
-        const tarea = tareas.find(t => t.id === inlineEstado.id);
-        if (!tarea) return null;
-        return (
-          <div
-            className="fixed z-[9999] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-xl py-1 min-w-[170px] animate-fade-in-up"
-            style={{ left: inlineEstado.x, top: inlineEstado.y }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="max-h-56 overflow-y-auto">
-              {estados.map(e => (
-                <button key={e.id} onClick={() => changeEstado(tarea.id, e.id)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left">
-                  <StatusIcon clave={e.clave} color={e.color} size={14} />
-                  <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
-                  {tarea.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
+      <EstadoInlineDropdown ref={estadoDropdownRef} tareas={tareas} estados={estados} onChange={changeEstado} />
     </div>
   );
 }
