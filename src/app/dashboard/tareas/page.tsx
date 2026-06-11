@@ -2009,7 +2009,7 @@ export default function TareasPage() {
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
-                        <MobileTaskList items={items} />
+                        <MobileTaskList items={items.slice(0, renderLimits[estado.id] || ROWS_BATCH)} />
                         <table className="w-full min-w-max text-[11px] hidden md:table">
                           <thead>
                             <tr className="border-b border-surface-100">
@@ -2121,7 +2121,7 @@ export default function TareasPage() {
               </div>
               {expandedSections.has("sin-estado") && (
                 <div className="border-t border-surface-100 overflow-x-auto">
-                  <MobileTaskList items={groupedTareas["sin-estado"]} />
+                  <MobileTaskList items={groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH)} />
                   <table className="w-full min-w-max text-[11px] hidden md:table">
                     <thead>
                       <tr className="border-b border-surface-100">
@@ -2201,7 +2201,7 @@ export default function TareasPage() {
                   </button>
                   {isExpanded && (
                     <div className="border-t border-surface-100 overflow-x-auto">
-                      <MobileTaskList items={items} />
+                      <MobileTaskList items={items.slice(0, renderLimits[groupKey] || ROWS_BATCH)} />
                       <table className="w-full min-w-max text-[11px] hidden md:table">
                         <thead>
                           <tr className="border-b border-surface-100">
@@ -2274,7 +2274,7 @@ export default function TareasPage() {
                 <span className="text-[11px] text-surface-400">Crea estados para agrupar</span>
               </div>
               <div className="overflow-x-auto">
-                <MobileTaskList items={tareas} />
+                <MobileTaskList items={tareas.slice(0, renderLimits["_all"] || ROWS_BATCH)} />
                 <table className="w-full min-w-max text-[11px] hidden md:table">
                   <thead>
                     <tr className="border-b border-surface-100">

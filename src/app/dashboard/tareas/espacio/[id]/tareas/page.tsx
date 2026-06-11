@@ -1696,7 +1696,7 @@ export default function EspacioTareasPage() {
     const hasMore = items.length > limit;
     return (
     <div className="overflow-x-auto">
-      {renderMobileTaskList(items)}
+      {renderMobileTaskList(visible)}
       <table className="w-full min-w-max text-[11px] hidden md:table">
         <thead>
           <tr className="border-b border-surface-100">
