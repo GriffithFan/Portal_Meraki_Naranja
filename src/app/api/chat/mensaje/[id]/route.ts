@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const mensaje = await prisma.chatMensaje.findUnique({
       where: { id },
-      select: { id: true, autorId: true, archivoUrl: true },
+      select: { id: true, autorId: true, archivoUrl: true, eliminadoAt: true },
     });
 
     if (!mensaje) {
@@ -38,6 +38,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Solo el autor puede editar su mensaje
     if (mensaje.autorId !== session.userId) {
       return NextResponse.json({ error: "Solo podés editar tus propios mensajes" }, { status: 403 });
+    }
+
+    if (mensaje.eliminadoAt) {
+      return NextResponse.json({ error: "No se puede editar un mensaje eliminado" }, { status: 400 });
     }
 
     // No permitir editar mensajes que son solo archivo (sin texto)
@@ -61,6 +65,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
 /**
  * DELETE /api/chat/mensaje/[id] — Eliminar mensaje propio (o Mesa/Admin cualquier mensaje)
+ *
+ * Soft-delete estilo WhatsApp: el mensaje no se borra de la base, se marca con
+ * `eliminadoAt` y se limpia su contenido/archivo. La UI muestra
+ * "Se eliminó este mensaje" en su lugar, conservando el hilo de respuestas.
  */
 export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   const session = await getSession();
@@ -70,11 +78,15 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
 
   const mensaje = await prisma.chatMensaje.findUnique({
     where: { id },
-    select: { id: true, autorId: true, archivoUrl: true },
+    select: { id: true, autorId: true, archivoUrl: true, eliminadoAt: true },
   });
 
   if (!mensaje) {
     return NextResponse.json({ error: "Mensaje no encontrado" }, { status: 404 });
+  }
+
+  if (mensaje.eliminadoAt) {
+    return NextResponse.json({ ok: true });
   }
 
   const user = await prisma.user.findUnique({
@@ -90,7 +102,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Sin permisos para eliminar este mensaje" }, { status: 403 });
   }
 
-  // Eliminar archivo del disco si existe
+  // Eliminar archivo del disco si existe (el contenido ya no se mostrará)
   if (mensaje.archivoUrl) {
     try {
       const { unlink } = await import("fs/promises");
@@ -100,7 +112,18 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     } catch { /* archivo ya no existe */ }
   }
 
-  await prisma.chatMensaje.delete({ where: { id } });
+  await prisma.chatMensaje.update({
+    where: { id },
+    data: {
+      eliminadoAt: new Date(),
+      contenido: "",
+      archivoUrl: null,
+      archivoNombre: null,
+      archivoTipo: null,
+      archivoTamanio: null,
+      reacciones: { deleteMany: {} },
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }

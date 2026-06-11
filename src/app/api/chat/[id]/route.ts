@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { isSomeoneTyping, clearTyping } from "@/lib/chatTyping";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -31,7 +32,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       creador: { select: { id: true, nombre: true } },
       agente: { select: { id: true, nombre: true } },
       mensajes: {
-        where: validSinceDate ? { createdAt: { gt: validSinceDate } } : undefined,
+        // En polling incremental filtramos por updatedAt (no createdAt) para que
+        // ediciones y borrados de mensajes viejos también lleguen a la otra parte.
+        where: validSinceDate ? { updatedAt: { gt: validSinceDate } } : undefined,
         orderBy: { createdAt: "asc" },
         select: {
           id: true,
@@ -44,6 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           archivoTamanio: true,
           createdAt: true,
           editadoAt: true,
+          eliminadoAt: true,
           autor: { select: { id: true, nombre: true, esMesa: true } },
           replyTo: {
             select: {
@@ -51,6 +55,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               contenido: true,
               archivoNombre: true,
               archivoTipo: true,
+              eliminadoAt: true,
               autor: { select: { id: true, nombre: true, esMesa: true } },
             },
           },
@@ -82,10 +87,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     prisma.chatConversacion.update({ where: { id }, data: { leidoPorMesaAt: new Date() } }).catch(() => {});
   }
 
+  const otraParteEscribiendo = isSomeoneTyping(id, session.userId);
+
   // Para técnicos: anonimizar los nombres de Mesa (admin/mod ven todo)
   if (!esMesa && !esAdminOMod) {
     const anonimizado = {
       ...conversacion,
+      typing: otraParteEscribiendo,
       agente: conversacion.agente ? { id: "mesa", nombre: "Mesa de Ayuda" } : null,
       mensajes: conversacion.mensajes.map((m: any) => ({
         ...m,
@@ -108,6 +116,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   // Para mesa: incluir timestamps de lectura
   return NextResponse.json({
     ...conversacion,
+    typing: otraParteEscribiendo,
     leidoPorCreadorAt: conversacion.leidoPorCreadorAt,
     leidoPorMesaAt: conversacion.leidoPorMesaAt,
   });
@@ -184,12 +193,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             contenido: true,
             archivoNombre: true,
             archivoTipo: true,
+            eliminadoAt: true,
             autor: { select: { id: true, nombre: true, esMesa: true } },
           },
         },
         reacciones: { select: { id: true, userId: true, emoji: true } },
       },
     });
+
+    // El autor dejó de escribir al enviar
+    clearTyping(id, session.userId);
 
     // Actualizar timestamp de conversación
     await prisma.chatConversacion.update({

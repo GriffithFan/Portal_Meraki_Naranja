@@ -103,6 +103,7 @@ const ESTADO_BADGE: Record<string, { label: string; className: string }> = {
 
 function messagePreview(msg: any) {
   if (!msg) return "Mensaje";
+  if (msg.eliminadoAt) return "Se eliminó este mensaje";
   if (msg.archivoNombre) return msg.contenido && msg.contenido !== msg.archivoNombre ? msg.contenido : msg.archivoNombre;
   return msg.contenido || "Mensaje";
 }
@@ -185,6 +186,9 @@ export default function ChatPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevMsgCountRef = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const nuevaConsultaRef = useRef<HTMLInputElement>(null);
+  const lastTypingPingRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -219,6 +223,25 @@ export default function ChatPage() {
   // soloLectura se calcula por conversación: MOD puede escribir en las suyas
   const esMiConversacion = seleccionada?.creadorId === session?.userId;
   const soloLectura = seleccionada ? !(esMiConversacion || isMesa) : false;
+
+  // Avisar "escribiendo…" a la otra parte (throttle 2.5s). No persiste nada.
+  const pingTyping = useCallback(() => {
+    if (!seleccionada?.id || soloLectura || seleccionada.estado === "CERRADA") return;
+    if (isMesa && seleccionada.estado !== "EN_CURSO") return; // Mesa solo escribe en EN_CURSO
+    const now = Date.now();
+    if (now - lastTypingPingRef.current < 2500) return;
+    lastTypingPingRef.current = now;
+    fetch(`/api/chat/${seleccionada.id}/typing`, { method: "POST", credentials: "include" }).catch(() => {});
+  }, [seleccionada?.id, seleccionada?.estado, soloLectura, isMesa]);
+
+  // Autofocus del input al abrir una conversación (solo en dispositivos con
+  // puntero fino, para no abrir el teclado de golpe en mobile).
+  useEffect(() => {
+    if (!seleccionada?.id) return;
+    if (typeof window !== "undefined" && window.matchMedia && !window.matchMedia("(pointer: fine)").matches) return;
+    const t = window.setTimeout(() => inputRef.current?.focus(), 80);
+    return () => window.clearTimeout(t);
+  }, [seleccionada?.id]);
 
   // Cargar conversaciones
   const cargarConversaciones = useCallback(async () => {
@@ -771,8 +794,8 @@ export default function ChatPage() {
                         {formatDistanceToNow(new Date(conv.updatedAt), { addSuffix: true, locale: es })}
                       </p>
                       {conv.mensajes?.[0] && (
-                        <p className={clsx("text-xs mt-1 truncate", conv.noLeida ? "text-amber-700 dark:text-amber-200 font-medium" : "text-surface-400 dark:text-surface-500")}>
-                          {conv.mensajes[0].contenido}
+                        <p className={clsx("text-xs mt-1 truncate", conv.mensajes[0].eliminadoAt && "italic", conv.noLeida ? "text-amber-700 dark:text-amber-200 font-medium" : "text-surface-400 dark:text-surface-500")}>
+                          {conv.mensajes[0].eliminadoAt ? "Se eliminó este mensaje" : conv.mensajes[0].contenido}
                         </p>
                       )}
                     </div>
@@ -819,6 +842,8 @@ export default function ChatPage() {
                 <form onSubmit={enviarMensaje} className="p-3 border-t border-surface-200 dark:border-surface-700 touch-manipulation">
                   <div className="flex gap-2">
                     <input
+                      ref={nuevaConsultaRef}
+                      autoFocus
                       type="text"
                       placeholder="Escribí tu consulta..."
                       value={nuevoMensaje}
@@ -858,13 +883,24 @@ export default function ChatPage() {
                       {isMesa || soloLectura ? seleccionada.creador?.nombre : "Mesa de Ayuda"}
                     </h3>
                     <p className="text-xs text-surface-500 dark:text-surface-400">
-                      <span className={clsx(
-                        seleccionada.estado === "EN_CURSO" && "text-blue-500",
-                        seleccionada.estado === "ABIERTA" && "text-amber-500",
-                        seleccionada.estado === "CERRADA" && "text-surface-400"
-                      )}>
-                        {ESTADO_BADGE[seleccionada.estado]?.label}
-                      </span>
+                      {seleccionada.typing && seleccionada.estado !== "CERRADA" ? (
+                        <span className="inline-flex items-center gap-1 font-medium text-emerald-500">
+                          escribiendo
+                          <span className="inline-flex gap-0.5">
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-emerald-500 [animation-delay:-0.3s]" />
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-emerald-500 [animation-delay:-0.15s]" />
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-emerald-500" />
+                          </span>
+                        </span>
+                      ) : (
+                        <span className={clsx(
+                          seleccionada.estado === "EN_CURSO" && "text-blue-500",
+                          seleccionada.estado === "ABIERTA" && "text-amber-500",
+                          seleccionada.estado === "CERRADA" && "text-surface-400"
+                        )}>
+                          {ESTADO_BADGE[seleccionada.estado]?.label}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -904,11 +940,15 @@ export default function ChatPage() {
 
               {/* Mensajes */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {/* Recibo de lectura bidireccional: la "otra parte" depende de si soy el creador */}
                 {mensajes.map((msg) => {
                   const esMio = msg.autorId === session?.userId;
-                  // Para mesa: mostrar confirmación de lectura en mensajes propios
-                  const leidoPorCreador = isMesa && esMio && seleccionada.leidoPorCreadorAt
-                    ? new Date(msg.createdAt) <= new Date(seleccionada.leidoPorCreadorAt)
+                  // Timestamp de lectura de la otra parte: si soy el creador (técnico), miro
+                  // cuándo leyó Mesa; si soy Mesa/agente, miro cuándo leyó el creador.
+                  const soyCreadorConv = seleccionada.creadorId === session?.userId;
+                  const lecturaOtraParte = soyCreadorConv ? seleccionada.leidoPorMesaAt : seleccionada.leidoPorCreadorAt;
+                  const leidoPorOtro = esMio && lecturaOtraParte
+                    ? new Date(msg.createdAt) <= new Date(lecturaOtraParte)
                     : false;
                   const editando = editandoMsgId === msg.id;
                   return (
@@ -918,7 +958,7 @@ export default function ChatPage() {
                       className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
                     >
                       {/* Botones de acción (hover) — lado izquierdo para mensajes míos */}
-                      {esMio && !editando && seleccionada.estado !== "CERRADA" && !soloLectura && (
+                      {esMio && !editando && !msg.eliminadoAt && seleccionada.estado !== "CERRADA" && !soloLectura && (
                         <div className="relative flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
                           {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                           <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
@@ -970,6 +1010,11 @@ export default function ChatPage() {
                               <button onClick={cancelarEdicion} className="px-2 py-0.5 bg-white/10 hover:bg-white/20 rounded text-[10px] transition">Cancelar</button>
                             </div>
                           </div>
+                        ) : msg.eliminadoAt ? (
+                          <p className={clsx("flex items-center gap-1.5 text-sm italic", esMio ? "text-blue-100/80" : "text-surface-400 dark:text-surface-500")}>
+                            <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                            Se eliminó este mensaje
+                          </p>
                         ) : (
                           <>
                             <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
@@ -989,10 +1034,10 @@ export default function ChatPage() {
                               (editado)
                             </span>
                           )}
-                          {/* Confirmación de lectura: solo visible para Mesa */}
-                          {isMesa && esMio && (
-                            <svg className={clsx("w-3.5 h-3.5 ml-0.5", leidoPorCreador ? "text-cyan-300" : "text-blue-300/60")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                              {leidoPorCreador ? (
+                          {/* Confirmación de lectura en mis mensajes: ✓ enviado / ✓✓ leído */}
+                          {esMio && !msg.eliminadoAt && (
+                            <svg className={clsx("w-3.5 h-3.5 ml-0.5", leidoPorOtro ? "text-cyan-300" : "text-blue-300/60")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-label={leidoPorOtro ? "Leído" : "Enviado"}>
+                              {leidoPorOtro ? (
                                 <><path strokeLinecap="round" strokeLinejoin="round" d="M1 13l5 5L17 7" /><path strokeLinecap="round" strokeLinejoin="round" d="M7 13l5 5L23 7" /></>
                               ) : (
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -1003,7 +1048,7 @@ export default function ChatPage() {
                         <ReactionSummary msg={msg} sessionUserId={session?.userId} onReact={reaccionarMensaje} />
                       </div>
                       {/* Botones de acción (hover) — lado derecho para mensajes ajenos (solo Mesa/Admin) */}
-                      {!esMio && !editando && seleccionada.estado !== "CERRADA" && !soloLectura && (
+                      {!esMio && !editando && !msg.eliminadoAt && seleccionada.estado !== "CERRADA" && !soloLectura && (
                         <div className="relative flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
                           {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                           <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
@@ -1084,11 +1129,12 @@ export default function ChatPage() {
                             </svg>
                           </button>
                           <input
+                            ref={inputRef}
                             type="text"
                             placeholder={respondiendoA ? "Escribí tu respuesta..." : "Escribí un mensaje..."}
                             disabled={false}
                             value={nuevoMensaje}
-                            onChange={(e) => setNuevoMensaje(e.target.value)}
+                            onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); }}
                             onPaste={handlePaste}
                             maxLength={2000}
                             className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"

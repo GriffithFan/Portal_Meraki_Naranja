@@ -654,8 +654,10 @@ model ChatMensaje {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   editadoAt       DateTime? // Se setea al editar el mensaje
+  eliminadoAt     DateTime? // Soft-delete estilo WhatsApp: "Se eliminó este mensaje"
 
   @@index([conversacionId, createdAt])
+  @@index([conversacionId, updatedAt])
   @@index([autorId])
   @@index([replyToId])
 }

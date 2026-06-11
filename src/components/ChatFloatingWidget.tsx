@@ -79,8 +79,19 @@ function ChatArchivo({ msg, onOpenMedia }: { msg: any; onOpenMedia: (msg: any) =
 
 function messagePreview(msg: any) {
   if (!msg) return "Mensaje";
+  if (msg.eliminadoAt) return "Se eliminó este mensaje";
   if (msg.archivoNombre) return msg.contenido && msg.contenido !== msg.archivoNombre ? msg.contenido : msg.archivoNombre;
   return msg.contenido || "Mensaje";
+}
+
+/** Bloque visual para un mensaje borrado (soft-delete estilo WhatsApp). */
+function DeletedMessage({ esMio }: { esMio: boolean }) {
+  return (
+    <p className={clsx("flex items-center gap-1.5 text-sm italic", esMio ? "text-blue-100/80" : "text-surface-400 dark:text-surface-500")}>
+      <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+      Se eliminó este mensaje
+    </p>
+  );
 }
 
 function authorLabel(msg: any, sessionUserId?: string) {
@@ -171,6 +182,8 @@ export default function ChatFloatingWidget() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevMsgCountRef = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const lastTypingPingRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -197,6 +210,16 @@ export default function ChatFloatingWidget() {
     const placement = rect.top < 120 ? "bottom" : "top";
     setReactionPickerMsg((current) => current?.id === id ? null : { id, placement });
   }, []);
+
+  // Avisar "escribiendo…" a la otra parte (throttle 2.5s). No persiste nada.
+  const pingTyping = useCallback(() => {
+    if (!conversacion?.id || conversacion.estado === "CERRADA") return;
+    if (isMesa && conversacion.estado !== "EN_CURSO") return; // Mesa solo escribe en EN_CURSO
+    const now = Date.now();
+    if (now - lastTypingPingRef.current < 2500) return;
+    lastTypingPingRef.current = now;
+    fetch(`/api/chat/${conversacion.id}/typing`, { method: "POST", credentials: "include" }).catch(() => {});
+  }, [conversacion?.id, conversacion?.estado, isMesa]);
 
   const mergeMensajes = useCallback((nuevos: any[]) => {
     if (nuevos.length === 0) return;
@@ -332,6 +355,9 @@ export default function ChatFloatingWidget() {
             setConversacion(null);
             setMensajes([]);
             setRespondiendoA(null);
+          } else {
+            // Mantener typing/estado al día sin reemplazar el resto del objeto
+            setConversacion((prev: any) => prev && prev.id === data.id ? { ...prev, typing: data.typing, estado: data.estado } : prev);
           }
         }
       } catch { /* silenciar */ }
@@ -346,6 +372,15 @@ export default function ChatFloatingWidget() {
     }
     prevMsgCountRef.current = mensajes.length;
   }, [mensajes]);
+
+  // Autofocus del input al abrir una conversación (solo puntero fino, para no
+  // abrir el teclado de golpe en mobile).
+  useEffect(() => {
+    if (!open || !conversacion?.id) return;
+    if (typeof window !== "undefined" && window.matchMedia && !window.matchMedia("(pointer: fine)").matches) return;
+    const t = window.setTimeout(() => inputRef.current?.focus(), 120);
+    return () => window.clearTimeout(t);
+  }, [open, conversacion?.id]);
 
   const handleOpen = async () => {
     setOpen(true);
@@ -565,7 +600,11 @@ export default function ChatFloatingWidget() {
                 )}
                 <div className="min-w-0">
                   <h3 className="truncate text-sm font-semibold text-white">{conversacion?.creador?.nombre || "Chat rapido"}</h3>
-                  <p className="text-[11px] text-blue-100">{conversacion ? SUPPORT_STATE_BADGE[conversacion.estado]?.label || "Conversacion" : "Conversaciones recientes"}</p>
+                  <p className="text-[11px] text-blue-100">
+                    {conversacion?.typing && conversacion.estado !== "CERRADA"
+                      ? "escribiendo…"
+                      : conversacion ? SUPPORT_STATE_BADGE[conversacion.estado]?.label || "Conversacion" : "Conversaciones recientes"}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -616,7 +655,7 @@ export default function ChatFloatingWidget() {
                     const esMio = msg.autorId === session?.userId;
                     return (
                       <div key={msg.id} ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }} className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}>
-                        {esMio && conversacion.estado !== "CERRADA" && (
+                        {esMio && !msg.eliminadoAt && conversacion.estado !== "CERRADA" && (
                           <div className="relative mr-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                             {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                             <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar"><span className="text-sm leading-none">😊</span></button>
@@ -627,13 +666,19 @@ export default function ChatFloatingWidget() {
                         )}
                         <div className={clsx("max-w-[85%] rounded-2xl px-3 py-2", esMio ? "rounded-br-md bg-blue-600 text-white" : "rounded-bl-md bg-surface-100 text-surface-800 dark:bg-surface-700 dark:text-surface-100")}>
                           <p className={clsx("mb-1 text-[10px] font-semibold", esMio ? "text-blue-100" : "text-blue-600 dark:text-blue-300")}>{authorLabel(msg, session?.userId)}</p>
-                          <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
-                          {!msg.archivoUrl && <p className="whitespace-pre-wrap break-words text-sm">{msg.contenido}</p>}
-                          <ChatArchivo msg={msg} onOpenMedia={setMediaViewerMsg} />
+                          {msg.eliminadoAt ? (
+                            <DeletedMessage esMio={esMio} />
+                          ) : (
+                            <>
+                              <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
+                              {!msg.archivoUrl && <p className="whitespace-pre-wrap break-words text-sm">{msg.contenido}</p>}
+                              <ChatArchivo msg={msg} onOpenMedia={setMediaViewerMsg} />
+                            </>
+                          )}
                           <p className={clsx("mt-0.5 text-[10px]", esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500")}>{new Date(msg.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</p>
                           <ReactionSummary msg={msg} sessionUserId={session?.userId} onReact={reaccionarMensaje} />
                         </div>
-                        {!esMio && conversacion.estado !== "CERRADA" && (
+                        {!esMio && !msg.eliminadoAt && conversacion.estado !== "CERRADA" && (
                           <div className="relative ml-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                             {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                             <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar"><span className="text-sm leading-none">😊</span></button>
@@ -683,10 +728,11 @@ export default function ChatFloatingWidget() {
                         </svg>
                       </label>
                       <input
+                        ref={inputRef}
                         type="text"
                         placeholder={conversacion.estado === "ABIERTA" ? "Responder y tomar..." : "Escribí una respuesta..."}
                         value={nuevoMensaje}
-                        onChange={(e) => setNuevoMensaje(e.target.value)}
+                        onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); }}
                         onPaste={handlePaste}
                         maxLength={2000}
                         className="min-w-0 flex-1 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-800 outline-none focus:ring-2 focus:ring-blue-500 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
@@ -776,9 +822,11 @@ export default function ChatFloatingWidget() {
             <div>
               <h3 className="text-white font-semibold text-sm">Mesa de Ayuda</h3>
               <p className="text-blue-200 text-[11px]">
-                {conversacion
-                  ? conversacion.estado === "EN_CURSO" ? "Conectado" : conversacion.estado === "ABIERTA" ? "Esperando agente..." : "Cerrada"
-                  : "Escribí tu consulta"}
+                {conversacion?.typing && conversacion.estado !== "CERRADA"
+                  ? "escribiendo…"
+                  : conversacion
+                    ? conversacion.estado === "EN_CURSO" ? "Conectado" : conversacion.estado === "ABIERTA" ? "Esperando agente..." : "Cerrada"
+                    : "Escribí tu consulta"}
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -824,7 +872,7 @@ export default function ChatFloatingWidget() {
                   ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
                   className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
                 >
-                  {esMio && conversacion?.estado !== "CERRADA" && (
+                  {esMio && !msg.eliminadoAt && conversacion?.estado !== "CERRADA" && (
                     <div className="relative mr-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                       {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                       <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar">
@@ -841,9 +889,15 @@ export default function ChatFloatingWidget() {
                       ? "bg-blue-600 text-white rounded-br-md"
                       : "bg-surface-100 dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-bl-md"
                   )}>
-                    <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
-                    {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
-                    <ChatArchivo msg={msg} onOpenMedia={setMediaViewerMsg} />
+                    {msg.eliminadoAt ? (
+                      <DeletedMessage esMio={esMio} />
+                    ) : (
+                      <>
+                        <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
+                        {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
+                        <ChatArchivo msg={msg} onOpenMedia={setMediaViewerMsg} />
+                      </>
+                    )}
                     <p className={clsx(
                       "text-[10px] mt-0.5",
                       esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500"
@@ -852,7 +906,7 @@ export default function ChatFloatingWidget() {
                     </p>
                     <ReactionSummary msg={msg} sessionUserId={session?.userId} onReact={reaccionarMensaje} />
                   </div>
-                  {!esMio && conversacion?.estado !== "CERRADA" && (
+                  {!esMio && !msg.eliminadoAt && conversacion?.estado !== "CERRADA" && (
                     <div className="relative ml-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                       {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
                       <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500" title="Reaccionar">
@@ -928,11 +982,12 @@ export default function ChatFloatingWidget() {
                     </>
                   )}
                   <input
+                    ref={inputRef}
                     type="text"
                     placeholder="Escribí tu consulta..."
                     disabled={false}
                     value={nuevoMensaje}
-                    onChange={(e) => setNuevoMensaje(e.target.value)}
+                    onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); }}
                     onPaste={handlePaste}
                     maxLength={2000}
                     className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"

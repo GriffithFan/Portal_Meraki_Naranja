@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       mensajes: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { contenido: true, createdAt: true, autorId: true, autor: { select: { esMesa: true, nombre: true } } },
+        select: { contenido: true, createdAt: true, autorId: true, eliminadoAt: true, autor: { select: { esMesa: true, nombre: true } } },
       },
       _count: { select: { mensajes: true } },
     },

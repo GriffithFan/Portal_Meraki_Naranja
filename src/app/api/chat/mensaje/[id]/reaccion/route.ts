@@ -32,11 +32,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       select: {
         id: true,
         conversacionId: true,
+        eliminadoAt: true,
         conversacion: { select: { creadorId: true, agenteId: true, estado: true } },
       },
     });
 
     if (!mensaje) return NextResponse.json({ error: "Mensaje no encontrado" }, { status: 404 });
+    if (mensaje.eliminadoAt) return NextResponse.json({ error: "Mensaje eliminado" }, { status: 400 });
 
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
