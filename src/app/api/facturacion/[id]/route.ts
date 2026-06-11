@@ -1,12 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { readFile, unlink } from "fs/promises";
+import { unlink } from "fs/promises";
 import path from "path";
+import * as XLSX from "xlsx";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+interface ResumenTarea {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+  provincia: string | null;
+  incidencia?: string | null;
+  fecha?: string | null;
+}
+interface ResumenGrupo {
+  tecnicoId: string;
+  tecnicoNombre: string;
+  cantidad: number;
+  tareas: ResumenTarea[];
+}
+
+const fmtFecha = (fecha?: string | null) =>
+  fecha ? new Date(fecha).toLocaleDateString("es-AR") : "";
 
 /**
  * GET /api/facturacion/[id] — Descargar CSV o XLSX del reporte (solo ADMIN)
  * Query: ?format=xlsx para Excel, por defecto CSV
+ *
+ * El archivo se REGENERA al vuelo desde el `resumen` guardado en la base
+ * (que usa el código/número de predio en la primera columna). Así se evita
+ * servir archivos viejos en disco que pudieran tener un formato anterior
+ * (p. ej. el nombre de la institución en vez del número de predio).
  */
 export async function GET(
   request: NextRequest,
@@ -22,49 +48,72 @@ export async function GET(
   const format = searchParams.get("format") || "csv";
 
   const reporte = await prisma.reporteFacturacion.findUnique({ where: { id } });
-  if (!reporte || !reporte.csvRuta) {
+  if (!reporte) {
     return NextResponse.json({ error: "Reporte no encontrado" }, { status: 404 });
   }
 
-  try {
-    const baseName = reporte.csvNombre?.replace(".csv", "") || "reporte";
-    const uploadsBase = path.join(process.cwd(), "uploads");
+  const resumen = (Array.isArray(reporte.resumen) ? reporte.resumen : []) as unknown as ResumenGrupo[];
+  const totalTareas = reporte.totalTareas;
+  const baseName = reporte.csvNombre?.replace(".csv", "") || `reporte-${reporte.semana}`;
 
-    if (format === "xlsx") {
-      const xlsxPath = path.join(process.cwd(), "uploads", "reportes", `${baseName}.xlsx`);
-      if (!xlsxPath.startsWith(uploadsBase)) {
-        return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
-      }
-      const fileBuffer = await readFile(xlsxPath);
-      return new NextResponse(fileBuffer, {
-        headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="${encodeURIComponent(baseName + ".xlsx")}"`,
-          "Content-Length": String(fileBuffer.length),
-          "X-Content-Type-Options": "nosniff",
-        },
+  // Aplanar filas en el mismo orden que el resumen (agrupado por técnico)
+  const filas: { predio: string; incidencia: string; tecnico: string; fecha: string; provincia: string }[] = [];
+  for (const grupo of resumen) {
+    for (const t of grupo.tareas || []) {
+      filas.push({
+        predio: t.codigo || "",
+        incidencia: t.incidencia || "",
+        tecnico: grupo.tecnicoNombre,
+        fecha: fmtFecha(t.fecha),
+        provincia: t.provincia || "",
       });
     }
+  }
 
-    // Default: CSV
-    const filePath = path.join(process.cwd(), reporte.csvRuta);
-    if (!filePath.startsWith(uploadsBase)) {
-      return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
-    }
+  if (format === "xlsx") {
+    const xlsxRows = filas.map((f) => ({
+      Predio: f.predio,
+      Incidencia: f.incidencia,
+      "Técnico asignado": f.tecnico,
+      Fecha: f.fecha,
+      Provincia: f.provincia,
+    }));
+    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "" });
 
-    const fileBuffer = await readFile(filePath);
+    const ws = XLSX.utils.json_to_sheet(xlsxRows);
+    ws["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Facturación");
+    const xlsxBuffer = new Uint8Array(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer);
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(xlsxBuffer, {
       headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(reporte.csvNombre || "reporte.csv")}"`,
-        "Content-Length": String(fileBuffer.length),
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(baseName + ".xlsx")}"`,
+        "Content-Length": String(xlsxBuffer.length),
         "X-Content-Type-Options": "nosniff",
       },
     });
-  } catch {
-    return NextResponse.json({ error: "Archivo no encontrado en disco" }, { status: 404 });
   }
+
+  // Default: CSV
+  const escapeCsv = (value: string) => value.replace(/"/g, '""');
+  const csvLines = ["Predio,Incidencia,Técnico,Fecha,Provincia"];
+  for (const f of filas) {
+    csvLines.push(`"${escapeCsv(f.predio)}","${escapeCsv(f.incidencia)}","${escapeCsv(f.tecnico)}","${escapeCsv(f.fecha)}","${escapeCsv(f.provincia)}"`);
+  }
+  csvLines.push("");
+  csvLines.push(`"TOTAL: ${totalTareas} predios","","","",""`);
+  // BOM para que Excel abra el CSV con acentos correctamente
+  const csvContent = "﻿" + csvLines.join("\n");
+
+  return new NextResponse(csvContent, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(reporte.csvNombre || baseName + ".csv")}"`,
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 /**
