@@ -11,7 +11,10 @@ const COOKIE_NAME = "pmn-token";
 
 /* ── Rate Limiting in-memory ──────────────────────────────── */
 const RATE_LIMIT_WINDOW = 60_000; // 1 minuto
-const RATE_LIMIT_MAX = 200;       // máx 200 requests por ventana por IP (predios grandes ~30-40 reqs c/u)
+// Tope por usuario (no por IP) para no penalizar a varios técnicos detrás de
+// la misma IP de oficina. Solo aplica a /api: navegar entre carpetas dispara
+// muchas requests de datos, así que el tope es holgado pero corta loops.
+const RATE_LIMIT_MAX = 600;
 const LOGIN_RATE_LIMIT_WINDOW = 15 * 60_000; // 15 minutos
 const LOGIN_RATE_LIMIT_MAX = 10;  // máx 10 intentos de login por ventana
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -61,17 +64,14 @@ const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron", "/
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  // ── Rate Limiting ──
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: "Demasiadas solicitudes. Intenta más tarde." },
-      { status: 429, headers: { "Retry-After": "60" } }
-    );
+
+  // Bloquear acceso directo a /uploads/ — solo se accede vía API autenticada
+  if (pathname.startsWith("/uploads")) {
+    return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
   }
 
-  // ── Rate limit estricto para login ──
+  // ── Rate limit estricto para login (por IP, antes del bypass público) ──
   if (pathname === "/api/auth/login" && request.method === "POST") {
     if (!checkLoginRateLimit(ip)) {
       return NextResponse.json(
@@ -81,28 +81,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // ── Body size limit (solo POST/PUT/PATCH) ──
-  if (["POST", "PUT", "PATCH"].includes(request.method) && pathname.startsWith("/api")) {
-    const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
-    const maxBytes = UPLOAD_PATHS.some(p => pathname.startsWith(p))
-      ? MAX_UPLOAD_BYTES
-      : LARGE_BODY_PATHS.some(p => pathname.startsWith(p))
-      ? MAX_LARGE_BODY_BYTES
-      : MAX_BODY_BYTES;
-    if (contentLength > maxBytes) {
-      return NextResponse.json(
-        { error: "Payload demasiado grande" },
-        { status: 413 }
-      );
-    }
-  }
-
-  // Bloquear acceso directo a /uploads/ — solo se accede vía API autenticada
-  if (pathname.startsWith("/uploads")) {
-    return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
-  }
-
-  // Permitir rutas públicas y archivos estáticos
+  // Permitir rutas públicas y archivos estáticos (sin rate-limit general)
   if (
     publicPaths.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/_next") ||
@@ -128,27 +107,57 @@ export async function middleware(request: NextRequest) {
   // Proteger rutas /dashboard y /api (excepto rutas auth públicas explícitas)
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/api")) {
     const publicAuthRoutes = ["/api/auth/login", "/api/auth/logout", "/api/auth/me"];
+
+    // Verificar el token una sola vez (se reutiliza para rate-limit y auth)
+    const token = request.cookies.get(COOKIE_NAME)?.value;
+    let userId: string | null = null;
+    if (token) {
+      try {
+        const { payload } = await jwtVerify(token, secret);
+        userId = typeof payload.userId === "string" ? payload.userId : null;
+      } catch {
+        userId = null; // token inválido/expirado
+      }
+    }
+
+    // ── Rate limit general: SOLO /api (no la navegación de páginas), por
+    //    usuario cuando hay sesión (cae a IP si no la hay). Así cambiar de
+    //    carpeta no devuelve nunca el JSON crudo como documento. ──
+    if (pathname.startsWith("/api") && !publicAuthRoutes.includes(pathname)) {
+      const rateKey = userId ? `u:${userId}` : `ip:${ip}`;
+      if (!checkRateLimit(rateKey)) {
+        return NextResponse.json(
+          { error: "Demasiadas solicitudes. Intenta más tarde." },
+          { status: 429, headers: { "Retry-After": "60" } }
+        );
+      }
+    }
+
+    // ── Body size limit (solo POST/PUT/PATCH sobre /api) ──
+    if (["POST", "PUT", "PATCH"].includes(request.method) && pathname.startsWith("/api")) {
+      const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
+      const maxBytes = UPLOAD_PATHS.some(p => pathname.startsWith(p))
+        ? MAX_UPLOAD_BYTES
+        : LARGE_BODY_PATHS.some(p => pathname.startsWith(p))
+        ? MAX_LARGE_BODY_BYTES
+        : MAX_BODY_BYTES;
+      if (contentLength > maxBytes) {
+        return NextResponse.json({ error: "Payload demasiado grande" }, { status: 413 });
+      }
+    }
+
     if (publicAuthRoutes.includes(pathname)) {
       return NextResponse.next();
     }
 
-    const token = request.cookies.get(COOKIE_NAME)?.value;
-    if (!token) {
+    if (!userId) {
       if (pathname.startsWith("/api")) {
         return NextResponse.json({ error: "No autorizado" }, { status: 401 });
       }
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
-    try {
-      await jwtVerify(token, secret);
-      return NextResponse.next();
-    } catch {
-      if (pathname.startsWith("/api")) {
-        return NextResponse.json({ error: "Token expirado" }, { status: 401 });
-      }
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
+    return NextResponse.next();
   }
 
   return NextResponse.next();
