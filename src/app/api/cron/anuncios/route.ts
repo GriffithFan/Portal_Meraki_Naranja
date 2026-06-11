@@ -7,8 +7,9 @@ import { verifyCronAuth } from "@/lib/cronAuth";
  * GET /api/cron/anuncios
  *
  * Invocado periódicamente (cada ~15 min). Para cada anuncio activo con
- * notificar=true que ya cumplió su intervalo, re-envía push a los técnicos
- * que todavía NO lo marcaron como leído. Deja de notificar cuando expira.
+ * notificar=true que ya cumplió su intervalo, re-envía push a los usuarios
+ * de su audiencia (rolesDestino; vacío = todos) que todavía NO lo marcaron
+ * como leído. Deja de notificar cuando expira.
  *
  * Protegido por CRON_SECRET (Bearer token, timing-safe).
  */
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
       notificar: true,
       OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }],
     },
-    select: { id: true, titulo: true, contenido: true, prioridad: true, intervaloHoras: true, ultimaNotificacion: true },
+    select: { id: true, titulo: true, contenido: true, prioridad: true, intervaloHoras: true, ultimaNotificacion: true, rolesDestino: true, autorId: true },
   });
 
   // Filtrar los que ya cumplieron el intervalo desde la última notificación
@@ -37,22 +38,27 @@ export async function GET(request: NextRequest) {
   if (pendientes.length === 0)
     return NextResponse.json({ processed: 0, message: "Sin anuncios pendientes de re-notificar" });
 
-  const tecnicos = await prisma.user.findMany({
-    where: { rol: "TECNICO", activo: true },
-    select: { id: true },
+  // Una sola query: todos los usuarios activos con su rol; se filtra por anuncio
+  const usuarios = await prisma.user.findMany({
+    where: { activo: true },
+    select: { id: true, rol: true },
   });
-  const tecnicoIds = tecnicos.map((t) => t.id);
 
   const resultados: { anuncioId: string; notificados: number }[] = [];
 
   for (const a of pendientes) {
-    // Técnicos que ya leyeron este anuncio
+    const audiencia = usuarios.filter(
+      (u) => u.id !== a.autorId && (a.rolesDestino.length === 0 || a.rolesDestino.includes(u.rol))
+    );
+    const audienciaIds = audiencia.map((u) => u.id);
+
+    // Usuarios de la audiencia que ya leyeron este anuncio
     const lecturas = await prisma.anuncioLectura.findMany({
-      where: { anuncioId: a.id, userId: { in: tecnicoIds } },
+      where: { anuncioId: a.id, userId: { in: audienciaIds } },
       select: { userId: true },
     });
     const leidoPor = new Set(lecturas.map((l) => l.userId));
-    const destinatarios = tecnicoIds.filter((id) => !leidoPor.has(id));
+    const destinatarios = audienciaIds.filter((id) => !leidoPor.has(id));
 
     const prioridadLabel = a.prioridad === "URGENTE" ? "🔴 URGENTE — " : a.prioridad === "ALTA" ? "🟠 " : "";
     const mensaje = a.contenido.length > 180 ? a.contenido.slice(0, 177) + "…" : a.contenido;

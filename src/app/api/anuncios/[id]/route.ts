@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
+import { esCategoriaValida, sanitizeRolesDestino } from "@/lib/anunciosConfig";
 
 const PRIORIDADES = ["BAJA", "MEDIA", "ALTA", "URGENTE"];
 
@@ -29,6 +30,8 @@ export async function PATCH(
     data.contenido = c;
   }
   if (typeof body.prioridad === "string" && PRIORIDADES.includes(body.prioridad)) data.prioridad = body.prioridad;
+  if (esCategoriaValida(body.categoria)) data.categoria = body.categoria;
+  if (body.rolesDestino !== undefined) data.rolesDestino = sanitizeRolesDestino(body.rolesDestino);
   if (typeof body.fijado === "boolean") data.fijado = body.fijado;
   if (typeof body.activo === "boolean") data.activo = body.activo;
   if (typeof body.notificar === "boolean") data.notificar = body.notificar;

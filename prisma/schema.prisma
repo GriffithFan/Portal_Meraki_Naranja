@@ -714,9 +714,11 @@ model Anuncio {
   titulo             String
   contenido          String    @db.Text
   prioridad          Prioridad @default(MEDIA)
+  categoria          String    @default("GENERAL") // Tablero: GENERAL, OPERACIONES, RRHH, CAPACITACION, SISTEMAS
+  rolesDestino       String[]  @default([])        // Audiencia por rol (ADMIN/MODERADOR/TECNICO); vacío = todos
   fijado             Boolean   @default(false) // Anclado arriba del tablero
   activo             Boolean   @default(true)
-  notificar          Boolean   @default(true)  // Enviar push periódico a técnicos
+  notificar          Boolean   @default(true)  // Enviar push periódico a la audiencia
   intervaloHoras     Int       @default(1)     // Cada cuántas horas re-notificar
   ultimaNotificacion DateTime?                  // Último envío del cron
   fechaExpiracion    DateTime?                  // Deja de notificar/ocultar tras esta fecha
@@ -730,6 +732,7 @@ model Anuncio {
 
   @@index([activo, fijado, createdAt])
   @@index([activo, notificar])
+  @@index([activo, categoria])
   @@index([autorId])
 }
 

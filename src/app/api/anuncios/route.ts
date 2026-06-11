@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { enviarPushYBandeja } from "@/lib/pushNotifications";
+import { getDestinatariosAnuncio, buildAnuncioVisibleWhere } from "@/lib/anuncios";
+import { esCategoriaValida, sanitizeRolesDestino, audienciaLabel } from "@/lib/anunciosConfig";
 
 const PRIORIDADES = ["BAJA", "MEDIA", "ALTA", "URGENTE"] as const;
 type Prioridad = (typeof PRIORIDADES)[number];
@@ -9,7 +11,7 @@ type Prioridad = (typeof PRIORIDADES)[number];
 /**
  * GET /api/anuncios
  * Lista los anuncios del tablero.
- * - Técnicos: solo activos y no expirados, con flag `leido`.
+ * - Usuarios: solo activos, no expirados y dirigidos a su rol (o a todos), con flag `leido`.
  * - Admin/Mod: todos (incluye inactivos) + conteo de lecturas para gestión.
  */
 export async function GET() {
@@ -17,14 +19,8 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const gestor = isModOrAdmin(session.rol);
-  const ahora = new Date();
 
-  const where = gestor
-    ? {}
-    : {
-        activo: true,
-        OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }],
-      };
+  const where = gestor ? {} : buildAnuncioVisibleWhere(session.rol);
 
   const anuncios = await prisma.anuncio.findMany({
     where,
@@ -41,6 +37,8 @@ export async function GET() {
     titulo: a.titulo,
     contenido: a.contenido,
     prioridad: a.prioridad,
+    categoria: a.categoria,
+    rolesDestino: a.rolesDestino,
     fijado: a.fijado,
     activo: a.activo,
     notificar: a.notificar,
@@ -58,7 +56,8 @@ export async function GET() {
 
 /**
  * POST /api/anuncios — crea un anuncio (solo Admin/Mod).
- * Si notificar=true, envía push inmediato a todos los técnicos activos.
+ * Si notificar=true, envía push inmediato a la audiencia (roles destino,
+ * o todos los usuarios activos si no se especifican roles).
  */
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -73,6 +72,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Título y contenido son obligatorios" }, { status: 400 });
 
   const prioridad: Prioridad = PRIORIDADES.includes(body.prioridad) ? body.prioridad : "MEDIA";
+  const categoria = esCategoriaValida(body.categoria) ? body.categoria : "GENERAL";
+  const rolesDestino = sanitizeRolesDestino(body.rolesDestino);
   const fijado = body.fijado === true;
   const notificar = body.notificar !== false;
   const intervaloHoras = Math.max(1, Math.min(168, Number(body.intervaloHoras) || 1));
@@ -83,6 +84,8 @@ export async function POST(request: NextRequest) {
       titulo,
       contenido,
       prioridad,
+      categoria,
+      rolesDestino,
       fijado,
       notificar,
       intervaloHoras,
@@ -93,16 +96,13 @@ export async function POST(request: NextRequest) {
     include: { autor: { select: { id: true, nombre: true } } },
   });
 
-  // Envío inmediato de push a técnicos activos
+  // Envío inmediato de push a la audiencia (sin incluir al autor)
   if (notificar) {
-    const tecnicos = await prisma.user.findMany({
-      where: { rol: "TECNICO", activo: true },
-      select: { id: true },
-    });
+    const destinatarios = await getDestinatariosAnuncio(rolesDestino, session.userId);
     const prioridadLabel = prioridad === "URGENTE" ? "🔴 URGENTE — " : prioridad === "ALTA" ? "🟠 " : "";
     await Promise.allSettled(
-      tecnicos.map((t) =>
-        enviarPushYBandeja(t.id, {
+      destinatarios.map((uid) =>
+        enviarPushYBandeja(uid, {
           tipo: "ANUNCIO",
           titulo: `${prioridadLabel}${titulo}`,
           mensaje: contenido.length > 180 ? contenido.slice(0, 177) + "…" : contenido,
@@ -114,6 +114,16 @@ export async function POST(request: NextRequest) {
       )
     );
   }
+
+  await prisma.actividad.create({
+    data: {
+      accion: "CREAR",
+      descripcion: `Anuncio "${titulo}" publicado (${categoria}, para: ${audienciaLabel(rolesDestino)})`,
+      entidad: "ANUNCIO",
+      entidadId: anuncio.id,
+      userId: session.userId,
+    },
+  }).catch(() => {});
 
   return NextResponse.json(anuncio, { status: 201 });
 }
