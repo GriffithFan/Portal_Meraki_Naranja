@@ -62,6 +62,7 @@ const etiquetaPayloadSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email("Email inválido").max(255),
   password: z.string().min(1, "Contraseña requerida").max(128),
+  code: z.string().max(10).optional(), // código TOTP (2FA) cuando aplica
 });
 
 // PATCH /api/usuarios

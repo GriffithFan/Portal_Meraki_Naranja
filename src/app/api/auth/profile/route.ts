@@ -17,6 +17,7 @@ export async function GET() {
       email: true,
       rol: true,
       telefono: true,
+      twoFactorEnabled: true,
       createdAt: true,
       _count: {
         select: {

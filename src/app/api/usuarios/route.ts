@@ -1,27 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, isAdmin, isModOrAdmin } from "@/lib/auth";
+import { getSession, isAdmin, isModOrAdmin, invalidateSessionCache } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// Longitud mínima de contraseña (política de cuentas)
+const MIN_PASSWORD_LEN = 10;
+
 /**
- * GET /api/usuarios — Lista usuarios activos
- * Admin: incluye passwordPlain para poder verlas
- * Mod: solo id, nombre, email, rol, esMesa
+ * GET /api/usuarios — Lista usuarios activos (Admin/Mod).
+ * No se exponen contraseñas: el admin las restablece, no las consulta.
  */
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   if (!isModOrAdmin(session.rol)) return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
 
-  const esAdmin = isAdmin(session.rol);
-
   const usuarios = await prisma.user.findMany({
     where: { activo: true },
     select: {
-      id: true, nombre: true, email: true, rol: true, esMesa: true,
-      ...(esAdmin ? { passwordPlain: true } : {}),
+      id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true,
     },
     orderBy: { nombre: "asc" },
   });
@@ -46,8 +45,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nombre, email y contraseña son obligatorios" }, { status: 400 });
     }
 
-    if (password.trim().length < 6) {
-      return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 });
+    if (password.trim().length < MIN_PASSWORD_LEN) {
+      return NextResponse.json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LEN} caracteres` }, { status: 400 });
     }
 
     // Verificar email único
@@ -63,11 +62,10 @@ export async function POST(req: NextRequest) {
         nombre: nombre.trim(),
         email: email.trim().toLowerCase(),
         password: hash,
-        passwordPlain: password.trim(),
         rol: ["ADMIN", "MODERADOR", "TECNICO"].includes(rol) ? rol : "TECNICO",
         esMesa: esMesa === true,
       },
-      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, passwordPlain: true },
+      select: { id: true, nombre: true, email: true, rol: true, esMesa: true },
     });
 
     return NextResponse.json(usuario, { status: 201 });
@@ -113,11 +111,10 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (password?.trim()) {
-      if (password.trim().length < 6) {
-        return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 });
+      if (password.trim().length < MIN_PASSWORD_LEN) {
+        return NextResponse.json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LEN} caracteres` }, { status: 400 });
       }
       data.password = await bcrypt.hash(password.trim(), 12);
-      data.passwordPlain = password.trim();
     }
 
     if (Object.keys(data).length === 0) {
@@ -127,8 +124,11 @@ export async function PATCH(req: NextRequest) {
     const updated = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, passwordPlain: true },
+      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true },
     });
+
+    // Refrescar la sesión del usuario afectado (rol/activo/password al instante)
+    invalidateSessionCache(userId);
 
     return NextResponse.json(updated);
   } catch (e: any) {
@@ -162,6 +162,9 @@ export async function DELETE(req: NextRequest) {
       where: { id: userId },
       data: { activo: false },
     });
+
+    // Cortar la sesión del usuario desactivado de inmediato
+    invalidateSessionCache(userId);
 
     return NextResponse.json({ ok: true });
   } catch {

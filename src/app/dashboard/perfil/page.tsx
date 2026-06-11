@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import QRCode from "qrcode";
 import { useSession } from "@/hooks/useSession";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -38,6 +39,68 @@ export default function PerfilPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [form, setForm] = useState({ nombre: "", telefono: "" });
+
+  // 2FA
+  const [twoFAStep, setTwoFAStep] = useState<"idle" | "setup" | "disable">("idle");
+  const [twoFAQr, setTwoFAQr] = useState("");
+  const [twoFACode, setTwoFACode] = useState("");
+  const [twoFABusy, setTwoFABusy] = useState(false);
+  const [twoFAError, setTwoFAError] = useState("");
+
+  function flashToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  async function iniciar2FA() {
+    setTwoFABusy(true);
+    setTwoFAError("");
+    try {
+      const res = await fetch("/api/auth/2fa/setup", { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) { setTwoFAError(data.error || "No se pudo iniciar"); return; }
+      const qr = await QRCode.toDataURL(data.otpauth, { margin: 1, width: 200 });
+      setTwoFAQr(qr);
+      setTwoFACode("");
+      setTwoFAStep("setup");
+    } catch { setTwoFAError("Error de conexión"); }
+    finally { setTwoFABusy(false); }
+  }
+
+  async function confirmar2FA() {
+    setTwoFABusy(true);
+    setTwoFAError("");
+    try {
+      const res = await fetch("/api/auth/2fa/verify", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ code: twoFACode }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setTwoFAError(data.error || "Código inválido"); return; }
+      setProfile((p: any) => ({ ...p, twoFactorEnabled: true }));
+      setTwoFAStep("idle");
+      setTwoFAQr("");
+      flashToast("Verificación en dos pasos activada");
+    } catch { setTwoFAError("Error de conexión"); }
+    finally { setTwoFABusy(false); }
+  }
+
+  async function confirmarDesactivar2FA() {
+    setTwoFABusy(true);
+    setTwoFAError("");
+    try {
+      const res = await fetch("/api/auth/2fa/disable", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ code: twoFACode }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setTwoFAError(data.error || "No se pudo desactivar"); return; }
+      setProfile((p: any) => ({ ...p, twoFactorEnabled: false }));
+      setTwoFAStep("idle");
+      flashToast("Verificación en dos pasos desactivada");
+    } catch { setTwoFAError("Error de conexión"); }
+    finally { setTwoFABusy(false); }
+  }
 
   // Personalización local
   const [avatarGradient, setAvatarGradient] = useState("default");
@@ -278,6 +341,90 @@ export default function PerfilPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Card Seguridad — 2FA */}
+      <div className="bg-white border border-surface-200 rounded-lg p-5 mt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-surface-800">Verificación en dos pasos (2FA)</h3>
+            <p className="text-xs text-surface-500 mt-0.5">
+              Pide un código de tu app de autenticación (Google Authenticator, Authy…) al iniciar sesión.
+            </p>
+          </div>
+          <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+            profile.twoFactorEnabled
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-surface-50 text-surface-500 border-surface-200"
+          }`}>
+            {profile.twoFactorEnabled ? "Activado" : "Desactivado"}
+          </span>
+        </div>
+
+        {twoFAError && (
+          <p className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-md p-2">{twoFAError}</p>
+        )}
+
+        {/* Activar: paso de QR + código */}
+        {twoFAStep === "setup" && !profile.twoFactorEnabled && (
+          <div className="mt-4 flex flex-col sm:flex-row gap-4 items-start">
+            {twoFAQr && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={twoFAQr} alt="Código QR para 2FA" className="w-44 h-44 rounded-lg border border-surface-200" />
+            )}
+            <div className="flex-1">
+              <p className="text-xs text-surface-600 mb-2">
+                1. Escaneá el QR con tu app de autenticación.<br />2. Ingresá el código de 6 dígitos para confirmar.
+              </p>
+              <input
+                type="text" inputMode="numeric" maxLength={6} value={twoFACode}
+                onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, ""))}
+                placeholder="Código de 6 dígitos"
+                className="w-full px-3 py-2 text-sm font-mono tracking-widest rounded-md border border-surface-300 focus:outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-400"
+              />
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => { setTwoFAStep("idle"); setTwoFAQr(""); setTwoFAError(""); }} className="px-3 py-1.5 text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
+                <button onClick={confirmar2FA} disabled={twoFABusy || twoFACode.length !== 6} className="px-4 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50">
+                  {twoFABusy ? "Verificando..." : "Confirmar y activar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Desactivar: pedir código inline */}
+        {twoFAStep === "disable" && profile.twoFactorEnabled && (
+          <div className="mt-4">
+            <p className="text-xs text-surface-600 mb-2">Ingresá un código actual de tu app para desactivar el 2FA.</p>
+            <input
+              type="text" inputMode="numeric" maxLength={6} value={twoFACode}
+              onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, ""))}
+              placeholder="Código de 6 dígitos"
+              className="w-full sm:w-56 px-3 py-2 text-sm font-mono tracking-widest rounded-md border border-surface-300 focus:outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-400"
+            />
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => { setTwoFAStep("idle"); setTwoFAError(""); }} className="px-3 py-1.5 text-xs text-surface-600 hover:bg-surface-100 rounded-md">Cancelar</button>
+              <button onClick={confirmarDesactivar2FA} disabled={twoFABusy || twoFACode.length !== 6} className="px-4 py-1.5 text-xs font-medium bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50">
+                {twoFABusy ? "Desactivando..." : "Desactivar 2FA"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Botón principal según estado */}
+        {twoFAStep === "idle" && (
+          <div className="mt-4">
+            {profile.twoFactorEnabled ? (
+              <button onClick={() => { setTwoFACode(""); setTwoFAError(""); setTwoFAStep("disable"); }} className="px-4 py-1.5 text-xs font-medium border border-red-200 text-red-600 rounded-md hover:bg-red-50">
+                Desactivar 2FA
+              </button>
+            ) : (
+              <button onClick={iniciar2FA} disabled={twoFABusy} className="px-4 py-1.5 text-xs font-medium bg-surface-800 text-white rounded-md hover:bg-surface-700 disabled:opacity-50">
+                {twoFABusy ? "Generando..." : "Activar 2FA"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [requiere2FA, setRequiere2FA] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -21,13 +23,19 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, code: code.trim() || undefined }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Credenciales inválidas");
+        if (data.requiere2FA) {
+          setRequiere2FA(true);
+          // Solo mostrar error si ya habían ingresado un código (código incorrecto)
+          setError(code.trim() ? (data.error || "Código de verificación inválido") : "");
+        } else {
+          setError(data.error || "Credenciales inválidas");
+        }
         return;
       }
 
@@ -195,6 +203,40 @@ export default function LoginPage() {
                 </div>
               </div>
 
+              {/* Código 2FA (solo si el usuario lo tiene activo) */}
+              {requiere2FA && (
+                <div>
+                  <label
+                    htmlFor="code"
+                    className="block text-[12px] font-semibold text-surface-700 mb-1.5 uppercase tracking-wide"
+                  >
+                    Código de verificación
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-surface-400">
+                      <svg className="w-[17px] h-[17px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                      </svg>
+                    </div>
+                    <input
+                      id="code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      autoFocus
+                      maxLength={6}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                      className="w-full pl-10 pr-3 py-2.5 text-[14px] tracking-[0.3em] font-mono bg-white text-surface-900
+                        border border-surface-300 rounded-md
+                        focus:outline-none focus:border-primary-600 focus:ring-2 focus:ring-primary-100
+                        placeholder:text-surface-400 placeholder:tracking-normal placeholder:font-sans transition-colors"
+                      placeholder="6 dígitos de tu app de autenticación"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Submit */}
               <button
                 type="submit"
@@ -217,7 +259,7 @@ export default function LoginPage() {
                   </>
                 ) : (
                   <>
-                    <span>Ingresar</span>
+                    <span>{requiere2FA ? "Verificar" : "Ingresar"}</span>
                     <svg className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
