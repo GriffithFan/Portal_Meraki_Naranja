@@ -28,6 +28,13 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
+/** Ajusta la altura de un textarea a su contenido (hasta un máximo). */
+function autoGrow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+}
+
 function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
   if (!msg.archivoUrl) return null;
   const tipo = (msg.archivoTipo || "").split(";")[0].trim();
@@ -186,7 +193,8 @@ export default function ChatPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevMsgCountRef = useRef(0);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const nuevaConsultaRef = useRef<HTMLInputElement>(null);
   const lastTypingPingRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
@@ -333,15 +341,27 @@ export default function ChatPage() {
     return () => controller.abort();
   }, [busqueda, filtroEstado]);
 
-  // Polling cada 5s para mensajes nuevos
+  // Lista de conversaciones: refresco cada 5s (consulta más pesada)
   useEffect(() => {
     pollRef.current = setInterval(() => {
       if (document.visibilityState === "hidden") return;
       cargarConversaciones();
-      if (seleccionada?.id) cargarMensajesNuevos(seleccionada.id);
     }, 5000);
     return () => clearInterval(pollRef.current);
-  }, [seleccionada?.id, cargarConversaciones, cargarMensajesNuevos]);
+  }, [cargarConversaciones]);
+
+  // Mensajes de la conversación activa: refresco rápido (2.5s) para que
+  // "escribiendo…" y la entrega de mensajes se sientan casi en tiempo real.
+  // La consulta incremental (updatedAt > since) normalmente no devuelve filas.
+  useEffect(() => {
+    if (!seleccionada?.id) return;
+    const id = seleccionada.id;
+    const t = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      cargarMensajesNuevos(id);
+    }, 2500);
+    return () => clearInterval(t);
+  }, [seleccionada?.id, cargarMensajesNuevos]);
 
   // Scroll al último mensaje solo cuando llegan mensajes nuevos
   useEffect(() => {
@@ -384,6 +404,7 @@ export default function ChatPage() {
       });
       if (res.ok) {
         setNuevoMensaje("");
+        if (inputRef.current) inputRef.current.style.height = "auto";
         setRespondiendoA(null);
         await cargarMensajes(seleccionada.id);
         return true;
@@ -1092,7 +1113,7 @@ export default function ChatPage() {
                         <span className="text-sm text-surface-500">Subiendo archivo...</span>
                       </div>
                     ) : (
-                      <form onSubmit={enviarMensaje} className="space-y-2 touch-manipulation">
+                      <form ref={formRef} onSubmit={enviarMensaje} className="space-y-2 touch-manipulation">
                         {respondiendoA && (
                           <div className="flex items-start justify-between rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 dark:border-blue-800/60 dark:bg-blue-900/20">
                             <div className="min-w-0">
@@ -1115,7 +1136,7 @@ export default function ChatPage() {
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-end gap-2">
                           {/* Adjuntar archivo */}
                           <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivos (foto, video, audio, zip)">
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -1128,16 +1149,21 @@ export default function ChatPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
                             </svg>
                           </button>
-                          <input
+                          <textarea
                             ref={inputRef}
-                            type="text"
-                            placeholder={respondiendoA ? "Escribí tu respuesta..." : "Escribí un mensaje..."}
-                            disabled={false}
+                            rows={1}
+                            placeholder={respondiendoA ? "Escribí tu respuesta..." : "Escribí un mensaje... (Enter envía, Shift+Enter salto de línea)"}
                             value={nuevoMensaje}
-                            onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); }}
+                            onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); autoGrow(e.target); }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                                e.preventDefault();
+                                formRef.current?.requestSubmit();
+                              }
+                            }}
                             onPaste={handlePaste}
                             maxLength={2000}
-                            className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                            className="flex-1 resize-none max-h-32 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                           />
                           <button
                             type="submit"

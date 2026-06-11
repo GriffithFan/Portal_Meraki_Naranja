@@ -20,6 +20,13 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
+/** Ajusta la altura de un textarea a su contenido (hasta un máximo). */
+function autoGrow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
+}
+
 function ChatArchivo({ msg, onOpenMedia }: { msg: any; onOpenMedia: (msg: any) => void }) {
   if (!msg.archivoUrl) return null;
   const tipo = (msg.archivoTipo || "").split(";")[0].trim();
@@ -182,7 +189,8 @@ export default function ChatFloatingWidget() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevMsgCountRef = useRef(0);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const lastTypingPingRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -362,7 +370,7 @@ export default function ChatFloatingWidget() {
         }
       } catch { /* silenciar */ }
       finally { pollMensajesLoadingRef.current = false; }
-    }, 5000);
+    }, 2500);
     return () => clearInterval(pollRef.current);
   }, [open, conversacion?.id, mensajes, mergeMensajes]);
 
@@ -440,7 +448,7 @@ export default function ChatFloatingWidget() {
     e.target.value = "";
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files: File[] = [];
     for (const item of Array.from(e.clipboardData.items)) {
       if (item.kind === "file") {
@@ -518,6 +526,7 @@ export default function ChatFloatingWidget() {
         });
         if (res.ok) {
           setNuevoMensaje("");
+          if (inputRef.current) inputRef.current.style.height = "auto";
           await cargarConvActiva();
         } else {
           const err = await res.json().catch(() => ({}));
@@ -533,6 +542,7 @@ export default function ChatFloatingWidget() {
         });
         if (res.ok) {
           setNuevoMensaje("");
+          if (inputRef.current) inputRef.current.style.height = "auto";
           setRespondiendoA(null);
           const res2 = await fetch(`/api/chat/${conversacion.id}`, { credentials: "include" });
           if (res2.ok) {
@@ -721,21 +731,27 @@ export default function ChatFloatingWidget() {
                         <button key={emoji} type="button" onClick={() => enviarTexto(emoji)} className="rounded-full border border-surface-200 bg-white px-2 py-1 text-xs shadow-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:bg-surface-700" title={`Enviar ${emoji}`}>{emoji}</button>
                       ))}
                     </div>
-                    <form onSubmit={enviarMensaje} className="flex items-center gap-2 touch-manipulation">
+                    <form ref={formRef} onSubmit={enviarMensaje} className="flex items-end gap-2 touch-manipulation">
                       <label htmlFor="chat-file-support" className="shrink-0 cursor-pointer p-1.5 text-surface-400 hover:text-blue-500 transition" title="Adjuntar archivo">
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
                         </svg>
                       </label>
-                      <input
+                      <textarea
                         ref={inputRef}
-                        type="text"
+                        rows={1}
                         placeholder={conversacion.estado === "ABIERTA" ? "Responder y tomar..." : "Escribí una respuesta..."}
                         value={nuevoMensaje}
-                        onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); }}
+                        onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); autoGrow(e.target); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            formRef.current?.requestSubmit();
+                          }
+                        }}
                         onPaste={handlePaste}
                         maxLength={2000}
-                        className="min-w-0 flex-1 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-800 outline-none focus:ring-2 focus:ring-blue-500 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="min-w-0 flex-1 resize-none max-h-28 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-800 outline-none focus:ring-2 focus:ring-blue-500 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                       <button type="submit" disabled={!nuevoMensaje.trim() || enviando} onMouseDown={(e) => e.preventDefault()} className="rounded-lg bg-blue-600 p-2 text-white transition hover:bg-blue-700 disabled:opacity-50" title="Enviar">
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
@@ -964,7 +980,7 @@ export default function ChatFloatingWidget() {
                     </button>
                   ))}
                 </div>
-                <form onSubmit={enviarMensaje} className="flex items-center gap-1 touch-manipulation">
+                <form ref={formRef} onSubmit={enviarMensaje} className="flex items-end gap-1 touch-manipulation">
                   {/* Adjuntar archivo */}
                   {(!conversacion || conversacion.estado !== "CERRADA") && (
                     <>
@@ -981,16 +997,21 @@ export default function ChatFloatingWidget() {
                       </button>
                     </>
                   )}
-                  <input
+                  <textarea
                     ref={inputRef}
-                    type="text"
+                    rows={1}
                     placeholder="Escribí tu consulta..."
-                    disabled={false}
                     value={nuevoMensaje}
-                    onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); }}
+                    onChange={(e) => { setNuevoMensaje(e.target.value); pingTyping(); autoGrow(e.target); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        formRef.current?.requestSubmit();
+                      }
+                    }}
                     onPaste={handlePaste}
                     maxLength={2000}
-                    className="flex-1 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50"
+                    className="flex-1 resize-none max-h-28 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                   <button
                     type="submit"
