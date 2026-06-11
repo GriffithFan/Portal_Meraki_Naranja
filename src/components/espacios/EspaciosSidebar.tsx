@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
+import { useConfirm } from "@/contexts/ConfirmContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -528,6 +529,7 @@ function SpaceNode({
 export default function EspaciosSidebar() {
   const pathname = usePathname();
   const { isModOrAdmin, session } = useSession();
+  const confirm = useConfirm();
   const isAdmin = session?.rol === "ADMIN";
   const [espacios, setEspacios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -608,9 +610,21 @@ export default function EspaciosSidebar() {
     let keepCamposExtra = true;
     let addCamposToTarget = false;
     if (sourceFields.length > 0) {
-      keepCamposExtra = window.confirm(`Estas moviendo ${ids.length} tarea(s) a "${nombre}". ¿Queres mantener los campos propios de esas tareas?`);
+      keepCamposExtra = await confirm({
+        title: "Mover tareas",
+        message: `Estás moviendo ${ids.length} tarea(s) a "${nombre}". ¿Querés mantener los campos propios de esas tareas?`,
+        confirmLabel: "Sí, mantener",
+        cancelLabel: "No",
+        variant: "normal",
+      });
       if (keepCamposExtra) {
-        addCamposToTarget = window.confirm(`¿Queres agregar esos campos a la lista de "${nombre}"? Si elegis No, los valores quedan guardados y se veran al abrir la tarea, pero no como columnas.`);
+        addCamposToTarget = await confirm({
+          title: "Agregar campos a la lista",
+          message: `¿Querés agregar esos campos a la lista de "${nombre}"? Si elegís No, los valores quedan guardados y se verán al abrir la tarea, pero no como columnas.`,
+          confirmLabel: "Sí, agregar",
+          cancelLabel: "No",
+          variant: "normal",
+        });
       }
     }
 

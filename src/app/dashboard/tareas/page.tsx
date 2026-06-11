@@ -14,6 +14,7 @@ import { obtenerProvincia } from "@/utils/provinciaUtils";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
+import { useConfirm } from "@/contexts/ConfirmContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -149,6 +150,7 @@ const DEFAULT_COLUMNS: Column[] = [
 // ═══════════════════════════════════════════════════════════════
 export default function TareasPage() {
   const { session, isModOrAdmin } = useSession();
+  const confirm = useConfirm();
   const { headerSearch } = useSearchContext();
   const [tareas, setTareas] = useState<any[]>([]);
   const [estados, setEstados] = useState<any[]>([]);
@@ -853,7 +855,7 @@ export default function TareasPage() {
   async function handleDeleteSelectedTasks() {
     if (session?.rol !== "ADMIN" || selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
-    if (!window.confirm(`Eliminar ${ids.length} tarea${ids.length !== 1 ? "s" : ""} seleccionada${ids.length !== 1 ? "s" : ""}?`)) return;
+    if (!(await confirm({ title: "Eliminar tareas", message: `¿Eliminar ${ids.length} tarea${ids.length !== 1 ? "s" : ""} seleccionada${ids.length !== 1 ? "s" : ""}?`, confirmLabel: "Eliminar" }))) return;
     setBulkDeleting(true);
     const toastId = toast.loading("Eliminando tareas...");
     try {
@@ -918,7 +920,7 @@ export default function TareasPage() {
         // Buscar el espacio Facturado de la lista plana
         const facturadoEsp = espacios.find((e: any) => e.nombre === "Facturado" && !e.parentId);
         if (!facturadoEsp) {
-          alert("El espacio 'Facturado' no existe. Créalo primero.");
+          toast.error("El espacio 'Facturado' no existe. Créalo primero.");
           setBulkExecuting(false);
           return;
         }

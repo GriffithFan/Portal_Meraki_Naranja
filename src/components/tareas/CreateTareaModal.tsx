@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconEdit, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { useConfirm } from "@/contexts/ConfirmContext";
 
 interface EstadoOption {
   id: string;
@@ -82,6 +83,7 @@ export default function CreateTareaModal({
   onFieldsConfigChange,
   onSpaceCreated,
 }: CreateTareaModalProps) {
+  const confirm = useConfirm();
   const [form, setForm] = useState({ ...emptyForm, estadoId: initialEstadoId, espacioId: initialEspacioId });
   const [customValues, setCustomValues] = useState<Record<string, string | string[]>>({});
   const [creating, setCreating] = useState(false);
@@ -265,7 +267,7 @@ export default function CreateTareaModal({
   }
 
   async function removeField(field: TaskFieldConfig) {
-    if (!window.confirm(`¿Eliminar el campo "${field.label}" de este espacio?`)) return;
+    if (!(await confirm({ title: "Eliminar campo", message: `¿Eliminar el campo "${field.label}" de este espacio?`, confirmLabel: "Eliminar" }))) return;
     const nextFields = draftFields.filter((item) => item.id !== field.id);
     setDraftFields(nextFields);
     await persistFields(nextFields);

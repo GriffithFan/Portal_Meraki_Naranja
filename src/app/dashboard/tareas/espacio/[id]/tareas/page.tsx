@@ -17,6 +17,7 @@ import { obtenerProvincia } from "@/utils/provinciaUtils";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
 import { hasTaskFieldConfig, normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
+import { useConfirm } from "@/contexts/ConfirmContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -198,6 +199,7 @@ export default function EspacioTareasPage() {
   const viewsScope = `espacio-${espacioId}`;
   const router = useRouter();
   const { session, isModOrAdmin } = useSession();
+  const confirm = useConfirm();
   const { headerSearch } = useSearchContext();
   const [selectedTareaId, setSelectedTareaId] = useState<string | null>(null);
 
@@ -1202,7 +1204,7 @@ export default function EspacioTareasPage() {
       if (bulkAction === "moverFacturado") {
         const facturadoEsp = allEspacios.find((e: any) => e.nombre === "Facturado" && !e.parentId);
         if (!facturadoEsp) {
-          alert("El espacio 'Facturado' no existe. Créalo primero.");
+          toast.error("El espacio 'Facturado' no existe. Créalo primero.");
           setBulkExecuting(false);
           return;
         }
@@ -1229,7 +1231,7 @@ export default function EspacioTareasPage() {
       } else {
         const err = await res.json().catch(() => ({}));
         console.error("[BULK] error:", res.status, err);
-        alert(`Error: ${err.error || res.statusText}`);
+        toast.error(`Error: ${err.error || res.statusText}`);
       }
     } catch (e) { console.error("[BULK] exception:", e); }
     setBulkExecuting(false);
@@ -1263,7 +1265,7 @@ export default function EspacioTareasPage() {
   async function handleDeleteSelectedTasks() {
     if (session?.rol !== "ADMIN" || selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
-    if (!window.confirm(`Eliminar ${ids.length} tarea${ids.length !== 1 ? "s" : ""} seleccionada${ids.length !== 1 ? "s" : ""}?`)) return;
+    if (!(await confirm({ title: "Eliminar tareas", message: `¿Eliminar ${ids.length} tarea${ids.length !== 1 ? "s" : ""} seleccionada${ids.length !== 1 ? "s" : ""}?`, confirmLabel: "Eliminar" }))) return;
     setBulkDeleting(true);
     const toastId = toast.loading("Eliminando tareas...");
     try {
@@ -2408,7 +2410,7 @@ export default function EspacioTareasPage() {
                 </button>
                 {session?.rol === "ADMIN" && items.length > 0 && (
                   <button
-                    onClick={() => { if (confirm(`¿Eliminar ${items.length} tareas de "${estado.nombre}"?`)) handleBulkDelete(estado.id); }}
+                    onClick={async () => { if (await confirm({ title: "Eliminar tareas", message: `¿Eliminar ${items.length} tareas de "${estado.nombre}"?`, confirmLabel: "Eliminar" })) handleBulkDelete(estado.id); }}
                     disabled={bulkDeleting && bulkDeleteGroup === estado.id}
                     className="text-[10px] text-red-400 hover:text-red-600 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
                     title="Eliminar todas en este estado"

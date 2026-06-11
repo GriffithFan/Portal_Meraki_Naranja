@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
+import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
@@ -318,7 +319,7 @@ export default function ChatFloatingWidget() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert(err.error || "No se pudo tomar la conversación");
+      toast.error(err.error || "No se pudo tomar la conversación");
       return null;
     }
     const updated = await res.json();
@@ -417,10 +418,10 @@ export default function ChatFloatingWidget() {
           credentials: "include",
           body: JSON.stringify({ mensaje: `[Archivo adjunto: ${label}]` }),
         });
-        if (!res.ok) { const err = await res.json(); alert(err.error || "Error al crear conversación"); setSubiendo(false); return; }
+        if (!res.ok) { const err = await res.json(); toast.error(err.error || "Error al crear conversación"); setSubiendo(false); return; }
         const created = await res.json();
         convId = created.id;
-        if (!convId) { alert("No se pudo crear la conversación"); setSubiendo(false); return; }
+        if (!convId) { toast.error("No se pudo crear la conversación"); setSubiendo(false); return; }
         await cargarConvActiva();
       }
       const fd = new FormData();
@@ -434,9 +435,9 @@ export default function ChatFloatingWidget() {
         if (res2.ok) { const data = await res2.json(); setMensajes(data.mensajes || []); }
       } else {
         const err = await res.json();
-        alert(err.error || "Error al subir archivo");
+        toast.error(err.error || "Error al subir archivo");
       }
-    } catch (err) { console.error("[ChatWidget] Error subiendo archivo:", err); alert("Error al subir archivo. Intentá de nuevo."); }
+    } catch (err) { console.error("[ChatWidget] Error subiendo archivo:", err); toast.error("Error al subir archivo. Intentá de nuevo."); }
     setSubiendo(false);
   };
 
@@ -492,7 +493,7 @@ export default function ChatFloatingWidget() {
         });
       }, 1000);
     } catch {
-      alert("No se pudo acceder al micrófono");
+      toast.error("No se pudo acceder al micrófono");
     }
   };
 
@@ -508,7 +509,7 @@ export default function ChatFloatingWidget() {
     try {
       if (isSupportUser && !conversacion) return;
       if (isSupportUser && conversacion?.estado === "CERRADA") {
-        alert("Esta conversación está cerrada. Abrí el chat completo para revisar el historial.");
+        toast.info("Esta conversación está cerrada. Abrí el chat completo para revisar el historial.");
         return;
       }
       if (isSupportUser && conversacion?.estado === "ABIERTA") {
@@ -530,7 +531,7 @@ export default function ChatFloatingWidget() {
           await cargarConvActiva();
         } else {
           const err = await res.json().catch(() => ({}));
-          alert(err.error || "Error");
+          toast.error(err.error || "Error");
         }
       } else {
         // Conversación existente: enviar mensaje
@@ -574,13 +575,13 @@ export default function ChatFloatingWidget() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al reaccionar");
+        toast.error(err.error || "Error al reaccionar");
         return;
       }
       const data = await res.json();
       setMensajes((prev) => prev.map((item: any) => item.id === data.mensajeId ? { ...item, reacciones: data.reacciones } : item));
     } catch {
-      alert("Error de conexión");
+      toast.error("Error de conexión");
     }
   };
 

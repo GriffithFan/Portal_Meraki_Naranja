@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "@/hooks/useSession";
+import { useConfirm } from "@/contexts/ConfirmContext";
 
 interface Usuario {
   id: string;
@@ -50,6 +51,7 @@ function getIniciales(nombre: string) {
 
 export default function UsuariosPage() {
   const { session, isAdmin } = useSession();
+  const confirm = useConfirm();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [editando, setEditando] = useState<Usuario | null>(null);
@@ -215,7 +217,7 @@ export default function UsuariosPage() {
   };
 
   const desactivarUsuario = async (u: Usuario) => {
-    if (!confirm(`¿Desactivar a ${u.nombre}?`)) return;
+    if (!(await confirm({ title: "Desactivar usuario", message: `¿Desactivar a ${u.nombre}?`, confirmLabel: "Desactivar" }))) return;
     try {
       const res = await fetch("/api/usuarios", {
         method: "DELETE",

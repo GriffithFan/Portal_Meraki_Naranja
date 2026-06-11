@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ConfirmProvider } from "@/contexts/ConfirmContext";
 import { Toaster } from "sonner";
 import "./globals.css";
 
@@ -27,7 +28,9 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning className={inter.variable}>
       <body className={`${inter.variable} font-sans antialiased`}>
         <ThemeProvider>
-          {children}
+          <ConfirmProvider>
+            {children}
+          </ConfirmProvider>
           <Toaster richColors position="bottom-right" closeButton />
         </ThemeProvider>
       </body>

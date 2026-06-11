@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
+import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
+import { useConfirm } from "@/contexts/ConfirmContext";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
@@ -162,6 +164,7 @@ function ReactionPicker({ msg, onReact, placement }: { msg: any; onReact: (msg: 
 
 export default function ChatPage() {
   const { session, isMesa, isModOrAdmin } = useSession();
+  const confirm = useConfirm();
   useChatReminders(Boolean(session), session?.userId || "default");
   // Admin/Mod sin esMesa: ven todos los chats, pueden crear propias consultas
   const esVistaGlobal = isMesa || isModOrAdmin;
@@ -410,11 +413,11 @@ export default function ChatPage() {
         return true;
       }
       const err = await res.json().catch(() => ({}));
-      alert(err.error || "Error al enviar mensaje");
+      toast.error(err.error || "Error al enviar mensaje");
       return false;
     } catch (err) {
       console.error("[Chat] Error enviando mensaje:", err);
-      alert("Error de conexión");
+      toast.error("Error de conexión");
       return false;
     } finally {
       setEnviando(false);
@@ -459,7 +462,7 @@ export default function ChatPage() {
         seleccionarConv(data);
       } else {
         const err = await res.json();
-        alert(err.error || "Error al crear consulta");
+        toast.error(err.error || "Error al crear consulta");
       }
     } catch { /* silenciar */ } finally {
       setEnviando(false);
@@ -482,7 +485,7 @@ export default function ChatPage() {
   };
 
   const cerrarConversacion = async (id: string) => {
-    if (!confirm("¿Cerrar esta consulta? El técnico podrá crear una nueva.")) return;
+    if (!(await confirm({ title: "Cerrar consulta", message: "¿Cerrar esta consulta? El técnico podrá crear una nueva.", confirmLabel: "Cerrar" }))) return;
     try {
       const res = await fetch(`/api/chat/${id}`, {
         method: "PATCH",
@@ -506,7 +509,7 @@ export default function ChatPage() {
   );
 
   const eliminarConversacion = async (id: string) => {
-    if (!confirm("¿Eliminar esta conversación? Se borrarán todos los mensajes y archivos.")) return;
+    if (!(await confirm({ title: "Eliminar conversación", message: "¿Eliminar esta conversación? Se borrarán todos los mensajes y archivos.", confirmLabel: "Eliminar" }))) return;
     try {
       const res = await fetch(`/api/chat/${id}`, { method: "DELETE", credentials: "include" });
       if (res.ok) {
@@ -520,9 +523,9 @@ export default function ChatPage() {
         await cargarConversaciones();
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al eliminar");
+        toast.error(err.error || "Error al eliminar");
       }
-    } catch { alert("Error de conexión"); }
+    } catch { toast.error("Error de conexión"); }
   };
 
   // Filtrar y ordenar conversaciones
@@ -560,9 +563,9 @@ export default function ChatPage() {
         await cargarMensajes(seleccionada.id);
       } else {
         const err = await res.json();
-        alert(err.error || "Error al subir archivo");
+        toast.error(err.error || "Error al subir archivo");
       }
-    } catch (err) { console.error("[Chat] Error subiendo archivo:", err); alert("Error al subir archivo. Intentá de nuevo."); }
+    } catch (err) { console.error("[Chat] Error subiendo archivo:", err); toast.error("Error al subir archivo. Intentá de nuevo."); }
     setSubiendo(false);
   };
 
@@ -604,7 +607,7 @@ export default function ChatPage() {
         });
       }, 1000);
     } catch {
-      alert("No se pudo acceder al micrófono");
+      toast.error("No se pudo acceder al micrófono");
     }
   };
 
@@ -653,14 +656,14 @@ export default function ChatPage() {
         if (seleccionada?.id) await cargarMensajes(seleccionada.id);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al editar mensaje");
+        toast.error(err.error || "Error al editar mensaje");
       }
-    } catch { alert("Error de conexión"); }
+    } catch { toast.error("Error de conexión"); }
   };
 
   // ── Eliminar mensaje ──
   const eliminarMensaje = async (msgId: string) => {
-    if (!confirm("¿Eliminar este mensaje?")) return;
+    if (!(await confirm({ title: "Eliminar mensaje", message: "¿Eliminar este mensaje? Se mostrará “Se eliminó este mensaje” en su lugar.", confirmLabel: "Eliminar" }))) return;
     try {
       const res = await fetch(`/api/chat/mensaje/${msgId}`, {
         method: "DELETE",
@@ -670,9 +673,9 @@ export default function ChatPage() {
         if (seleccionada?.id) await cargarMensajes(seleccionada.id);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al eliminar mensaje");
+        toast.error(err.error || "Error al eliminar mensaje");
       }
-    } catch { alert("Error de conexión"); }
+    } catch { toast.error("Error de conexión"); }
   };
 
   const reaccionarMensaje = async (msg: any, emoji: string) => {
@@ -686,13 +689,13 @@ export default function ChatPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || "Error al reaccionar");
+        toast.error(err.error || "Error al reaccionar");
         return;
       }
       const data = await res.json();
       setMensajes((prev) => prev.map((item: any) => item.id === data.mensajeId ? { ...item, reacciones: data.reacciones } : item));
     } catch {
-      alert("Error de conexión");
+      toast.error("Error de conexión");
     }
   };
 
