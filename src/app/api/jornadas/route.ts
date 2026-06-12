@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   if (isModOrAdmin(session.rol)) {
     const tecnicos = await prisma.user.findMany({
       where: { rol: "TECNICO", activo: true },
-      select: { id: true, nombre: true },
+      select: { id: true, nombre: true, email: true },
       orderBy: { nombre: "asc" },
     });
 
@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
       return {
         userId: t.id,
         nombre: t.nombre,
+        email: t.email,
         estado,
         inicio: abierta?.inicio ?? delDia[0]?.inicio ?? null,
         ultimaSalida: estado === "FINALIZADO" ? delDia[delDia.length - 1]?.fin ?? null : null,

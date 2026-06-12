@@ -11,6 +11,7 @@ type Estado = "EN_CAMPO" | "FINALIZADO" | "SIN_INICIAR";
 interface FilaAsistencia {
   userId: string;
   nombre: string;
+  email?: string | null;
   estado: Estado;
   inicio: string | null;
   ultimaSalida: string | null;
@@ -83,6 +84,11 @@ export default function AsistenciaPage() {
     return d !== 0 ? d : a.nombre.localeCompare(b.nombre);
   });
 
+  // Nombres repetidos: para esos mostramos el email y poder distinguir cuentas.
+  const nombreCount = new Map<string, number>();
+  for (const f of filas) nombreCount.set(f.nombre.trim().toLowerCase(), (nombreCount.get(f.nombre.trim().toLowerCase()) || 0) + 1);
+  const esNombreDuplicado = (nombre: string) => (nombreCount.get(nombre.trim().toLowerCase()) || 0) > 1;
+
   if (!permisosLoading && !acceso) {
     return (
       <div className="animate-fade-in-up flex items-center justify-center py-20">
@@ -152,7 +158,12 @@ export default function AsistenciaPage() {
                   <IconClock className="w-4 h-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-surface-800 dark:text-surface-100 truncate">{f.nombre}</p>
+                  <p className="text-sm font-semibold text-surface-800 dark:text-surface-100 truncate">
+                    {f.nombre}
+                    {esNombreDuplicado(f.nombre) && f.email && (
+                      <span className="ml-1.5 text-[10px] font-normal text-amber-600 dark:text-amber-400">· {f.email}</span>
+                    )}
+                  </p>
                   <p className="text-[11px] text-surface-400">
                     {f.estado === "EN_CAMPO" && `Ingresó ${fmtHora(f.inicio)}`}
                     {f.estado === "FINALIZADO" && `${fmtHora(f.inicio)} – ${fmtHora(f.ultimaSalida)}${f.jornadas > 1 ? ` · ${f.jornadas} jornadas` : ""}`}

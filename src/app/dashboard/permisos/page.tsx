@@ -105,8 +105,8 @@ export default function PermisosPage() {
   const [savingEstados, setSavingEstados] = useState(false);
 
   // Per-user estado visibility
-  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
-  const [tecnicos, setTecnicos] = useState<{ id: string; nombre: string }[]>([]);
+  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string; email?: string }[]>([]);
+  const [tecnicos, setTecnicos] = useState<{ id: string; nombre: string; email?: string }[]>([]);
   const [permisosUsuario, setPermisosUsuario] = useState<PermisoEstadoUsuario[]>([]);
   const [dirtyUsuarios, setDirtyUsuarios] = useState(false);
   const [savingUsuarios, setSavingUsuarios] = useState(false);
@@ -141,9 +141,9 @@ export default function PermisosPage() {
       setEstados(estData.estados || []);
       setPermisosEstado(permData.permisos || []);
       setPermisosUsuario(permData.permisosUsuario || []);
-      const usersList = (usersData as any[]).filter((u: any) => u.rol !== "ADMIN").map((u: any) => ({ id: u.id, nombre: u.nombre, rol: u.rol }));
+      const usersList = (usersData as any[]).filter((u: any) => u.rol !== "ADMIN").map((u: any) => ({ id: u.id, nombre: u.nombre, rol: u.rol, email: u.email }));
       setAllUsers(usersList);
-      const tecList = usersList.filter((u) => u.rol === "TECNICO").map((u) => ({ id: u.id, nombre: u.nombre }));
+      const tecList = usersList.filter((u) => u.rol === "TECNICO").map((u) => ({ id: u.id, nombre: u.nombre, email: u.email }));
       setTecnicos(tecList);
       if (tecList.length > 0) setSelectedTecnico(tecList[0].id);
       if (usersList.length > 0) setSelectedUserSeccion(usersList[0].id);
@@ -414,6 +414,16 @@ export default function PermisosPage() {
 
   const gruposOrden = ["Gestión", "Comunicación", "Recursos", "Administración"];
   const grupos = gruposOrden.filter((g) => SECCIONES.some((s) => s.grupo === g));
+
+  // Para distinguir cuentas con el mismo nombre, mostramos el email en los
+  // selectores cuando el nombre se repite.
+  const dupNames = (list: { nombre: string }[]) => {
+    const count = new Map<string, number>();
+    for (const u of list) count.set(u.nombre.trim().toLowerCase(), (count.get(u.nombre.trim().toLowerCase()) || 0) + 1);
+    return (nombre: string) => (count.get(nombre.trim().toLowerCase()) || 0) > 1;
+  };
+  const tecnicoDuplicado = dupNames(tecnicos);
+  const usuarioDuplicado = dupNames(allUsers);
 
   const countActive = (rol: string) => {
     let total = 0;
@@ -744,7 +754,7 @@ export default function PermisosPage() {
                   className="text-xs border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500 outline-none"
                 >
                   {tecnicos.map((tec) => (
-                    <option key={tec.id} value={tec.id}>{tec.nombre}</option>
+                    <option key={tec.id} value={tec.id}>{tec.nombre}{tecnicoDuplicado(tec.nombre) && tec.email ? ` · ${tec.email}` : ""}</option>
                   ))}
                 </select>
                 <div className="flex items-center gap-2 ml-auto">
@@ -820,7 +830,7 @@ export default function PermisosPage() {
                   className="text-xs border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500 outline-none"
                 >
                   {allUsers.map((u) => (
-                    <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>
+                    <option key={u.id} value={u.id}>{u.nombre} ({u.rol}){usuarioDuplicado(u.nombre) && u.email ? ` · ${u.email}` : ""}</option>
                   ))}
                 </select>
                 <div className="flex items-center gap-1 ml-auto">
