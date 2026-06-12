@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { materializeEstadoVisibility } from "@/lib/predioVisibility";
+import { materializeEstadoVisibility, getEstadoVisibilityForRole } from "@/lib/predioVisibility";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,7 +41,17 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
-  const { permisos, permisosUsuario } = body;
+  const { permisos, permisosUsuario, resetUsuarioIds } = body;
+
+  // Restablecer al rol: borrar TODOS los overrides por usuario de esos usuarios
+  // (vuelven a heredar la visibilidad del rol). Corrige overrides viejos que
+  // tapaban la config del rol.
+  if (Array.isArray(resetUsuarioIds) && resetUsuarioIds.length > 0) {
+    const ids = resetUsuarioIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+    if (ids.length > 0) {
+      await prisma.permisoEstadoUsuario.deleteMany({ where: { userId: { in: ids } } });
+    }
+  }
 
   // Permisos por rol (existente)
   if (Array.isArray(permisos)) {
@@ -65,20 +75,40 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  // Permisos por usuario individual (nuevo)
-  if (Array.isArray(permisosUsuario)) {
+  // Permisos por usuario individual: se guardan SOLO como override real, es
+  // decir cuando difieren de la visibilidad del rol. Si coinciden con el rol,
+  // se borran (el usuario hereda el rol). Así un cambio futuro en el rol no
+  // queda tapado por overrides redundantes.
+  if (Array.isArray(permisosUsuario) && permisosUsuario.length > 0) {
+    const userIds = Array.from(new Set(
+      permisosUsuario.map((p: any) => p.userId).filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+    ));
+    const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, rol: true } });
+    const rolByUser = new Map(users.map((u) => [u.id, u.rol as string]));
+    const roleVisCache = new Map<string, Map<string, boolean>>();
+    const roleVis = async (rol: string) => {
+      if (!roleVisCache.has(rol)) roleVisCache.set(rol, await getEstadoVisibilityForRole(rol));
+      return roleVisCache.get(rol)!;
+    };
+
     for (const p of permisosUsuario) {
       if (!p.estadoId || !p.userId || typeof p.visible !== "boolean") continue;
+      const rol = rolByUser.get(p.userId);
+      if (!rol || rol === "ADMIN") continue; // admin ve todo; no tiene sentido override
 
-      await prisma.permisoEstadoUsuario.upsert({
-        where: { estadoId_userId: { estadoId: p.estadoId, userId: p.userId } },
-        update: { visible: p.visible },
-        create: {
-          estadoId: p.estadoId,
-          userId: p.userId,
-          visible: p.visible,
-        },
-      });
+      const vis = await roleVis(rol);
+      const roleVisible = vis.has(p.estadoId) ? vis.get(p.estadoId)! : true;
+
+      if (p.visible === roleVisible) {
+        // Igual al rol → no hace falta override
+        await prisma.permisoEstadoUsuario.deleteMany({ where: { estadoId: p.estadoId, userId: p.userId } });
+      } else {
+        await prisma.permisoEstadoUsuario.upsert({
+          where: { estadoId_userId: { estadoId: p.estadoId, userId: p.userId } },
+          update: { visible: p.visible },
+          create: { estadoId: p.estadoId, userId: p.userId, visible: p.visible },
+        });
+      }
     }
   }
 

@@ -275,10 +275,11 @@ export default function PermisosPage() {
   };
 
   const guardarEstadosUsuario = async () => {
+    if (!selectedTecnico) return;
     setSavingUsuarios(true);
-    const payload = tecnicos.flatMap((tec) =>
-      estados.map((e: any) => ({ estadoId: e.id, userId: tec.id, visible: getPermisoUsuario(e.id, tec.id) }))
-    );
+    // Solo el técnico seleccionado. El servidor guarda como override solo lo que
+    // difiere del rol (lo que coincide se borra → hereda el rol).
+    const payload = estados.map((e: any) => ({ estadoId: e.id, userId: selectedTecnico, visible: getPermisoUsuario(e.id, selectedTecnico) }));
     const res = await fetch("/api/permisos/estados", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -290,6 +291,27 @@ export default function PermisosPage() {
       setPermisosUsuario(data.permisosUsuario || []);
       setDirtyUsuarios(false);
       setToast("Visibilidad por usuario guardada");
+      setTimeout(() => setToast(null), 3000);
+    }
+    setSavingUsuarios(false);
+  };
+
+  /** Borra los overrides por usuario (vuelve a heredar el rol). `todos` = todos los técnicos. */
+  const restablecerEstadosUsuario = async (todos = false) => {
+    const ids = todos ? tecnicos.map((t) => t.id) : (selectedTecnico ? [selectedTecnico] : []);
+    if (ids.length === 0) return;
+    setSavingUsuarios(true);
+    const res = await fetch("/api/permisos/estados", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ resetUsuarioIds: ids }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setPermisosUsuario(data.permisosUsuario || []);
+      setDirtyUsuarios(false);
+      setToast(todos ? "Todos los técnicos vuelven a heredar el rol" : "Técnico restablecido al rol");
       setTimeout(() => setToast(null), 3000);
     }
     setSavingUsuarios(false);
@@ -704,15 +726,17 @@ export default function PermisosPage() {
         /* ── Tab: Por usuario ── */
         <div>
           <p className="text-xs text-surface-400 dark:text-surface-500 mb-4">
-            Controla qué estados puede ver cada técnico individualmente. Tiene prioridad sobre los permisos por rol.
+            Controla qué estados puede ver cada técnico individualmente. Solo guardá un cambio acá si querés
+            que <strong>ese técnico</strong> vea algo distinto a su rol. Si coincide con el rol, hereda el rol
+            automáticamente. Si algún técnico ve estados que no debería, usá <strong>&quot;Restablecer al rol&quot;</strong>.
           </p>
 
           {tecnicos.length === 0 ? (
             <p className="text-xs text-surface-400 py-8 text-center">No hay técnicos registrados.</p>
           ) : (
             <>
-              {/* Selector de técnico */}
-              <div className="flex items-center gap-3 mb-4">
+              {/* Selector de técnico + reset */}
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
                 <label className="text-xs font-medium text-surface-600 dark:text-surface-300">Técnico:</label>
                 <select
                   value={selectedTecnico}
@@ -723,6 +747,22 @@ export default function PermisosPage() {
                     <option key={tec.id} value={tec.id}>{tec.nombre}</option>
                   ))}
                 </select>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    onClick={() => restablecerEstadosUsuario(false)}
+                    disabled={savingUsuarios || !selectedTecnico}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-surface-200 dark:border-surface-600 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50"
+                  >
+                    Restablecer al rol
+                  </button>
+                  <button
+                    onClick={() => restablecerEstadosUsuario(true)}
+                    disabled={savingUsuarios}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                  >
+                    Restablecer todos
+                  </button>
+                </div>
               </div>
 
               {/* Grilla estados para el técnico seleccionado */}

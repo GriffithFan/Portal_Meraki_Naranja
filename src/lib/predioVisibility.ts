@@ -118,6 +118,34 @@ export async function getHiddenEstadoIdsForSession(session: SessionLike, entidad
   return Array.from(hidden);
 }
 
+/**
+ * Visibilidad efectiva de cada estado SOLO por rol (sin overrides por usuario).
+ * Mismo criterio que la capa de rol de `getHiddenEstadoIdsForSession`:
+ * default-oculto para TECNICO + permisos por rol. Se usa para decidir si un
+ * override por usuario es redundante (igual al rol → no hace falta guardarlo).
+ */
+export async function getEstadoVisibilityForRole(rol: string, entidad = "PREDIO"): Promise<Map<string, boolean>> {
+  const [estados, permisosRol] = await Promise.all([
+    prisma.estadoConfig.findMany({
+      where: { entidad, activo: true },
+      select: { id: true, nombre: true, clave: true },
+    }),
+    prisma.permisoEstado.findMany({
+      where: { rol: rol as "ADMIN" | "MODERADOR" | "TECNICO" },
+      select: { estadoId: true, visible: true },
+    }),
+  ]);
+
+  const map = new Map<string, boolean>();
+  for (const estado of estados) {
+    let visible = true;
+    if (rol === "TECNICO" && isDefaultHiddenStateForTecnico(estado)) visible = false;
+    map.set(estado.id, visible);
+  }
+  for (const permiso of permisosRol) map.set(permiso.estadoId, permiso.visible);
+  return map;
+}
+
 export async function materializeEstadoVisibility(params: {
   permisos: PermisoEstadoRecord[];
   permisosUsuario: PermisoEstadoUsuarioRecord[];
