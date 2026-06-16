@@ -121,7 +121,7 @@ interface TareasSavedView {
 const DEFAULT_COLUMNS: Column[] = [
   { id: "codigoPredio", label: "Predio", field: "codigo", width: 100, visible: true, editable: false, type: "text" },
   { id: "predio", label: "Incidencia", field: "incidencias", width: 140, visible: true, editable: false, type: "text" },
-  { id: "fechaActualizacion", label: "Fecha de actualización", field: "updatedAt", width: 110, visible: true, editable: false, type: "date" },
+  { id: "fechaActualizacion", label: "Fecha", field: "updatedAt", width: 85, visible: true, editable: false, type: "date" },
   { id: "etiquetas", label: "Etiquetas", field: "etiquetas", width: 150, visible: true, editable: false, type: "text" },
   { id: "lacR", label: "LAC-R", field: "lacR", width: 70, visible: true, editable: true, type: "badge", options: ["SI", "NO", "PEDIDO"] },
   { id: "cue", label: "CUE", field: "cue", width: 100, visible: true, editable: true, type: "text" },
@@ -388,10 +388,12 @@ export default function TareasPage() {
             setColumns(prev => {
               const safePrev = sanitizeTaskFieldConfigs(prev);
               const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
+              // Columnas que nunca deben ocultarse aunque el config guardado las tenga como hidden
+              const FORCE_VISIBLE = new Set(["codigoPredio", "predio", "fechaActualizacion"]);
               return [...safePrev]
                 .map(col => {
                   const cfg = orderMap.get(col.id);
-                  return cfg ? { ...col, visible: cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
+                  return cfg ? { ...col, visible: FORCE_VISIBLE.has(col.id) ? true : cfg.visible, ...(cfg.width != null ? { width: cfg.width } : {}) } : col;
                 })
                 .sort((a, b) => {
                   const oa = orderMap.get(a.id)?.order ?? 999;
@@ -1236,8 +1238,10 @@ export default function TareasPage() {
   };
 
   // Columnas visibles: respetar configuración del usuario (toggle del drawer)
+  const ALWAYS_VISIBLE_COLS = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion"]), []);
   const visibleColumns = useMemo(() => {
     return sanitizeTaskFieldConfigs(columns).filter(c => {
+      if (ALWAYS_VISIBLE_COLS.has(c.id)) return true;
       if (!c.visible) return false;
       if (!c.id.startsWith("custom_")) return true;
       return tareas.some((t: any) => {
@@ -1421,7 +1425,7 @@ export default function TareasPage() {
             )}
           </div>
           <div className="flex items-center gap-2.5 mt-1.5 text-xs text-surface-500 flex-wrap">
-            <span className="tabular-nums">{formatDate(t.fechaActualizacion)}</span>
+            <span className="tabular-nums" title={t.updatedAt ? new Date(t.updatedAt).toLocaleString("es-AR") : ""}>{formatRelativeDate(t.updatedAt)}</span>
             {t.lacR && (
               <span className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${t.lacR?.toUpperCase() === "SI" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
                 LAC-R: {t.lacR}
