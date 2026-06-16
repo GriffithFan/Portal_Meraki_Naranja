@@ -15,6 +15,7 @@ import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
+import { mensajeError } from "@/lib/fetchJson";
 import { useConfirm } from "@/contexts/ConfirmContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -147,6 +148,23 @@ const DEFAULT_COLUMNS: Column[] = [
   { id: "orden", label: "Orden", field: "orden", width: 60, visible: false, editable: true, type: "text" },
 ];
 
+type SortConfig = { field: string; dir: "asc" | "desc" } | null;
+
+// Orden de la lista de tareas (reutilizado por la agrupación y por la vista plana).
+// Si no hay orden, devuelve la misma referencia para no romper memoización.
+function sortTareasList<T extends Record<string, any>>(list: T[], sortConfig: SortConfig): T[] {
+  if (!sortConfig) return list;
+  const { field, dir } = sortConfig;
+  const isCustom = field.startsWith("_custom_");
+  const clave = isCustom ? field.substring(8) : field;
+  return [...list].sort((a, b) => {
+    const aVal = (isCustom ? a.camposExtra?.[clave] : a[field]) ?? "";
+    const bVal = (isCustom ? b.camposExtra?.[clave] : b[field]) ?? "";
+    const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
+    return dir === "asc" ? cmp : -cmp;
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
@@ -158,6 +176,7 @@ export default function TareasPage() {
   const [estados, setEstados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
   const [groupCounts, setGroupCounts] = useState<Record<string, number> | null>(null);
   const [espacioSummary, setEspacioSummary] = useState<Record<string, { nombre: string; total: number }> | null>(null);
@@ -428,12 +447,14 @@ export default function TareasPage() {
     if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
     params.set("groupBy", groupBy);
-    const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
-    if (fetchTareasRequestRef.current !== requestId) return;
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
+      if (fetchTareasRequestRef.current !== requestId) return;
+      if (!res.ok) throw new Error("No se pudieron cargar las tareas");
       const data = await res.json();
       if (fetchTareasRequestRef.current !== requestId) return;
       const predios = data.predios || [];
+      setLoadError(false);
       setTareas(prev => {
         if (!append) return predios;
         const seen = new Set(prev.map((item: any) => item.id));
@@ -460,10 +481,15 @@ export default function TareasPage() {
           return hasData ? { ...col, visible: true } : { ...col, visible: false };
         }));
       }
-    }
-    if (fetchTareasRequestRef.current === requestId) {
-      if (append) setLoadingMore(false);
-      else setLoading(false);
+    } catch (e) {
+      if (fetchTareasRequestRef.current !== requestId) return;
+      setLoadError(true);
+      toast.error(mensajeError(e, "No se pudieron cargar las tareas"));
+    } finally {
+      if (fetchTareasRequestRef.current === requestId) {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+      }
     }
   }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, groupBy, quickFilter, serverSearch]);
 
@@ -659,21 +685,7 @@ export default function TareasPage() {
       });
     }
 
-    if (sortConfig) {
-      filtered = [...filtered].sort((a, b) => {
-        let aVal, bVal;
-        if (sortConfig.field.startsWith("_custom_")) {
-          const clave = sortConfig.field.substring(8);
-          aVal = a.camposExtra?.[clave] ?? "";
-          bVal = b.camposExtra?.[clave] ?? "";
-        } else {
-          aVal = a[sortConfig.field] ?? "";
-          bVal = b[sortConfig.field] ?? "";
-        }
-        const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
-        return sortConfig.dir === "asc" ? cmp : -cmp;
-      });
-    }
+    filtered = sortTareasList(filtered, sortConfig);
 
     // Agrupación por estado (default)
     if (groupBy === "estado") {
@@ -713,6 +725,9 @@ export default function TareasPage() {
     return sorted;
   }, [tareas, estados, search, serverSearch, sortConfig, groupBy]);
 
+  // Lista plana ordenada (vista sin estados): memoizada para no re-ordenar en cada render.
+  const sortedTareas = useMemo(() => sortTareasList(tareas, sortConfig), [tareas, sortConfig]);
+
   const getGroupTotal = useCallback((key: string, loadedCount: number) => {
     return groupCounts?.[key] ?? loadedCount;
   }, [groupCounts]);
@@ -729,6 +744,7 @@ export default function TareasPage() {
   // Cambiar estado desde el selector inline de la tabla
   async function changeEstado(tareaId: string, estadoId: string) {
     const newEstado = estados.find(e => e.id === estadoId);
+    const prevEstadoKey = tareas.find(t => t.id === tareaId)?.estadoId || "sin-estado";
 
     const res = await fetch(`/api/tareas/${tareaId}`, {
       method: "PATCH",
@@ -738,8 +754,20 @@ export default function TareasPage() {
     });
 
     if (res.ok) {
+      // Actualizamos solo el estado local (sin recargar toda la lista) para no
+      // perder el scroll ni la selección. groupedTareas re-agrupa la fila sola.
       setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, estadoId, estado: newEstado } : t));
-      fetchTareas();
+      // Mantener los contadores de grupo al día cuando se agrupa por estado.
+      const newKey = estadoId || "sin-estado";
+      if (groupBy === "estado" && newKey !== prevEstadoKey) {
+        setGroupCounts(prev => {
+          if (!prev) return prev;
+          const next = { ...prev };
+          if (next[prevEstadoKey] != null) next[prevEstadoKey] = Math.max(0, next[prevEstadoKey] - 1);
+          next[newKey] = (next[newKey] || 0) + 1;
+          return next;
+        });
+      }
     } else {
       const data = await res.json().catch(() => ({}));
       toast.error(data.error || "Error al cambiar estado");
@@ -1427,7 +1455,9 @@ export default function TareasPage() {
   void session;
 
   // Mobile card list for task items (< md breakpoint)
-  const MobileTaskList = ({ items: taskItems }: { items: any[] }) => (
+  // Helper de render (NO componente): se invoca como función para que React no
+  // remonte todas las tarjetas mobile en cada cambio de estado del padre.
+  const renderMobileList = (taskItems: any[]) => (
     <div className="md:hidden divide-y divide-surface-100">
       {taskItems.map((t) => {
         const selected = selectedIds.has(t.id);
@@ -1982,6 +2012,16 @@ export default function TareasPage() {
         <div className="flex justify-center py-12">
           <div className="w-5 h-5 border-2 border-surface-200 border-t-surface-500 rounded-full animate-spin" />
         </div>
+      ) : loadError && tareas.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <p className="text-sm text-surface-500">No se pudieron cargar las tareas.</p>
+          <button
+            onClick={() => { setLoading(true); fetchTareas(); }}
+            className="px-4 py-2 text-xs font-medium rounded-md border border-surface-200 text-surface-700 hover:bg-surface-50 transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
       ) : (
         <div className="space-y-2">
           {groupBy === "estado" ? (
@@ -2085,7 +2125,7 @@ export default function TareasPage() {
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
-                        <MobileTaskList items={items.slice(0, renderLimits[estado.id] || ROWS_BATCH)} />
+                        {renderMobileList(items.slice(0, renderLimits[estado.id] || ROWS_BATCH))}
                         <table className="w-full min-w-max text-[11px] hidden md:table">
                           <thead>
                             <tr className="border-b border-surface-100">
@@ -2197,7 +2237,7 @@ export default function TareasPage() {
               </div>
               {expandedSections.has("sin-estado") && (
                 <div className="border-t border-surface-100 overflow-x-auto">
-                  <MobileTaskList items={groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH)} />
+                  {renderMobileList(groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH))}
                   <table className="w-full min-w-max text-[11px] hidden md:table">
                     <thead>
                       <tr className="border-b border-surface-100">
@@ -2277,7 +2317,7 @@ export default function TareasPage() {
                   </button>
                   {isExpanded && (
                     <div className="border-t border-surface-100 overflow-x-auto">
-                      <MobileTaskList items={items.slice(0, renderLimits[groupKey] || ROWS_BATCH)} />
+                      {renderMobileList(items.slice(0, renderLimits[groupKey] || ROWS_BATCH))}
                       <table className="w-full min-w-max text-[11px] hidden md:table">
                         <thead>
                           <tr className="border-b border-surface-100">
@@ -2350,7 +2390,7 @@ export default function TareasPage() {
                 <span className="text-[11px] text-surface-400">Crea estados para agrupar</span>
               </div>
               <div className="overflow-x-auto">
-                <MobileTaskList items={tareas.slice(0, renderLimits["_all"] || ROWS_BATCH)} />
+                {renderMobileList(sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH))}
                 <table className="w-full min-w-max text-[11px] hidden md:table">
                   <thead>
                     <tr className="border-b border-surface-100">
@@ -2359,12 +2399,7 @@ export default function TareasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(sortConfig ? [...tareas].sort((a, b) => {
-                      const aVal = a[sortConfig.field] ?? "";
-                      const bVal = b[sortConfig.field] ?? "";
-                      const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
-                      return sortConfig.dir === "asc" ? cmp : -cmp;
-                    }) : tareas).slice(0, renderLimits["_all"] || ROWS_BATCH).map((t, idx) => (
+                    {sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH).map((t, idx) => (
                       <tr
                         key={t.id}
                         onClick={() => openDetail(t)}

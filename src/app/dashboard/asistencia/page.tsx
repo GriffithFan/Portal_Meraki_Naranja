@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
 import { IconClock } from "@/components/ui/Icons";
@@ -61,13 +62,18 @@ export default function AsistenciaPage() {
   const esHoy = fecha === hoyAR();
 
   const fetchData = useCallback(async () => {
-    const res = await fetch(`/api/jornadas?fecha=${fecha}`, { credentials: "include" });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/jornadas?fecha=${fecha}`, { credentials: "include" });
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setFilas(data.todos || []);
       setResumen(data.resumen || null);
+    } catch {
+      // id fijo: si el auto-refresco (cada 60s) falla repetido, no se apilan toasts.
+      toast.error("No se pudo cargar la asistencia", { id: "asistencia-load-error" });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fecha]);
 
   useEffect(() => { setLoading(true); fetchData(); }, [fetchData]);

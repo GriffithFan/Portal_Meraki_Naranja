@@ -18,6 +18,7 @@ import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
 import { hasTaskFieldConfig, normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
+import { mensajeError } from "@/lib/fetchJson";
 import { useConfirm } from "@/contexts/ConfirmContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -215,6 +216,7 @@ export default function EspacioTareasPage() {
   const [estados, setEstados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterProvincia, setFilterProvincia] = useState("");
@@ -614,6 +616,7 @@ export default function EspacioTareasPage() {
     if (quickFilter !== "todos") countsParams.set("quick", quickFilter);
     if (serverSearch) countsParams.set("buscar", serverSearch);
 
+    try {
     const [tareasResOrNull, estadosRes, espacioRes, camposRes, countsResOrNull] = await Promise.all([
       lazyMode ? Promise.resolve(null) : fetch(`/api/tareas?${params.toString()}`, { credentials: "include" }),
       fetch("/api/estados", { credentials: "include" }),
@@ -625,6 +628,12 @@ export default function EspacioTareasPage() {
     const countsRes = countsResOrNull as Response | null;
 
     if (fetchDataRequestRef.current !== requestId) return;
+
+    // Si la carga principal (tareas o conteos en modo lazy) falló, mostramos error.
+    if ((tareasRes && !tareasRes.ok) || (countsRes && !countsRes.ok)) {
+      throw new Error("No se pudieron cargar las tareas");
+    }
+    setLoadError(false);
 
     // En modo lazy: resetear datos cuando las condiciones de filtro cambian
     if (lazyMode && lazyConditionsRef.current !== lazyKey) {
@@ -737,10 +746,15 @@ export default function EspacioTareasPage() {
 
       setColumns(applySavedColumnConfig(sanitizeTaskFieldConfigs(nextColumnsWithOrden)));
     }
-
-    if (fetchDataRequestRef.current === requestId) {
-      if (append) setLoadingMore(false);
-      else setLoading(false);
+    } catch (e) {
+      if (fetchDataRequestRef.current !== requestId) return;
+      setLoadError(true);
+      toast.error(mensajeError(e, "No se pudieron cargar las tareas"));
+    } finally {
+      if (fetchDataRequestRef.current === requestId) {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+      }
     }
   }, [COL_CONFIG_KEY, applySavedColumnConfig, espacioId, filterAsignado, filterEstado, filterPrioridad, filterProvincia, groupBy, includeSubspaces, quickFilter, serverSearch, sortConfig, fetchGroupTareas]);
 
@@ -1902,6 +1916,20 @@ export default function EspacioTareasPage() {
             <div key={i} className="h-10 bg-white border border-surface-200 rounded animate-pulse" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (loadError && tareas.length === 0) {
+    return (
+      <div className="animate-fade-in-up flex flex-col items-center gap-3 py-16 text-center">
+        <p className="text-sm text-surface-500">No se pudieron cargar las tareas.</p>
+        <button
+          onClick={() => { setLoadError(false); setLoading(true); fetchData(); }}
+          className="px-4 py-2 text-xs font-medium rounded-md border border-surface-200 text-surface-700 hover:bg-surface-50 transition-colors"
+        >
+          Reintentar
+        </button>
       </div>
     );
   }

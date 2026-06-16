@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import { useConfirm } from "@/contexts/ConfirmContext";
 
@@ -137,9 +138,9 @@ export default function UsuariosPage() {
 
   useEffect(() => {
     fetch("/api/usuarios", { credentials: "include" })
-      .then(r => r.ok ? r.json() : [])
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
       .then(setUsuarios)
-      .catch(() => setUsuarios([]))
+      .catch(() => { setUsuarios([]); toast.error("No se pudieron cargar los usuarios"); })
       .finally(() => setLoading(false));
     cargarDelegaciones();
     cargarAccesos();

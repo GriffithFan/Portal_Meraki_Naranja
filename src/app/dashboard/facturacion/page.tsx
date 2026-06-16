@@ -46,12 +46,16 @@ export default function FacturacionPage() {
 
   const fetchReportes = async () => {
     setLoading(true);
-    const res = await fetch("/api/facturacion", { credentials: "include" });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/facturacion", { credentials: "include" });
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setReportes(data.reportes || []);
+    } catch {
+      toast.error("No se pudieron cargar los reportes");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { fetchReportes(); }, []);

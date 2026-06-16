@@ -685,8 +685,9 @@ export default function StockPage() {
     const params = new URLSearchParams();
     params.set("limit", "5000");
     if (search) params.set("buscar", search);
-    const res = await fetch(`/api/stock?${params}`, { credentials: "include", cache: "no-store" });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/stock?${params}`, { credentials: "include", cache: "no-store" });
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setEquipos(data.equipos || []);
       setTotal(data.total || 0);
@@ -695,8 +696,11 @@ export default function StockPage() {
         scrollRestoreRef.current = null;
         requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "instant" })));
       }
+    } catch {
+      toast.error("No se pudo cargar el stock");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
     fetchStockAlerts();
   }, [search, fetchStockAlerts]);
 
