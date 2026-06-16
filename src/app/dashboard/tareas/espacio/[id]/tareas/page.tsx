@@ -231,6 +231,8 @@ export default function EspacioTareasPage() {
   const [groupLoadState, setGroupLoadState] = useState<Record<string, "idle" | "loading" | "loaded">>({});
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
   const lazyConditionsRef = useRef<string>("");
+  const filtersLoadedRef = useRef(false);
+  const filterSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sortConfig, setSortConfig] = useState<{ field: string; dir: "asc" | "desc" } | null>(null);
   const [groupBy, setGroupBy] = useState("estado");
   const [savedViews, setSavedViews] = useState<TareasSavedView[]>([]);
@@ -780,6 +782,42 @@ export default function EspacioTareasPage() {
       .then((data) => setSavedViews(Array.isArray(data?.views) ? data.views : []))
       .catch(() => {});
   }, [viewsScope]);
+
+  // Cargar filtros + orden persistidos por usuario para ESTA carpeta (scope por espacio).
+  useEffect(() => {
+    filtersLoadedRef.current = false;
+    fetch(`/api/preferencias/tareas-filtros?scope=esp-${espacioId}`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        const cfg = data?.config;
+        if (cfg) {
+          setFilterEstado(cfg.filterEstado || "todos");
+          setFilterProvincia(cfg.filterProvincia || "");
+          setFilterPrioridad(cfg.filterPrioridad || "todas");
+          setFilterAsignado(cfg.filterAsignado || "todos");
+          setQuickFilter(normalizeTaskQuickFilter(cfg.quickFilter));
+          setGroupBy(normalizeTaskGroupBy(cfg.groupBy));
+          if (cfg.sortConfig !== undefined) setSortConfig(cfg.sortConfig);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { filtersLoadedRef.current = true; });
+  }, [espacioId]);
+
+  // Persistir (debounced) los filtros + orden por usuario para esta carpeta.
+  useEffect(() => {
+    if (!filtersLoadedRef.current) return;
+    if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current);
+    filterSaveTimerRef.current = setTimeout(() => {
+      fetch(`/api/preferencias/tareas-filtros?scope=esp-${espacioId}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter, groupBy, sortConfig }),
+      }).catch(() => {});
+    }, 900);
+    return () => { if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current); };
+  }, [espacioId, filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter, groupBy, sortConfig]);
 
   // Recargar tareas cuando el sidebar reporta un drop exitoso
   useEffect(() => {

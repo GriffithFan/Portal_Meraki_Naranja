@@ -464,6 +464,7 @@ export default function TareasPage() {
         setFilterPrioridad(cfg.filterPrioridad || "todas");
         setQuickFilter(normalizeTaskQuickFilter(cfg.quickFilter));
         setGroupBy(normalizeTaskGroupBy(cfg.groupBy));
+        if (cfg.sortConfig !== undefined) setSortConfig(cfg.sortConfig);
       })
       .catch(() => {})
       .finally(() => { filtersLoadedRef.current = true; });
@@ -484,11 +485,11 @@ export default function TareasPage() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, quickFilter, groupBy }),
+        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, quickFilter, groupBy, sortConfig }),
       }).catch(() => {});
     }, 900);
     return () => { if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current); };
-  }, [filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter]);
+  }, [filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, sortConfig]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
