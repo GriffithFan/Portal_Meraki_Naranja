@@ -6,11 +6,12 @@ import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash } from "@/components/ui/Icons";
 import StatusIcon from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
+import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
-import { obtenerProvincia } from "@/utils/provinciaUtils";
+import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
@@ -109,6 +110,7 @@ interface TareasSavedView {
     filterEstado: string;
     filterProvincia: string;
     filterPrioridad: string;
+    filterAsignado?: string;
     quickFilter: string;
     groupBy: string;
     includeSubspaces?: boolean;
@@ -162,6 +164,7 @@ export default function TareasPage() {
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterProvincia, setFilterProvincia] = useState("");
   const [filterPrioridad, setFilterPrioridad] = useState("todas");
+  const [filterAsignado, setFilterAsignado] = useState("todos");
   const [quickFilter, setQuickFilter] = useState("todos");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -184,6 +187,7 @@ export default function TareasPage() {
       setFilterEstado("todos");
       setFilterProvincia("");
       setFilterPrioridad("todas");
+      setFilterAsignado("todos");
       setQuickFilter("todos");
     }
   }, [headerSearch]);
@@ -361,6 +365,13 @@ export default function TareasPage() {
     estadoDropdownRef.current?.toggle(tareaId, e.currentTarget as HTMLElement);
   };
 
+  // Editor inline de asignados (solo ADMIN/MOD)
+  const asignadosEditorRef = useRef<AsignadosInlineEditorHandle>(null);
+  const abrirAsignados = (e: React.MouseEvent, tareaId: string) => {
+    e.stopPropagation();
+    asignadosEditorRef.current?.toggle(tareaId, e.currentTarget as HTMLElement);
+  };
+
   const openCreateModal = useCallback((defaults: { estadoId?: string; espacioId?: string } = {}) => {
     setCreateDefaults(defaults);
     setShowModal(true);
@@ -414,6 +425,7 @@ export default function TareasPage() {
     if (filterEstado !== "todos") params.set("estado", filterEstado);
     if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
     if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
+    if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
     params.set("groupBy", groupBy);
     const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
@@ -453,7 +465,7 @@ export default function TareasPage() {
       if (append) setLoadingMore(false);
       else setLoading(false);
     }
-  }, [filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, serverSearch]);
+  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, groupBy, quickFilter, serverSearch]);
 
   useEffect(() => {
     fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
@@ -464,6 +476,7 @@ export default function TareasPage() {
         setFilterEstado(cfg.filterEstado || "todos");
         setFilterProvincia(cfg.filterProvincia || "");
         setFilterPrioridad(cfg.filterPrioridad || "todas");
+        setFilterAsignado(cfg.filterAsignado || "todos");
         setQuickFilter(normalizeTaskQuickFilter(cfg.quickFilter));
         setGroupBy(normalizeTaskGroupBy(cfg.groupBy));
         if (cfg.sortConfig !== undefined) setSortConfig(cfg.sortConfig);
@@ -487,11 +500,11 @@ export default function TareasPage() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, quickFilter, groupBy, sortConfig }),
+        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter, groupBy, sortConfig }),
       }).catch(() => {});
     }, 900);
     return () => { if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current); };
-  }, [filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, sortConfig]);
+  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, groupBy, quickFilter, sortConfig]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
@@ -779,6 +792,36 @@ export default function TareasPage() {
       if (selectedTarea?.id === tareaId) {
         setSelectedTarea((prev: any) => ({ ...prev, etiquetas: nextEtiquetas }));
       }
+    }
+  }
+
+  // Guardar asignados desde el editor inline (solo ADMIN/MOD)
+  async function saveAsignados(tareaId: string, userIds: string[]) {
+    const toastId = toast.loading("Guardando asignados...");
+    try {
+      const res = await fetch(`/api/tareas/${tareaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ asignadoIds: userIds }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        const nextAsignaciones = updated.asignaciones || userIds.map((id) => {
+          const u = allUsers.find((x) => x.id === id);
+          return { id, usuario: { id, nombre: u?.nombre || "?" } };
+        });
+        setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, asignaciones: nextAsignaciones } : t));
+        if (selectedTarea?.id === tareaId) {
+          setSelectedTarea((prev: any) => ({ ...prev, asignaciones: nextAsignaciones }));
+        }
+        toast.success("Asignados actualizados", { id: toastId });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "No se pudo actualizar los asignados", { id: toastId });
+      }
+    } catch {
+      toast.error("No se pudo actualizar los asignados", { id: toastId });
     }
   }
 
@@ -1150,18 +1193,29 @@ export default function TareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
+      const badges = asigns.map((a: any) => (
+        <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
+          {a.usuario?.nombre?.split(" ")[0] || "?"}
+        </span>
+      ));
+      if (isModOrAdmin) {
+        return (
+          <button
+            type="button"
+            onClick={(e) => abrirAsignados(e, t.id)}
+            title="Editar asignados"
+            className="flex w-full min-h-[20px] flex-wrap items-center gap-1 -mx-0.5 rounded px-0.5 text-left transition-colors hover:bg-surface-50 dark:hover:bg-surface-700/50"
+          >
+            {asigns.length === 0
+              ? <span className="rounded border border-dashed border-surface-300 px-1.5 py-px text-[10px] text-surface-400">+ Asignar</span>
+              : badges}
+          </button>
+        );
+      }
       if (asigns.length === 0) {
         return <span className="text-surface-300">&mdash;</span>;
       }
-      return (
-        <span className="flex items-center gap-1 flex-wrap">
-          {asigns.map((a: any) => (
-            <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
-              {a.usuario?.nombre?.split(" ")[0] || "?"}
-            </span>
-          ))}
-        </span>
-      );
+      return <span className="flex items-center gap-1 flex-wrap">{badges}</span>;
     }
     if (col.type === "date") return formatDate(t[col.field]);
     if (col.type === "badge" && col.id === "lacR") {
@@ -1252,13 +1306,14 @@ export default function TareasPage() {
     });
   }, [columns, tareas]);
 
-  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || quickFilter !== "todos");
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
     setServerSearch("");
     setFilterEstado("todos");
     setFilterProvincia("");
     setFilterPrioridad("todas");
+    setFilterAsignado("todos");
     setQuickFilter("todos");
   };
 
@@ -1268,11 +1323,11 @@ export default function TareasPage() {
     id: id || `tareas-view-${Date.now()}`,
     name: name.trim().slice(0, 60) || "Vista de tareas",
     search,
-    filters: { filterEstado, filterProvincia, filterPrioridad, quickFilter: normalizeTaskQuickFilter(quickFilter), groupBy: normalizeTaskGroupBy(groupBy) },
+    filters: { filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter: normalizeTaskQuickFilter(quickFilter), groupBy: normalizeTaskGroupBy(groupBy) },
     sortConfig,
     columns: sanitizeTaskFieldConfigs(columns).map((col, index) => ({ id: col.id, visible: col.visible, order: index, width: col.width })),
     updatedAt: new Date().toISOString(),
-  }), [columns, filterEstado, filterPrioridad, filterProvincia, groupBy, quickFilter, search, sortConfig]);
+  }), [columns, filterEstado, filterPrioridad, filterProvincia, filterAsignado, groupBy, quickFilter, search, sortConfig]);
 
   const persistSavedViews = useCallback(async (nextViews: TareasSavedView[]) => {
     setSavingView(true);
@@ -1325,6 +1380,7 @@ export default function TareasPage() {
     setFilterEstado(filters.filterEstado || "todos");
     setFilterProvincia(filters.filterProvincia || "");
     setFilterPrioridad(filters.filterPrioridad || "todas");
+    setFilterAsignado(filters.filterAsignado || "todos");
     setQuickFilter(normalizeTaskQuickFilter(filters.quickFilter));
     setGroupBy(normalizeTaskGroupBy(filters.groupBy));
     setSortConfig(view.sortConfig || null);
@@ -1363,7 +1419,7 @@ export default function TareasPage() {
 
   const getSavedViewSummary = useCallback((view: TareasSavedView) => {
     const filters = view.filters || {} as TareasSavedView["filters"];
-    const count = [filters.filterEstado !== "todos", Boolean(filters.filterProvincia), filters.filterPrioridad !== "todas", filters.quickFilter !== "todos"].filter(Boolean).length;
+    const count = [filters.filterEstado !== "todos", Boolean(filters.filterProvincia), filters.filterPrioridad !== "todas", Boolean(filters.filterAsignado && filters.filterAsignado !== "todos"), filters.quickFilter !== "todos"].filter(Boolean).length;
     return `${count} filtros · ${filters.groupBy ? `agrupa por ${filters.groupBy}` : "sin agrupacion"} · ${view.search ? `busca ${view.search}` : "sin busqueda"}`;
   }, []);
 
@@ -1545,6 +1601,7 @@ export default function TareasPage() {
             { key: "vencidas", label: "Vencidas" },
             { key: "sin-gps", label: "Sin GPS" },
             { key: "sin-estado", label: "Sin estado" },
+            { key: "sin-asignar", label: "Sin asignar" },
             { key: "sin-espacio", label: "Sin espacio" },
           ].map((item) => (
             <button
@@ -1556,7 +1613,7 @@ export default function TareasPage() {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
           <select
             value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
@@ -1569,8 +1626,12 @@ export default function TareasPage() {
             value={filterProvincia}
             onChange={(e) => setFilterProvincia(e.target.value)}
             placeholder="Provincia"
+            list="pmn-provincias-tareas"
             className="px-3 py-2 text-xs border border-surface-200 rounded-md focus:outline-none focus:border-surface-400"
           />
+          <datalist id="pmn-provincias-tareas">
+            {PROVINCIAS.map(p => <option key={p} value={p} />)}
+          </datalist>
           <select
             value={filterPrioridad}
             onChange={(e) => setFilterPrioridad(e.target.value)}
@@ -1581,6 +1642,14 @@ export default function TareasPage() {
             <option value="ALTA">Alta</option>
             <option value="MEDIA">Media</option>
             <option value="BAJA">Baja</option>
+          </select>
+          <select
+            value={filterAsignado}
+            onChange={(e) => setFilterAsignado(e.target.value)}
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="todos">Todos los asignados</option>
+            {allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
           </select>
           <button
             onClick={clearServerFilters}
@@ -2483,6 +2552,7 @@ export default function TareasPage() {
 
       {/* Dropdown inline de estado (fixed, fuera de tablas) */}
       <EstadoInlineDropdown ref={estadoDropdownRef} tareas={tareas} estados={estados} onChange={changeEstado} />
+      <AsignadosInlineEditor ref={asignadosEditorRef} tareas={tareas} users={allUsers} onSave={saveAsignados} />
     </div>
   );
 }

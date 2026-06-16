@@ -9,11 +9,12 @@ import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import StatusIcon from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
+import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
 import { IconDownload, IconPlus } from "@/components/ui/Icons";
-import { obtenerProvincia } from "@/utils/provinciaUtils";
+import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
 import { hasTaskFieldConfig, normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
@@ -365,6 +366,12 @@ export default function EspacioTareasPage() {
   const abrirInlineEstado = (e: React.MouseEvent, tareaId: string) => {
     e.stopPropagation();
     estadoDropdownRef.current?.toggle(tareaId, e.currentTarget as HTMLElement);
+  };
+
+  const asignadosEditorRef = useRef<AsignadosInlineEditorHandle>(null);
+  const abrirAsignados = (e: React.MouseEvent, tareaId: string) => {
+    e.stopPropagation();
+    asignadosEditorRef.current?.toggle(tareaId, e.currentTarget as HTMLElement);
   };
 
   async function changeEstadoInline(tareaId: string, estadoId: string) {
@@ -1045,6 +1052,33 @@ export default function EspacioTareasPage() {
     }
   }
 
+  // Guardar asignados desde el editor inline (solo ADMIN/MOD)
+  async function saveAsignados(tareaId: string, userIds: string[]) {
+    const toastId = toast.loading("Guardando asignados...");
+    try {
+      const res = await fetch(`/api/tareas/${tareaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ asignadoIds: userIds }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        const nextAsignaciones = updated.asignaciones || userIds.map((id) => {
+          const u = allUsers.find((x) => x.id === id);
+          return { id, usuario: { id, nombre: u?.nombre || "?" } };
+        });
+        setTareas(prev => prev.map(t => t.id === tareaId ? { ...t, asignaciones: nextAsignaciones } : t));
+        toast.success("Asignados actualizados", { id: toastId });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "No se pudo actualizar los asignados", { id: toastId });
+      }
+    } catch {
+      toast.error("No se pudo actualizar los asignados", { id: toastId });
+    }
+  }
+
   // Crear estado nuevo
   async function handleCreateEstado(e: React.FormEvent) {
     e.preventDefault();
@@ -1368,16 +1402,27 @@ export default function EspacioTareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      if (asigns.length > 0) {
+      const badges = asigns.map((a: any) => (
+        <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
+          {a.usuario?.nombre?.split(" ")[0] || "?"}
+        </span>
+      ));
+      if (isModOrAdmin) {
         return (
-          <span className="flex items-center gap-1 flex-wrap">
-            {asigns.map((a: any) => (
-              <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
-                {a.usuario?.nombre?.split(" ")[0] || "?"}
-              </span>
-            ))}
-          </span>
+          <button
+            type="button"
+            onClick={(e) => abrirAsignados(e, t.id)}
+            title="Editar asignados"
+            className="flex w-full min-h-[20px] flex-wrap items-center gap-1 -mx-0.5 rounded px-0.5 text-left transition-colors hover:bg-surface-50 dark:hover:bg-surface-700/50"
+          >
+            {asigns.length === 0
+              ? <span className="rounded border border-dashed border-surface-300 px-1.5 py-px text-[10px] text-surface-400">+ Asignar</span>
+              : badges}
+          </button>
         );
+      }
+      if (asigns.length > 0) {
+        return <span className="flex items-center gap-1 flex-wrap">{badges}</span>;
       }
       return <span className="text-surface-300">&mdash;</span>;
     }
@@ -2013,6 +2058,7 @@ export default function EspacioTareasPage() {
             { key: "vencidas", label: "Vencidas" },
             { key: "sin-gps", label: "Sin GPS" },
             { key: "sin-estado", label: "Sin estado" },
+            { key: "sin-asignar", label: "Sin asignar" },
           ].map((item) => (
             <button
               key={item.key}
@@ -2036,8 +2082,12 @@ export default function EspacioTareasPage() {
             value={filterProvincia}
             onChange={(e) => setFilterProvincia(e.target.value)}
             placeholder="Provincia"
+            list="pmn-provincias-espacio"
             className="px-3 py-2 text-xs border border-surface-200 rounded-md focus:outline-none focus:border-surface-400"
           />
+          <datalist id="pmn-provincias-espacio">
+            {PROVINCIAS.map(p => <option key={p} value={p} />)}
+          </datalist>
           <select
             value={filterPrioridad}
             onChange={(e) => setFilterPrioridad(e.target.value)}
@@ -2652,6 +2702,7 @@ export default function EspacioTareasPage() {
 
       {/* Dropdown inline de estado (fixed, fuera de tablas) */}
       <EstadoInlineDropdown ref={estadoDropdownRef} tareas={tareas} estados={estados} onChange={changeEstadoInline} />
+      <AsignadosInlineEditor ref={asignadosEditorRef} tareas={tareas} users={allUsers} onSave={saveAsignados} />
     </div>
   );
 }

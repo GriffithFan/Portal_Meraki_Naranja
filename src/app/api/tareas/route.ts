@@ -244,6 +244,7 @@ export async function GET(request: NextRequest) {
       { lacR: { contains: buscar, mode: "insensitive" } },
       { notas: { contains: buscar, mode: "insensitive" } },
       { etiquetas: { some: { etiqueta: { nombre: { contains: buscar, mode: "insensitive" } } } } },
+      { asignaciones: { some: { usuario: { nombre: { contains: buscar, mode: "insensitive" } } } } },
     ];
     const camposExtraIds = Array.from(new Set(camposExtraMatches.map((row) => row.id)));
     if (camposExtraIds.length > 0) searchOr.push({ id: { in: camposExtraIds } });
