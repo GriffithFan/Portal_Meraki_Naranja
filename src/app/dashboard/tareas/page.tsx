@@ -309,6 +309,16 @@ export default function TareasPage() {
   const hadSavedConfig = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const COL_CONFIG_KEY = "col-config-tareas";
+  // Definiciones de campos personalizados (clave → label/ancho/tipo) solo como
+  // catálogo de etiquetas. Las COLUMNAS se derivan de los datos + la config de
+  // esta lista (no de todos los campos globales), para no contaminar la lista.
+  const [camposDefs, setCamposDefs] = useState<Record<string, { nombre: string; ancho?: number; tipo?: string; opciones?: string[] }>>({});
+  const savedColConfigRef = useRef<{ id: string; visible: boolean; order: number; width?: number }[] | null>(null);
+  // Claves custom agregadas manualmente en esta sesión (para que una columna
+  // recién creada y aún vacía no desaparezca al refrescar los datos).
+  const sessionCustomKeysRef = useRef<Set<string>>(new Set());
+  // Claves custom quitadas en esta sesión (para que no reaparezcan por los datos).
+  const removedCustomKeysRef = useRef<Set<string>>(new Set());
 
   // Guardar config al servidor cuando ADMIN/MOD cambia columnas (debounced)
   useEffect(() => {
@@ -415,6 +425,7 @@ export default function TareasPage() {
           if (cfgData?.config) {
             hadSavedConfig.current = true;
             const config = sanitizeTaskFieldConfigs(cfgData.config as { id: string; visible: boolean; order: number; width?: number }[]);
+            savedColConfigRef.current = config;
             setColumns(prev => {
               const safePrev = sanitizeTaskFieldConfigs(prev);
               const orderMap = new Map(config.map((c, i) => [c.id, { visible: c.visible, order: i, width: c.width }]));
@@ -574,29 +585,16 @@ export default function TareasPage() {
         })
         .catch(() => {});
     }
-    // Cargar campos personalizados y agregar como columnas
+    // Cargar campos personalizados SOLO como catálogo de etiquetas (clave→nombre/ancho).
+    // Las columnas custom se derivan de los datos + la config de esta lista (efecto aparte).
     fetch("/api/campos-personalizados", { credentials: "include" })
       .then(r => r.ok ? r.json() : { campos: [] })
       .then(d => {
-        const campos = d.campos || [];
-        if (campos.length > 0) {
-          setColumns(prev => {
-            const existingIds = new Set(prev.map(c => c.id));
-            const newCols = campos
-              .filter((c: any) => !existingIds.has(`custom_${c.clave}`))
-              .map((c: any) => ({
-                id: `custom_${c.clave}`,
-                label: c.nombre,
-                field: `_custom_${c.clave}`,
-                width: c.ancho || 100,
-                visible: true,
-                editable: true,
-                type: (c.tipo || "text") as "text" | "badge" | "date" | "select",
-                options: c.opciones?.length ? c.opciones : undefined,
-              }));
-            return sanitizeTaskFieldConfigs(newCols.length > 0 ? [...prev, ...newCols] : prev);
-          });
+        const map: Record<string, { nombre: string; ancho?: number; tipo?: string; opciones?: string[] }> = {};
+        for (const c of (d.campos || [])) {
+          map[c.clave] = { nombre: c.nombre, ancho: c.ancho, tipo: c.tipo, opciones: c.opciones };
         }
+        setCamposDefs(map);
       })
       .catch(() => {});
     // Cargar usuarios para asignación
@@ -727,6 +725,44 @@ export default function TareasPage() {
 
   // Lista plana ordenada (vista sin estados): memoizada para no re-ordenar en cada render.
   const sortedTareas = useMemo(() => sortTareasList(tareas, sortConfig), [tareas, sortConfig]);
+
+  // ── Reconciliar columnas personalizadas (por lista, según los datos) ──
+  // Las columnas custom existen solo si su clave está en los datos de ESTA lista,
+  // o en su config guardada, o se agregó en esta sesión. Así una lista no arrastra
+  // los campos personalizados de otras importaciones.
+  useEffect(() => {
+    const claves = new Set<string>();
+    for (const t of tareas) {
+      const ce = t?.camposExtra;
+      if (ce && typeof ce === "object") {
+        for (const k of Object.keys(ce)) if (String((ce as any)[k] ?? "").trim()) claves.add(k);
+      }
+    }
+    for (const c of (savedColConfigRef.current || [])) if (c.id.startsWith("custom_")) claves.add(c.id.slice(7));
+    Array.from(sessionCustomKeysRef.current).forEach(k => claves.add(k));
+    Array.from(removedCustomKeysRef.current).forEach(k => claves.delete(k));
+
+    setColumns(prev => {
+      const keep = prev.filter(c => !c.id.startsWith("custom_") || claves.has(c.id.slice(7)));
+      const presentes = new Set(keep.filter(c => c.id.startsWith("custom_")).map(c => c.id.slice(7)));
+      const nuevas: Column[] = Array.from(claves).filter(k => !presentes.has(k)).map(clave => {
+        const def = camposDefs[clave];
+        const saved = savedColConfigRef.current?.find(s => s.id === `custom_${clave}`);
+        return {
+          id: `custom_${clave}`,
+          label: def?.nombre || clave,
+          field: `_custom_${clave}`,
+          width: saved?.width ?? def?.ancho ?? 120,
+          visible: saved ? saved.visible : true,
+          editable: true,
+          type: (def?.tipo as Column["type"]) || "text",
+          options: def?.opciones?.length ? def.opciones : undefined,
+        };
+      });
+      if (nuevas.length === 0 && keep.length === prev.length) return prev; // sin cambios → evita re-render
+      return [...keep, ...nuevas];
+    });
+  }, [tareas, camposDefs]);
 
   const getGroupTotal = useCallback((key: string, loadedCount: number) => {
     return groupCounts?.[key] ?? loadedCount;
@@ -902,6 +938,9 @@ export default function TareasPage() {
       // id es la clave del campo
       const res = await fetch(`/api/campos-personalizados?clave=${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" });
       if (res.ok) {
+        sessionCustomKeysRef.current.delete(id);
+        removedCustomKeysRef.current.add(id);
+        setCamposDefs(prev => { const n = { ...prev }; delete n[id]; return n; });
         setColumns(prev => prev.filter(c => c.id !== `custom_${id}`));
       }
     }
@@ -1048,6 +1087,10 @@ export default function TareasPage() {
       if (res.ok) {
         const campo = await res.json();
         const colId = `custom_${campo.clave}`;
+        // Recordar la clave en la sesión y en el catálogo para que la reconciliación
+        // no quite esta columna recién creada (todavía sin datos).
+        sessionCustomKeysRef.current.add(campo.clave);
+        setCamposDefs(prev => ({ ...prev, [campo.clave]: { nombre: campo.nombre, ancho: campo.ancho, tipo: campo.tipo, opciones: campo.opciones } }));
         setColumns(prev => {
           if (prev.some(c => c.id === colId)) return prev;
           return [...prev, {

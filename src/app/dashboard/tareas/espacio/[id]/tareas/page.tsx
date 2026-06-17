@@ -246,6 +246,13 @@ export default function EspacioTareasPage() {
   // Columnas configurables
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
+  // Catálogo de campos personalizados (clave→nombre/ancho) solo para etiquetas.
+  // Las columnas custom se derivan de los datos + config + plantilla de esta lista.
+  const [camposDefs, setCamposDefs] = useState<Record<string, { nombre: string; ancho?: number; tipo?: string; opciones?: string[] }>>({});
+  // Claves custom que SIEMPRE se conservan en esta lista (plantilla del espacio + agregadas en la sesión).
+  const keepCustomKeysRef = useRef<Set<string>>(new Set());
+  // Claves custom quitadas en esta sesión (para que no reaparezcan por los datos).
+  const removedCustomKeysRef = useRef<Set<string>>(new Set());
   const [showEstadoModal, setShowEstadoModal] = useState(false);
   const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6" });
 
@@ -436,6 +443,43 @@ export default function EspacioTareasPage() {
     }, 800);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [COL_CONFIG_KEY, columns, isModOrAdmin]);
+
+  // ── Reconciliar columnas personalizadas (por lista, según los datos) ──
+  // Existen solo si su clave está en los datos de esta carpeta, en su config
+  // guardada, o se conserva (plantilla del espacio / agregada en la sesión).
+  useEffect(() => {
+    const claves = new Set<string>();
+    for (const t of tareas) {
+      const ce = t?.camposExtra;
+      if (ce && typeof ce === "object") {
+        for (const k of Object.keys(ce)) if (String((ce as any)[k] ?? "").trim()) claves.add(k);
+      }
+    }
+    for (const c of (savedColumnConfigRef.current || [])) if (c.id.startsWith("custom_")) claves.add(c.id.slice(7));
+    Array.from(keepCustomKeysRef.current).forEach(k => claves.add(k));
+    Array.from(removedCustomKeysRef.current).forEach(k => claves.delete(k));
+
+    setColumns(prev => {
+      const keep = prev.filter(c => !String(c.id).startsWith("custom_") || claves.has(String(c.id).slice(7)));
+      const presentes = new Set(keep.filter(c => String(c.id).startsWith("custom_")).map(c => String(c.id).slice(7)));
+      const nuevas: Column[] = Array.from(claves).filter(k => !presentes.has(k)).map(clave => {
+        const def = camposDefs[clave];
+        const saved = savedColumnConfigRef.current?.find(s => s.id === `custom_${clave}`);
+        return {
+          id: `custom_${clave}`,
+          label: def?.nombre || clave,
+          field: `_custom_${clave}`,
+          width: saved?.width ?? def?.ancho ?? 120,
+          visible: saved ? saved.visible : true,
+          editable: true,
+          type: (def?.tipo as Column["type"]) || "text",
+          options: def?.opciones?.length ? def.opciones : undefined,
+        };
+      });
+      if (nuevas.length === 0 && keep.length === prev.length) return prev;
+      return [...keep, ...nuevas];
+    });
+  }, [tareas, camposDefs]);
 
   // Mostrar/ocultar estados vacíos
   const [showEmptyStates, setShowEmptyStates] = useState(false);
@@ -707,7 +751,19 @@ export default function EspacioTareasPage() {
     if (camposRes.ok) {
       const d = await camposRes.json();
       const globalCampos = d.campos || [];
+      // Catálogo de etiquetas (clave→nombre/ancho) — NO se agregan todos como columnas.
+      const defsMap: Record<string, { nombre: string; ancho?: number; tipo?: string; opciones?: string[] }> = {};
+      for (const c of globalCampos) defsMap[c.clave] = { nombre: c.nombre, ancho: c.ancho, tipo: c.tipo, opciones: c.opciones };
+      setCamposDefs(defsMap);
+
       const templateCampos = Array.isArray(nextEspacio?.camposConfig) ? sanitizeTaskFieldConfigs(nextEspacio.camposConfig) : [];
+      // Las columnas custom de la plantilla del espacio siempre se conservan.
+      for (const f of templateCampos) {
+        const fid = String((f as any).id || "");
+        if (fid.startsWith("custom_")) keepCustomKeysRef.current.add(fid.slice(7));
+      }
+      // Columnas base: la plantilla del espacio (si tiene) o las del sistema.
+      // Las columnas custom por-lista las agrega el efecto de reconciliación según los datos.
       const nextColumns = templateCampos.length > 0
         ? templateCampos.map((field: any) => ({
             id: field.id,
@@ -721,21 +777,7 @@ export default function EspacioTareasPage() {
             optionColors: field.optionColors || undefined,
             showInCreate: field.showInCreate,
           })).filter((field: Column) => field.id && field.field)
-        : [
-            ...DEFAULT_COLUMNS,
-            ...globalCampos.map((field: any) => ({
-              id: `custom_${field.clave}`,
-              label: field.nombre,
-              field: `_custom_${field.clave}`,
-              width: field.ancho || 100,
-              visible: true,
-              editable: true,
-              type: (field.tipo || "text") as Column["type"],
-              options: field.opciones?.length ? field.opciones : undefined,
-              optionColors: field.optionColors || undefined,
-              showInCreate: false,
-            })),
-          ];
+        : [...DEFAULT_COLUMNS];
 
       // Mantener "Orden" disponible también en vistas por carpeta con template propio.
       const ordenColumn = DEFAULT_COLUMNS.find((col) => col.id === "orden");
@@ -1146,6 +1188,8 @@ export default function EspacioTareasPage() {
       const res = await fetch(`/api/estados/${id}`, { method: "DELETE", credentials: "include" });
       if (res.ok) { setEstados(prev => prev.filter(e => e.id !== id)); fetchData(); }
     } else if (type === "campo") {
+      keepCustomKeysRef.current.delete(id);
+      removedCustomKeysRef.current.add(id);
       if (espacio?.id) {
         const nextColumns = columns.filter(c => c.id !== `custom_${id}`);
         setColumns(nextColumns);
@@ -1186,6 +1230,9 @@ export default function EspacioTareasPage() {
         type: newColType,
         options: options.length ? options : undefined,
       };
+      // Conservar la columna recién creada aunque aún no tenga datos.
+      keepCustomKeysRef.current.add(uniqueClave);
+      removedCustomKeysRef.current.delete(uniqueClave);
       const nextColumns = columns.some(c => c.id === colId) ? columns : [...columns, newColumn];
       setColumns(nextColumns);
       await fetch(`/api/espacios/${espacioId}`, {
