@@ -16,10 +16,10 @@ const SAFE_MIME: Record<string, string> = {
   ".doc": "application/msword",
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
-// Tipos que se pueden ver en el navegador (inline); el resto se descarga.
-const INLINE_EXT = new Set([".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+// Solo las imágenes se sirven inline (para el visor emergente); el resto se descarga.
+const INLINE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ archivoId: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ archivoId: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   if (!tieneAccesoFichas(session.email)) return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
@@ -38,7 +38,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
     const ext = path.extname(archivo.ruta).toLowerCase();
     const contentType = SAFE_MIME[ext] || "application/octet-stream";
-    const disposition = INLINE_EXT.has(ext) ? "inline" : "attachment";
+    // ?dl=1 fuerza la descarga; si no, solo las imágenes se sirven inline (para el visor).
+    const forzarDescarga = request.nextUrl.searchParams.get("dl") === "1";
+    const disposition = (!forzarDescarga && INLINE_EXT.has(ext)) ? "inline" : "attachment";
 
     return new NextResponse(new Uint8Array(fileBuffer), {
       headers: {
