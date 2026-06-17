@@ -450,6 +450,7 @@ model FichaPersonal {
   proyecto       String?
   notasGenerales String?  @db.Text
   notasSecciones Json?    // notas por apartado: { dni: "...", carnet: "...", auto: "...", ... }
+  camposExtra    Json?    // campos personalizados por persona: { "Email": "...", "Talle": "...", ... }
   archivos       FichaArchivo[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

@@ -33,11 +33,22 @@ export function normalizeFichaBody(body: any) {
   if (body?.notasSecciones && typeof body.notasSecciones === "object" && !Array.isArray(body.notasSecciones)) {
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(body.notasSecciones)) {
-      if (typeof v === "string" && v.trim()) out[k.slice(0, 40)] = v.slice(0, 5000);
+      if (typeof v === "string" && v.trim()) out[k.slice(0, 60)] = v.slice(0, 5000);
     }
     data.notasSecciones = out as Prisma.InputJsonValue;
   } else {
     data.notasSecciones = Prisma.JsonNull;
+  }
+  // Campos personalizados: { "nombre del campo": "valor" } (acotado a strings)
+  if (body?.camposExtra && typeof body.camposExtra === "object" && !Array.isArray(body.camposExtra)) {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(body.camposExtra)) {
+      const clave = k.trim().slice(0, 60);
+      if (clave) out[clave] = typeof v === "string" ? v.slice(0, 2000) : String(v ?? "").slice(0, 2000);
+    }
+    data.camposExtra = out as Prisma.InputJsonValue;
+  } else {
+    data.camposExtra = Prisma.JsonNull;
   }
   return data;
 }

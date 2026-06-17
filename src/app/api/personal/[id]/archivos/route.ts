@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { tieneAccesoFichas, esSeccionValida } from "@/lib/fichasAccess";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { sanitizeFileName, validateAndReadUpload } from "@/lib/uploadSecurity";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
@@ -26,14 +28,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!tieneAccesoFichas(session.email)) return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
 
   const { id } = await params;
-  const ficha = await prisma.fichaPersonal.findUnique({ where: { id }, select: { id: true } });
+  const ficha = await prisma.fichaPersonal.findUnique({ where: { id }, select: { id: true, camposExtra: true } });
   if (!ficha) return NextResponse.json({ error: "Ficha no encontrada" }, { status: 404 });
 
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const seccionRaw = (formData.get("seccion") as string | null)?.trim() || "general";
-    const seccion = esSeccionValida(seccionRaw) ? seccionRaw : "general";
+    // Acepta una sección fija o una clave de campo personalizado de ESTA ficha.
+    const clavesCustom = (ficha.camposExtra && typeof ficha.camposExtra === "object" && !Array.isArray(ficha.camposExtra))
+      ? Object.keys(ficha.camposExtra as Record<string, any>)
+      : [];
+    const seccion = (esSeccionValida(seccionRaw) || clavesCustom.includes(seccionRaw)) ? seccionRaw : "general";
 
     if (!file) return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
 

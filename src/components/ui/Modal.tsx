@@ -33,6 +33,11 @@ export default function Modal({
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const lastFocused = useRef<HTMLElement | null>(null);
+  // onClose en un ref: así el efecto de foco/teclado depende solo de `open` y
+  // NO se re-ejecuta en cada render del padre (lo que robaba el foco a la X al
+  // tipear, porque onClose suele ser una arrow nueva en cada render).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +51,7 @@ export default function Modal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       } else if (e.key === "Tab") {
         // Focus trap
         const focusables = panelRef.current?.querySelectorAll<HTMLElement>(
@@ -66,11 +71,13 @@ export default function Modal({
     };
     document.addEventListener("keydown", onKey, true);
 
-    // Foco inicial dentro del panel
+    // Foco inicial dentro del panel: priorizar campos de formulario sobre el
+    // botón de cerrar (X), que en el DOM aparece primero.
     const t = setTimeout(() => {
-      const focusable = panelRef.current?.querySelector<HTMLElement>(
-        'input, textarea, select, button:not([disabled])'
-      );
+      const panel = panelRef.current;
+      if (!panel) return;
+      const campo = panel.querySelector<HTMLElement>("input, textarea, select");
+      const focusable = campo || panel.querySelector<HTMLElement>('button:not([disabled])');
       focusable?.focus();
     }, 0);
 
@@ -80,7 +87,7 @@ export default function Modal({
       clearTimeout(t);
       lastFocused.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
