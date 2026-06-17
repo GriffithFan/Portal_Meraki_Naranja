@@ -430,6 +430,46 @@ model Acta {
   @@index([predioId])
 }
 
+// ─── PERSONAL (fichas de técnicos y contratistas) ───
+// Acceso restringido por código (ver src/lib/fichasAccess.ts). Registro
+// independiente de las cuentas de login (un contratista puede no tener usuario).
+model FichaPersonal {
+  id             String   @id @default(cuid())
+  tipo           String   @default("TECNICO") // "TECNICO" | "CONTRATISTA"
+  nombre         String
+  dni            String?
+  direccion      String?
+  telefono       String?
+  carnet         String?
+  seguro         String?
+  monotributo    String?
+  autoModelo     String?
+  autoPatente    String?
+  autoKmts       Int?
+  autoTarjetaRed String?
+  proyecto       String?
+  notasGenerales String?  @db.Text
+  notasSecciones Json?    // notas por apartado: { dni: "...", carnet: "...", auto: "...", ... }
+  archivos       FichaArchivo[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model FichaArchivo {
+  id          String        @id @default(cuid())
+  fichaId     String
+  ficha       FichaPersonal @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+  seccion     String        // dni | direccion | telefono | carnet | seguro | monotributo | auto | proyecto | general
+  nombre      String        // nombre original del archivo
+  ruta        String        // /uploads/personal/<archivo>
+  tipo        String        // MIME
+  size        Int
+  subidoPorId String?
+  createdAt   DateTime      @default(now())
+
+  @@index([fichaId])
+}
+
 // ─── MONITOREO POST-CAMBIO DE ESTADO ─────────────────
 model MonitoreoPostCambio {
   id              String   @id @default(cuid())

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { tieneAccesoFichas } from "@/lib/fichasAccess";
 
 // Validación crítica: JWT_SECRET debe estar definido en producción
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -57,7 +58,7 @@ function checkLoginRateLimit(ip: string): boolean {
 const MAX_BODY_BYTES = 16 * 1024; // 16 KB
 const LARGE_BODY_PATHS = ["/api/tareas", "/api/stock", "/api/calendario"]; // rutas con payloads más grandes
 const MAX_LARGE_BODY_BYTES = 256 * 1024; // 256 KB
-const UPLOAD_PATHS = ["/api/importar", "/api/actas", "/api/instructivos", "/api/chat/upload"]; // rutas con archivos
+const UPLOAD_PATHS = ["/api/importar", "/api/actas", "/api/instructivos", "/api/chat/upload", "/api/personal"]; // rutas con archivos
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 
 const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron", "/api/notificaciones/changelog"];
@@ -111,12 +112,15 @@ export async function middleware(request: NextRequest) {
     // Verificar el token una sola vez (se reutiliza para rate-limit y auth)
     const token = request.cookies.get(COOKIE_NAME)?.value;
     let userId: string | null = null;
+    let email: string | null = null;
     if (token) {
       try {
         const { payload } = await jwtVerify(token, secret);
         userId = typeof payload.userId === "string" ? payload.userId : null;
+        email = typeof payload.email === "string" ? payload.email : null;
       } catch {
         userId = null; // token inválido/expirado
+        email = null;
       }
     }
 
@@ -155,6 +159,16 @@ export async function middleware(request: NextRequest) {
         return NextResponse.json({ error: "No autorizado" }, { status: 401 });
       }
       return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    // ── Candado de la base de Personal: solo cuentas fijadas en código ──
+    if (pathname.startsWith("/dashboard/personal") || pathname.startsWith("/api/personal")) {
+      if (!tieneAccesoFichas(email)) {
+        if (pathname.startsWith("/api")) {
+          return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+        }
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
     }
 
     return NextResponse.next();
