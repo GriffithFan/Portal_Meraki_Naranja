@@ -119,17 +119,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verificar que no tenga una conversación abierta/en_curso
-    const activa = await prisma.chatConversacion.findFirst({
-      where: {
-        creadorId: session.userId,
-        estado: { in: ["ABIERTA", "EN_CURSO"] },
-      },
+    // El técnico puede abrir una consulta nueva cuando quiera (varios temas en
+    // paralelo). Tope blando para evitar spam accidental: máx. de hilos abiertos.
+    const abiertas = await prisma.chatConversacion.count({
+      where: { creadorId: session.userId, estado: { in: ["ABIERTA", "EN_CURSO"] } },
     });
-
-    if (activa) {
+    if (abiertas >= 15) {
       return NextResponse.json(
-        { error: "Ya tenés una consulta activa. Esperá a que se cierre para crear otra." },
+        { error: "Tenés demasiadas consultas abiertas. Esperá a que Mesa cierre algunas." },
         { status: 409 }
       );
     }

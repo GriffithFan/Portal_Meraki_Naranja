@@ -178,6 +178,8 @@ export default function ChatFloatingWidget() {
   const [supportLoading, setSupportLoading] = useState(false);
   const [conversacion, setConversacion] = useState<any>(null);
   const [mensajes, setMensajes] = useState<any[]>([]);
+  // Técnico: forzar vista de "nueva consulta" aunque ya tenga una conversación.
+  const [nuevaConsulta, setNuevaConsulta] = useState(false);
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -399,6 +401,7 @@ export default function ChatFloatingWidget() {
     }
     setUnread(0);
     if (!isMesa) {
+      setNuevaConsulta(false);
       await cargarConvActiva();
     }
   };
@@ -517,8 +520,8 @@ export default function ChatFloatingWidget() {
         if (!tomada) return;
       }
 
-      if (!conversacion) {
-        // Crear nueva conversación con el primer mensaje
+      // Crear nueva conversación: si no hay ninguna, o si el técnico pidió "Nueva consulta".
+      if (!conversacion || (nuevaConsulta && !isSupportUser)) {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -528,6 +531,7 @@ export default function ChatFloatingWidget() {
         if (res.ok) {
           setNuevoMensaje("");
           if (inputRef.current) inputRef.current.style.height = "auto";
+          setNuevaConsulta(false);
           await cargarConvActiva();
         } else {
           const err = await res.json().catch(() => ({}));
@@ -586,6 +590,9 @@ export default function ChatFloatingWidget() {
   };
 
   if (loading || !session) return null;
+
+  // Técnico: mostrar la vista de inicio de consulta (sin conversación o "Nueva consulta").
+  const mostrarNueva = nuevaConsulta || !conversacion;
 
   // Para Mesa/Admin/Mod: mini bandeja sin sacar al usuario de la pantalla actual.
   if (isSupportUser) {
@@ -839,14 +846,33 @@ export default function ChatFloatingWidget() {
             <div>
               <h3 className="text-white font-semibold text-sm">Mesa de Ayuda</h3>
               <p className="text-blue-200 text-[11px]">
-                {conversacion?.typing && conversacion.estado !== "CERRADA"
-                  ? "escribiendo…"
-                  : conversacion
-                    ? conversacion.estado === "EN_CURSO" ? "Conectado" : conversacion.estado === "ABIERTA" ? "Esperando agente..." : "Cerrada"
-                    : "Escribí tu consulta"}
+                {mostrarNueva
+                  ? "Escribí tu consulta"
+                  : conversacion?.typing && conversacion.estado !== "CERRADA"
+                    ? "escribiendo…"
+                    : conversacion.estado === "EN_CURSO" ? "Conectado" : conversacion.estado === "ABIERTA" ? "Esperando agente..." : "Cerrada"}
               </p>
             </div>
             <div className="flex items-center gap-1">
+              {/* Nueva consulta / volver a la conversación */}
+              {!mostrarNueva ? (
+                <button
+                  onClick={() => { setNuevaConsulta(true); setRespondiendoA(null); setNuevoMensaje(""); setTimeout(() => inputRef.current?.focus(), 60); }}
+                  className="flex items-center gap-1 rounded-full bg-blue-500/60 px-2 py-1 text-[11px] font-medium text-white hover:bg-blue-500 transition"
+                  title="Iniciar una consulta nueva"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                  Nueva
+                </button>
+              ) : conversacion ? (
+                <button
+                  onClick={() => setNuevaConsulta(false)}
+                  className="rounded-full px-2 py-1 text-[11px] font-medium text-blue-100 hover:text-white transition"
+                  title="Volver a tu conversación"
+                >
+                  Volver
+                </button>
+              ) : null}
               <a
                 href={conversacion ? `/dashboard/chat?id=${conversacion.id}` : "/dashboard/chat"}
                 className="p-1.5 text-blue-200 hover:text-white transition"
@@ -869,19 +895,22 @@ export default function ChatFloatingWidget() {
 
           {/* Mensajes */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2 overscroll-contain">
-            {mensajes.length === 0 && !conversacion && (
+            {mostrarNueva && (
               <div className="flex flex-col items-center justify-center h-full text-center p-4">
                 <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mb-3">
                   <svg className="w-7 h-7 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
                   </svg>
                 </div>
-                <p className="text-xs text-surface-500 dark:text-surface-400">
+                <p className="text-sm font-medium text-surface-700 dark:text-surface-100">
+                  {nuevaConsulta && conversacion ? "Nueva consulta" : "¿En qué te ayudamos?"}
+                </p>
+                <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
                   Escribí tu mensaje y Mesa de Ayuda te responderá
                 </p>
               </div>
             )}
-            {mensajes.map((msg) => {
+            {(mostrarNueva ? [] : mensajes).map((msg) => {
               const esMio = msg.autorId === session?.userId;
               return (
                 <div
@@ -1042,14 +1071,15 @@ export default function ChatFloatingWidget() {
         </div>
       )}
 
-      {/* Botón flotante */}
+      {/* Botón flotante — pill con texto para que sea claro que es Mesa de Ayuda */}
       <button
         onClick={() => open ? setOpen(false) : handleOpen()}
+        aria-label={open ? "Cerrar Mesa de Ayuda" : "Abrir Mesa de Ayuda"}
         className={clsx(
-          "relative flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-all duration-200 sm:h-14 sm:w-14",
+          "relative flex items-center justify-center gap-2 shadow-lg transition-all duration-200",
           open
-            ? "bg-surface-600 hover:bg-surface-700 rotate-0"
-            : "bg-blue-600 hover:bg-blue-700 hover:scale-105"
+            ? "h-12 w-12 rounded-full bg-surface-600 hover:bg-surface-700 sm:h-14 sm:w-14"
+            : "h-12 rounded-full bg-blue-600 px-4 hover:bg-blue-700 hover:scale-105 sm:h-14 sm:px-5"
         )}
       >
         {open ? (
@@ -1057,9 +1087,12 @@ export default function ChatFloatingWidget() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         ) : (
-          <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-          </svg>
+          <>
+            <svg className="w-6 h-6 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+            </svg>
+            <span className="text-sm font-semibold text-white whitespace-nowrap pr-0.5">Mesa de Ayuda</span>
+          </>
         )}
         {!open && unread > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1 animate-pulse">
