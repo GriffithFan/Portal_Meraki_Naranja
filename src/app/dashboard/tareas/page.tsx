@@ -150,17 +150,22 @@ const DEFAULT_COLUMNS: Column[] = [
 
 type SortConfig = { field: string; dir: "asc" | "desc" } | null;
 
+// Valor comparable para ordenar. Campos que son relaciones (asignados, etiquetas)
+// se derivan a texto con los nombres; campos personalizados leen de camposExtra.
+function ordenValor(t: Record<string, any>, field: string): string {
+  if (field.startsWith("_custom_")) return String(t.camposExtra?.[field.substring(8)] ?? "");
+  if (field === "asignaciones") return (t.asignaciones || []).map((a: any) => a?.usuario?.nombre || "").join(", ").toLowerCase();
+  if (field === "etiquetas") return (t.etiquetas || []).map((r: any) => (r?.etiqueta?.nombre ?? r?.nombre) || "").join(", ").toLowerCase();
+  return String(t[field] ?? "");
+}
+
 // Orden de la lista de tareas (reutilizado por la agrupación y por la vista plana).
 // Si no hay orden, devuelve la misma referencia para no romper memoización.
 function sortTareasList<T extends Record<string, any>>(list: T[], sortConfig: SortConfig): T[] {
   if (!sortConfig) return list;
   const { field, dir } = sortConfig;
-  const isCustom = field.startsWith("_custom_");
-  const clave = isCustom ? field.substring(8) : field;
   return [...list].sort((a, b) => {
-    const aVal = (isCustom ? a.camposExtra?.[clave] : a[field]) ?? "";
-    const bVal = (isCustom ? b.camposExtra?.[clave] : b[field]) ?? "";
-    const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
+    const cmp = ordenValor(a, field).localeCompare(ordenValor(b, field), "es", { numeric: true });
     return dir === "asc" ? cmp : -cmp;
   });
 }

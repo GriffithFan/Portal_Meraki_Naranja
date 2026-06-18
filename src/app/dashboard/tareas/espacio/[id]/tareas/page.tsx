@@ -919,17 +919,16 @@ export default function EspacioTareasPage() {
     }
 
     if (sortConfig) {
+      // Valor comparable: relaciones (asignados/etiquetas) se derivan a texto con nombres.
+      const f = sortConfig.field;
+      const val = (t: any): string => {
+        if (f.startsWith("_custom_")) return String(t.camposExtra?.[f.substring(8)] ?? "");
+        if (f === "asignaciones") return (t.asignaciones || []).map((a: any) => a?.usuario?.nombre || "").join(", ").toLowerCase();
+        if (f === "etiquetas") return (t.etiquetas || []).map((r: any) => (r?.etiqueta?.nombre ?? r?.nombre) || "").join(", ").toLowerCase();
+        return String(t[f] ?? "");
+      };
       filtered = [...filtered].sort((a, b) => {
-        let aVal, bVal;
-        if (sortConfig.field.startsWith("_custom_")) {
-          const clave = sortConfig.field.substring(8);
-          aVal = a.camposExtra?.[clave] ?? "";
-          bVal = b.camposExtra?.[clave] ?? "";
-        } else {
-          aVal = a[sortConfig.field] ?? "";
-          bVal = b[sortConfig.field] ?? "";
-        }
-        const cmp = String(aVal).localeCompare(String(bVal), "es", { numeric: true });
+        const cmp = val(a).localeCompare(val(b), "es", { numeric: true });
         return sortConfig.dir === "asc" ? cmp : -cmp;
       });
     }
