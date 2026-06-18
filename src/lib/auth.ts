@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { setAuditActor } from "@/lib/auditContext";
 
 // Validación crítica: JWT_SECRET debe estar definido en producción
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -83,9 +84,12 @@ export async function getSession(): Promise<TokenPayload | null> {
     const fresh = await getFreshUser(payload.userId);
     if (!fresh || !fresh.activo) return null; // desactivado o inexistente → sesión inválida
     // rol/esMesa/nombre autoritativos desde la BD (refleja cambios de rol al instante)
+    // Atribuir las modificaciones de este request al usuario (auditoría automática).
+    setAuditActor({ userId: payload.userId, nombre: fresh.nombre, rol: fresh.rol });
     return { ...payload, rol: fresh.rol, esMesa: fresh.esMesa, nombre: fresh.nombre };
   } catch {
     // Ante un error transitorio de BD, no desloguear a todos: usar el token.
+    setAuditActor({ userId: payload.userId, nombre: payload.nombre, rol: payload.rol });
     return payload;
   }
 }
