@@ -22,10 +22,12 @@ export async function GET() {
 }
 
 // Secciones configurables (excluye monitoreo que es visible para todos)
+// Debe contener todas las claves listadas en la página de Permisos (SECCIONES).
 const SECCIONES_VALIDAS = [
-  "tareas", "calendario", "stock", "importar", "predios", "hospedajes",
+  "mis-tareas", "tareas", "calendario", "predios", "hospedajes", "stock",
+  "importar", "anuncios", "asistencia", "mapa", "ranking",
   "bandeja", "actividad", "chat", "instructivo", "actas",
-  "facturacion", "usuarios", "kpis", "mapa",
+  "facturacion", "kpis", "operacion", "supervisor", "usuarios",
   "permisos", "auditoria", "papelera",
 ];
 
