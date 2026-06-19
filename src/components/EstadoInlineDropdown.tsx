@@ -11,6 +11,7 @@ export interface EstadoInlineDropdownHandle {
 interface Estado {
   id: string;
   clave?: string;
+  icono?: string | null;
   color: string;
   nombre: string;
 }
@@ -86,7 +87,7 @@ const EstadoInlineDropdown = forwardRef<EstadoInlineDropdownHandle, EstadoInline
               }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors text-left"
             >
-              <StatusIcon clave={e.clave} color={e.color} size={14} />
+              <StatusIcon clave={e.clave} icono={e.icono} color={e.color} size={14} />
               <span className="text-surface-700 dark:text-surface-200">{e.nombre}</span>
               {tarea.estadoId === e.id && <IconCheck className="w-3.5 h-3.5 text-surface-500 ml-auto" />}
             </button>

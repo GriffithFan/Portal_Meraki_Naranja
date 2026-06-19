@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = await parseBody(request, estadoCreateSchema);
     if (isErrorResponse(parsed)) return parsed;
-    const { nombre, color, entidad } = parsed;
+    const { nombre, color, icono, entidad } = parsed;
 
     // Generar clave automáticamente
     const clave = nombre
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
           activo: true,
           nombre,
           color: color || existe.color || '#3b82f6',
+          icono: icono || null,
           orden: (maxOrden?.orden ?? -1) + 1,
         },
       });
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
         nombre,
         clave,
         color: color || '#3b82f6',
+        icono: icono || null,
         entidad: entidad || 'PREDIO',
         orden: (maxOrden?.orden ?? -1) + 1,
       },

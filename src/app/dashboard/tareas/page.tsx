@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash } from "@/components/ui/Icons";
-import StatusIcon from "@/components/StatusIcon";
+import StatusIcon, { ESTADO_FORMAS } from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
@@ -252,7 +252,7 @@ export default function TareasPage() {
   const [showModal, setShowModal] = useState(false);
   const [createDefaults, setCreateDefaults] = useState<{ estadoId?: string; espacioId?: string }>({});
   const [showEstadoModal, setShowEstadoModal] = useState(false);
-  const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6" });
+  const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6", icono: "" });
 
   // Inline new column form
   const [newColName, setNewColName] = useState("");
@@ -915,7 +915,7 @@ export default function TareasPage() {
           next.add(newEst.id);
           return next;
         });
-        setNuevoEstado({ nombre: "", color: "#3b82f6" });
+        setNuevoEstado({ nombre: "", color: "#3b82f6", icono: "" });
         setShowEstadoModal(false);
         toast.success("Estado creado");
       } else {
@@ -1344,7 +1344,7 @@ export default function TareasPage() {
         <span className="flex items-center gap-1 group/cell">
           {t.estado ? (
             <span className="cursor-pointer hover:opacity-70 transition-opacity" onClick={(e) => abrirInlineEstado(e, t.id)}>
-              <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />
+              <StatusIcon clave={t.estado.clave} icono={t.estado.icono} color={t.estado.color} size={14} />
             </span>
           ) : null}
           <span className="text-surface-800 font-medium truncate">{displayCode}</span>
@@ -1536,7 +1536,7 @@ export default function TareasPage() {
             )}
             {t.estado ? (
               <span className="cursor-pointer active:opacity-60" onClick={(e) => abrirInlineEstado(e, t.id)}>
-                <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />
+                <StatusIcon clave={t.estado.clave} icono={t.estado.icono} color={t.estado.color} size={16} />
               </span>
             ) : null}
             <div className="min-w-0 flex-1">
@@ -1919,7 +1919,7 @@ export default function TareasPage() {
                       <label key={e.id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border group cursor-pointer transition-colors ${isHidden ? "opacity-40 bg-surface-50" : ""}`}
                         style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}>
                         <input type="checkbox" checked={!isHidden} onChange={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })} className="sr-only" />
-                        <StatusIcon clave={e.clave} color={e.color} size={12} />
+                        <StatusIcon clave={e.clave} icono={e.icono} color={e.color} size={12} />
                         {e.nombre}
                         {session?.rol === "ADMIN" && (
                           <button onClick={(ev) => { ev.preventDefault(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
@@ -2129,7 +2129,7 @@ export default function TareasPage() {
                     className="flex-1 flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
                   >
                     <IconChevron expanded={isExpanded} className="w-3.5 h-3.5 text-surface-400" />
-                    <StatusIcon clave={estado.clave} color={estado.color} size={16} />
+                    <StatusIcon clave={estado.clave} icono={estado.icono} color={estado.color} size={16} />
                     <span className="text-sm font-medium text-surface-700">{estado.nombre}</span>
                     <span className="text-[11px] text-surface-400 tabular-nums">{totalInGroup}</span>
                   </button>
@@ -2584,6 +2584,22 @@ export default function TareasPage() {
                   />
                 </div>
               </div>
+              <div>
+                <label className="block text-[11px] text-surface-500 mb-1">Forma</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {ESTADO_FORMAS.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => setNuevoEstado({ ...nuevoEstado, icono: f.key })}
+                      title={f.label}
+                      className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${nuevoEstado.icono === f.key ? "border-surface-800 bg-surface-50" : "border-surface-200 hover:border-surface-400"}`}
+                    >
+                      <StatusIcon icono={f.key} color={nuevoEstado.color} size={16} />
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="py-2">
                 <span
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border"
@@ -2592,7 +2608,7 @@ export default function TareasPage() {
                     color: nuevoEstado.color
                   }}
                 >
-                  <StatusIcon clave={""} color={nuevoEstado.color} size={12} />
+                  <StatusIcon icono={nuevoEstado.icono} color={nuevoEstado.color} size={12} />
                   {nuevoEstado.nombre || "Nombre del estado"}
                 </span>
               </div>

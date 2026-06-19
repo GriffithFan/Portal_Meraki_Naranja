@@ -243,6 +243,7 @@ export const facturacionSchema = z.object({
 export const estadoCreateSchema = z.object({
   nombre: str(100).min(1, "Nombre requerido"),
   color: strOpt(20),
+  icono: strOpt(40),
   entidad: z.enum(["PREDIO", "EQUIPO"]).optional(),
 });
 

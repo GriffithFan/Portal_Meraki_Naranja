@@ -89,6 +89,7 @@ model EstadoConfig {
   nombre  String
   clave   String  @unique
   color   String  @default("#3b82f6")
+  icono   String? // forma/ícono elegido (si null, se deriva de la clave)
   orden   Int     @default(0)
   entidad String  @default("PREDIO")
   activo  Boolean @default(true)

@@ -49,6 +49,7 @@ export async function PATCH(
   const data: Record<string, unknown> = {};
   if (body.nombre !== undefined) data.nombre = String(body.nombre).slice(0, 100);
   if (body.color !== undefined) data.color = String(body.color).slice(0, 20);
+  if (body.icono !== undefined) data.icono = body.icono ? String(body.icono).slice(0, 40) : null;
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "Nada que actualizar" }, { status: 400 });

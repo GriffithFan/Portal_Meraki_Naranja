@@ -7,17 +7,37 @@
 
 interface StatusIconProps {
   clave?: string;
+  /** Forma explícita elegida por el usuario; tiene prioridad sobre `clave`. */
+  icono?: string | null;
   color: string;
   size?: number;
   className?: string;
 }
 
-export default function StatusIcon({ clave, color, size = 14, className = "" }: StatusIconProps) {
+/** Formas seleccionables al crear/editar un estado (clave de forma → etiqueta). */
+export const ESTADO_FORMAS: { key: string; label: string }[] = [
+  { key: "instalado",            label: "Lleno" },
+  { key: "vacio",                label: "Vacío" },
+  { key: "conforme",             label: "Check" },
+  { key: "no_conforme",          label: "Cruz" },
+  { key: "no_apto",              label: "Menos" },
+  { key: "cambio_lac",           label: "Alerta" },
+  { key: "relevado",             label: "Medio" },
+  { key: "en_progreso",          label: "Progreso" },
+  { key: "sin_asignar",          label: "Punteado" },
+  { key: "auditar",              label: "Objetivo" },
+  { key: "revision_instalacion", label: "Lupa" },
+  { key: "blockeado",            label: "Bloqueado" },
+];
+
+export default function StatusIcon({ clave, icono, color, size = 14, className = "" }: StatusIconProps) {
   const r = size / 2;
   const cx = r;
   const cy = r;
   const outerR = r - 1;
   const innerR = outerR * 0.35;
+  // El ícono elegido tiene prioridad; si no, se usa la clave (compatibilidad).
+  const forma = icono || clave;
 
   return (
     <svg
@@ -28,7 +48,10 @@ export default function StatusIcon({ clave, color, size = 14, className = "" }: 
       fill="none"
     >
       {(() => {
-        switch (clave) {
+        switch (forma) {
+          // VACÍO: círculo con solo borde
+          case "vacio":
+            return <circle cx={cx} cy={cy} r={outerR} stroke={color} strokeWidth={1.5} fill="none" />;
           // ── Abiertos ──
 
           // SIN ASIGNAR: círculo gris con borde punteado

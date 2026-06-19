@@ -7,7 +7,7 @@ import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
-import StatusIcon from "@/components/StatusIcon";
+import StatusIcon, { ESTADO_FORMAS } from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
@@ -254,7 +254,7 @@ export default function EspacioTareasPage() {
   // Claves custom quitadas en esta sesión (para que no reaparezcan por los datos).
   const removedCustomKeysRef = useRef<Set<string>>(new Set());
   const [showEstadoModal, setShowEstadoModal] = useState(false);
-  const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6" });
+  const [nuevoEstado, setNuevoEstado] = useState({ nombre: "", color: "#3b82f6", icono: "" });
 
   // Inline new column form
   const [newColName, setNewColName] = useState("");
@@ -1163,7 +1163,7 @@ export default function EspacioTareasPage() {
       setEspacio((prev: any) => prev ? { ...prev, estadosConfig: nextEstadosConfig } : prev);
       setEstados(prev => prev.some(e => e.id === newEst.id) ? prev : [...prev, newEst]);
       setExpandedSections(prev => { const next = new Set(prev); next.add(newEst.id); return next; });
-      setNuevoEstado({ nombre: "", color: "#3b82f6" });
+      setNuevoEstado({ nombre: "", color: "#3b82f6", icono: "" });
       setShowEstadoModal(false);
       toast.success("Estado creado");
     } else {
@@ -1546,7 +1546,7 @@ export default function EspacioTareasPage() {
         <span className="flex items-center gap-1 group/cell">
           {t.estado ? (
             <span className="cursor-pointer hover:opacity-70 transition-opacity" onClick={(e) => abrirInlineEstado(e, t.id)}>
-              <StatusIcon clave={t.estado.clave} color={t.estado.color} size={14} />
+              <StatusIcon clave={t.estado.clave} icono={t.estado.icono} color={t.estado.color} size={14} />
             </span>
           ) : null}
           <span className="text-surface-800 font-medium truncate">{t.codigo || "\u2014"}</span>
@@ -1788,7 +1788,7 @@ export default function EspacioTareasPage() {
             )}
             {t.estado ? (
               <span className="cursor-pointer active:opacity-60" onClick={(e) => abrirInlineEstado(e, t.id)}>
-                <StatusIcon clave={t.estado.clave} color={t.estado.color} size={16} />
+                <StatusIcon clave={t.estado.clave} icono={t.estado.icono} color={t.estado.color} size={16} />
               </span>
             ) : null}
             <div className="min-w-0 flex-1">
@@ -2386,7 +2386,7 @@ export default function EspacioTareasPage() {
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4 8h16M4 16h16" /></svg>
                         </span>
                         )}
-                        <StatusIcon clave={e.clave} color={e.color} size={12} />
+                        <StatusIcon clave={e.clave} icono={e.icono} color={e.color} size={12} />
                         <span className={`text-xs flex-1 truncate ${isHidden ? "text-surface-400" : "text-surface-700"}`}>{e.nombre}</span>
                         {isModOrAdmin && (
                         <button
@@ -2569,7 +2569,7 @@ export default function EspacioTareasPage() {
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold tracking-wide text-white"
                     style={{ backgroundColor: `${estado.color}CC`, border: `1.5px solid ${estado.color}` }}
                   >
-                    <StatusIcon clave={estado.clave} color="#fff" size={14} />
+                    <StatusIcon clave={estado.clave} icono={estado.icono} color="#fff" size={14} />
                     {estado.nombre}
                   </span>
                   <span className="text-[11px] text-surface-400 tabular-nums">{groupCounts[estado.id] ?? items.length}{groupLoadState[estado.id] === "loading" && " ..."}</span>
@@ -2734,12 +2734,28 @@ export default function EspacioTareasPage() {
                   />
                 </div>
               </div>
+              <div>
+                <label className="block text-[11px] text-surface-500 mb-1">Forma</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {ESTADO_FORMAS.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      onClick={() => setNuevoEstado({ ...nuevoEstado, icono: f.key })}
+                      title={f.label}
+                      className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${nuevoEstado.icono === f.key ? "border-surface-800 bg-surface-50" : "border-surface-200 hover:border-surface-400"}`}
+                    >
+                      <StatusIcon icono={f.key} color={nuevoEstado.color} size={16} />
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="py-2">
                 <span
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border"
                   style={{ borderColor: `${nuevoEstado.color}40`, color: nuevoEstado.color }}
                 >
-                  <StatusIcon clave={""} color={nuevoEstado.color} size={12} />
+                  <StatusIcon icono={nuevoEstado.icono} color={nuevoEstado.color} size={12} />
                   {nuevoEstado.nombre || "Nombre del estado"}
                 </span>
               </div>
