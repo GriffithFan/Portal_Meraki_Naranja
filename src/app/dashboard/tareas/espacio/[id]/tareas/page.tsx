@@ -1161,10 +1161,14 @@ export default function EspacioTareasPage() {
         body: JSON.stringify({ estadosConfig: nextEstadosConfig }),
       }).catch(() => {});
       setEspacio((prev: any) => prev ? { ...prev, estadosConfig: nextEstadosConfig } : prev);
-      setEstados(prev => [...prev, newEst]);
+      setEstados(prev => prev.some(e => e.id === newEst.id) ? prev : [...prev, newEst]);
       setExpandedSections(prev => { const next = new Set(prev); next.add(newEst.id); return next; });
       setNuevoEstado({ nombre: "", color: "#3b82f6" });
       setShowEstadoModal(false);
+      toast.success("Estado creado");
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || "No se pudo crear el estado");
     }
   }
 

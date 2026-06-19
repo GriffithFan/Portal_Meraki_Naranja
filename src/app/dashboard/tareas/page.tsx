@@ -899,23 +899,31 @@ export default function TareasPage() {
     e.preventDefault();
     if (!nuevoEstado.nombre.trim()) return;
 
-    const res = await fetch("/api/estados", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(nuevoEstado),
-    });
-
-    if (res.ok) {
-      const newEst = await res.json();
-      setEstados(prev => [...prev, newEst]);
-      setExpandedSections(prev => {
-        const next = new Set(prev);
-        next.add(newEst.id);
-        return next;
+    try {
+      const res = await fetch("/api/estados", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(nuevoEstado),
       });
-      setNuevoEstado({ nombre: "", color: "#3b82f6" });
-      setShowEstadoModal(false);
+
+      if (res.ok) {
+        const newEst = await res.json();
+        setEstados(prev => [...prev, newEst]);
+        setExpandedSections(prev => {
+          const next = new Set(prev);
+          next.add(newEst.id);
+          return next;
+        });
+        setNuevoEstado({ nombre: "", color: "#3b82f6" });
+        setShowEstadoModal(false);
+        toast.success("Estado creado");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "No se pudo crear el estado");
+      }
+    } catch {
+      toast.error("No se pudo crear el estado. Revisá tu conexión.");
     }
   }
 

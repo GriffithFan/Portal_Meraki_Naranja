@@ -46,18 +46,31 @@ export async function POST(request: NextRequest) {
       .replace(/[^A-Z0-9]+/g, '_')
       .replace(/^_|_$/g, '');
 
-    // verificar que no existe
-    const existe = await prisma.estadoConfig.findUnique({ where: { clave } });
-    if (existe) {
-      return NextResponse.json({ error: 'Ya existe un estado con ese nombre' }, { status: 409 });
-    }
-
-    // Obtener el orden máximo
+    // Obtener el orden máximo (para ubicar el nuevo al final)
     const maxOrden = await prisma.estadoConfig.findFirst({
       where: { entidad: entidad || 'PREDIO' },
       orderBy: { orden: 'desc' },
       select: { orden: true },
     });
+
+    // Verificar si ya existe esa clave. El borrado es soft-delete (activo:false),
+    // así que si existe pero está inactivo, lo reactivamos en vez de fallar.
+    const existe = await prisma.estadoConfig.findUnique({ where: { clave } });
+    if (existe) {
+      if (existe.activo) {
+        return NextResponse.json({ error: 'Ya existe un estado con ese nombre' }, { status: 409 });
+      }
+      const reactivado = await prisma.estadoConfig.update({
+        where: { clave },
+        data: {
+          activo: true,
+          nombre,
+          color: color || existe.color || '#3b82f6',
+          orden: (maxOrden?.orden ?? -1) + 1,
+        },
+      });
+      return NextResponse.json(reactivado, { status: 200 });
+    }
 
     const estado = await prisma.estadoConfig.create({
       data: {
