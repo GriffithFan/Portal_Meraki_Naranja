@@ -16,7 +16,8 @@ import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tare
 import { IconDownload, IconPlus } from "@/components/ui/Icons";
 import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
-import { hasTaskFieldConfig, normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
 import { useConfirm } from "@/contexts/ConfirmContext";
@@ -246,6 +247,7 @@ export default function EspacioTareasPage() {
   // Columnas configurables
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const { height: estadosPanelH, onHandlePointerDown: onEstadosResize } = useResizablePanel("pmn-estados-panel-h", 200);
   // Catálogo de campos personalizados (clave→nombre/ancho) solo para etiquetas.
   // Las columnas custom se derivan de los datos + config + plantilla de esta lista.
   const [camposDefs, setCamposDefs] = useState<Record<string, { nombre: string; ancho?: number; tipo?: string; opciones?: string[] }>>({});
@@ -434,6 +436,9 @@ export default function EspacioTareasPage() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const config = sanitizeTaskFieldConfigs(columns).map((c, i) => ({ id: c.id, visible: c.visible, order: i, width: c.width }));
+      // Mantener el ref al día para que cualquier reconstrucción posterior
+      // (applySavedColumnConfig) use la visibilidad/orden más reciente.
+      savedColumnConfigRef.current = config;
       fetch("/api/config-vista", {
         method: "PUT",
         credentials: "include",
@@ -1581,17 +1586,13 @@ export default function EspacioTareasPage() {
   // Columnas visibles
   const ALWAYS_VISIBLE = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion", "etiquetas", "lacR", "asignados"]), []);
   const visibleColumns = useMemo(() => {
-    const safeColumns = sanitizeTaskFieldConfigs(columns);
-    if (hasTaskFieldConfig(espacio?.camposConfig)) return safeColumns.filter(c => ALWAYS_VISIBLE.has(c.id) || c.visible);
-    return safeColumns.filter(c => {
-      if (ALWAYS_VISIBLE.has(c.id)) return true;
-      if (!c.visible) return false;
-      return tareas.some((t: any) => {
-        const v = c.field.startsWith("_custom_") ? t.camposExtra?.[c.field.substring(8)] : t[c.field];
-        return v != null && v !== "";
-      });
-    });
-  }, [columns, tareas, ALWAYS_VISIBLE, espacio?.camposConfig]);
+    // Respetar el toggle del usuario: si una columna está marcada visible, se
+    // muestra (aunque no tenga datos cargados). El auto-ocultado de columnas
+    // vacías ya se aplica una sola vez al cargar (autoHideDone en fetchData).
+    // Antes el branch sin-plantilla exigía datos en CADA columna, lo que pisaba
+    // el toggle manual y hacía "desaparecer" el campo recién activado.
+    return sanitizeTaskFieldConfigs(columns).filter(c => ALWAYS_VISIBLE.has(c.id) || c.visible);
+  }, [columns, ALWAYS_VISIBLE]);
 
   const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || quickFilter !== "todos");
   const clearServerFilters = () => {
@@ -2289,8 +2290,9 @@ export default function EspacioTareasPage() {
               </div>
             )}
 
-            {/* Columns list */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Campos + Estados con divisor redimensionable */}
+            <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                 <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Campos mostrados</span>
                 {isModOrAdmin && (
@@ -2359,56 +2361,49 @@ export default function EspacioTareasPage() {
               </div>
             </div>
 
-            {/* Estados (visibilidad + reordenar) */}
+            {/* Divisor redimensionable + Estados (chips) */}
             {estados.length > 0 && (
-              <div className="px-4 py-3 border-t border-surface-100">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">{isModOrAdmin ? 'Estados (arrastrar para reordenar)' : 'Estados'}</span>
-                  {isModOrAdmin && <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium">+ Nuevo</button>}
+              <>
+                <div onPointerDown={onEstadosResize} className="group flex shrink-0 items-center justify-center border-t border-surface-100 cursor-row-resize py-1.5 hover:bg-surface-50" title="Arrastrá para ajustar el alto">
+                  <span className="h-1 w-10 rounded-full bg-surface-200 group-hover:bg-surface-300" />
                 </div>
-                <div className="space-y-1">
-                  {estados.filter(e => isModOrAdmin || !adminHiddenEstados.has(e.id)).map(e => {
-                    const isHidden = userHiddenEstados.has(e.id);
-                    return (
-                      <div
-                        key={e.id}
-                        draggable={isModOrAdmin}
-                        onDragStart={isModOrAdmin ? () => setDragEstadoId(e.id) : undefined}
-                        onDragOver={isModOrAdmin ? (ev) => { ev.preventDefault(); setDragOverEstadoId(e.id); } : undefined}
-                        onDrop={isModOrAdmin ? (ev) => { ev.preventDefault(); handleEstadoDrop(e.id); } : undefined}
-                        onDragEnd={isModOrAdmin ? () => { setDragEstadoId(null); setDragOverEstadoId(null); } : undefined}
-                        className={`flex items-center gap-2 px-2 py-1.5 rounded border group transition-all ${
-                          isHidden ? "opacity-40 bg-surface-50 border-surface-200" : "bg-white border-surface-200 hover:border-surface-300"
-                        } ${isModOrAdmin ? 'cursor-grab active:cursor-grabbing' : ''} ${dragOverEstadoId === e.id ? "border-primary-400 bg-primary-50/30" : ""} ${dragEstadoId === e.id ? "opacity-40" : ""}`}
-                      >
-                        {isModOrAdmin && (
-                        <span className="text-surface-300 cursor-grab">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M4 8h16M4 16h16" /></svg>
-                        </span>
-                        )}
-                        <StatusIcon clave={e.clave} icono={e.icono} color={e.color} size={12} />
-                        <span className={`text-xs flex-1 truncate ${isHidden ? "text-surface-400" : "text-surface-700"}`}>{e.nombre}</span>
-                        {isModOrAdmin && (
-                        <button
-                          onClick={() => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; })}
-                          className="relative inline-flex flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none"
-                          style={{ width: 28, height: 16, backgroundColor: !isHidden ? 'var(--color-primary-500, #3b82f6)' : '#cbd5e1' }}
+                <div style={{ height: estadosPanelH }} className="shrink-0 overflow-y-auto px-4 pb-3">
+                  <div className="sticky top-0 bg-white dark:bg-surface-800 pt-2 pb-1 flex items-center justify-between z-10">
+                    <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">{isModOrAdmin ? 'Estados (clic = mostrar/ocultar · arrastrá para reordenar)' : 'Estados'}</span>
+                    {isModOrAdmin && <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium shrink-0 ml-2">+ Nuevo</button>}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {estados.filter(e => isModOrAdmin || !adminHiddenEstados.has(e.id)).map(e => {
+                      const isHidden = userHiddenEstados.has(e.id);
+                      return (
+                        <span
+                          key={e.id}
+                          draggable={isModOrAdmin}
+                          onDragStart={isModOrAdmin ? () => setDragEstadoId(e.id) : undefined}
+                          onDragOver={isModOrAdmin ? (ev) => { ev.preventDefault(); setDragOverEstadoId(e.id); } : undefined}
+                          onDrop={isModOrAdmin ? (ev) => { ev.preventDefault(); handleEstadoDrop(e.id); } : undefined}
+                          onDragEnd={isModOrAdmin ? () => { setDragEstadoId(null); setDragOverEstadoId(null); } : undefined}
+                          onClick={isModOrAdmin ? () => setUserHiddenEstados(prev => { const next = new Set(prev); if (next.has(e.id)) next.delete(e.id); else next.add(e.id); return next; }) : undefined}
+                          title={isModOrAdmin ? (isHidden ? "Oculto — clic para mostrar" : "Visible — clic para ocultar") : e.nombre}
+                          className={`group inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-medium transition-all select-none ${isModOrAdmin ? 'cursor-pointer' : ''} ${isHidden ? "opacity-40 bg-surface-50" : ""} ${dragOverEstadoId === e.id ? "ring-1 ring-primary-400" : ""} ${dragEstadoId === e.id ? "opacity-30" : ""}`}
+                          style={{ borderColor: `${e.color}40`, color: isHidden ? "#94a3b8" : e.color }}
                         >
-                          <span className="pointer-events-none inline-block rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ease-in-out" style={{ width: 12, height: 12, marginTop: 2, transform: !isHidden ? 'translateX(14px)' : 'translateX(2px)' }} />
-                        </button>
-                        )}
-                        {isModOrAdmin && (
-                          <button onClick={() => setConfirmDelete({ type: "estado", id: e.id, label: e.nombre })}
-                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all p-0.5" title="Eliminar estado">
-                            <IconTrash className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                          <StatusIcon clave={e.clave} icono={e.icono} color={e.color} size={12} />
+                          {e.nombre}
+                          {isModOrAdmin && (
+                            <button onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setConfirmDelete({ type: "estado", id: e.id, label: e.nombre }); }}
+                              className="ml-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all" title="Eliminar estado">
+                              <IconTrash className="w-3 h-3" />
+                            </button>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
+            </div>
           </div>
         </div>
       )}

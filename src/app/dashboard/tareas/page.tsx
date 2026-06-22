@@ -16,6 +16,7 @@ import { dedupeUsersByName } from "@/utils/asignacionUtils";
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
+import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useConfirm } from "@/contexts/ConfirmContext";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -249,6 +250,7 @@ export default function TareasPage() {
   const [newViewName, setNewViewName] = useState("");
   const [savingView, setSavingView] = useState(false);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const { height: estadosPanelH, onHandlePointerDown: onEstadosResize } = useResizablePanel("pmn-estados-panel-h", 200);
   const [showModal, setShowModal] = useState(false);
   const [createDefaults, setCreateDefaults] = useState<{ estadoId?: string; espacioId?: string }>({});
   const [showEstadoModal, setShowEstadoModal] = useState(false);
@@ -1833,8 +1835,9 @@ export default function TareasPage() {
               </div>
             )}
 
-            {/* Columns list */}
-            <div className="flex-1 overflow-y-auto">
+            {/* Campos + Estados con divisor redimensionable */}
+            <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {/* Mostrados header */}
               <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                 <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Campos mostrados</span>
@@ -1905,14 +1908,18 @@ export default function TareasPage() {
               </div>
             </div>
 
-            {/* Estados (visibilidad) */}
+            {/* Divisor redimensionable + Estados (chips) */}
             {isModOrAdmin && estados.length > 0 && (
-              <div className="px-4 py-3 border-t border-surface-100">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Estados</span>
-                  <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium">+ Nuevo</button>
+              <>
+                <div onPointerDown={onEstadosResize} className="group flex shrink-0 items-center justify-center border-t border-surface-100 cursor-row-resize py-1.5 hover:bg-surface-50" title="Arrastrá para ajustar el alto">
+                  <span className="h-1 w-10 rounded-full bg-surface-200 group-hover:bg-surface-300" />
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div style={{ height: estadosPanelH }} className="shrink-0 overflow-y-auto px-4 pb-3">
+                  <div className="sticky top-0 bg-white dark:bg-surface-800 pt-2 pb-1 flex items-center justify-between z-10">
+                    <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">Estados</span>
+                    <button onClick={() => setShowEstadoModal(true)} className="text-[11px] text-primary-500 hover:text-primary-700 font-medium">+ Nuevo</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
                   {estados.map(e => {
                     const isHidden = userHiddenEstados.has(e.id);
                     return (
@@ -1930,9 +1937,11 @@ export default function TareasPage() {
                       </label>
                     );
                   })}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
+            </div>
           </div>
         </div>
       )}
