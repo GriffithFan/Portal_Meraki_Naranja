@@ -2400,7 +2400,8 @@ export default function StockPage() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowDuplicateModal(false); setDuplicateEquipo(null); setForm(f => ({ ...f, numeroSerie: "" })); } }}
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
