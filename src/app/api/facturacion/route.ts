@@ -101,6 +101,7 @@ export async function POST() {
         provincia: true,
         incidencias: true,
         fechaActualizacion: true,
+        camposExtra: true,
         asignaciones: {
           where: { tipo: { in: ["TAREA", "TECNICO"] } },
           include: { usuario: { select: { id: true, nombre: true } } },
@@ -113,7 +114,7 @@ export async function POST() {
       tecnicoId: string;
       tecnicoNombre: string;
       cantidad: number;
-      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia: string | null; fecha: string | null }[];
+      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia: string | null; fecha: string | null; mas20Ap: boolean }[];
     }> = {};
 
     for (const predio of prediosConforme) {
@@ -124,6 +125,7 @@ export async function POST() {
         provincia: predio.provincia,
         incidencia: predio.incidencias,
         fecha: predio.fechaActualizacion ? predio.fechaActualizacion.toISOString() : null,
+        mas20Ap: String((predio.camposExtra as any)?.tieneMas20Ap || "").trim().toUpperCase() === "SI",
       };
 
       const uniqueTechnicians = new Map<string, { id: string; nombre: string }>();
@@ -162,21 +164,23 @@ export async function POST() {
 
     const escapeCsv = (value: string) => value.replace(/"/g, '""');
 
+    const totalMas20 = resumen.reduce((acc, g) => acc + g.tareas.filter((t) => t.mas20Ap).length, 0);
+
     // ── Generar CSV ──
     const csvLines = [
-      "Predio,Incidencia,Técnico,Fecha,Provincia",
+      "Predio,Incidencia,Técnico,Fecha,Provincia,Más de 20 AP",
     ];
     for (const grupo of resumen) {
       for (const t of grupo.tareas) {
         const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "";
         const predioCodigo = t.codigo || "";
         csvLines.push(
-          `"${escapeCsv(predioCodigo)}","${escapeCsv(t.incidencia || "")}","${escapeCsv(grupo.tecnicoNombre)}","${escapeCsv(fecha)}","${escapeCsv(t.provincia || "")}"`
+          `"${escapeCsv(predioCodigo)}","${escapeCsv(t.incidencia || "")}","${escapeCsv(grupo.tecnicoNombre)}","${escapeCsv(fecha)}","${escapeCsv(t.provincia || "")}","${t.mas20Ap ? "Sí" : ""}"`
         );
       }
     }
     csvLines.push("");
-    csvLines.push(`"TOTAL: ${totalTareas} predios","","","",""`);
+    csvLines.push(`"TOTAL: ${totalTareas} predios","","","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
 
     const csvContent = csvLines.join("\n");
     const reportDir = path.join(process.cwd(), "uploads", "reportes");
@@ -195,10 +199,11 @@ export async function POST() {
           "Técnico asignado": grupo.tecnicoNombre,
           Fecha: t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "",
           Provincia: t.provincia || "",
+          "Más de 20 AP": t.mas20Ap ? "Sí" : "",
         });
       }
     }
-    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "" });
+    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "" });
 
     const ws = XLSX.utils.json_to_sheet(xlsxRows);
     // Auto-width columns
@@ -208,6 +213,7 @@ export async function POST() {
       { wch: 20 }, // Técnico
       { wch: 14 }, // Fecha
       { wch: 18 }, // Provincia
+      { wch: 14 }, // Más de 20 AP
     ];
     ws["!cols"] = colWidths;
 

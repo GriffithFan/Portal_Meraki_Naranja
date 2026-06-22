@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
         codigo: true,
         provincia: true,
         fechaActualizacion: true,
+        camposExtra: true,
         asignaciones: {
           where: { tipo: { in: ["TAREA", "TECNICO"] } },
           include: { usuario: { select: { id: true, nombre: true } } },
@@ -82,10 +83,11 @@ export async function GET(request: NextRequest) {
       tecnicoId: string;
       tecnicoNombre: string;
       cantidad: number;
-      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null }[];
+      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; mas20Ap: boolean }[];
     }> = {};
 
     for (const predio of prediosConforme) {
+      const mas20Ap = String((predio.camposExtra as any)?.tieneMas20Ap || "").trim().toUpperCase() === "SI";
       const uniqueTechnicians = new Map<string, { id: string; nombre: string }>();
       for (const asignacion of predio.asignaciones) {
         const tecnico = asignacion.usuario;
@@ -104,14 +106,14 @@ export async function GET(request: NextRequest) {
           porTecnico[key] = { tecnicoId: "SIN_ASIGNAR", tecnicoNombre: "Sin asignar", cantidad: 0, tareas: [] };
         }
         porTecnico[key].cantidad++;
-        porTecnico[key].tareas.push({ id: predio.id, nombre: predio.nombre, codigo: predio.codigo, provincia: predio.provincia });
+        porTecnico[key].tareas.push({ id: predio.id, nombre: predio.nombre, codigo: predio.codigo, provincia: predio.provincia, mas20Ap });
       } else {
         for (const tec of Array.from(uniqueTechnicians.values())) {
           if (!porTecnico[tec.id]) {
             porTecnico[tec.id] = { tecnicoId: tec.id, tecnicoNombre: tec.nombre, cantidad: 0, tareas: [] };
           }
           porTecnico[tec.id].cantidad++;
-          porTecnico[tec.id].tareas.push({ id: predio.id, nombre: predio.nombre, codigo: predio.codigo, provincia: predio.provincia });
+          porTecnico[tec.id].tareas.push({ id: predio.id, nombre: predio.nombre, codigo: predio.codigo, provincia: predio.provincia, mas20Ap });
         }
       }
     }
@@ -119,19 +121,21 @@ export async function GET(request: NextRequest) {
     const resumen = Object.values(porTecnico);
     const totalTareas = prediosConforme.length;
 
+    const totalMas20 = resumen.reduce((acc, g) => acc + g.tareas.filter((t) => t.mas20Ap).length, 0);
+
     // Generar CSV
     const csvLines = [
-      "Tecnico,Cantidad Tareas,Codigo Tarea,Nombre Tarea,Provincia",
+      "Tecnico,Cantidad Tareas,Codigo Tarea,Nombre Tarea,Provincia,Más de 20 AP",
     ];
     for (const grupo of resumen) {
       for (const t of grupo.tareas) {
         csvLines.push(
-          `"${grupo.tecnicoNombre}",${grupo.cantidad},"${t.codigo || ""}","${t.nombre.replace(/"/g, '""')}","${t.provincia || ""}"`
+          `"${grupo.tecnicoNombre}",${grupo.cantidad},"${t.codigo || ""}","${t.nombre.replace(/"/g, '""')}","${t.provincia || ""}","${t.mas20Ap ? "Sí" : ""}"`
         );
       }
     }
     csvLines.push("");
-    csvLines.push(`"TOTAL",${totalTareas},"","",""`);
+    csvLines.push(`"TOTAL",${totalTareas},"","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
 
     const csvContent = csvLines.join("\n");
     const csvDir = path.join(process.cwd(), "uploads", "reportes");

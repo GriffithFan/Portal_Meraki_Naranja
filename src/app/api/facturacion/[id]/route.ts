@@ -14,6 +14,7 @@ interface ResumenTarea {
   provincia: string | null;
   incidencia?: string | null;
   fecha?: string | null;
+  mas20Ap?: boolean;
 }
 interface ResumenGrupo {
   tecnicoId: string;
@@ -57,7 +58,7 @@ export async function GET(
   const baseName = reporte.csvNombre?.replace(".csv", "") || `reporte-${reporte.semana}`;
 
   // Aplanar filas en el mismo orden que el resumen (agrupado por técnico)
-  const filas: { predio: string; incidencia: string; tecnico: string; fecha: string; provincia: string }[] = [];
+  const filas: { predio: string; incidencia: string; tecnico: string; fecha: string; provincia: string; mas20Ap: boolean }[] = [];
   for (const grupo of resumen) {
     for (const t of grupo.tareas || []) {
       filas.push({
@@ -66,9 +67,11 @@ export async function GET(
         tecnico: grupo.tecnicoNombre,
         fecha: fmtFecha(t.fecha),
         provincia: t.provincia || "",
+        mas20Ap: t.mas20Ap === true,
       });
     }
   }
+  const totalMas20 = filas.filter((f) => f.mas20Ap).length;
 
   if (format === "xlsx") {
     const xlsxRows = filas.map((f) => ({
@@ -77,11 +80,12 @@ export async function GET(
       "Técnico asignado": f.tecnico,
       Fecha: f.fecha,
       Provincia: f.provincia,
+      "Más de 20 AP": f.mas20Ap ? "Sí" : "",
     }));
-    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "" });
+    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "" });
 
     const ws = XLSX.utils.json_to_sheet(xlsxRows);
-    ws["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 18 }];
+    ws["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Facturación");
     const xlsxBuffer = new Uint8Array(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer);
@@ -98,12 +102,12 @@ export async function GET(
 
   // Default: CSV
   const escapeCsv = (value: string) => value.replace(/"/g, '""');
-  const csvLines = ["Predio,Incidencia,Técnico,Fecha,Provincia"];
+  const csvLines = ["Predio,Incidencia,Técnico,Fecha,Provincia,Más de 20 AP"];
   for (const f of filas) {
-    csvLines.push(`"${escapeCsv(f.predio)}","${escapeCsv(f.incidencia)}","${escapeCsv(f.tecnico)}","${escapeCsv(f.fecha)}","${escapeCsv(f.provincia)}"`);
+    csvLines.push(`"${escapeCsv(f.predio)}","${escapeCsv(f.incidencia)}","${escapeCsv(f.tecnico)}","${escapeCsv(f.fecha)}","${escapeCsv(f.provincia)}","${f.mas20Ap ? "Sí" : ""}"`);
   }
   csvLines.push("");
-  csvLines.push(`"TOTAL: ${totalTareas} predios","","","",""`);
+  csvLines.push(`"TOTAL: ${totalTareas} predios","","","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
   // BOM para que Excel abra el CSV con acentos correctamente
   const csvContent = "﻿" + csvLines.join("\n");
 
