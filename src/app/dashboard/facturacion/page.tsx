@@ -60,22 +60,35 @@ export default function FacturacionPage() {
 
   useEffect(() => { fetchReportes(); }, []);
 
-  const generarReporte = async () => {
+  const generarReporte = async (overwrite = false) => {
     setGenerating(true);
-    const res = await fetch("/api/facturacion", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({}),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      toast.success(`Reporte generado: ${data.totalTareas} tareas CONFORME`);
-      fetchReportes();
-    } else {
-      toast.error(data.error || "Error al generar");
+    try {
+      const res = await fetch("/api/facturacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ overwrite }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Reporte ${overwrite ? "regenerado" : "generado"}: ${data.totalTareas} tareas CONFORME`);
+        fetchReportes();
+      } else if (res.status === 409 && data.exists) {
+        // Ya existe un reporte de esta semana: ofrecer sobrescribirlo.
+        toast(`Ya existe un reporte para la semana ${data.semana || "actual"}. ¿Sobrescribirlo?`, {
+          action: {
+            label: "Sobrescribir",
+            onClick: () => { void generarReporte(true); },
+          },
+        });
+      } else {
+        toast.error(data.error || "Error al generar");
+      }
+    } catch {
+      toast.error("Error al generar el reporte");
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   const descargarCSV = (id: string) => {
@@ -120,7 +133,7 @@ export default function FacturacionPage() {
           </p>
         </div>
         <button
-          onClick={generarReporte}
+          onClick={() => generarReporte()}
           disabled={generating}
           className="px-4 py-2 text-xs font-medium rounded-md bg-surface-800 text-white hover:bg-surface-700 transition-colors whitespace-nowrap disabled:opacity-50"
         >
@@ -134,6 +147,7 @@ export default function FacturacionPage() {
         <p className="text-blue-600">
           El reporte incluye únicamente predios movidos a CONFORME desde el lunes 00:00 de la semana en curso.
           Al pasar la semana, los conformes anteriores dejan de contarse. Los predios movidos a la carpeta &quot;Facturado&quot; se excluyen automáticamente.
+          Si ya existe un reporte de la semana actual, al generar de nuevo se ofrece sobrescribirlo con los últimos cambios.
         </p>
       </div>
 

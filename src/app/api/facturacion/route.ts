@@ -39,11 +39,17 @@ export async function GET(request: NextRequest) {
  * - Excluye predios que ya estén en el espacio "Facturado".
  * - Genera CSV + XLSX con campos: Predio, Incidencia, Técnico, Fecha, Provincia.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session || session.rol !== "ADMIN") {
     return NextResponse.json({ error: "Solo administradores" }, { status: 403 });
   }
+
+  let overwrite = false;
+  try {
+    const body = await request.json();
+    overwrite = body?.overwrite === true;
+  } catch { /* sin cuerpo */ }
 
   try {
     // Calcular período: lunes 00:00 de esta semana hasta ahora
@@ -63,11 +69,16 @@ export async function POST() {
     const existente = await prisma.reporteFacturacion.findUnique({
       where: { semana },
     });
-    if (existente) {
+    if (existente && !overwrite) {
       return NextResponse.json(
-        { error: `Ya existe un reporte para la semana ${semana}`, reporteId: existente.id },
+        { error: `Ya existe un reporte para la semana ${semana}`, reporteId: existente.id, exists: true, semana },
         { status: 409 }
       );
+    }
+    // Sobrescribir: borrar el reporte anterior de esta semana antes de regenerar.
+    // El CSV/XLSX en disco se reescribe con el mismo nombre (reporte-<semana>).
+    if (existente && overwrite) {
+      await prisma.reporteFacturacion.delete({ where: { id: existente.id } });
     }
 
     // Buscar el estado "conforme"
