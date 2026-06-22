@@ -209,16 +209,16 @@ export default function ChatMediaViewer({
       formData.append("file", file);
       formData.append("conversacionId", conversacionId);
       formData.append("replyToId", message.id);
-      formData.append("mensaje", "Correcci├│n de imagen");
+      formData.append("mensaje", "Corrección de imagen");
       const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: formData });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Error al reenviar la correcci├│n");
+        throw new Error(data.error || "Error al reenviar la corrección");
       }
       onSent?.();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al reenviar la correcci├│n");
+      setError(err instanceof Error ? err.message : "Error al reenviar la corrección");
     } finally {
       setSending(false);
     }
@@ -238,7 +238,7 @@ export default function ChatMediaViewer({
         <div className="flex items-center justify-between gap-3 border-b border-surface-200 px-3 py-2 dark:border-surface-700">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">{message.archivoNombre || "Archivo"}</p>
-            <p className="text-[11px] text-surface-500 dark:text-surface-400">{mime || "archivo"} {message.archivoTamanio ? `┬À ${formatFileSize(message.archivoTamanio)}` : ""}</p>
+            <p className="text-[11px] text-surface-500 dark:text-surface-400">{mime || "archivo"} {message.archivoTamanio ? `· ${formatFileSize(message.archivoTamanio)}` : ""}</p>
           </div>
           <div className="flex items-center gap-1">
             <a href={urls.downloadUrl} download className="rounded-lg px-2 py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-800">Descargar</a>
@@ -298,7 +298,7 @@ export default function ChatMediaViewer({
               </div>
               {error && <p className="rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-300">{error}</p>}
               <button type="button" onClick={sendCorrection} disabled={sending || !conversacionId} className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-                {sending ? "Enviando..." : "Reenviar correcci├│n"}
+                {sending ? "Enviando..." : "Reenviar corrección"}
               </button>
             </div>
           </div>

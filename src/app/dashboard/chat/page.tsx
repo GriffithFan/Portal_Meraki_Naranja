@@ -7,6 +7,7 @@ import { useSession } from "@/hooks/useSession";
 import { useConfirm } from "@/contexts/ConfirmContext";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
+import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import clsx from "clsx";
@@ -37,7 +38,7 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
 }
 
-function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
+function ChatArchivo({ msg, esMio, onOpenMedia }: { msg: any; esMio: boolean; onOpenMedia: (msg: any) => void }) {
   if (!msg.archivoUrl) return null;
   const tipo = (msg.archivoTipo || "").split(";")[0].trim();
   const downloadUrl = `/api/chat/archivo/${msg.id}`;
@@ -50,14 +51,22 @@ function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
     </a>
   );
 
+  const ExpandBtn = () => (
+    <button type="button" onClick={() => onOpenMedia(msg)} className={clsx("inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded transition text-[10px]", esMio ? "bg-white/10 hover:bg-white/20 text-blue-100" : "bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 opacity-70 hover:opacity-100")}>
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+      Ampliar / editar
+    </button>
+  );
+
   if (tipo.startsWith("image/")) {
     return (
       <div className="mt-1.5">
-        <a href={inlineUrl} target="_blank" rel="noopener noreferrer">
-          <Image src={inlineUrl} alt={msg.archivoNombre} width={280} height={200} unoptimized className="max-w-[280px] max-h-[200px] w-auto h-auto rounded-lg object-cover cursor-pointer hover:opacity-90 transition" />
-        </a>
-        <div className="flex items-center gap-2">
+        <button type="button" onClick={() => onOpenMedia(msg)} className="block text-left" title="Abrir para recortar, dibujar o reenviar">
+          <Image src={inlineUrl} alt={msg.archivoNombre} width={280} height={200} unoptimized className="max-w-[280px] max-h-[200px] w-auto h-auto rounded-lg object-cover cursor-zoom-in hover:opacity-90 transition" />
+        </button>
+        <div className="flex items-center gap-2 flex-wrap">
           <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+          <ExpandBtn />
           <DownloadBtn />
         </div>
       </div>
@@ -67,8 +76,9 @@ function ChatArchivo({ msg, esMio }: { msg: any; esMio: boolean }) {
     return (
       <div className="mt-1.5">
         <video src={inlineUrl} controls playsInline className="max-w-[280px] max-h-[200px] rounded-lg" preload="metadata" />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
+          <ExpandBtn />
           <DownloadBtn />
         </div>
       </div>
@@ -168,6 +178,7 @@ export default function ChatPage() {
   useChatReminders(Boolean(session), session?.userId || "default");
   // Admin/Mod sin esMesa: ven todos los chats, pueden crear propias consultas
   const esVistaGlobal = isMesa || isModOrAdmin;
+  const [mediaViewerMsg, setMediaViewerMsg] = useState<any | null>(null);
   const [conversaciones, setConversaciones] = useState<any[]>([]);
   const [seleccionada, setSeleccionada] = useState<any>(null);
   const [mensajes, setMensajes] = useState<any[]>([]);
@@ -1048,7 +1059,7 @@ export default function ChatPage() {
                           <>
                             <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
                             {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
-                            <ChatArchivo msg={msg} esMio={esMio} />
+                            <ChatArchivo msg={msg} esMio={esMio} onOpenMedia={setMediaViewerMsg} />
                           </>
                         )}
                         <div className={clsx("flex items-center gap-1 mt-1", esMio ? "justify-end" : "")}>
@@ -1205,6 +1216,12 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+      <ChatMediaViewer
+        message={mediaViewerMsg}
+        conversacionId={seleccionada?.id}
+        onClose={() => setMediaViewerMsg(null)}
+        onSent={() => { if (seleccionada?.id) cargarMensajes(seleccionada.id); }}
+      />
     </div>
   );
 }
