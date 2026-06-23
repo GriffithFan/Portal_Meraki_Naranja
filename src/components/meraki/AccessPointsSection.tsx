@@ -51,6 +51,56 @@ function formatWiredSpeed(speedString: string | null | undefined, isMeshRepeater
   return speedString;
 }
 
+/**
+ * Ícono de estado fiel al Dashboard de Cisco Meraki.
+ * - Forma: círculo lleno = "gateway" (AP con IP de gestión por uplink cableado);
+ *   diamante (cuadrado rotado, contorneado) = "repeater" (mesh, sin IP propia).
+ *   Meraki distingue gateway/repeater exactamente así: AP sin IP local = repeater.
+ * - Color por estado: online=verde, alerting=ámbar, offline=rojo, dormant=gris.
+ * - Glifo: ✓ online, ✕ offline, ! alerting.
+ * Tooltips replican los de Meraki: "Online repeater", "Alerting repeater", etc.
+ */
+export function APStatusIcon({ ap, size = 22 }: { ap: any; size?: number }) {
+  const statusN = normalizeReachability(ap.status);
+  const isDormant = /dormant/i.test(ap.status || "");
+  // Meraki: un AP sin IP de gestión (uplink por mesh) se muestra como "repeater".
+  const isRepeater = !ap.lanIp;
+
+  const kind: "online" | "alerting" | "offline" | "dormant" =
+    isDormant ? "dormant" : statusN === "connected" ? "online" : statusN === "warning" ? "alerting" : "offline";
+
+  const color = kind === "online" ? "#22c55e" : kind === "alerting" ? "#f59e0b" : kind === "offline" ? "#ef4444" : "#94a3b8";
+  const statusLabel = kind === "online" ? "Online" : kind === "alerting" ? "Alerting" : kind === "offline" ? "Offline" : "Dormant";
+  const label = isRepeater && !isDormant ? `${statusLabel} repeater` : statusLabel;
+
+  const Glyph = ({ stroke }: { stroke: string }) => {
+    if (kind === "online") return <path d="M8 12.4l2.6 2.6L16 9.6" fill="none" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />;
+    if (kind === "offline") return <path d="M9 9l6 6M15 9l-6 6" fill="none" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" />;
+    if (kind === "alerting") return <><path d="M12 7.6v5.2" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" /><circle cx={12} cy={16.4} r={1.3} fill={stroke} /></>;
+    return null; // dormant: sin glifo
+  };
+
+  return (
+    <Tooltip content={label} position="top">
+      <span style={{ display: "inline-flex", cursor: "pointer" }} aria-label={label} role="img">
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          {isRepeater ? (
+            <>
+              <rect x={4.8} y={4.8} width={14.4} height={14.4} rx={2.5} transform="rotate(45 12 12)" fill={color} fillOpacity={0.14} stroke={color} strokeWidth={2} />
+              <Glyph stroke={color} />
+            </>
+          ) : (
+            <>
+              <circle cx={12} cy={12} r={10} fill={color} />
+              <Glyph stroke="#ffffff" />
+            </>
+          )}
+        </svg>
+      </span>
+    </Tooltip>
+  );
+}
+
 function APConnectivityBar({ ap }: { ap: any }) {
   const segments: { color: string; tooltip: string }[] = useMemo(() => {
     const statusN = normalizeReachability(ap.status);
@@ -305,10 +355,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
       {/* ── Mobile cards (< md) ── */}
       <div className="md:hidden flex flex-col gap-2">
         {sortData(accessPoints, sortConfig.key, sortConfig.direction).map((ap) => {
-          const statusN = normalizeReachability(ap.status);
-          const isDormant = /dormant/i.test(ap.status || "");
           const isMesh = ap.isMeshRepeater || false;
-          const statusColor = isDormant ? "#94a3b8" : statusN === "connected" ? "#22c55e" : statusN === "warning" ? "#f59e0b" : "#ef4444";
           const expanded = expandedAP === ap.serial;
           const lldpInfo = isMesh
             ? (ap.meshParentName ? `${ap.meshParentName} (Mesh)` : "Mesh Repeater")
@@ -320,7 +367,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
                 onClick={() => setExpandedAP(expanded ? null : ap.serial)}
                 className="w-full flex items-center gap-3 px-3 py-3 text-left"
               >
-                <span style={{ width: 10, height: 10, borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
+                <APStatusIcon ap={ap} size={16} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-surface-800 truncate">{ap.name || ap.serial}</div>
                   <div className="text-xs text-surface-500 truncate">{ap.model} · {ap.lanIp || "-"}</div>
@@ -368,86 +415,15 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
           </thead>
           <tbody>
             {sortData(accessPoints, sortConfig.key, sortConfig.direction).map((ap) => {
-              const statusN = normalizeReachability(ap.status);
-              const isDormant = /dormant/i.test(ap.status || "");
               const isMesh = ap.isMeshRepeater || false;
-              const isLowPower = ap.powerMode === "low";
               const lldpInfo = isMesh
                 ? (ap.meshParentName ? `${ap.meshParentName} (Mesh)` : "Mesh Repeater")
                 : (ap.connectedTo && ap.connectedTo !== "-" ? ap.connectedTo.replace(/^.*?\s-\s/, "") : "-");
 
-              // --- Determinar el estado visual compuesto (como Meraki Dashboard) ---
-              // Prioridad: dormant > mesh + status > lowPower > status puro
-              type VisualState = "online" | "online-repeater" | "online-mesh" | "alerting" | "alerting-repeater" | "low-power" | "offline" | "dormant";
-              let visualState: VisualState = "offline";
-              if (isDormant) {
-                visualState = "dormant";
-              } else if (isMesh && statusN === "connected") {
-                // ¿Tiene mesh parent? → Online Repeater (punto verde al centro)
-                // ¿No tiene parent identificado? → Mesh (centro vacío)
-                visualState = ap.meshParentName ? "online-repeater" : "online-mesh";
-              } else if (isMesh && statusN === "warning") {
-                visualState = "alerting-repeater";
-              } else if (isLowPower && (statusN === "connected" || statusN === "warning")) {
-                visualState = "low-power";
-              } else if (statusN === "connected") {
-                visualState = "online";
-              } else if (statusN === "warning") {
-                visualState = "alerting";
-              } else {
-                visualState = isDormant ? "dormant" : "offline";
-              }
-
-              // --- Mapear estado visual a colores y estilos ---
-              const statusConfig: Record<VisualState, { color: string; bg: string; dashed: boolean; innerStyle: "solid" | "dot" | "empty" | "exclamation"; label: string }> = {
-                "online":             { color: "#22c55e", bg: "#d1fae5", dashed: false, innerStyle: "solid",       label: "Online" },
-                "online-repeater":    { color: "#22c55e", bg: "transparent", dashed: true, innerStyle: "dot",      label: "Online Repeater" },
-                "online-mesh":        { color: "#22c55e", bg: "transparent", dashed: true, innerStyle: "empty",    label: "Online (Mesh)" },
-                "alerting":           { color: "#f59e0b", bg: "#fef3c7", dashed: false, innerStyle: "solid",       label: "Alerting" },
-                "alerting-repeater":  { color: "#f59e0b", bg: "transparent", dashed: true, innerStyle: "exclamation", label: "Alerting Repeater" },
-                "low-power":          { color: "#f59e0b", bg: "#fef3c7", dashed: false, innerStyle: "solid",       label: "Low Power Mode" },
-                "offline":            { color: "#ef4444", bg: "#fee2e2", dashed: false, innerStyle: "solid",       label: "Offline" },
-                "dormant":            { color: "#94a3b8", bg: "#f1f5f9", dashed: false, innerStyle: "solid",       label: "Dormant" },
-              };
-              const cfg = statusConfig[visualState];
-
-              // Tooltip descriptivo
-              let statusText = cfg.label;
-              if (visualState === "alerting") {
-                const speed = formatWiredSpeed(ap.wiredSpeed, false);
-                if (speed && speed !== "—" && /^(10|100) /i.test(speed)) statusText = `Alerting: Ethernet a ${speed}`;
-              } else if (visualState === "low-power") {
-                statusText = "Low Power Mode (PoE insuficiente)";
-              }
-
-              // Renderizar el inner del ícono
-              const renderInner = () => {
-                switch (cfg.innerStyle) {
-                  case "solid":
-                    return <span style={{ width: 9, height: 9, borderRadius: "50%", background: cfg.color }} />;
-                  case "dot":
-                    return <span style={{ width: 7, height: 7, borderRadius: "50%", background: cfg.color }} />;
-                  case "empty":
-                    return null; // Centro vacío = solo borde dashed
-                  case "exclamation":
-                    return <span style={{ fontSize: 12, fontWeight: 900, lineHeight: 1, color: cfg.color, userSelect: "none" }}>!</span>;
-                }
-              };
-
               return (
                 <tr key={ap.serial}>
                   <td style={{ textAlign: "center", padding: "8px 10px" }}>
-                    <Tooltip content={statusText} position="top">
-                      <span style={{
-                        display: "inline-flex", alignItems: "center", justifyContent: "center",
-                        width: 22, height: 22, borderRadius: "50%",
-                        background: cfg.bg,
-                        border: cfg.dashed ? `2px dashed ${cfg.color}` : "none",
-                        cursor: "pointer",
-                      }}>
-                        {renderInner()}
-                      </span>
-                    </Tooltip>
+                    <APStatusIcon ap={ap} />
                   </td>
                   <td style={{ textAlign: "left", padding: "8px 10px" }}>
                     <Tooltip content={<APTooltipContent ap={ap} />} position="right">

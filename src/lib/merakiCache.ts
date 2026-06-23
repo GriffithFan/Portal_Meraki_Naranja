@@ -25,6 +25,9 @@ export const TTL = {
   SLOW: 10 * 60 * 1000, // 10 min
   /** Statuses, port statuses — cambian con frecuencia */
   FAST: 3 * 60 * 1000,  // 3 min
+  /** Estado online/alerting/offline de dispositivos — para reflejar Meraki lo más
+   *  fiel posible (los repeaters inestables cambian de estado seguido). */
+  REALTIME: 60 * 1000, // 1 min
   /** Secciones completas montadas — el frontend controla el refetch */
   SECTION: 5 * 60 * 1000, // 5 min
 } as const;

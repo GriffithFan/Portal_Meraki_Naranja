@@ -81,7 +81,7 @@ export async function GET(
       orgId
         ? getOrFetch<any[]>("networkById", `statuses:${networkId}`, () =>
             getOrganizationDevicesStatuses(orgId, { "networkIds[]": networkId }),
-            TTL.FAST,
+            TTL.REALTIME,
           )
         : Promise.resolve([] as any[]),
     ]);
