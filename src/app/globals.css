@@ -522,4 +522,34 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
+
+/* ── Optimización móvil (teléfonos de gama baja) ──────────────────
+   En pantallas chicas desactivamos el desenfoque (backdrop-filter): es de lo más
+   costoso para la GPU en equipos lentos (provoca tirones al scrollear y gasta
+   batería). El fondo translúcido se mantiene; solo se quita el blur. */
+@media (max-width: 768px) {
+  .backdrop-blur-sm,
+  .backdrop-blur,
+  .backdrop-blur-md,
+  .backdrop-blur-lg,
+  .backdrop-blur-xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-3xl {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+/* Respetar "menos movimiento" del sistema: reduce animaciones/transiciones,
+   lo que mejora la fluidez en equipos lentos cuando el usuario lo activa. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 }

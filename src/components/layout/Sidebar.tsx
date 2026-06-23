@@ -90,6 +90,35 @@ const sections: NavSection[] = [
 
 const SHOW_DATETIME_GPS = true;
 
+/**
+ * Reloj aislado: mantiene su propio estado e intervalo para que el tick de cada
+ * segundo NO re-renderice todo el Sidebar (incluido el árbol de espacios), lo que
+ * en teléfonos de gama baja gastaba CPU/batería de forma constante. Además pausa
+ * el intervalo cuando la pestaña está oculta.
+ */
+function LiveDateTime({ collapsed }: { collapsed: boolean }) {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const tick = () => setNow(new Date());
+    const start = () => { if (!timer) { tick(); timer = setInterval(tick, 1000); } };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const onVisibility = () => { if (document.hidden) stop(); else start(); };
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
+  }, []);
+
+  if (collapsed) {
+    return <div>{now ? now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }) : " "}</div>;
+  }
+  return (
+    <div className="text-[13px] font-semibold text-surface-300 font-mono tracking-wide">
+      {now ? now.toLocaleString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : " "}
+    </div>
+  );
+}
+
 interface LocationState {
   lat: number | null;
   lng: number | null;
@@ -114,18 +143,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
     () => Object.fromEntries(sections.map((s) => [s.title, true]))
   );
-  const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
   const [location, setLocation] = useState<LocationState>({
     lat: null, lng: null, error: null, loading: SHOW_DATETIME_GPS,
   });
-
-  // Reloj (solo client-side para evitar hydration mismatch)
-  useEffect(() => {
-    if (!SHOW_DATETIME_GPS) return;
-    setCurrentDateTime(new Date());
-    const timer = setInterval(() => setCurrentDateTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // GPS fallback por IP (HTTPS only)
   const getLocationByIP = useCallback(async (): Promise<boolean> => {
@@ -190,9 +210,6 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     window.addEventListener("resize", applyAdaptiveCollapse);
     return () => window.removeEventListener("resize", applyAdaptiveCollapse);
   }, []);
-
-  const formatDateTime = (date: Date): string =>
-    date.toLocaleString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
   const userRole = session?.rol as "ADMIN" | "MODERADOR" | "TECNICO" | undefined;
 
@@ -339,7 +356,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             {!collapsed ? (
               <>
                 <div className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">Fecha y Hora</div>
-                <div className="text-[13px] font-semibold text-surface-300 font-mono tracking-wide">{currentDateTime ? formatDateTime(currentDateTime) : "\u00A0"}</div>
+                <LiveDateTime collapsed={false} />
                 <div className="mt-2.5 pt-2.5 border-t border-surface-800">
                   <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -357,8 +374,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                 </div>
               </>
             ) : (
-              <div className="text-[10px] font-semibold text-surface-300 font-mono leading-relaxed" title={`${currentDateTime ? formatDateTime(currentDateTime) : ""}${location.lat ? ` | GPS: ${location.lat.toFixed(4)}, ${location.lng?.toFixed(4)}` : ""}`}>
-                <div>{currentDateTime ? currentDateTime.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }) : "\u00A0"}</div>
+              <div className="text-[10px] font-semibold text-surface-300 font-mono leading-relaxed" title={location.lat ? `GPS: ${location.lat.toFixed(4)}, ${location.lng?.toFixed(4)}` : ""}>
+                <LiveDateTime collapsed />
                 <div className="mt-1 flex justify-center">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 </div>
