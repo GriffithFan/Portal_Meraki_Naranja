@@ -86,7 +86,8 @@ export function APStatusIcon({ ap, size = 22 }: { ap: any; size?: number }) {
         <svg width={size} height={size} viewBox="0 0 24 24">
           {isRepeater ? (
             <>
-              <rect x={4.8} y={4.8} width={14.4} height={14.4} rx={2.5} transform="rotate(45 12 12)" fill={color} fillOpacity={0.14} stroke={color} strokeWidth={2} />
+              {/* Repeater = círculo punteado (como el Dashboard de Meraki) */}
+              <circle cx={12} cy={12} r={10} fill={color} fillOpacity={0.10} stroke={color} strokeWidth={2} strokeLinecap="round" strokeDasharray="1.5 3.2" />
               <Glyph stroke={color} />
             </>
           ) : (
