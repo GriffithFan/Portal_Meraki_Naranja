@@ -6,6 +6,7 @@ import { normalizeReachability } from "@/utils/networkUtils";
 import { SortableHeader } from "./SortableHeader";
 import { useTableSort } from "@/hooks/useTableSort";
 import Tooltip from "./Tooltip";
+import { DeviceStatusIcon } from "./DeviceStatusIcon";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -49,57 +50,6 @@ function formatWiredSpeed(speedString: string | null | undefined, isMeshRepeater
   }
 
   return speedString;
-}
-
-/**
- * Ícono de estado fiel al Dashboard de Cisco Meraki.
- * - Forma: círculo lleno = "gateway" (AP con IP de gestión por uplink cableado);
- *   diamante (cuadrado rotado, contorneado) = "repeater" (mesh, sin IP propia).
- *   Meraki distingue gateway/repeater exactamente así: AP sin IP local = repeater.
- * - Color por estado: online=verde, alerting=ámbar, offline=rojo, dormant=gris.
- * - Glifo: ✓ online, ✕ offline, ! alerting.
- * Tooltips replican los de Meraki: "Online repeater", "Alerting repeater", etc.
- */
-export function APStatusIcon({ ap, size = 16.5 }: { ap: any; size?: number }) {
-  const statusN = normalizeReachability(ap.status);
-  const isDormant = /dormant/i.test(ap.status || "");
-  // Meraki: un AP sin IP de gestión (uplink por mesh) se muestra como "repeater".
-  const isRepeater = !ap.lanIp;
-
-  const kind: "online" | "alerting" | "offline" | "dormant" =
-    isDormant ? "dormant" : statusN === "connected" ? "online" : statusN === "warning" ? "alerting" : "offline";
-
-  const color = kind === "online" ? "#22c55e" : kind === "alerting" ? "#f59e0b" : kind === "offline" ? "#ef4444" : "#94a3b8";
-  const statusLabel = kind === "online" ? "Online" : kind === "alerting" ? "Alerting" : kind === "offline" ? "Offline" : "Dormant";
-  const label = isRepeater && !isDormant ? `${statusLabel} repeater` : statusLabel;
-
-  const Glyph = ({ stroke }: { stroke: string }) => {
-    if (kind === "online") return <path d="M8 12.4l2.6 2.6L16 9.6" fill="none" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />;
-    if (kind === "offline") return <path d="M9 9l6 6M15 9l-6 6" fill="none" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" />;
-    if (kind === "alerting") return <><path d="M12 7.6v5.2" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" /><circle cx={12} cy={16.4} r={1.3} fill={stroke} /></>;
-    return null; // dormant: sin glifo
-  };
-
-  return (
-    <Tooltip content={label} position="top">
-      <span style={{ display: "inline-flex", cursor: "pointer" }} aria-label={label} role="img">
-        <svg width={size} height={size} viewBox="0 0 24 24">
-          {isRepeater ? (
-            <>
-              {/* Repeater = círculo punteado (como el Dashboard de Meraki) */}
-              <circle cx={12} cy={12} r={10} fill={color} fillOpacity={0.10} stroke={color} strokeWidth={2} strokeLinecap="round" strokeDasharray="1.4 4.6" />
-              <Glyph stroke={color} />
-            </>
-          ) : (
-            <>
-              <circle cx={12} cy={12} r={10} fill={color} />
-              <Glyph stroke="#ffffff" />
-            </>
-          )}
-        </svg>
-      </span>
-    </Tooltip>
-  );
 }
 
 function APConnectivityBar({ ap }: { ap: any }) {
@@ -368,7 +318,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
                 onClick={() => setExpandedAP(expanded ? null : ap.serial)}
                 className="w-full flex items-center gap-3 px-3 py-3 text-left"
               >
-                <APStatusIcon ap={ap} size={12} />
+                <DeviceStatusIcon device={ap} size={12} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-surface-800 truncate">{ap.name || ap.serial}</div>
                   <div className="text-xs text-surface-500 truncate">{ap.model} · {ap.lanIp || "-"}</div>
@@ -424,7 +374,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
               return (
                 <tr key={ap.serial}>
                   <td style={{ textAlign: "center", padding: "8px 10px" }}>
-                    <APStatusIcon ap={ap} />
+                    <DeviceStatusIcon device={ap} />
                   </td>
                   <td style={{ textAlign: "left", padding: "8px 10px" }}>
                     <Tooltip content={<APTooltipContent ap={ap} />} position="right">

@@ -3,25 +3,27 @@ import React, { useState, useMemo } from "react";
 import { SwitchPortsGrid } from "./SwitchComponents";
 import { SummaryChip } from "./DashboardHelpers";
 import { SortableHeader } from "./SortableHeader";
-import { normalizeReachability, getStatusColor } from "@/utils/networkUtils";
+import { normalizeReachability } from "@/utils/networkUtils";
 import Tooltip from "./Tooltip";
+import { DeviceStatusIcon } from "./DeviceStatusIcon";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const STATUS_LABELS: Record<string, string> = {
-  connected: "Conectado",
-  warning: "Advertencia",
-  disconnected: "Desconectado",
-  disabled: "Deshabilitado",
-};
-
-const getStatusLabel = (rawStatus: string): string => {
-  const normalized = normalizeReachability(rawStatus);
-  const label = STATUS_LABELS[normalized] || normalized;
-  const raw = (rawStatus || "").trim().toLowerCase();
-  if (raw && raw !== normalized) return `${label} (${rawStatus})`;
-  return label;
-};
+/**
+ * Puertos con problemas reales reportados por Meraki (warnings/errors del estado
+ * de puertos). Es información verídica que ya devuelve la API; NO inventa nada.
+ */
+function getProblemPorts(ports: any[]): { port: string; issues: string[] }[] {
+  return (ports || [])
+    .map((p: any) => {
+      const issues = [
+        ...(Array.isArray(p.errors) ? p.errors : []),
+        ...(Array.isArray(p.warnings) ? p.warnings : []),
+      ].filter(Boolean);
+      return { port: String(p.portId ?? p.number ?? "?"), issues };
+    })
+    .filter((p) => p.issues.length > 0);
+}
 
 interface SwitchesSectionProps {
   switchesDetailed: any[];
@@ -180,10 +182,9 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
       {/* ═══════ MOBILE: cards expandibles (< md) ═══════ */}
       <div className="flex flex-col gap-3 md:hidden">
         {sorted.map((sw) => {
-          const statusColor = getStatusColor(sw.status);
-          const statusN = normalizeReachability(sw.status);
           const isExpanded = expandedSwitch === sw.serial;
           const ports = sw.ports || [];
+          const problemPorts = getProblemPorts(ports);
           const swCrcCount = sw.crcErrorPorts != null
             ? sw.crcErrorPorts
             : ports.filter((p: any) => Array.isArray(p.warnings) && p.warnings.some((w: string) => /crc/i.test(w))).length;
@@ -197,9 +198,9 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
                 className="w-full text-left px-4 py-3 flex items-start gap-3 bg-transparent border-0 cursor-pointer active:bg-surface-50"
                 onClick={() => setExpandedSwitch(isExpanded ? null : sw.serial)}
               >
-                {/* Status dot */}
-                <span title={getStatusLabel(sw.status)} className={`mt-0.5 shrink-0 inline-flex items-center justify-center w-[22px] h-[22px] rounded-full ${statusN === "connected" ? "bg-green-100" : statusN === "warning" ? "bg-amber-100" : statusN === "disconnected" ? "bg-red-100" : "bg-surface-100"}`}>
-                  <span className="w-[9px] h-[9px] rounded-full" style={{ background: statusColor }} />
+                {/* Status icon (estilo Meraki) */}
+                <span className="mt-0.5 shrink-0">
+                  <DeviceStatusIcon device={sw} size={18} />
                 </span>
 
                 {/* Info */}
@@ -234,6 +235,16 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
               {/* Expanded: port grid with horizontal scroll */}
               {isExpanded && (
                 <div className="border-t border-surface-200 bg-surface-50 px-3 py-3">
+                  {problemPorts.length > 0 && (
+                    <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900">
+                      <div className="font-semibold mb-1">Problemas detectados (Meraki)</div>
+                      <ul className="space-y-0.5 list-none">
+                        {problemPorts.slice(0, 8).map((pp) => (
+                          <li key={pp.port}>Puerto {pp.port}: {pp.issues.join("; ")}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="m-0 text-sm text-surface-800 font-semibold">Ports</h4>
                   </div>
@@ -267,10 +278,9 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
               </thead>
               <tbody>
                 {sorted.map((sw) => {
-                  const statusColor = getStatusColor(sw.status);
-                  const statusN = normalizeReachability(sw.status);
                   const isExpanded = expandedSwitch === sw.serial;
                   const ports = sw.ports || [];
+                  const problemPorts = getProblemPorts(ports);
 
                   const swCrcCount = sw.crcErrorPorts != null
                     ? sw.crcErrorPorts
@@ -284,19 +294,22 @@ export default function SwitchesSection({ switchesDetailed, sortData, sortConfig
                       >
                         <td className="text-center px-1.5 py-2.5">
                           <div className="inline-flex flex-col items-center gap-[3px]">
-                            <Tooltip content={<span>{getStatusLabel(sw.status)}</span>} position="auto">
-                              <span className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-full cursor-help ${statusN === "connected" ? "bg-green-100" : statusN === "warning" ? "bg-amber-100" : statusN === "disconnected" ? "bg-red-100" : "bg-surface-100"}`}>
-                                <span className="w-[9px] h-[9px] rounded-full" style={{ background: statusColor }} />
-                              </span>
-                            </Tooltip>
+                            <DeviceStatusIcon device={sw} />
                             {swCrcCount > 0 && (
                               <Tooltip content={
-                                <div>
-                                  <div className="font-bold text-amber-500">CRC Errors</div>
-                                  <div>Puertos afectados: {swCrcCount}</div>
+                                <div className="text-left">
+                                  <div className="font-bold text-amber-500">Errores CRC detectados</div>
+                                  <div className="mt-0.5">Puertos afectados: {swCrcCount}</div>
+                                  {problemPorts.length > 0 && (
+                                    <ul className="mt-1 space-y-0.5 list-none">
+                                      {problemPorts.slice(0, 8).map((pp) => (
+                                        <li key={pp.port}>Puerto {pp.port}: {pp.issues.join("; ")}</li>
+                                      ))}
+                                    </ul>
+                                  )}
                                 </div>
                               } position="auto">
-                                <span className="inline-flex items-center justify-center w-[18px] h-[18px] cursor-default">
+                                <span className="inline-flex items-center justify-center w-[18px] h-[18px] cursor-help">
                                   <svg width="16" height="14" viewBox="0 0 16 14" fill="none">
                                     <path d="M7.07 1.5L1.07 11.5A1 1 0 0 0 2 13H14a1 1 0 0 0 .93-1.5L8.93 1.5a1 1 0 0 0-1.86 0Z" fill="#fef3c7" stroke="#e8960c" strokeWidth="1.2"/>
                                     <text x="8" y="10.5" textAnchor="middle" fontSize="7" fontWeight="700" fill="#92400e">!</text>
