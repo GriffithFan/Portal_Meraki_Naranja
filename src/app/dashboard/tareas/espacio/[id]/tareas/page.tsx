@@ -1605,6 +1605,15 @@ export default function EspacioTareasPage() {
     setQuickFilter("todos");
   };
 
+  // Sin resultados: en modo agrupado lazy nos basamos en los conteos del servidor;
+  // con búsqueda activa, en las tareas cargadas.
+  const sinResultados = (() => {
+    if (loading || loadingMore) return false;
+    const totalCounts = Object.values(groupCounts).reduce((acc: number, n) => acc + (Number(n) || 0), 0);
+    if (groupBy === "estado" && !serverSearch) return totalCounts === 0 && tareas.length === 0;
+    return tareas.length === 0;
+  })();
+
   const activeView = useMemo(() => savedViews.find((view) => view.id === activeViewId) || null, [activeViewId, savedViews]);
 
   const createViewSnapshot = useCallback((name: string, id?: string): TareasSavedView => ({
@@ -2552,7 +2561,9 @@ export default function EspacioTareasPage() {
           const isKnownEmpty =
             groupCounts[estado.id] === 0 ||
             ((groupLoadState[estado.id] === "loaded" || !!serverSearch) && items.length === 0);
-          if (isKnownEmpty && !showEmptyStates) return null;
+          // No ocultar un grupo que el usuario abrió explícitamente: antes, al
+          // expandir un estado vacío se cargaba, quedaba vacío y desaparecía.
+          if (isKnownEmpty && !showEmptyStates && !isExpanded) return null;
           if (userHiddenEstados.has(estado.id) || adminHiddenEstados.has(estado.id)) return null;
 
           return (
@@ -2654,6 +2665,24 @@ export default function EspacioTareasPage() {
             );
           })}
         </>
+        )}
+
+        {sinResultados && (
+          <div className="bg-white border border-dashed border-surface-200 rounded-lg py-10 px-4 text-center">
+            <p className="text-sm text-surface-500">
+              {hasServerFilters
+                ? "Ningún predio coincide con los filtros actuales."
+                : "No hay predios en esta lista."}
+            </p>
+            {hasServerFilters && (
+              <button
+                onClick={clearServerFilters}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 transition-colors"
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
         )}
 
         {pagination.hasMore && (
