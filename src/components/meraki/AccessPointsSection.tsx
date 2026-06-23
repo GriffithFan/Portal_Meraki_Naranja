@@ -60,7 +60,7 @@ function formatWiredSpeed(speedString: string | null | undefined, isMeshRepeater
  * - Glifo: ✓ online, ✕ offline, ! alerting.
  * Tooltips replican los de Meraki: "Online repeater", "Alerting repeater", etc.
  */
-export function APStatusIcon({ ap, size = 22 }: { ap: any; size?: number }) {
+export function APStatusIcon({ ap, size = 16.5 }: { ap: any; size?: number }) {
   const statusN = normalizeReachability(ap.status);
   const isDormant = /dormant/i.test(ap.status || "");
   // Meraki: un AP sin IP de gestión (uplink por mesh) se muestra como "repeater".
@@ -87,7 +87,7 @@ export function APStatusIcon({ ap, size = 22 }: { ap: any; size?: number }) {
           {isRepeater ? (
             <>
               {/* Repeater = círculo punteado (como el Dashboard de Meraki) */}
-              <circle cx={12} cy={12} r={10} fill={color} fillOpacity={0.10} stroke={color} strokeWidth={2} strokeLinecap="round" strokeDasharray="1.5 3.2" />
+              <circle cx={12} cy={12} r={10} fill={color} fillOpacity={0.10} stroke={color} strokeWidth={2} strokeLinecap="round" strokeDasharray="1.4 4.6" />
               <Glyph stroke={color} />
             </>
           ) : (
@@ -368,7 +368,7 @@ export default function AccessPointsSection({ summaryData, loadedSections, secti
                 onClick={() => setExpandedAP(expanded ? null : ap.serial)}
                 className="w-full flex items-center gap-3 px-3 py-3 text-left"
               >
-                <APStatusIcon ap={ap} size={16} />
+                <APStatusIcon ap={ap} size={12} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-surface-800 truncate">{ap.name || ap.serial}</div>
                   <div className="text-xs text-surface-500 truncate">{ap.model} · {ap.lanIp || "-"}</div>
