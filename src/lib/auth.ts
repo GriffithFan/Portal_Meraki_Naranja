@@ -19,11 +19,18 @@ export interface TokenPayload {
   esMesa?: boolean;
 }
 
+// Sesión larga (30 días): los técnicos en campo usan la app de a ratos y se
+// quedaban sin sesión cada 8 h ("No autorizado" al enviar en el chat). Alargarla
+// NO debilita la baja inmediata de usuarios: getSession() revalida contra la BD
+// (getFreshUser) en cada request, así que desactivar un usuario surte efecto en
+// ~30 s sin importar el TTL del token.
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 días
+
 export async function createToken(payload: TokenPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("8h")
+    .setExpirationTime("30d")
     .sign(secret);
 }
 
@@ -99,8 +106,8 @@ export async function setTokenCookie(token: string) {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 60 * 60 * 8, // 8 horas
+    sameSite: "lax", // "lax" permite que la cookie viaje al abrir desde links/push (móvil)
+    maxAge: SESSION_MAX_AGE_SECONDS, // 30 días
     path: "/",
   });
 }
@@ -110,7 +117,7 @@ export async function removeTokenCookie() {
   cookieStore.set(COOKIE_NAME, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     maxAge: 0,
     path: "/",
   });

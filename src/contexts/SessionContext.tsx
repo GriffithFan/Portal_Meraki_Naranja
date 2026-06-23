@@ -25,7 +25,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        // Sesión expirada/ausente dentro del panel: redirigir a login en vez de
+        // dejar la app en estado inválido (el técnico veía "No autorizado" al
+        // intentar usar el chat sin forma de recuperarse).
+        if (r.status === 401 && typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard")) {
+          window.location.href = "/login";
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
       .then((data) => {
         if (data?.user) {
           setSession(data.user);
