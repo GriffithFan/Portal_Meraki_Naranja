@@ -215,6 +215,8 @@ export default function TareaDetalleModal({
   const [nuevoComentario, setNuevoComentario] = useState("");
   const [comentFiles, setComentFiles] = useState<File[]>([]);
   const [uploadingComent, setUploadingComent] = useState(false);
+  const [obsFiles, setObsFiles] = useState<File[]>([]);
+  const [uploadingObs, setUploadingObs] = useState(false);
   const [lightbox, setLightbox] = useState<{ url: string; tipo: string; nombre: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"info" | "actividad">("info");
   const [espacioDetalle, setEspacioDetalle] = useState<any>(null);
@@ -418,6 +420,37 @@ export default function TareaDetalleModal({
     }
   }
 
+  function onPickObsFiles(e: ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length) setObsFiles((prev) => [...prev, ...picked].slice(0, 10));
+    e.target.value = "";
+  }
+
+  // Sube los adjuntos de "Observaciones del técnico" (se guardan como nota con archivos)
+  async function saveObsArchivos() {
+    if (uploadingObs || obsFiles.length === 0) return;
+    setUploadingObs(true);
+    try {
+      const fd = new FormData();
+      fd.append("contenido", "");
+      fd.append("predioId", tareaId);
+      for (const f of obsFiles) fd.append("file", f);
+      const res = await fetch("/api/comentarios", { method: "POST", credentials: "include", body: fd });
+      if (res.ok) {
+        setObsFiles([]);
+        await refreshTimeline();
+        toast.success("Archivos adjuntados");
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error || "No se pudieron subir los archivos");
+      }
+    } catch {
+      toast.error("Error de red al subir los archivos");
+    } finally {
+      setUploadingObs(false);
+    }
+  }
+
   async function saveNotasTecnico() {
     if (savingNotasTecnico) return;
     const current = String(tarea?.notasTecnico || "");
@@ -449,6 +482,12 @@ export default function TareaDetalleModal({
   }, [actividades, comentarios, tarea?.actas]);
 
   const lastTimelineItem = timelineItems[0];
+
+  // Todos los adjuntos de la tarea (vienen de los comentarios/notas), para la galería en Información
+  const tareaArchivos = useMemo(
+    () => comentarios.flatMap((c: any) => (c.archivos || []) as any[]),
+    [comentarios]
+  );
 
   const getActivityMeta = (item: any) => {
     if (item._type === "comentario") {
@@ -1082,6 +1121,62 @@ export default function TareaDetalleModal({
                     ) : (
                       <p className="text-xs text-surface-600 p-3 whitespace-pre-wrap">{tarea.notasTecnico || <span className="text-surface-300 italic">Sin observaciones</span>}</p>
                     )}
+
+                    {/* Adjuntos: fotos, videos, zip */}
+                    <div className="px-3 pb-3 pt-3 border-t border-surface-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-surface-400">Archivos adjuntos</span>
+                        <label className="inline-flex items-center gap-1 cursor-pointer text-[11px] text-surface-500 hover:text-primary-600 transition-colors" title="Adjuntar fotos, videos o .zip (máx. 10, 25 MB c/u)">
+                          <input
+                            type="file"
+                            accept="image/*,video/*,.zip,application/zip"
+                            multiple
+                            className="hidden"
+                            onChange={onPickObsFiles}
+                          />
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3 3 0 014.24 4.24l-9.2 9.19a1 1 0 01-1.41-1.41l8.49-8.49" />
+                          </svg>
+                          Adjuntar
+                        </label>
+                      </div>
+
+                      {tareaArchivos.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {tareaArchivos.map((a: any) => (
+                            <CommentAttachment key={a.id} archivo={a} formatSize={formatFileSize} onOpen={setLightbox} />
+                          ))}
+                        </div>
+                      )}
+
+                      {obsFiles.length > 0 && (
+                        <>
+                          <div className="flex flex-wrap gap-2">
+                            {obsFiles.map((f, i) => (
+                              <PendingThumb
+                                key={`${f.name}-${i}`}
+                                file={f}
+                                onRemove={() => setObsFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => { void saveObsArchivos(); }}
+                              disabled={uploadingObs}
+                              className="rounded-md bg-primary-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-primary-700 disabled:opacity-60"
+                            >
+                              {uploadingObs ? "Subiendo…" : `Subir ${obsFiles.length} archivo${obsFiles.length > 1 ? "s" : ""}`}
+                            </button>
+                          </div>
+                        </>
+                      )}
+
+                      {tareaArchivos.length === 0 && obsFiles.length === 0 && (
+                        <p className="text-[11px] text-surface-300">Sin archivos. Tocá «Adjuntar» para subir fotos, videos o .zip.</p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Tiene más de 20 AP */}
