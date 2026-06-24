@@ -746,7 +746,8 @@ export default function StockPage() {
       toast.success("Equipo actualizado");
       fetchEquipos();
     } else {
-      toast.error("Error al actualizar equipo");
+      const data = await res.json().catch(() => ({}));
+      toast.error(data?.error || "Error al actualizar equipo");
     }
   }
 
@@ -824,6 +825,7 @@ export default function StockPage() {
 
   /* ── Check serial on blur ── */
   function handleSerialBlur() {
+    if (editingEquipo) return; // En edición, la unicidad la valida el guardado (evita abrir el modal de duplicado por su propio serial).
     const serial = form.numeroSerie.trim();
     if (!serial || duplicateEquipo) return;
     const existing = equipos.find(eq => eq.numeroSerie?.toUpperCase() === serial.toUpperCase());
@@ -2165,7 +2167,7 @@ export default function StockPage() {
                     numeroSerie: val,
                     ...(match ? { nombre: match.nombre, modelo: match.modelo } : {}),
                   }));
-                }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onBlur={handleSerialBlur} placeholder="Ej: Q2PD-XXXX-XXXX" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo || !!editingEquipo} />
+                }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onBlur={handleSerialBlur} placeholder="Ej: Q2PD-XXXX-XXXX" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo} />
                 {form.numeroSerie.length >= 4 && SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()] && (
                   <p className="text-[10px] text-green-600 mt-0.5 ml-1">Auto-completado: {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].nombre} · {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].modelo}</p>
                 )}

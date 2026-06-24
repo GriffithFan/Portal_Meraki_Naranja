@@ -133,6 +133,9 @@ export async function PUT(
 
     return NextResponse.json(equipo);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "Ya existe otro equipo con ese número de serie" }, { status: 409 });
+    }
     console.error("Error actualizando equipo:", error);
     return NextResponse.json({ error: "Error al actualizar equipo" }, { status: 500 });
   }
