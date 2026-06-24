@@ -12,7 +12,7 @@ import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
 import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
-import { dedupeUsersByName } from "@/utils/asignacionUtils";
+import { dedupeUsersByName, getDuplicatedAssigneeNames, assigneeLabel } from "@/utils/asignacionUtils";
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
@@ -387,7 +387,9 @@ export default function TareasPage() {
   const [hiddenEstadoIds, setHiddenEstadoIds] = useState<Set<string>>(new Set());
 
   // Usuarios para asignación
-  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string }[]>([]);
+  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; rol: string; email?: string | null }[]>([]);
+  const dupAssigneeNames = useMemo(() => getDuplicatedAssigneeNames(allUsers), [allUsers]);
+  const usersById = useMemo(() => new Map(allUsers.map((u) => [u.id, u])), [allUsers]);
 
   const [espacios, setEspacios] = useState<any[]>([]);
 
@@ -1280,11 +1282,15 @@ export default function TareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      const badges = asigns.map((a: any) => (
-        <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
-          {a.usuario?.nombre?.split(" ")[0] || "?"}
-        </span>
-      ));
+      const badges = asigns.map((a: any) => {
+        const u = usersById.get(a.usuario?.id);
+        const label = assigneeLabel({ nombre: a.usuario?.nombre, email: u?.email }, dupAssigneeNames, { firstNameOnly: true });
+        return (
+          <span key={a.id} title={a.usuario?.nombre || ""} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[110px]">
+            {label}
+          </span>
+        );
+      });
       if (isModOrAdmin) {
         return (
           <button
@@ -1578,7 +1584,7 @@ export default function TareasPage() {
             )}
             {t.asignaciones?.length > 0 && (
               <span className="px-1.5 py-0.5 bg-violet-50 text-violet-700 rounded text-[11px] font-medium">
-                {t.asignaciones.map((a: any) => a.usuario?.nombre?.split(" ")[0]).join(", ")}
+                {t.asignaciones.map((a: any) => assigneeLabel({ nombre: a.usuario?.nombre, email: usersById.get(a.usuario?.id)?.email }, dupAssigneeNames, { firstNameOnly: true })).join(", ")}
               </span>
             )}
             {(t.etiquetas?.length > 0 || isModOrAdmin) && (
@@ -1738,7 +1744,7 @@ export default function TareasPage() {
             className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
           >
             <option value="todos">Todos los asignados</option>
-            {allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            {allUsers.map(u => <option key={u.id} value={u.id}>{assigneeLabel(u, dupAssigneeNames)}</option>)}
           </select>
           <button
             onClick={clearServerFilters}

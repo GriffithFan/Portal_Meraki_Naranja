@@ -15,7 +15,7 @@ import SavedViewsBar from "@/components/tareas/SavedViewsBar";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
 import { IconDownload, IconPlus } from "@/components/ui/Icons";
 import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
-import { dedupeUsersByName } from "@/utils/asignacionUtils";
+import { dedupeUsersByName, getDuplicatedAssigneeNames, assigneeLabel } from "@/utils/asignacionUtils";
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { toast } from "sonner";
@@ -280,7 +280,9 @@ export default function EspacioTareasPage() {
   const [bulkDeleteGroup, setBulkDeleteGroup] = useState<string | null>(null);
 
   // Usuarios y espacios (para acciones masivas)
-  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string }[]>([]);
+  const [allUsers, setAllUsers] = useState<{ id: string; nombre: string; email?: string | null }[]>([]);
+  const dupAssigneeNames = useMemo(() => getDuplicatedAssigneeNames(allUsers), [allUsers]);
+  const usersById = useMemo(() => new Map(allUsers.map((u) => [u.id, u])), [allUsers]);
   const [allEspacios, setAllEspacios] = useState<any[]>([]);
 
   // Drag & drop columnas
@@ -1472,11 +1474,15 @@ export default function EspacioTareasPage() {
     }
     if (col.id === "asignados") {
       const asigns = t.asignaciones || [];
-      const badges = asigns.map((a: any) => (
-        <span key={a.id} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[80px]">
-          {a.usuario?.nombre?.split(" ")[0] || "?"}
-        </span>
-      ));
+      const badges = asigns.map((a: any) => {
+        const u = usersById.get(a.usuario?.id);
+        const label = assigneeLabel({ nombre: a.usuario?.nombre, email: u?.email }, dupAssigneeNames, { firstNameOnly: true });
+        return (
+          <span key={a.id} title={a.usuario?.nombre || ""} className="px-1.5 py-px bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-medium truncate max-w-[110px]">
+            {label}
+          </span>
+        );
+      });
       if (isModOrAdmin) {
         return (
           <button
@@ -2194,7 +2200,7 @@ export default function EspacioTareasPage() {
             className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
           >
             <option value="todos">Todos los asignados</option>
-            {allUsers.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}
+            {allUsers.map((user) => <option key={user.id} value={user.id}>{assigneeLabel(user, dupAssigneeNames)}</option>)}
           </select>
           <button
             onClick={clearServerFilters}
