@@ -273,12 +273,27 @@ model Comentario {
   usuario   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   predio    Predio?  @relation(fields: [predioId], references: [id], onDelete: Cascade)
   equipo    Equipo?  @relation(fields: [equipoId], references: [id], onDelete: Cascade)
+  archivos  ComentarioArchivo[]
   createdAt DateTime @default(now())
 
   @@index([predioId])
   @@index([equipoId])
   @@index([userId])
   @@index([predioId, createdAt])
+}
+
+// Adjuntos (fotos, videos, zip) que un técnico sube junto a su comentario/nota.
+model ComentarioArchivo {
+  id             String     @id @default(cuid())
+  comentarioId   String
+  comentario     Comentario @relation(fields: [comentarioId], references: [id], onDelete: Cascade)
+  archivoUrl     String     // ruta relativa: uploads/comentarios/<archivo>
+  archivoNombre  String     // nombre original
+  archivoTipo    String     // MIME (image/jpeg, video/mp4, application/zip)
+  archivoTamanio Int        // bytes
+  createdAt      DateTime   @default(now())
+
+  @@index([comentarioId])
 }
 
 // ─── ASIGNACIONES ───────────────────────────────────

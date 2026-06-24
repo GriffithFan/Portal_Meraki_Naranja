@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, type ChangeEvent } from "react";
 import { IconX, IconChevron, IconCheck, IconClock, IconEdit, IconTrash } from "@/components/ui/Icons";
 import { dedupeUsersByName, normalizeAssigneeName } from "@/utils/asignacionUtils";
 import { hasTaskFieldConfig, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
@@ -25,6 +25,94 @@ function CopyButton({ value }: { value: string }) {
         <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
       </svg>
     </button>
+  );
+}
+
+// ── Adjuntos de comentarios (fotos / videos / zip) ──────────
+const comentArchivoUrl = (id: string, inline: boolean) =>
+  `/api/comentarios/archivo/${id}${inline ? "?inline=true" : ""}`;
+const esImagen = (t?: string) => (t || "").startsWith("image/");
+const esVideo = (t?: string) => (t || "").startsWith("video/");
+
+// Previsualización de un archivo aún no enviado (maneja su propio object URL)
+function PendingThumb({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file.type.startsWith("image/")) return;
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  const isImg = file.type.startsWith("image/");
+  const isVid = file.type.startsWith("video/");
+  return (
+    <div className="relative w-16 h-16 rounded-lg border border-surface-200 bg-surface-50 overflow-hidden shrink-0">
+      {isImg && url ? (
+        <img src={url} alt={file.name} className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center p-1 text-center">
+          <span className="text-base leading-none">{isVid ? "🎬" : "🗜️"}</span>
+          <span className="text-[8px] text-surface-500 mt-0.5 truncate w-full px-0.5">{file.name}</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-surface-800 text-white flex items-center justify-center hover:bg-red-600"
+        title="Quitar"
+      >
+        <IconX className="w-2.5 h-2.5" />
+      </button>
+    </div>
+  );
+}
+
+// Adjunto ya guardado en un comentario del timeline
+function CommentAttachment({
+  archivo,
+  formatSize,
+  onOpen,
+}: {
+  archivo: any;
+  formatSize: (n?: number) => string;
+  onOpen: (a: { url: string; tipo: string; nombre: string }) => void;
+}) {
+  if (esImagen(archivo.archivoTipo)) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen({ url: comentArchivoUrl(archivo.id, true), tipo: archivo.archivoTipo, nombre: archivo.archivoNombre })}
+        className="w-20 h-20 rounded-lg border border-surface-200 overflow-hidden shrink-0 hover:ring-2 hover:ring-primary-300"
+        title={archivo.archivoNombre}
+      >
+        <img src={comentArchivoUrl(archivo.id, true)} alt={archivo.archivoNombre} loading="lazy" className="w-full h-full object-cover" />
+      </button>
+    );
+  }
+  if (esVideo(archivo.archivoTipo)) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen({ url: comentArchivoUrl(archivo.id, true), tipo: archivo.archivoTipo, nombre: archivo.archivoNombre })}
+        className="relative w-20 h-20 rounded-lg border border-surface-200 bg-black/80 overflow-hidden shrink-0 flex items-center justify-center hover:ring-2 hover:ring-primary-300"
+        title={archivo.archivoNombre}
+      >
+        <span className="absolute inset-0 flex items-center justify-center text-white text-2xl">▶</span>
+      </button>
+    );
+  }
+  // zip u otros: descarga
+  return (
+    <a
+      href={comentArchivoUrl(archivo.id, false)}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 px-2.5 py-1.5 text-[11px] text-surface-700 hover:bg-surface-100 shrink-0"
+      title={archivo.archivoNombre}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <span>🗜️</span>
+      <span className="max-w-[140px] truncate">{archivo.archivoNombre}</span>
+      {archivo.archivoTamanio ? <span className="text-surface-400">· {formatSize(archivo.archivoTamanio)}</span> : null}
+    </a>
   );
 }
 
@@ -125,6 +213,9 @@ export default function TareaDetalleModal({
   const [loading, setLoading] = useState(true);
   const [estadoDropdown, setEstadoDropdown] = useState(false);
   const [nuevoComentario, setNuevoComentario] = useState("");
+  const [comentFiles, setComentFiles] = useState<File[]>([]);
+  const [uploadingComent, setUploadingComent] = useState(false);
+  const [lightbox, setLightbox] = useState<{ url: string; tipo: string; nombre: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"info" | "actividad">("info");
   const [espacioDetalle, setEspacioDetalle] = useState<any>(null);
   const [listaColumnConfig, setListaColumnConfig] = useState<TaskColumnConfig[] | null>(null);
@@ -284,20 +375,46 @@ export default function TareaDetalleModal({
     }
   }
 
-  // ── Guardar comentario ──────────────────────────────
+  function onPickComentFiles(e: ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length) setComentFiles((prev) => [...prev, ...picked].slice(0, 10));
+    e.target.value = ""; // permitir re-seleccionar el mismo archivo
+  }
+
+  // ── Guardar comentario (con o sin adjuntos) ──────────
   async function saveComentario() {
-    if (!nuevoComentario.trim()) return;
-    const res = await fetch("/api/comentarios", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ contenido: nuevoComentario, predioId: tareaId }),
-    });
-    if (res.ok) {
-      const newCom = await res.json();
-      setComentarios((prev) => [newCom, ...prev]);
-      setNuevoComentario("");
-      await refreshTimeline();
+    if (uploadingComent) return;
+    const text = nuevoComentario.trim();
+    if (!text && comentFiles.length === 0) return;
+    setUploadingComent(true);
+    try {
+      let res: Response;
+      if (comentFiles.length > 0) {
+        const fd = new FormData();
+        fd.append("contenido", text);
+        fd.append("predioId", tareaId);
+        for (const f of comentFiles) fd.append("file", f);
+        res = await fetch("/api/comentarios", { method: "POST", credentials: "include", body: fd });
+      } else {
+        res = await fetch("/api/comentarios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ contenido: text, predioId: tareaId }),
+        });
+      }
+      if (res.ok) {
+        setNuevoComentario("");
+        setComentFiles([]);
+        await refreshTimeline();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error || "No se pudo enviar el comentario");
+      }
+    } catch {
+      toast.error("Error de red al enviar el comentario");
+    } finally {
+      setUploadingComent(false);
     }
   }
 
@@ -1034,16 +1151,41 @@ export default function TareaDetalleModal({
                       className="flex-1 text-xs border border-surface-200 rounded-lg p-2.5 focus:outline-none focus:border-primary-400 resize-none placeholder:text-surface-300"
                     />
                   </div>
-                  {nuevoComentario.trim() && (
-                    <div className="flex justify-end -mt-2">
-                      <button
-                        onClick={saveComentario}
-                        className="px-3 py-1 bg-primary-600 text-white rounded-md text-[11px] font-medium hover:bg-primary-700 transition-colors"
-                      >
-                        Comentar
-                      </button>
+                  {comentFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 -mt-1">
+                      {comentFiles.map((f, i) => (
+                        <PendingThumb
+                          key={`${f.name}-${i}`}
+                          file={f}
+                          onRemove={() => setComentFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        />
+                      ))}
                     </div>
                   )}
+                  <div className="flex items-center justify-between -mt-2">
+                    <label className="inline-flex items-center gap-1 cursor-pointer text-[11px] text-surface-500 hover:text-primary-600 transition-colors" title="Adjuntar fotos, videos o .zip (máx. 10, 25 MB c/u)">
+                      <input
+                        type="file"
+                        accept="image/*,video/*,.zip,application/zip"
+                        multiple
+                        className="hidden"
+                        onChange={onPickComentFiles}
+                      />
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3 3 0 014.24 4.24l-9.2 9.19a1 1 0 01-1.41-1.41l8.49-8.49" />
+                      </svg>
+                      Adjuntar
+                    </label>
+                    {(nuevoComentario.trim() || comentFiles.length > 0) && (
+                      <button
+                        onClick={saveComentario}
+                        disabled={uploadingComent}
+                        className="px-3 py-1 bg-primary-600 text-white rounded-md text-[11px] font-medium hover:bg-primary-700 transition-colors disabled:opacity-60"
+                      >
+                        {uploadingComent ? "Enviando…" : "Comentar"}
+                      </button>
+                    )}
+                  </div>
 
                   <div className="relative pl-3">
                     <div className="absolute left-[22px] top-2 bottom-2 w-px bg-surface-100" />
@@ -1091,6 +1233,13 @@ export default function TareaDetalleModal({
                                 ))}
                               </div>
                             )}
+                            {item._type === "comentario" && item.archivos?.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {item.archivos.map((a: any) => (
+                                  <CommentAttachment key={a.id} archivo={a} formatSize={formatFileSize} onOpen={setLightbox} />
+                                ))}
+                              </div>
+                            )}
                             {item._type === "acta" && (
                               <a
                                 href={`/api/actas/${item.id}`}
@@ -1125,6 +1274,34 @@ export default function TareaDetalleModal({
           </div>
         )}
       </div>
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white"
+            aria-label="Cerrar"
+          >
+            <IconX className="w-7 h-7" />
+          </button>
+          {esVideo(lightbox.tipo) ? (
+            <video src={lightbox.url} controls autoPlay className="max-h-[85vh] max-w-[92vw] rounded-lg" onClick={(e) => e.stopPropagation()} />
+          ) : (
+            <img src={lightbox.url} alt={lightbox.nombre} className="max-h-[85vh] max-w-[92vw] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
+          )}
+          <a
+            href={lightbox.url.replace("?inline=true", "")}
+            download={lightbox.nombre}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-white/80 hover:text-white underline"
+          >
+            Descargar {lightbox.nombre}
+          </a>
+        </div>
+      )}
       {editingDetailField && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4" onClick={(event) => event.stopPropagation()}>
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
