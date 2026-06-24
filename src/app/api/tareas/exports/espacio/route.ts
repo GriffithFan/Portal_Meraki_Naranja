@@ -66,6 +66,23 @@ const CORE_COLUMNS: ExportColumn[] = [
   { id: "_dispositivos", label: "Dispositivos", field: "_dispositivos", visible: true },
 ];
 
+// Campos estándar del predio que no estaban en DEFAULT_EXPORT_COLUMNS pero que
+// pueden tener datos (ej. "Orden" en PBA). Se incluyen siempre como candidatos;
+// luego se podan los que no tienen ningún dato. Así no se pierde una columna
+// solo porque esté oculta en la UI.
+const SUPPLEMENTAL_COLUMNS: ExportColumn[] = [
+  { id: "orden", label: "Orden", field: "orden", visible: false, type: "text" },
+  { id: "nombre", label: "Nombre", field: "nombre", visible: false, type: "text" },
+  { id: "notasTecnico", label: "Notas Tecnico", field: "notasTecnico", visible: false, type: "text" },
+  { id: "seccion", label: "Seccion", field: "seccion", visible: false, type: "text" },
+  { id: "tipo", label: "Tipo", field: "tipo", visible: false, type: "text" },
+  { id: "fechaProgramada", label: "Fecha Programada", field: "fechaProgramada", visible: false, type: "date" },
+  { id: "merakiNetworkName", label: "Red Meraki", field: "merakiNetworkName", visible: false, type: "text" },
+];
+
+// Columnas identidad que se mantienen aunque vinieran vacías.
+const ALWAYS_KEEP_IDS = new Set(["codigoPredio", "_espacio", "_estado"]);
+
 function collectDescendants(espacioId: string, espacios: SpaceForExport[]) {
   const byParent = new Map<string, string[]>();
   for (const espacio of espacios) {
@@ -157,6 +174,8 @@ function getFieldValue(predio: any, column: ExportColumn) {
   }
   if (column.field === "provincia") return obtenerProvincia(predio.provincia, predio.codigo) || "";
   if (column.field === "fechaActualizacion") return dateValue(predio.updatedAt);
+  if (column.field === "orden") return predio.orden ? String(predio.orden) : ""; // 0 = sin orden → vacío
+  if (column.field === "enFacturacion") return predio.enFacturacion ? "Si" : "";
   if (column.field.startsWith("_custom_")) {
     const key = column.field.slice(8);
     return textValue(predio.camposExtra?.[key]);
@@ -292,27 +311,27 @@ export async function GET(request: NextRequest) {
   });
   const configBySpaceId = new Map(viewConfigs.map((config) => [config.clave.replace("col-config-espacio-", ""), config.config]));
 
-  const columnsBySpace = selectedSpaces.flatMap((space) => {
-    const baseColumns = hasTaskFieldConfig(space.camposConfig as any[])
-      ? sanitizeTaskFieldConfigs(space.camposConfig as any[]).map(normalizeColumn).filter(Boolean) as ExportColumn[]
-      : [
-          ...DEFAULT_EXPORT_COLUMNS,
-          ...globalCampos.map((field) => ({
-            id: `custom_${field.clave}`,
-            label: field.nombre,
-            field: `_custom_${field.clave}`,
-            visible: true,
-            type: field.tipo || "text",
-          })),
-        ];
-    const appliedColumns = applyViewConfig(baseColumns, configBySpaceId.get(space.id));
-    if (!includeAllFields) return appliedColumns.filter((column) => column.visible !== false);
+  const customColumns: ExportColumn[] = globalCampos.map((field) => ({
+    id: `custom_${field.clave}`,
+    label: field.nombre,
+    field: `_custom_${field.clave}`,
+    visible: true,
+    type: field.tipo || "text",
+  }));
 
-    // Export completo: incluir base del espacio + columnas estándar para no perder datos aunque estén ocultos.
-    const standardColumns = applyViewConfig(DEFAULT_EXPORT_COLUMNS, configBySpaceId.get(space.id));
-    return uniqueColumns([...standardColumns, ...appliedColumns]);
+  // Candidatos: columnas del espacio (en su orden) + TODOS los campos estándar
+  // (incluye Orden y demás, aunque estén ocultos) + campos personalizados.
+  // Más abajo se podan las columnas que no tienen datos en ninguna fila.
+  const columnsBySpace = selectedSpaces.flatMap((space) => {
+    const cfg = configBySpaceId.get(space.id);
+    const baseColumns = hasTaskFieldConfig(space.camposConfig as any[])
+      ? (sanitizeTaskFieldConfigs(space.camposConfig as any[]).map(normalizeColumn).filter(Boolean) as ExportColumn[])
+      : DEFAULT_EXPORT_COLUMNS;
+    const appliedColumns = applyViewConfig(baseColumns, cfg);
+    const standardColumns = applyViewConfig([...DEFAULT_EXPORT_COLUMNS, ...SUPPLEMENTAL_COLUMNS], cfg);
+    return uniqueColumns([...appliedColumns, ...standardColumns, ...customColumns]);
   });
-  const columns = uniqueColumns([...CORE_COLUMNS, ...columnsBySpace]);
+  const candidateColumns = uniqueColumns([...CORE_COLUMNS, ...columnsBySpace]);
 
   const where: any = { espacioId: { in: scopedSpaceIds } };
   applyTaskFilters(where, request);
@@ -335,6 +354,14 @@ export async function GET(request: NextRequest) {
     },
     orderBy: [{ espacioId: "asc" }, { prioridad: "desc" }, { updatedAt: "desc" }],
   });
+
+  // Podar columnas sin datos: se conserva una columna si es identidad/núcleo o si
+  // al menos una fila tiene un valor no vacío. Así se incluyen TODAS las columnas
+  // con datos (ej. Orden en PBA) aunque estén ocultas en la UI, y no se llenan de
+  // columnas vacías.
+  const columns = candidateColumns.filter(
+    (column) => ALWAYS_KEEP_IDS.has(column.id) || predios.some((predio) => textValue(getFieldValue(predio, column)).trim() !== ""),
+  );
 
   const tareasRows = predios.map((predio) => {
     const row: Record<string, unknown> = {};
@@ -392,7 +419,7 @@ export async function GET(request: NextRequest) {
     { Dato: "Espacio", Valor: targetSpace.nombre },
     { Dato: "Incluye subcarpetas", Valor: includeSubspaces ? "Si" : "No" },
     { Dato: "Filtro por asignado", Valor: asignadoId ? `Si (${asignadoId})` : "No" },
-    { Dato: "Campos incluidos", Valor: includeAllFields ? "Todos (visibles y ocultos)" : "Solo campos visibles" },
+    { Dato: "Campos incluidos", Valor: "Todas las columnas con datos (incluye ocultas en la UI)" },
     { Dato: "Hojas por asignado", Valor: `${sortedAssignees.length}` },
     { Dato: "Total exportado", Valor: predios.length },
     { Dato: "Generado", Valor: new Date().toLocaleString("es-AR") },
