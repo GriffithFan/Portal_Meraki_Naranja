@@ -15,9 +15,11 @@ export async function POST() {
 
   const ahora = new Date();
   const gestor = isModOrAdmin(session.rol);
+  // Los anuncios bloqueantes (requiereAceptacion) NO se marcan al abrir el tablero:
+  // su lectura solo se crea cuando el destinatario acepta el popup.
   const where = gestor
-    ? { activo: true, OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }] }
-    : buildAnuncioVisibleWhere(session.rol, ahora);
+    ? { activo: true, requiereAceptacion: false, OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }] }
+    : { ...buildAnuncioVisibleWhere(session.rol, session.userId, ahora), requiereAceptacion: false };
 
   const activos = await prisma.anuncio.findMany({ where, select: { id: true } });
 

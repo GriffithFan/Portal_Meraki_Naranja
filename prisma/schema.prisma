@@ -774,11 +774,14 @@ model Anuncio {
   prioridad          Prioridad @default(MEDIA)
   categoria          String    @default("GENERAL") // Tablero: GENERAL, OPERACIONES, RRHH, CAPACITACION, SISTEMAS
   rolesDestino       String[]  @default([])        // Audiencia por rol (ADMIN/MODERADOR/TECNICO); vacío = todos
+  usuariosDestino    String[]  @default([])        // Audiencia por usuario (IDs). Si no está vacío, tiene prioridad sobre rolesDestino.
+  requiereAceptacion Boolean   @default(false)      // "Muy alta": popup bloqueante hasta que el destinatario acepte
   fijado             Boolean   @default(false) // Anclado arriba del tablero
   activo             Boolean   @default(true)
   notificar          Boolean   @default(true)  // Enviar push periódico a la audiencia
   intervaloHoras     Int       @default(1)     // Cada cuántas horas re-notificar
   ultimaNotificacion DateTime?                  // Último envío del cron
+  fechaPublicacion   DateTime?                  // Programación: no visible/notifica hasta esta fecha (null = ya publicado)
   fechaExpiracion    DateTime?                  // Deja de notificar/ocultar tras esta fecha
 
   autorId   String

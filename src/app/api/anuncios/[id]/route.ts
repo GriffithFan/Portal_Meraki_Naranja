@@ -29,13 +29,25 @@ export async function PATCH(
     if (!c) return NextResponse.json({ error: "El contenido no puede quedar vacío" }, { status: 400 });
     data.contenido = c;
   }
-  if (typeof body.prioridad === "string" && PRIORIDADES.includes(body.prioridad)) data.prioridad = body.prioridad;
+  if (typeof body.prioridad === "string" && PRIORIDADES.includes(body.prioridad)) {
+    data.prioridad = body.prioridad;
+    data.requiereAceptacion = body.prioridad === "URGENTE"; // "Muy alta" → bloqueante
+  }
   if (esCategoriaValida(body.categoria)) data.categoria = body.categoria;
   if (body.rolesDestino !== undefined) data.rolesDestino = sanitizeRolesDestino(body.rolesDestino);
+  if (body.usuariosDestino !== undefined) {
+    data.usuariosDestino = Array.isArray(body.usuariosDestino)
+      ? Array.from(new Set(body.usuariosDestino.filter((v: unknown): v is string => typeof v === "string" && v.length > 0)))
+      : [];
+  }
   if (typeof body.fijado === "boolean") data.fijado = body.fijado;
   if (typeof body.activo === "boolean") data.activo = body.activo;
   if (typeof body.notificar === "boolean") data.notificar = body.notificar;
   if (body.intervaloHoras !== undefined) data.intervaloHoras = Math.max(1, Math.min(168, Number(body.intervaloHoras) || 1));
+  if (body.fechaPublicacion !== undefined) {
+    const d = body.fechaPublicacion ? new Date(body.fechaPublicacion) : null;
+    data.fechaPublicacion = d && !isNaN(d.getTime()) ? d : null;
+  }
   if (body.fechaExpiracion !== undefined) {
     const d = body.fechaExpiracion ? new Date(body.fechaExpiracion) : null;
     data.fechaExpiracion = d && !isNaN(d.getTime()) ? d : null;

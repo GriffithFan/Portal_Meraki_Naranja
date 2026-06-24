@@ -23,9 +23,12 @@ export async function GET(request: NextRequest) {
     where: {
       activo: true,
       notificar: true,
-      OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }],
+      AND: [
+        { OR: [{ fechaPublicacion: null }, { fechaPublicacion: { lte: ahora } }] }, // solo ya publicados
+        { OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }] },
+      ],
     },
-    select: { id: true, titulo: true, contenido: true, prioridad: true, intervaloHoras: true, ultimaNotificacion: true, rolesDestino: true, autorId: true },
+    select: { id: true, titulo: true, contenido: true, prioridad: true, intervaloHoras: true, ultimaNotificacion: true, rolesDestino: true, usuariosDestino: true, autorId: true },
   });
 
   // Filtrar los que ya cumplieron el intervalo desde la última notificación
@@ -47,9 +50,11 @@ export async function GET(request: NextRequest) {
   const resultados: { anuncioId: string; notificados: number }[] = [];
 
   for (const a of pendientes) {
-    const audiencia = usuarios.filter(
-      (u) => u.id !== a.autorId && (a.rolesDestino.length === 0 || a.rolesDestino.includes(u.rol))
-    );
+    const audiencia = usuarios.filter((u) => {
+      if (u.id === a.autorId) return false;
+      if (a.usuariosDestino.length > 0) return a.usuariosDestino.includes(u.id); // selección manual
+      return a.rolesDestino.length === 0 || a.rolesDestino.includes(u.rol);
+    });
     const audienciaIds = audiencia.map((u) => u.id);
 
     // Usuarios de la audiencia que ya leyeron este anuncio

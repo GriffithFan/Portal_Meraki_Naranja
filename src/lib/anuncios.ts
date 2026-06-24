@@ -2,16 +2,22 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * IDs de los usuarios activos que forman la audiencia de un anuncio.
- * rolesDestino vacío = todos los usuarios activos.
+ * - Si `usuariosDestino` no está vacío, manda esa lista (selección manual).
+ * - Si no, se usa `rolesDestino` (vacío = todos los usuarios activos).
  */
 export async function getDestinatariosAnuncio(
   rolesDestino: string[],
+  usuariosDestino: string[],
   excludeUserId?: string
 ): Promise<string[]> {
+  const baseWhere = usuariosDestino.length > 0
+    ? { id: { in: usuariosDestino } }
+    : (rolesDestino.length > 0 ? { rol: { in: rolesDestino as never } } : {});
+
   const users = await prisma.user.findMany({
     where: {
       activo: true,
-      ...(rolesDestino.length > 0 ? { rol: { in: rolesDestino as never } } : {}),
+      ...baseWhere,
       ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
     },
     select: { id: true },
@@ -20,15 +26,34 @@ export async function getDestinatariosAnuncio(
 }
 
 /**
- * Cláusula where de visibilidad de anuncios para un usuario no gestor:
- * activos, no expirados y cuya audiencia incluya su rol.
+ * Fragmento `where` que indica que un usuario está dentro de la audiencia de un anuncio.
+ * (selección manual por usuario, o por rol cuando no hay selección manual).
  */
-export function buildAnuncioVisibleWhere(rol: string, ahora = new Date()) {
+export function anuncioAudienceWhere(userId: string, rol: string) {
+  return {
+    OR: [
+      { usuariosDestino: { has: userId } },
+      {
+        AND: [
+          { usuariosDestino: { isEmpty: true } },
+          { OR: [{ rolesDestino: { isEmpty: true } }, { rolesDestino: { has: rol } }] },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Cláusula where de visibilidad de anuncios para un usuario no gestor:
+ * activos, ya publicados (programación), no expirados y cuya audiencia lo incluya.
+ */
+export function buildAnuncioVisibleWhere(rol: string, userId: string, ahora = new Date()) {
   return {
     activo: true,
     AND: [
+      { OR: [{ fechaPublicacion: null }, { fechaPublicacion: { lte: ahora } }] },
       { OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }] },
-      { OR: [{ rolesDestino: { isEmpty: true } }, { rolesDestino: { has: rol } }] },
+      anuncioAudienceWhere(userId, rol),
     ],
   };
 }

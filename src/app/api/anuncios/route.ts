@@ -8,10 +8,15 @@ import { esCategoriaValida, sanitizeRolesDestino, audienciaLabel } from "@/lib/a
 const PRIORIDADES = ["BAJA", "MEDIA", "ALTA", "URGENTE"] as const;
 type Prioridad = (typeof PRIORIDADES)[number];
 
+function sanitizeUsuariosDestino(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((v): v is string => typeof v === "string" && v.length > 0)));
+}
+
 /**
  * GET /api/anuncios
  * Lista los anuncios del tablero.
- * - Usuarios: solo activos, no expirados y dirigidos a su rol (o a todos), con flag `leido`.
+ * - Usuarios: solo activos, ya publicados, no expirados y dirigidos a ellos, con flag `leido`.
  * - Admin/Mod: todos (incluye inactivos) + conteo de lecturas para gestión.
  */
 export async function GET() {
@@ -20,7 +25,7 @@ export async function GET() {
 
   const gestor = isModOrAdmin(session.rol);
 
-  const where = gestor ? {} : buildAnuncioVisibleWhere(session.rol);
+  const where = gestor ? {} : buildAnuncioVisibleWhere(session.rol, session.userId);
 
   const anuncios = await prisma.anuncio.findMany({
     where,
@@ -39,10 +44,13 @@ export async function GET() {
     prioridad: a.prioridad,
     categoria: a.categoria,
     rolesDestino: a.rolesDestino,
+    usuariosDestino: a.usuariosDestino,
+    requiereAceptacion: a.requiereAceptacion,
     fijado: a.fijado,
     activo: a.activo,
     notificar: a.notificar,
     intervaloHoras: a.intervaloHoras,
+    fechaPublicacion: a.fechaPublicacion,
     fechaExpiracion: a.fechaExpiracion,
     autor: a.autor,
     createdAt: a.createdAt,
@@ -56,8 +64,8 @@ export async function GET() {
 
 /**
  * POST /api/anuncios — crea un anuncio (solo Admin/Mod).
- * Si notificar=true, envía push inmediato a la audiencia (roles destino,
- * o todos los usuarios activos si no se especifican roles).
+ * Soporta audiencia manual por usuario, programación (fechaPublicacion) e
+ * importancia "Muy alta" (URGENTE) = popup bloqueante con aceptación.
  */
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -74,10 +82,16 @@ export async function POST(request: NextRequest) {
   const prioridad: Prioridad = PRIORIDADES.includes(body.prioridad) ? body.prioridad : "MEDIA";
   const categoria = esCategoriaValida(body.categoria) ? body.categoria : "GENERAL";
   const rolesDestino = sanitizeRolesDestino(body.rolesDestino);
+  const usuariosDestino = sanitizeUsuariosDestino(body.usuariosDestino);
+  const requiereAceptacion = prioridad === "URGENTE"; // "Muy alta" → bloqueante
   const fijado = body.fijado === true;
   const notificar = body.notificar !== false;
   const intervaloHoras = Math.max(1, Math.min(168, Number(body.intervaloHoras) || 1));
   const fechaExpiracion = body.fechaExpiracion ? new Date(body.fechaExpiracion) : null;
+  const fechaPublicacionRaw = body.fechaPublicacion ? new Date(body.fechaPublicacion) : null;
+  const fechaPublicacion = fechaPublicacionRaw && !isNaN(fechaPublicacionRaw.getTime()) ? fechaPublicacionRaw : null;
+  const ahora = new Date();
+  const yaPublicado = !fechaPublicacion || fechaPublicacion <= ahora;
 
   const anuncio = await prisma.anuncio.create({
     data: {
@@ -86,19 +100,23 @@ export async function POST(request: NextRequest) {
       prioridad,
       categoria,
       rolesDestino,
+      usuariosDestino,
+      requiereAceptacion,
       fijado,
       notificar,
       intervaloHoras,
+      fechaPublicacion,
       fechaExpiracion: fechaExpiracion && !isNaN(fechaExpiracion.getTime()) ? fechaExpiracion : null,
-      ultimaNotificacion: notificar ? new Date() : null,
+      // Si está programado a futuro, el cron enviará el push al publicarse.
+      ultimaNotificacion: notificar && yaPublicado ? ahora : null,
       autorId: session.userId,
     },
     include: { autor: { select: { id: true, nombre: true } } },
   });
 
-  // Envío inmediato de push a la audiencia (sin incluir al autor)
-  if (notificar) {
-    const destinatarios = await getDestinatariosAnuncio(rolesDestino, session.userId);
+  // Envío inmediato solo si ya está publicado (programados → los toma el cron).
+  if (notificar && yaPublicado) {
+    const destinatarios = await getDestinatariosAnuncio(rolesDestino, usuariosDestino, session.userId);
     const prioridadLabel = prioridad === "URGENTE" ? "🔴 URGENTE — " : prioridad === "ALTA" ? "🟠 " : "";
     await Promise.allSettled(
       destinatarios.map((uid) =>
@@ -118,7 +136,7 @@ export async function POST(request: NextRequest) {
   await prisma.actividad.create({
     data: {
       accion: "CREAR",
-      descripcion: `Anuncio "${titulo}" publicado (${categoria}, para: ${audienciaLabel(rolesDestino)})`,
+      descripcion: `Anuncio "${titulo}" ${yaPublicado ? "publicado" : "programado"} (${categoria}, para: ${usuariosDestino.length > 0 ? `${usuariosDestino.length} usuario(s)` : audienciaLabel(rolesDestino)})`,
       entidad: "ANUNCIO",
       entidadId: anuncio.id,
       userId: session.userId,

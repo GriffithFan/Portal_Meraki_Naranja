@@ -23,10 +23,13 @@ interface Anuncio {
   prioridad: Prioridad;
   categoria: string;
   rolesDestino: string[];
+  usuariosDestino: string[];
+  requiereAceptacion: boolean;
   fijado: boolean;
   activo: boolean;
   notificar: boolean;
   intervaloHoras: number;
+  fechaPublicacion: string | null;
   fechaExpiracion: string | null;
   autor: { id: string; nombre: string } | null;
   createdAt: string;
@@ -51,7 +54,7 @@ const PRIORIDAD_META: Record<Prioridad, { label: string; badge: string; accent: 
   BAJA:    { label: "Baja",    badge: "bg-surface-100 text-surface-500 border-surface-200 dark:bg-surface-700 dark:text-surface-400 dark:border-surface-600", accent: "bg-surface-300 dark:bg-surface-600" },
   MEDIA:   { label: "Media",   badge: "bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800", accent: "bg-blue-400" },
   ALTA:    { label: "Alta",    badge: "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800", accent: "bg-amber-400" },
-  URGENTE: { label: "Urgente", badge: "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800", accent: "bg-red-500" },
+  URGENTE: { label: "Muy alta", badge: "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800", accent: "bg-red-500" },
 };
 
 function fmtFecha(iso: string): string {
@@ -185,12 +188,19 @@ export default function AnunciosPage() {
   const [editing, setEditing] = useState<Anuncio | null>(null);
   const [form, setForm] = useState({
     titulo: "", contenido: "", prioridad: "MEDIA" as Prioridad,
-    categoria: "GENERAL" as CategoriaAnuncio, rolesDestino: [] as string[],
-    fijado: false, notificar: true, intervaloHoras: 1, fechaExpiracion: "",
+    categoria: "GENERAL" as CategoriaAnuncio, rolesDestino: [] as string[], usuariosDestino: [] as string[],
+    fijado: false, notificar: true, intervaloHoras: 1, fechaPublicacion: "", fechaExpiracion: "",
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Anuncio | null>(null);
+
+  // Selector de usuarios (audiencia manual)
+  const [usuarios, setUsuarios] = useState<Array<{ id: string; nombre: string; email?: string | null }>>([]);
+  const [userSearch, setUserSearch] = useState("");
+  // Panel de aceptaciones (admin): anuncioId -> datos
+  const [aceptExpandido, setAceptExpandido] = useState<string | null>(null);
+  const [aceptData, setAceptData] = useState<Record<string, { total: number; aceptaron: { id: string; nombre: string; aceptadoAt: string }[]; pendientes: { id: string; nombre: string }[] }>>({});
 
   const marcadoRef = useRef(false);
 
@@ -229,6 +239,15 @@ export default function AnunciosPage() {
     })();
   }, [fetchAnuncios, fetchJornada]);
 
+  // Lista de usuarios para la audiencia manual (solo gestores)
+  useEffect(() => {
+    if (!canManage) return;
+    fetch("/api/catalogos/usuarios", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setUsuarios(Array.isArray(data) ? data : data.usuarios || []))
+      .catch(() => {});
+  }, [canManage]);
+
   // Reloj para el tiempo transcurrido de la jornada abierta
   useEffect(() => {
     if (!jornadaActiva) return;
@@ -260,8 +279,9 @@ export default function AnunciosPage() {
     setForm({
       titulo: "", contenido: "", prioridad: "MEDIA",
       categoria: tab !== "TODOS" && (CATEGORIAS_ANUNCIO as readonly string[]).includes(tab) ? tab as CategoriaAnuncio : "GENERAL",
-      rolesDestino: [], fijado: false, notificar: true, intervaloHoras: 1, fechaExpiracion: "",
+      rolesDestino: [], usuariosDestino: [], fijado: false, notificar: true, intervaloHoras: 1, fechaPublicacion: "", fechaExpiracion: "",
     });
+    setUserSearch("");
     setShowModal(true);
   }
 
@@ -273,11 +293,14 @@ export default function AnunciosPage() {
       prioridad: a.prioridad,
       categoria: (CATEGORIAS_ANUNCIO as readonly string[]).includes(a.categoria) ? a.categoria as CategoriaAnuncio : "GENERAL",
       rolesDestino: a.rolesDestino || [],
+      usuariosDestino: a.usuariosDestino || [],
       fijado: a.fijado,
       notificar: a.notificar,
       intervaloHoras: a.intervaloHoras,
+      fechaPublicacion: a.fechaPublicacion ? a.fechaPublicacion.slice(0, 16) : "",
       fechaExpiracion: a.fechaExpiracion ? a.fechaExpiracion.slice(0, 16) : "",
     });
+    setUserSearch("");
     setShowModal(true);
   }
 
@@ -290,6 +313,24 @@ export default function AnunciosPage() {
     }));
   }
 
+  function toggleUsuarioDestino(uid: string) {
+    setForm((f) => ({
+      ...f,
+      usuariosDestino: f.usuariosDestino.includes(uid)
+        ? f.usuariosDestino.filter((u) => u !== uid)
+        : [...f.usuariosDestino, uid],
+    }));
+  }
+
+  async function loadAceptaciones(anuncioId: string) {
+    if (aceptExpandido === anuncioId) { setAceptExpandido(null); return; }
+    setAceptExpandido(anuncioId);
+    try {
+      const res = await fetch(`/api/anuncios/${anuncioId}/aceptaciones`, { credentials: "include", cache: "no-store" });
+      if (res.ok) { const d = await res.json(); setAceptData((prev) => ({ ...prev, [anuncioId]: d })); }
+    } catch { /* ignorar */ }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.titulo.trim() || !form.contenido.trim()) return;
@@ -300,9 +341,11 @@ export default function AnunciosPage() {
       prioridad: form.prioridad,
       categoria: form.categoria,
       rolesDestino: form.rolesDestino,
+      usuariosDestino: form.usuariosDestino,
       fijado: form.fijado,
       notificar: form.notificar,
       intervaloHoras: form.intervaloHoras,
+      fechaPublicacion: form.fechaPublicacion ? new Date(form.fechaPublicacion).toISOString() : null,
       fechaExpiracion: form.fechaExpiracion ? new Date(form.fechaExpiracion).toISOString() : null,
     };
     const url = editing ? `/api/anuncios/${editing.id}` : "/api/anuncios";
@@ -390,6 +433,7 @@ export default function AnunciosPage() {
     const meta = PRIORIDAD_META[a.prioridad];
     const cat = CATEGORIA_META[a.categoria as CategoriaAnuncio] || CATEGORIA_META.GENERAL;
     const expirado = a.fechaExpiracion ? new Date(a.fechaExpiracion) < new Date() : false;
+    const programado = a.fechaPublicacion ? new Date(a.fechaPublicacion) > new Date() : false;
     const esNuevo = unreadIds.has(a.id);
     return (
       <div
@@ -419,6 +463,12 @@ export default function AnunciosPage() {
                   {cat.label}
                 </span>
                 <span className={clsx("px-1.5 py-0.5 rounded text-[10px] font-semibold border", meta.badge)}>{meta.label}</span>
+                {a.requiereAceptacion && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-600 text-white" title="Popup bloqueante que el destinatario debe aceptar">Bloqueante</span>
+                )}
+                {programado && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 text-violet-600 border border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800" title={a.fechaPublicacion ? fmtFecha(a.fechaPublicacion) : ""}>Programado</span>
+                )}
                 {(canManage || a.rolesDestino.length > 0) && (
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-50 text-surface-500 border border-surface-200 dark:bg-surface-700/60 dark:text-surface-300 dark:border-surface-600" title="Audiencia">
                     Para: {audienciaLabel(a.rolesDestino)}
@@ -446,13 +496,45 @@ export default function AnunciosPage() {
                     </span>
                   </>
                 )}
-                {canManage && a.lecturasCount !== undefined && (
+                {canManage && a.lecturasCount !== undefined && !a.requiereAceptacion && (
                   <>
                     <span>·</span>
                     <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" />{a.lecturasCount} leído(s)</span>
                   </>
                 )}
               </div>
+              {canManage && a.requiereAceptacion && (
+                <div className="mt-2.5 rounded-lg border border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-900/10 p-2">
+                  <button type="button" onClick={() => loadAceptaciones(a.id)} className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 dark:text-red-400 hover:underline">
+                    <IconCheck className="w-3 h-3" />
+                    {aceptExpandido === a.id ? "Ocultar aceptaciones" : "Ver quién aceptó"}
+                  </button>
+                  {aceptExpandido === a.id && aceptData[a.id] && (
+                    <div className="mt-2 space-y-1.5 text-[11px] text-surface-600 dark:text-surface-300">
+                      <p className="font-medium">{aceptData[a.id].aceptaron.length} de {aceptData[a.id].total} aceptaron</p>
+                      {aceptData[a.id].aceptaron.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {aceptData[a.id].aceptaron.map((u) => (
+                            <span key={u.id} title={fmtFecha(u.aceptadoAt)} className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+                              <IconCheck className="w-2.5 h-2.5" />{u.nombre}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {aceptData[a.id].pendientes.length > 0 && (
+                        <div>
+                          <p className="text-surface-400">Faltan ({aceptData[a.id].pendientes.length}):</p>
+                          <div className="mt-0.5 flex flex-wrap gap-1">
+                            {aceptData[a.id].pendientes.map((u) => (
+                              <span key={u.id} className="rounded-full border border-surface-200 bg-surface-100 px-1.5 py-0.5 text-surface-500 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-300">{u.nombre}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {canManage && (
               <div className="flex items-center gap-1 shrink-0">
@@ -650,15 +732,20 @@ export default function AnunciosPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-surface-500 mb-1">Prioridad</label>
+                  <label className="block text-[11px] font-medium text-surface-500 mb-1">Importancia</label>
                   <select value={form.prioridad} onChange={(e) => setForm(f => ({ ...f, prioridad: e.target.value as Prioridad }))} className="w-full px-2.5 py-1.5 border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md text-xs focus:outline-none focus:border-surface-400">
                     <option value="BAJA">Baja</option>
                     <option value="MEDIA">Media</option>
                     <option value="ALTA">Alta</option>
-                    <option value="URGENTE">Urgente</option>
+                    <option value="URGENTE">Muy alta (bloqueante)</option>
                   </select>
                 </div>
               </div>
+              {form.prioridad === "URGENTE" && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                  <strong>Muy alta:</strong> a los destinatarios les aparecerá un popup que <strong>bloquea la app</strong> hasta que toquen &ldquo;Acepto&rdquo;. Vas a poder ver quiénes aceptaron en cada anuncio.
+                </div>
+              )}
               <div>
                 <label className="block text-[11px] font-medium text-surface-500 mb-1">Dirigido a</label>
                 <div className="flex items-center gap-3 flex-wrap">
@@ -675,12 +762,53 @@ export default function AnunciosPage() {
                   ))}
                 </div>
                 <p className="text-[10px] text-surface-400 mt-1">
-                  {form.rolesDestino.length === 0 ? "Sin selección: lo ven todos los usuarios." : `Solo lo ven: ${audienciaLabel(form.rolesDestino)}.`}
+                  {form.usuariosDestino.length > 0
+                    ? "La selección manual de usuarios (abajo) tiene prioridad sobre los roles."
+                    : form.rolesDestino.length === 0 ? "Sin selección: lo ven todos los usuarios." : `Solo lo ven: ${audienciaLabel(form.rolesDestino)}.`}
                 </p>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-surface-500 mb-1">Expira (opcional)</label>
-                <input type="datetime-local" value={form.fechaExpiracion} onChange={(e) => setForm(f => ({ ...f, fechaExpiracion: e.target.value }))} className="w-full px-2.5 py-1.5 border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-medium text-surface-500">Usuarios específicos (opcional)</label>
+                  {form.usuariosDestino.length > 0 && (
+                    <button type="button" onClick={() => setForm(f => ({ ...f, usuariosDestino: [] }))} className="text-[10px] text-surface-400 hover:text-surface-600">Limpiar ({form.usuariosDestino.length})</button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="Buscar usuario por nombre o email..."
+                  className="w-full px-2.5 py-1.5 mb-1 border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md text-xs focus:outline-none focus:border-surface-400"
+                />
+                <div className="max-h-36 overflow-y-auto rounded-md border border-surface-200 dark:border-surface-600 divide-y divide-surface-100 dark:divide-surface-700">
+                  {usuarios
+                    .filter((u) => !userSearch.trim() || (u.nombre || "").toLowerCase().includes(userSearch.toLowerCase()) || (u.email || "").toLowerCase().includes(userSearch.toLowerCase()))
+                    .slice(0, 100)
+                    .map((u) => (
+                      <label key={u.id} className="flex items-center gap-2 px-2.5 py-1.5 text-xs cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-700/50">
+                        <input type="checkbox" checked={form.usuariosDestino.includes(u.id)} onChange={() => toggleUsuarioDestino(u.id)} className="rounded shrink-0" />
+                        <span className="truncate text-surface-700 dark:text-surface-200">{u.nombre}{u.email ? <span className="text-surface-400"> · {u.email}</span> : null}</span>
+                      </label>
+                    ))}
+                  {usuarios.length === 0 && <p className="px-2.5 py-2 text-[11px] text-surface-400">Cargando usuarios…</p>}
+                </div>
+                <p className="text-[10px] text-surface-400 mt-1">
+                  {form.usuariosDestino.length > 0
+                    ? `Solo lo verán los ${form.usuariosDestino.length} usuario(s) seleccionados.`
+                    : "Dejalo vacío para usar la audiencia por rol."}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-500 mb-1">Programar publicación (opcional)</label>
+                  <input type="datetime-local" value={form.fechaPublicacion} onChange={(e) => setForm(f => ({ ...f, fechaPublicacion: e.target.value }))} className="w-full px-2.5 py-1.5 border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                  <p className="text-[10px] text-surface-400 mt-1">Vacío = se publica ahora.</p>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-500 mb-1">Expira (opcional)</label>
+                  <input type="datetime-local" value={form.fechaExpiracion} onChange={(e) => setForm(f => ({ ...f, fechaExpiracion: e.target.value }))} className="w-full px-2.5 py-1.5 border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md text-xs focus:outline-none focus:border-surface-400" />
+                </div>
               </div>
               <div className="flex items-center gap-4 flex-wrap pt-1">
                 <label className="flex items-center gap-2 text-xs text-surface-600 dark:text-surface-300 cursor-pointer">
