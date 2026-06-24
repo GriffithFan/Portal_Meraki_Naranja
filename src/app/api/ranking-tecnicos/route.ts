@@ -5,13 +5,24 @@ import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@
 
 export const dynamic = "force-dynamic";
 
-function getWeekRange(now = new Date()) {
-  const day = now.getDay();
+function getWeekRange(now = new Date(), offset = 0) {
+  // offset 0 = semana actual; 1 = semana pasada; etc. (lunes 00:00 → domingo 23:59,
+  // salvo la actual que va hasta "ahora").
+  const base = new Date(now);
+  base.setDate(now.getDate() - offset * 7);
+  const day = base.getDay();
   const diffToMonday = day === 0 ? 6 : day - 1;
-  const desde = new Date(now);
-  desde.setDate(now.getDate() - diffToMonday);
+  const desde = new Date(base);
+  desde.setDate(base.getDate() - diffToMonday);
   desde.setHours(0, 0, 0, 0);
-  const hasta = new Date(now);
+  let hasta: Date;
+  if (offset <= 0) {
+    hasta = new Date(now);
+  } else {
+    hasta = new Date(desde);
+    hasta.setDate(desde.getDate() + 6);
+    hasta.setHours(23, 59, 59, 999);
+  }
   return { desde, hasta };
 }
 
@@ -63,12 +74,14 @@ function addMetric(row: MutableRankingRow, bucket: ReturnType<typeof getStateBuc
   row.total += 1;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
+  const offset = Math.min(Math.max(parseInt(new URL(request.url).searchParams.get("offset") || "0") || 0, 0), 52);
+  const isCurrentWeek = offset === 0;
   const now = new Date();
-  const { desde, hasta } = getWeekRange(now);
+  const { desde, hasta } = getWeekRange(now, offset);
   const estados = await prisma.estadoConfig.findMany({
     where: { activo: true },
     select: { id: true, nombre: true, clave: true },
@@ -141,7 +154,8 @@ export async function GET() {
   const rankingRows: RankingRow[] = rows.map((row, index) => ({
     ...row,
     puesto: index + 1,
-    esGanadorViernes: isFriday && row.conformes > 0 && row.conformes === maxConformes && index === 0,
+    // Semana actual: corona solo el viernes (en vivo). Semanas pasadas (cerradas): corona al #1.
+    esGanadorViernes: index === 0 && row.conformes > 0 && row.conformes === maxConformes && (isCurrentWeek ? isFriday : true),
   }));
 
   const resumen = rankingRows.reduce((acc, row) => {
@@ -154,6 +168,8 @@ export async function GET() {
 
   return NextResponse.json({
     generatedAt: now.toISOString(),
+    offset,
+    isCurrentWeek,
     semana: getISOWeek(desde),
     desde: desde.toISOString(),
     hasta: hasta.toISOString(),

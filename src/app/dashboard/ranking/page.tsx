@@ -16,6 +16,8 @@ type RankingRow = {
 
 type RankingData = {
   generatedAt: string;
+  offset: number;
+  isCurrentWeek: boolean;
   semana: string;
   desde: string;
   hasta: string;
@@ -41,13 +43,14 @@ export default function RankingTecnicosPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0); // 0 = semana actual; 1 = semana pasada; etc.
 
   const fetchData = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/ranking-tecnicos", { credentials: "include", cache: "no-store" });
+      const res = await fetch(`/api/ranking-tecnicos?offset=${offset}`, { credentials: "include", cache: "no-store" });
       if (!res.ok) throw new Error(res.status === 401 ? "No autenticado" : "No se pudo cargar el ranking");
       setData(await res.json());
     } catch (err) {
@@ -56,13 +59,15 @@ export default function RankingTecnicosPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [offset]);
 
   useEffect(() => {
     fetchData();
+    // Auto-refresco solo en la semana actual (las pasadas ya están cerradas).
+    if (offset !== 0) return;
     const interval = window.setInterval(() => fetchData(true), 60000);
     return () => window.clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, offset]);
 
   const topConformes = data?.ranking[0]?.conformes || 0;
   const dateRange = useMemo(() => {
@@ -100,9 +105,37 @@ export default function RankingTecnicosPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold text-surface-800">Ranking semanal</h1>
-            {data.isFriday && topConformes > 0 && <CrownIcon className="h-5 w-5 text-amber-500" />}
+            {data.isFriday && data.isCurrentWeek && topConformes > 0 && <CrownIcon className="h-5 w-5 text-amber-500" />}
           </div>
-          <p className="mt-0.5 text-xs text-surface-400">Semana {data.semana} · {dateRange}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setOffset((o) => Math.min(o + 1, 52))}
+              title="Semana anterior"
+              className="rounded-md border border-surface-200 bg-white px-2 py-1 text-surface-500 transition-colors hover:bg-surface-50"
+            >
+              ‹
+            </button>
+            <span className="text-xs font-medium text-surface-600">
+              {data.isCurrentWeek ? "Semana actual" : offset === 1 ? "Semana pasada" : `Hace ${offset} semanas`}
+            </span>
+            <button
+              onClick={() => setOffset((o) => Math.max(o - 1, 0))}
+              disabled={offset === 0}
+              title="Semana siguiente"
+              className="rounded-md border border-surface-200 bg-white px-2 py-1 text-surface-500 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ›
+            </button>
+            <span className="text-xs text-surface-400">· {dateRange} · {data.semana}</span>
+            {offset !== 0 && (
+              <button
+                onClick={() => setOffset(0)}
+                className="ml-1 rounded-md px-2 py-1 text-[11px] font-medium text-primary-600 transition-colors hover:bg-primary-50"
+              >
+                Volver a hoy
+              </button>
+            )}
+          </div>
         </div>
         <button
           onClick={() => fetchData(true)}
@@ -123,8 +156,8 @@ export default function RankingTecnicosPage() {
 
       {data.ranking.length === 0 ? (
         <section className="rounded-lg border border-surface-200 bg-white p-8 text-center">
-          <p className="text-sm font-medium text-surface-700">Sin actividad semanal</p>
-          <p className="mt-1 text-xs text-surface-400">El ranking aparece cuando haya movimientos de esta semana.</p>
+          <p className="text-sm font-medium text-surface-700">Sin actividad en esta semana</p>
+          <p className="mt-1 text-xs text-surface-400">{data.isCurrentWeek ? "El ranking aparece cuando haya movimientos de esta semana." : "No hubo movimientos registrados en esta semana."}</p>
         </section>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
