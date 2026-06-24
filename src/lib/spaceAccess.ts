@@ -62,7 +62,10 @@ export async function getRestrictedSpaceIdsForSession(session: SessionLike): Pro
       spaces,
     );
 
-    return (assignedSpaceIds || []).filter((spaceId) => configuredIds.includes(spaceId));
+    // Un técnico SIEMPRE ve los espacios donde tiene predios asignados; el acceso
+    // configurado SUMA espacios, nunca quita los de su trabajo asignado. (La capa de
+    // visibilidad por asignación —en /api/tareas— ya limita a sus propios predios.)
+    return Array.from(new Set([...(assignedSpaceIds || []), ...configuredIds]));
   }
 
   if (accesos.length === 0 && accesosRol.length === 0) return null;
