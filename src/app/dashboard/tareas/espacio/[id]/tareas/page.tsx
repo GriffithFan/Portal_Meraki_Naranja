@@ -7,6 +7,7 @@ import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
+import FloatingHScrollbar from "@/components/tareas/FloatingHScrollbar";
 import StatusIcon, { ESTADO_FORMAS } from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
@@ -209,6 +210,7 @@ export default function EspacioTareasPage() {
 
   // Read URL params on mount
   const urlParamsRef = useRef<URLSearchParams | null>(null);
+  const listScopeRef = useRef<HTMLDivElement>(null);
   if (typeof window !== "undefined" && !urlParamsRef.current) {
     urlParamsRef.current = new URLSearchParams(window.location.search);
   }
@@ -1861,7 +1863,7 @@ export default function EspacioTareasPage() {
     const visible = items.slice(0, limit);
     const hasMore = items.length > limit;
     return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto js-hscroll">
       {renderMobileTaskList(visible)}
       <table className="w-full min-w-max text-[11px] hidden md:table">
         <thead>
@@ -2546,7 +2548,7 @@ export default function EspacioTareasPage() {
       )}
 
       {/* Tareas agrupadas */}
-      <div className="space-y-2">
+      <div className="space-y-2" ref={listScopeRef}>
         {groupBy === "estado" ? (
         <>
         {/* Toggle para mostrar estados vacíos */}
@@ -2703,6 +2705,8 @@ export default function EspacioTareasPage() {
             </button>
           </div>
         )}
+
+        <FloatingHScrollbar scopeRef={listScopeRef} />
       </div>
 
       {showCreateModal && (

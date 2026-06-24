@@ -121,6 +121,35 @@
   }
 }
 
+/* Barra de scroll horizontal flotante (listas de tareas) — siempre visible */
+.pmn-hscrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: #94a3b8 transparent;
+}
+.pmn-hscrollbar::-webkit-scrollbar {
+  height: 12px;
+}
+.pmn-hscrollbar::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.pmn-hscrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+  background-clip: content-box;
+}
+.pmn-hscrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dark .pmn-hscrollbar {
+  scrollbar-color: #64748b transparent;
+}
+.dark .pmn-hscrollbar::-webkit-scrollbar-thumb {
+  background: #64748b;
+  background-clip: content-box;
+}
+
 /* ─── Skeleton shimmer ─────────────────────────────── */
 @layer utilities {
   .skeleton-shimmer {

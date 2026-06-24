@@ -8,6 +8,7 @@ import StatusIcon, { ESTADO_FORMAS } from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
+import FloatingHScrollbar from "@/components/tareas/FloatingHScrollbar";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
@@ -196,6 +197,7 @@ export default function TareasPage() {
 
   // Read URL params on mount (client-side only)
   const urlParamsRef = useRef<URLSearchParams | null>(null);
+  const listScopeRef = useRef<HTMLDivElement>(null);
   if (typeof window !== "undefined" && !urlParamsRef.current) {
     urlParamsRef.current = new URLSearchParams(window.location.search);
   }
@@ -2095,7 +2097,7 @@ export default function TareasPage() {
           </button>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" ref={listScopeRef}>
           {groupBy === "estado" ? (
           <>
           {/* Resumen de espacios cuando hay búsqueda global */}
@@ -2196,7 +2198,7 @@ export default function TareasPage() {
                         Sin tareas en este estado
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto js-hscroll">
                         {renderMobileList(items.slice(0, renderLimits[estado.id] || ROWS_BATCH))}
                         <table className="w-full min-w-max text-[11px] hidden md:table">
                           <thead>
@@ -2461,7 +2463,7 @@ export default function TareasPage() {
                 <span className="text-sm font-medium text-surface-600">Todas las tareas</span>
                 <span className="text-[11px] text-surface-400">Crea estados para agrupar</span>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto js-hscroll">
                 {renderMobileList(sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH))}
                 <table className="w-full min-w-max text-[11px] hidden md:table">
                   <thead>
@@ -2534,6 +2536,8 @@ export default function TareasPage() {
               </button>
             </div>
           )}
+
+          <FloatingHScrollbar scopeRef={listScopeRef} />
         </div>
       )}
 
