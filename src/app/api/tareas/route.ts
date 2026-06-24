@@ -358,8 +358,20 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // ── Marcar predios que tienen archivos adjuntos en sus notas/comentarios ──
+  const predioIds = predios.map((p) => p.id);
+  const conAdjuntos = predioIds.length
+    ? await prisma.comentario.findMany({
+        where: { predioId: { in: predioIds }, archivos: { some: {} } },
+        select: { predioId: true },
+        distinct: ["predioId"],
+      })
+    : [];
+  const adjuntosSet = new Set(conAdjuntos.map((c) => c.predioId));
+  const prediosConFlags = predios.map((p) => ({ ...p, tieneAdjuntos: adjuntosSet.has(p.id) }));
+
   return NextResponse.json({
-    predios,
+    predios: prediosConFlags,
     total,
     page,
     limit,

@@ -409,6 +409,7 @@ export default function TareaDetalleModal({
         setNuevoComentario("");
         setComentFiles([]);
         await refreshTimeline();
+        onUpdated?.();
       } else {
         const d = await res.json().catch(() => ({}));
         toast.error(d.error || "No se pudo enviar el comentario");
@@ -439,6 +440,7 @@ export default function TareaDetalleModal({
       if (res.ok) {
         setObsFiles([]);
         await refreshTimeline();
+        onUpdated?.();
         toast.success("Archivos adjuntados");
       } else {
         const d = await res.json().catch(() => ({}));
