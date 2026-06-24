@@ -369,12 +369,14 @@ function SpaceNode({
   // Ocultar "Facturado" para no-admin
   if (isFacturado && !isAdmin) return null;
 
-  const countDescendants = (items: any[]): number => items.reduce(
-    (sum: number, child: any) => sum + (child._count?.predios || 0) + countDescendants(child.children || []),
-    0
-  );
-  const childCount = countDescendants(node.children || []);
-  const totalCount = taskCount + childCount;
+  // OJO: la API (/api/espacios) ya pliega los conteos: node._count.predios incluye
+  // los predios de las subcarpetas. Por eso NO hay que volver a sumarlos (eso producía
+  // el doble conteo, ej. "Predios 2026" mostraba 3523 en vez de 1762).
+  const totalCount = taskCount; // total real (directas + subcarpetas), ya plegado por la API
+  const childCount = node.children?.length
+    ? node.children.reduce((sum: number, child: any) => sum + (child._count?.predios || 0), 0)
+    : 0; // total en subcarpetas (cada hijo ya viene plegado)
+  const directCount = Math.max(totalCount - childCount, 0); // predios directos de este espacio
 
   const isActive = pathname === `/dashboard/tareas/espacio/${node.id}` || pathname === `/dashboard/tareas/espacio/${node.id}/tareas`;
   const isParentActive = pathname.startsWith(`/dashboard/tareas/espacio/${node.id}`);
@@ -464,7 +466,7 @@ function SpaceNode({
         {totalCount > 0 && (
           <span
             className="text-[10px] text-surface-400 tabular-nums shrink-0 ml-auto"
-            title={childCount > 0 ? `${taskCount} directas + ${childCount} en subcarpetas` : `${taskCount} directas`}
+            title={childCount > 0 ? `${directCount} directas + ${childCount} en subcarpetas` : `${directCount} directas`}
           >
             {totalCount}
           </span>
