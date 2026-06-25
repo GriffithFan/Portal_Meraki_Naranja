@@ -15,7 +15,7 @@ const ALLOWED_MIME = [
   "application/zip", "application/x-zip-compressed",
 ];
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "zip"];
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB por archivo
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB por archivo (videos de los técnicos)
 const MAX_FILES = 10;
 
 const COMENTARIO_INCLUDE = {

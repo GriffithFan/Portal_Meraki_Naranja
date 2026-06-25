@@ -1128,7 +1128,7 @@ export default function TareaDetalleModal({
                     <div className="px-3 pb-3 pt-3 border-t border-surface-100 space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-medium text-surface-400">Archivos adjuntos</span>
-                        <label className="inline-flex items-center gap-1 cursor-pointer text-[11px] text-surface-500 hover:text-primary-600 transition-colors" title="Adjuntar fotos, videos o .zip (máx. 10, 25 MB c/u)">
+                        <label className="inline-flex items-center gap-1 cursor-pointer text-[11px] text-surface-500 hover:text-primary-600 transition-colors" title="Adjuntar fotos, videos o .zip (máx. 10, 100 MB c/u)">
                           <input
                             type="file"
                             accept="image/*,video/*,.zip,application/zip"
@@ -1260,7 +1260,7 @@ export default function TareaDetalleModal({
                     </div>
                   )}
                   <div className="flex items-center justify-between -mt-2">
-                    <label className="inline-flex items-center gap-1 cursor-pointer text-[11px] text-surface-500 hover:text-primary-600 transition-colors" title="Adjuntar fotos, videos o .zip (máx. 10, 25 MB c/u)">
+                    <label className="inline-flex items-center gap-1 cursor-pointer text-[11px] text-surface-500 hover:text-primary-600 transition-colors" title="Adjuntar fotos, videos o .zip (máx. 10, 100 MB c/u)">
                       <input
                         type="file"
                         accept="image/*,video/*,.zip,application/zip"

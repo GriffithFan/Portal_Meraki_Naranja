@@ -60,6 +60,8 @@ const LARGE_BODY_PATHS = ["/api/tareas", "/api/stock", "/api/calendario"]; // ru
 const MAX_LARGE_BODY_BYTES = 256 * 1024; // 256 KB
 const UPLOAD_PATHS = ["/api/importar", "/api/actas", "/api/instructivos", "/api/chat/upload", "/api/personal", "/api/comentarios"]; // rutas con archivos
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+// Comentarios/notas de técnicos: permiten videos grandes (100 MB por archivo + holgura para multipart)
+const MAX_COMENTARIOS_BYTES = 120 * 1024 * 1024;
 
 const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron", "/api/notificaciones/changelog"];
 
@@ -140,7 +142,9 @@ export async function middleware(request: NextRequest) {
     // ── Body size limit (solo POST/PUT/PATCH sobre /api) ──
     if (["POST", "PUT", "PATCH"].includes(request.method) && pathname.startsWith("/api")) {
       const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
-      const maxBytes = UPLOAD_PATHS.some(p => pathname.startsWith(p))
+      const maxBytes = pathname.startsWith("/api/comentarios")
+        ? MAX_COMENTARIOS_BYTES
+        : UPLOAD_PATHS.some(p => pathname.startsWith(p))
         ? MAX_UPLOAD_BYTES
         : LARGE_BODY_PATHS.some(p => pathname.startsWith(p))
         ? MAX_LARGE_BODY_BYTES
