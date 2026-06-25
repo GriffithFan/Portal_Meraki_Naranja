@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, type ChangeEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from "react";
 import { IconX, IconChevron, IconCheck, IconClock, IconEdit, IconTrash } from "@/components/ui/Icons";
 import { dedupeUsersByName, normalizeAssigneeName } from "@/utils/asignacionUtils";
 import { hasTaskFieldConfig, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
@@ -75,13 +75,13 @@ function CommentAttachment({
 }: {
   archivo: any;
   formatSize: (n?: number) => string;
-  onOpen: (a: { url: string; tipo: string; nombre: string }) => void;
+  onOpen: () => void;
 }) {
   if (esImagen(archivo.archivoTipo)) {
     return (
       <button
         type="button"
-        onClick={() => onOpen({ url: comentArchivoUrl(archivo.id, true), tipo: archivo.archivoTipo, nombre: archivo.archivoNombre })}
+        onClick={onOpen}
         className="w-20 h-20 rounded-lg border border-surface-200 overflow-hidden shrink-0 hover:ring-2 hover:ring-primary-300"
         title={archivo.archivoNombre}
       >
@@ -93,7 +93,7 @@ function CommentAttachment({
     return (
       <button
         type="button"
-        onClick={() => onOpen({ url: comentArchivoUrl(archivo.id, true), tipo: archivo.archivoTipo, nombre: archivo.archivoNombre })}
+        onClick={onOpen}
         className="relative w-20 h-20 rounded-lg border border-surface-200 bg-black/80 overflow-hidden shrink-0 flex items-center justify-center hover:ring-2 hover:ring-primary-300"
         title={archivo.archivoNombre}
       >
@@ -217,7 +217,8 @@ export default function TareaDetalleModal({
   const [uploadingComent, setUploadingComent] = useState(false);
   const [obsFiles, setObsFiles] = useState<File[]>([]);
   const [uploadingObs, setUploadingObs] = useState(false);
-  const [lightbox, setLightbox] = useState<{ url: string; tipo: string; nombre: string } | null>(null);
+  const [lightbox, setLightbox] = useState<{ items: { id: string; url: string; tipo: string; nombre: string }[]; index: number } | null>(null);
+  const touchStartX = useRef<number | null>(null);
   const [activeTab, setActiveTab] = useState<"info" | "actividad">("info");
   const [espacioDetalle, setEspacioDetalle] = useState<any>(null);
   const [listaColumnConfig, setListaColumnConfig] = useState<TaskColumnConfig[] | null>(null);
@@ -320,14 +321,29 @@ export default function TareaDetalleModal({
     };
   }, [tarea?.espacioId]);
 
-  // ── ESC key handler ──────────────────────────────
+  // ── ESC key handler (si hay un visor abierto, ESC cierra el visor, no la tarea) ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (lightbox) { setLightbox(null); return; }
+        onClose();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, lightbox]);
+
+  // ── Navegación del visor con flechas del teclado ──
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const dir = e.key === "ArrowRight" ? 1 : -1;
+      setLightbox((lb) => (lb && lb.items.length > 1 ? { ...lb, index: (lb.index + dir + lb.items.length) % lb.items.length } : lb));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   // ── Cambiar estado ──────────────────────────────
   async function changeEstado(estadoId: string) {
@@ -419,6 +435,19 @@ export default function TareaDetalleModal({
     } finally {
       setUploadingComent(false);
     }
+  }
+
+  // Abre el visor con TODOS los medios (fotos/videos) de una galería, posicionado en el clickeado.
+  function openMedia(archivos: any[], archivoId: string) {
+    const items = (archivos || [])
+      .filter((a: any) => esImagen(a.archivoTipo) || esVideo(a.archivoTipo))
+      .map((a: any) => ({ id: a.id, url: comentArchivoUrl(a.id, true), tipo: a.archivoTipo, nombre: a.archivoNombre }));
+    const index = items.findIndex((it) => it.id === archivoId);
+    if (index >= 0) setLightbox({ items, index });
+  }
+
+  function lightboxGo(dir: number) {
+    setLightbox((lb) => (lb && lb.items.length > 1 ? { ...lb, index: (lb.index + dir + lb.items.length) % lb.items.length } : lb));
   }
 
   function onPickObsFiles(e: ChangeEvent<HTMLInputElement>) {
@@ -1146,7 +1175,7 @@ export default function TareaDetalleModal({
                       {tareaArchivos.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                           {tareaArchivos.map((a: any) => (
-                            <CommentAttachment key={a.id} archivo={a} formatSize={formatFileSize} onOpen={setLightbox} />
+                            <CommentAttachment key={a.id} archivo={a} formatSize={formatFileSize} onOpen={() => openMedia(tareaArchivos, a.id)} />
                           ))}
                         </div>
                       )}
@@ -1333,7 +1362,7 @@ export default function TareaDetalleModal({
                             {item._type === "comentario" && item.archivos?.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {item.archivos.map((a: any) => (
-                                  <CommentAttachment key={a.id} archivo={a} formatSize={formatFileSize} onOpen={setLightbox} />
+                                  <CommentAttachment key={a.id} archivo={a} formatSize={formatFileSize} onOpen={() => openMedia(item.archivos, a.id)} />
                                 ))}
                               </div>
                             )}
@@ -1371,34 +1400,72 @@ export default function TareaDetalleModal({
           </div>
         )}
       </div>
-      {lightbox && (
-        <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setLightbox(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightbox(null)}
-            className="absolute top-4 right-4 text-white/80 hover:text-white"
-            aria-label="Cerrar"
+      {lightbox && lightbox.items[lightbox.index] && (() => {
+        const item = lightbox.items[lightbox.index];
+        const multiple = lightbox.items.length > 1;
+        return (
+          <div
+            className="fixed inset-0 z-[90] flex select-none items-center justify-center bg-black/80 p-4"
+            onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
+            onTouchStart={(e) => { touchStartX.current = e.touches[0]?.clientX ?? null; }}
+            onTouchEnd={(e) => {
+              const start = touchStartX.current;
+              touchStartX.current = null;
+              if (start == null) return;
+              const dx = (e.changedTouches[0]?.clientX ?? start) - start;
+              if (multiple && Math.abs(dx) > 40) lightboxGo(dx < 0 ? 1 : -1);
+            }}
           >
-            <IconX className="w-7 h-7" />
-          </button>
-          {esVideo(lightbox.tipo) ? (
-            <video src={lightbox.url} controls autoPlay className="max-h-[85vh] max-w-[92vw] rounded-lg" onClick={(e) => e.stopPropagation()} />
-          ) : (
-            <img src={lightbox.url} alt={lightbox.nombre} className="max-h-[85vh] max-w-[92vw] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
-          )}
-          <a
-            href={lightbox.url.replace("?inline=true", "")}
-            download={lightbox.nombre}
-            onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-white/80 hover:text-white underline"
-          >
-            Descargar {lightbox.nombre}
-          </a>
-        </div>
-      )}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
+              className="absolute top-4 right-4 text-white/80 hover:text-white"
+              aria-label="Cerrar"
+            >
+              <IconX className="w-7 h-7" />
+            </button>
+
+            {multiple && (
+              <>
+                <span className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90 tabular-nums">
+                  {lightbox.index + 1} / {lightbox.items.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); lightboxGo(-1); }}
+                  className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white hover:bg-white/30"
+                  aria-label="Anterior"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); lightboxGo(1); }}
+                  className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white hover:bg-white/30"
+                  aria-label="Siguiente"
+                >
+                  ›
+                </button>
+              </>
+            )}
+
+            {esVideo(item.tipo) ? (
+              <video key={item.id} src={item.url} controls autoPlay className="max-h-[85vh] max-w-[88vw] rounded-lg" onClick={(e) => e.stopPropagation()} />
+            ) : (
+              <img key={item.id} src={item.url} alt={item.nombre} className="max-h-[85vh] max-w-[88vw] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
+            )}
+
+            <a
+              href={item.url.replace("?inline=true", "")}
+              download={item.nombre}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[80vw] truncate text-xs text-white/80 hover:text-white underline"
+            >
+              Descargar {item.nombre}
+            </a>
+          </div>
+        );
+      })()}
       {editingDetailField && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4" onClick={(event) => event.stopPropagation()}>
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
