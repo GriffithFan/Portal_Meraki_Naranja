@@ -84,6 +84,16 @@ const EQUIPO_FIELDS: Record<string, string> = {
   proveedor: "Proveedor",
 };
 
+// Paleta de colores de etiqueta (igual que la del stock) para asignar un color
+// base al importar. Color determinístico por texto: misma etiqueta → mismo color.
+const ETIQUETA_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899", "#6b7280", "#1e293b"];
+function colorParaEtiqueta(texto: string): string {
+  const t = texto.trim().toLowerCase();
+  let h = 0;
+  for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+  return ETIQUETA_COLORS[h % ETIQUETA_COLORS.length];
+}
+
 export async function GET() {
   const session = await getSession();
   if (!session || !isModOrAdmin(session.rol)) {
@@ -469,7 +479,10 @@ export async function POST(request: NextRequest) {
           const notas = safeGet(row, fieldMap.get("notas"));
           if (notas) data.notas = notas;
           const etiquetaVal = safeGet(row, fieldMap.get("etiqueta"));
-          if (etiquetaVal) data.etiqueta = etiquetaVal;
+          if (etiquetaVal) {
+            data.etiqueta = etiquetaVal;
+            data.etiquetaColor = colorParaEtiqueta(etiquetaVal); // color base para que la etiqueta se vea
+          }
           const proveedorVal = safeGet(row, fieldMap.get("proveedor"));
           if (proveedorVal) data.proveedor = proveedorVal.toUpperCase().trim();
           const fecha = safeGet(row, fieldMap.get("fecha"));
