@@ -7,6 +7,18 @@ import net from "net";
 const MERAKI_API_KEY = process.env.MERAKI_API_KEY || "";
 const BASE_URL = process.env.MERAKI_BASE_URL || "https://api.meraki.com/api/v1";
 
+/* ── Workaround configurable por .env para la inestabilidad del edge de Cisco/Cloudflare ──
+ * Cuando el API de Meraki vuelva a estar sano, NO hay que tocar código: estos valores
+ * controlan el workaround y se ajustan en el .env del servidor (+ reiniciar PM2).
+ *  - MERAKI_FORCE_IPV4 (default "true"): fuerza IPv4 + rota IP por conexión (evita el
+ *    edge IPv6 que da 503). Poné "false" cuando el edge IPv6 esté sano.
+ *  - MERAKI_MAX_RETRIES (default 10): reintentos ante 503/502/504/errores de red.
+ *    Bajalo a 2-3 (o 0) cuando una sola request sea confiable (~10/10).
+ * Nota: el reintento es auto-adaptativo — si la 1ª request da 200, no reintenta ni
+ * agrega demora. O sea, al recuperarse Meraki vuelve a ser rápido solo. */
+const FORCE_IPV4 = (process.env.MERAKI_FORCE_IPV4 ?? "true").toLowerCase() !== "false";
+const MAX_TRANSIENT_RETRIES = Math.max(0, Math.min(20, parseInt(process.env.MERAKI_MAX_RETRIES || "10", 10) || 10));
+
 /**
  * Resolución DNS personalizada para api.meraki.com:
  * el borde IPv6 de Cloudflare/Cisco devuelve 503 ("DNS cache overflow") desde este
@@ -34,7 +46,9 @@ function rotatingIpv4Lookup(
   });
 }
 
-const merakiAgent = new https.Agent({ lookup: rotatingIpv4Lookup as unknown as net.LookupFunction, keepAlive: false });
+const merakiAgent = FORCE_IPV4
+  ? new https.Agent({ lookup: rotatingIpv4Lookup as unknown as net.LookupFunction, keepAlive: false })
+  : new https.Agent({ keepAlive: true }); // edge sano: DNS/keep-alive normal
 
 const client: AxiosInstance = axios.create({
   baseURL: BASE_URL,
@@ -68,7 +82,7 @@ client.interceptors.response.use(undefined, async (error) => {
     (!error.response && typeof error.code === "string" && TRANSIENT_CODES.has(error.code));
   if (!isRateLimit && !isTransient) return Promise.reject(error);
 
-  const maxRetries = isRateLimit ? 3 : 10;
+  const maxRetries = isRateLimit ? 3 : MAX_TRANSIENT_RETRIES;
   const attempt = (config.__retryCount || 0) + 1;
   if (attempt > maxRetries) return Promise.reject(error);
   config.__retryCount = attempt;
