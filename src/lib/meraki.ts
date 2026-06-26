@@ -68,7 +68,7 @@ client.interceptors.response.use(undefined, async (error) => {
     (!error.response && typeof error.code === "string" && TRANSIENT_CODES.has(error.code));
   if (!isRateLimit && !isTransient) return Promise.reject(error);
 
-  const maxRetries = isRateLimit ? 3 : 6;
+  const maxRetries = isRateLimit ? 3 : 10;
   const attempt = (config.__retryCount || 0) + 1;
   if (attempt > maxRetries) return Promise.reject(error);
   config.__retryCount = attempt;
@@ -78,7 +78,9 @@ client.interceptors.response.use(undefined, async (error) => {
     const retryAfter = parseInt(error.response?.headers?.["retry-after"] || "1", 10);
     delayMs = Math.max(retryAfter, 1) * 1000;
   } else {
-    delayMs = Math.min(300 * attempt, 1500); // backoff corto: reintentar contra otra IP
+    // Backoff corto + jitter: el edge de Cloudflare/Cisco fluctúa, así que reintentar
+    // rápido contra otra IP sube las chances sin demorar demasiado la respuesta.
+    delayMs = Math.min(200 * attempt, 1000) + Math.floor(Math.random() * 120);
   }
   await new Promise((r) => setTimeout(r, delayMs));
   return client(config);
