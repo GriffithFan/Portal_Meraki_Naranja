@@ -1,12 +1,41 @@
 import "server-only";
 import axios, { AxiosInstance } from "axios";
+import https from "https";
+import dns from "dns";
 
 const MERAKI_API_KEY = process.env.MERAKI_API_KEY || "";
 const BASE_URL = process.env.MERAKI_BASE_URL || "https://api.meraki.com/api/v1";
 
+/**
+ * Resolución DNS personalizada para api.meraki.com:
+ * el borde IPv6 de Cloudflare/Cisco devuelve 503 ("DNS cache overflow") desde este
+ * servidor, e incluso algunas IPv4 fallan de forma intermitente. Forzamos IPv4 y
+ * elegimos una IP al azar en cada conexión, para que los reintentos caigan en una
+ * IP que sí responda. (Ver interceptor de abajo: reintenta ante 503.)
+ */
+function rotatingIpv4Lookup(
+  hostname: string,
+  _options: dns.LookupOptions,
+  callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void,
+) {
+  dns.lookup(hostname, { all: true }, (err, addresses) => {
+    if (err || !addresses?.length) {
+      callback(err, "", 0);
+      return;
+    }
+    const v4 = addresses.filter((a) => a.family === 4);
+    const pool = v4.length > 0 ? v4 : addresses;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    callback(null, pick.address, pick.family);
+  });
+}
+
+const merakiAgent = new https.Agent({ lookup: rotatingIpv4Lookup, keepAlive: false });
+
 const client: AxiosInstance = axios.create({
   baseURL: BASE_URL,
   timeout: 15000,
+  httpsAgent: merakiAgent,
   headers: {
     "X-Cisco-Meraki-API-Key": MERAKI_API_KEY,
     "Content-Type": "application/json",
@@ -14,17 +43,39 @@ const client: AxiosInstance = axios.create({
   },
 });
 
-/* ── Retry automático para 429 (Meraki rate limit: 10 req/s) ──── */
+/* ── Retry automático ──────────────────────────────────────────
+ *  - 429: rate limit de Meraki (respeta Retry-After).
+ *  - 503/502/504 o error de red sin respuesta: el borde de Cloudflare/Cisco
+ *    devuelve 503 ("DNS cache overflow") en algunas IPs desde este servidor.
+ *    Reintentar abre una conexión nueva (la lookup rota la IP) y suele caer en
+ *    una que responde.
+ */
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+const TRANSIENT_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ECONNREFUSED", "ECONNABORTED"]);
+
 client.interceptors.response.use(undefined, async (error) => {
   const config = error.config;
-  if (!config || !error.response || error.response.status !== 429) {
-    return Promise.reject(error);
-  }
+  if (!config) return Promise.reject(error);
+
+  const status = error.response?.status;
+  const isRateLimit = status === 429;
+  const isTransient =
+    (status !== undefined && TRANSIENT_STATUSES.has(status)) ||
+    (!error.response && typeof error.code === "string" && TRANSIENT_CODES.has(error.code));
+  if (!isRateLimit && !isTransient) return Promise.reject(error);
+
+  const maxRetries = isRateLimit ? 3 : 6;
   const attempt = (config.__retryCount || 0) + 1;
-  if (attempt > 3) return Promise.reject(error);
+  if (attempt > maxRetries) return Promise.reject(error);
   config.__retryCount = attempt;
-  const retryAfter = parseInt(error.response.headers["retry-after"] || "1", 10);
-  const delayMs = Math.max(retryAfter, 1) * 1000;
+
+  let delayMs: number;
+  if (isRateLimit) {
+    const retryAfter = parseInt(error.response?.headers?.["retry-after"] || "1", 10);
+    delayMs = Math.max(retryAfter, 1) * 1000;
+  } else {
+    delayMs = Math.min(300 * attempt, 1500); // backoff corto: reintentar contra otra IP
+  }
   await new Promise((r) => setTimeout(r, delayMs));
   return client(config);
 });
