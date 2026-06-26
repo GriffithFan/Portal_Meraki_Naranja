@@ -848,8 +848,6 @@ export default function StockPage() {
         if (isoMatch) fecha = `${isoMatch[3].padStart(2, "0")}/${isoMatch[2].padStart(2, "0")}/${isoMatch[1]}`;
       }
       const row: Record<string, string> = {
-        "ID interno": eq.id || "",
-        "Nº inv": eq.inventario != null ? String(eq.inventario) : "",
         Equipo: eq.nombre || "",
         Modelo: eq.modelo || "",
         "N/S": eq.numeroSerie || "",
@@ -863,17 +861,21 @@ export default function StockPage() {
         Proveedor: eq.proveedor || "",
       };
       for (const col of customColumns) row[col.label] = eq.camposExtra?.[col.field.replace("_custom_", "")] || "";
+      // Identificadores al final y OCULTOS (ver !cols abajo): no se deben editar.
+      row["ID interno"] = eq.id || "";
+      row["Nº inv"] = eq.inventario != null ? String(eq.inventario) : "";
       return row;
     });
 
     if (data.length === 0) { toast.error("No hay datos para exportar"); return; }
 
     const ws = XLSX.utils.json_to_sheet(data);
-    // Auto-width
-    const colWidths = Object.keys(data[0]).map(key => ({
+    // Auto-width + ocultar las columnas de identificadores (no editables).
+    const HIDDEN_COLS = new Set(["ID interno", "Nº inv"]);
+    ws["!cols"] = Object.keys(data[0]).map(key => ({
       wch: Math.max(key.length, ...data.map((r: any) => String(r[key] ?? "").length)) + 2,
+      hidden: HIDDEN_COLS.has(key) || undefined,
     }));
-    ws["!cols"] = colWidths;
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Stock");
