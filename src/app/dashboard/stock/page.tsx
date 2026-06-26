@@ -87,6 +87,7 @@ const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
 };
 
 const DEFAULT_COLUMNS: StockColumn[] = [
+  { id: "inventario",  label: "Nº",          field: "inventario",  visible: true,  editable: false, type: "text" },
   { id: "nombre",      label: "Equipo",      field: "nombre",      visible: true,  editable: true,  type: "text" },
   { id: "etiqueta",    label: "Etiqueta",    field: "etiqueta",    visible: true,  editable: false, type: "text" },
   { id: "modelo",      label: "Modelo",      field: "modelo",      visible: true,  editable: true,  type: "text" },
@@ -847,6 +848,8 @@ export default function StockPage() {
         if (isoMatch) fecha = `${isoMatch[3].padStart(2, "0")}/${isoMatch[2].padStart(2, "0")}/${isoMatch[1]}`;
       }
       const row: Record<string, string> = {
+        "ID interno": eq.id || "",
+        "Nº inv": eq.inventario != null ? String(eq.inventario) : "",
         Equipo: eq.nombre || "",
         Modelo: eq.modelo || "",
         "N/S": eq.numeroSerie || "",

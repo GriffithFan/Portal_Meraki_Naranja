@@ -234,6 +234,7 @@ export default function ImportarPage() {
       };
 
       const equipoAliases: Record<string, string[]> = {
+        id:          ["id", "idinterno", "identificador"],
         nombre:      ["nombre", "name", "equipo", "dispositivo", "device"],
         descripcion: ["descripcion", "descripción", "desc", "detalle"],
         numeroSerie: ["numero_serie", "numeroserie", "n/s", "ns", "serial", "serie", "sn", "numero_de_serie"],

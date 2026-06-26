@@ -68,6 +68,7 @@ const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
 };
 
 const EQUIPO_FIELDS: Record<string, string> = {
+  id: "ID (interno — no editar)",
   nombre: "Nombre",
   descripcion: "Descripción",
   numeroSerie: "Número de Serie",
@@ -517,6 +518,27 @@ export async function POST(request: NextRequest) {
               return n === needle || n.includes(needle) || needle.includes(n);
             });
             if (match) data.asignadoId = match.id;
+          }
+
+          // ── Match por ID interno (key estable) ──
+          // Si la fila trae el ID que se exportó, se ACTUALIZA ese equipo aunque hayan
+          // cambiado el serial u otros datos → nunca duplica. Si el ID no existe (lo
+          // editaron/typo), se omite la fila para no crear un duplicado.
+          const idVal = safeGet(row, fieldMap.get("id"));
+          if (idVal) {
+            const existingById = await prisma.equipo.findUnique({ where: { id: idVal } });
+            if (!existingById) {
+              errors.push(`Fila ${i + 2}: ID "${idVal}" no encontrado (¿se editó la columna ID?). Se omitió para evitar un duplicado.`);
+              skipped++;
+              continue;
+            }
+            const updateData: Record<string, unknown> = {};
+            for (const [key, val] of Object.entries(data)) {
+              if (val !== undefined && val !== null && val !== "") updateData[key] = val;
+            }
+            await prisma.equipo.update({ where: { id: idVal }, data: updateData as any });
+            updated++;
+            continue;
           }
 
           // Verificar si serial ya existe antes de crear (para detalle de duplicados)

@@ -210,6 +210,7 @@ model Predio {
 // ─── EQUIPOS (STOCK) ────────────────────────────────
 model Equipo {
   id          String  @id @default(cuid())
+  inventario  Int     @unique @default(autoincrement()) // Nº de inventario secuencial (orden), inmutable, para diferenciar equipos (incl. sin serial)
   nombre      String
   descripcion String?
   numeroSerie String? @unique
