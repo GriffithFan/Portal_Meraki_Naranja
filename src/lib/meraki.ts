@@ -2,6 +2,7 @@ import "server-only";
 import axios, { AxiosInstance } from "axios";
 import https from "https";
 import dns from "dns";
+import net from "net";
 
 const MERAKI_API_KEY = process.env.MERAKI_API_KEY || "";
 const BASE_URL = process.env.MERAKI_BASE_URL || "https://api.meraki.com/api/v1";
@@ -15,22 +16,25 @@ const BASE_URL = process.env.MERAKI_BASE_URL || "https://api.meraki.com/api/v1";
  */
 function rotatingIpv4Lookup(
   hostname: string,
-  _options: dns.LookupOptions,
-  callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void,
-) {
+  options: dns.LookupOptions,
+  callback: (err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void,
+): void {
   dns.lookup(hostname, { all: true }, (err, addresses) => {
     if (err || !addresses?.length) {
-      callback(err, "", 0);
+      callback(err ?? new Error("DNS sin resultados"), "", 4);
       return;
     }
     const v4 = addresses.filter((a) => a.family === 4);
     const pool = v4.length > 0 ? v4 : addresses;
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    callback(null, pick.address, pick.family);
+    // El agente puede invocar la lookup con `all:true` (espera un array) o con
+    // `all:false` (espera address+family). Hay que respetar ambos formatos.
+    if (options.all) callback(null, [{ address: pick.address, family: pick.family }]);
+    else callback(null, pick.address, pick.family);
   });
 }
 
-const merakiAgent = new https.Agent({ lookup: rotatingIpv4Lookup, keepAlive: false });
+const merakiAgent = new https.Agent({ lookup: rotatingIpv4Lookup as unknown as net.LookupFunction, keepAlive: false });
 
 const client: AxiosInstance = axios.create({
   baseURL: BASE_URL,
