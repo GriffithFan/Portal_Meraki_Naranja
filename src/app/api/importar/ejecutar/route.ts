@@ -95,6 +95,34 @@ function colorParaEtiqueta(texto: string): string {
   return ETIQUETA_COLORS[h % ETIQUETA_COLORS.length];
 }
 
+// Distingue un error transitorio de conexión/BD (reintentable) de un error de
+// datos como una violación de unicidad (no reintentable). Importar listas
+// grandes generaba miles de consultas y, bajo carga, algunas fallaban de forma
+// intermitente; esas fallas se contaban como "omitido", dando números distintos
+// en cada corrida de la MISMA lista. Reintentar los transitorios lo soluciona.
+function isTransientError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  const code = e?.code || "";
+  if (code === "P2002") return false; // unicidad = dato real, no transitorio
+  if (["P1001", "P1002", "P1008", "P1011", "P1017", "P2024", "P2028", "P2034"].includes(code)) return true;
+  const msg = (e?.message || "").toLowerCase();
+  return /invalid invocation|connection|timed out|timeout|econnreset|terminating connection|too many connections|connection pool|server has closed/.test(msg);
+}
+
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let a = 1; a <= attempts; a++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (a === attempts || !isTransientError(e)) throw e;
+      await new Promise((r) => setTimeout(r, 120 * a + Math.floor(Math.random() * 120)));
+    }
+  }
+  throw lastErr;
+}
+
 export async function GET() {
   const session = await getSession();
   if (!session || !isModOrAdmin(session.rol)) {
@@ -177,7 +205,10 @@ export async function POST(request: NextRequest) {
   let updated = 0;
   let skipped = 0;
   const errors: string[] = [];
-  const duplicates: { fila: number; serial: string; nuevo: Record<string, string>; existente: Record<string, string>; iguales: string[]; diferentes: string[] }[] = [];
+  const duplicates: { fila: number; serial: string; nuevo: Record<string, string>; existente: Record<string, string>; iguales: string[]; diferentes: string[]; accion?: "actualizado" | "omitido" }[] = [];
+  // Detalle de lo actualizado (qué campos cambiaron) y desglose de motivos de omisión.
+  const updates: { fila: number; serial: string | null; id?: string; cambios: { campo: string; antes: string; despues: string }[] }[] = [];
+  const motivos = { duplicado: 0, idNoEncontrado: 0, sinNombre: 0, transitorio: 0, error: 0, filaInvalida: 0 };
 
   try {
     if (tipo === "PREDIO") {
@@ -451,9 +482,52 @@ export async function POST(request: NextRequest) {
       const hoy = new Date();
       const fechaHoy = `${String(hoy.getDate()).padStart(2, "0")}/${String(hoy.getMonth() + 1).padStart(2, "0")}/${hoy.getFullYear()}`;
 
+      // ── Precarga en bloque (1-2 consultas) ──
+      // Antes se hacía un findUnique por fila (miles de round-trips por lista),
+      // lo que bajo carga producía fallas transitorias contadas como "omitido"
+      // → conteos no deterministas. Acá traemos de una sola vez los equipos por
+      // serial y por ID, y en el loop solo quedan las escrituras (con reintento).
+      const serialsEnLista = new Set<string>();
+      const idsEnLista = new Set<string>();
+      for (const r of rows) {
+        if (!Array.isArray(r)) continue;
+        const s = safeGet(r, fieldMap.get("numeroSerie")); if (s) serialsEnLista.add(s);
+        const idv = safeGet(r, fieldMap.get("id")); if (idv) idsEnLista.add(idv);
+      }
+      const equipoInclude = { asignado: { select: { nombre: true } } } as const;
+      const existingBySerial = new Map<string, any>();
+      if (serialsEnLista.size > 0) {
+        const found = await prisma.equipo.findMany({ where: { numeroSerie: { in: Array.from(serialsEnLista) } }, include: equipoInclude });
+        for (const e of found) if (e.numeroSerie) existingBySerial.set(e.numeroSerie, e);
+      }
+      const existingById = new Map<string, any>();
+      if (idsEnLista.size > 0) {
+        const found = await prisma.equipo.findMany({ where: { id: { in: Array.from(idsEnLista) } }, include: equipoInclude });
+        for (const e of found) existingById.set(e.id, e);
+      }
+
+      const COMPARE_FIELDS = ["nombre", "modelo", "estado", "ubicacion", "fecha", "notas", "marca", "categoria", "proveedor"];
+      // Compara la fila nueva contra el equipo existente y arma el diff + la lista
+      // de cambios reales (campos con valor nuevo distinto al actual).
+      const calcularDiff = (data: Record<string, unknown>, existing: any, asignadoVal: string) => {
+        const nuevo: Record<string, string> = {}; const existente: Record<string, string> = {};
+        const iguales: string[] = []; const diferentes: string[] = [];
+        const cmp = (campo: string, nv: unknown, ov: unknown) => {
+          const newVal = String(nv ?? "").trim(); const oldVal = String(ov ?? "").trim();
+          nuevo[campo] = newVal; existente[campo] = oldVal;
+          if (newVal && oldVal && newVal.toUpperCase() === oldVal.toUpperCase()) iguales.push(campo);
+          else if (newVal || oldVal) diferentes.push(campo);
+        };
+        for (const f of COMPARE_FIELDS) cmp(f, data[f], existing?.[f]);
+        cmp("asignado", asignadoVal || "", existing?.asignado?.nombre || "");
+        cmp("etiqueta", data.etiqueta ?? "", existing?.etiqueta ?? "");
+        const cambios = diferentes.filter((f) => nuevo[f]).map((f) => ({ campo: f, antes: existente[f] || "—", despues: nuevo[f] }));
+        return { nuevo, existente, iguales, diferentes, cambios };
+      };
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || !Array.isArray(row)) { skipped++; continue; }
+        if (!row || !Array.isArray(row)) { skipped++; motivos.filaInvalida++; continue; }
 
         try {
           const nombre = safeGet(row, fieldMap.get("nombre"));
@@ -462,7 +536,7 @@ export async function POST(request: NextRequest) {
           // Auto-fill por prefijo de serial
           const prefixMatch = ns ? SERIAL_PREFIX_MAP[ns.slice(0, 4).toUpperCase()] : null;
           const finalNombre = nombre || prefixMatch?.nombre || "";
-          if (!finalNombre) { skipped++; continue; }
+          if (!finalNombre) { skipped++; motivos.sinNombre++; errors.push(`Fila ${i + 2}: sin Nombre ni Número de Serie reconocible — omitida`); continue; }
 
           const data: Record<string, unknown> = { nombre: finalNombre };
 
@@ -520,86 +594,71 @@ export async function POST(request: NextRequest) {
             if (match) data.asignadoId = match.id;
           }
 
+          // Arma el objeto de update con solo los campos que traen valor.
+          const buildUpdateData = (excludeSerial: boolean) => {
+            const u: Record<string, unknown> = {};
+            for (const [key, val] of Object.entries(data)) {
+              if (excludeSerial && key === "numeroSerie") continue; // no cambiar el serial
+              if (val !== undefined && val !== null && val !== "") u[key] = val;
+            }
+            return u;
+          };
+
           // ── Match por ID interno (key estable) ──
           // Si la fila trae el ID que se exportó, se ACTUALIZA ese equipo aunque hayan
           // cambiado el serial u otros datos → nunca duplica. Si el ID no existe (lo
           // editaron/typo), se omite la fila para no crear un duplicado.
           const idVal = safeGet(row, fieldMap.get("id"));
           if (idVal) {
-            const existingById = await prisma.equipo.findUnique({ where: { id: idVal } });
-            if (!existingById) {
-              errors.push(`Fila ${i + 2}: ID "${idVal}" no encontrado (¿se editó la columna ID?). Se omitió para evitar un duplicado.`);
-              skipped++;
+            const ex = existingById.get(idVal);
+            if (!ex) {
+              errors.push(`Fila ${i + 2}: ID "${idVal}" no encontrado (¿se editó la columna ID?). Omitido para no duplicar.`);
+              skipped++; motivos.idNoEncontrado++;
               continue;
             }
-            const updateData: Record<string, unknown> = {};
-            for (const [key, val] of Object.entries(data)) {
-              if (val !== undefined && val !== null && val !== "") updateData[key] = val;
-            }
-            await prisma.equipo.update({ where: { id: idVal }, data: updateData as any });
+            const diff = calcularDiff(data, ex, asignadoVal);
+            await withRetry(() => prisma.equipo.update({ where: { id: idVal }, data: buildUpdateData(false) as any }));
             updated++;
+            updates.push({ fila: i + 2, id: idVal, serial: ex.numeroSerie || ns || null, cambios: diff.cambios });
             continue;
           }
 
-          // Verificar si serial ya existe antes de crear (para detalle de duplicados)
+          // ── Match por número de serie (precargado) ──
           if (ns) {
-            const existing = await prisma.equipo.findUnique({ where: { numeroSerie: ns }, include: { asignado: { select: { nombre: true } } } });
+            const existing = existingBySerial.get(ns);
             if (existing) {
-              const COMPARE_FIELDS = ["nombre", "modelo", "estado", "ubicacion", "fecha", "notas", "marca", "categoria", "etiqueta", "proveedor"];
-              const nuevoObj: Record<string, string> = {};
-              const existenteObj: Record<string, string> = {};
-              const iguales: string[] = [];
-              const diferentes: string[] = [];
-              for (const f of COMPARE_FIELDS) {
-                const newVal = String(data[f] ?? "").trim();
-                const oldVal = String((existing as any)[f] ?? "").trim();
-                nuevoObj[f] = newVal;
-                existenteObj[f] = oldVal;
-                if (newVal && oldVal && newVal.toUpperCase() === oldVal.toUpperCase()) iguales.push(f);
-                else if (newVal || oldVal) diferentes.push(f);
-              }
-              // Asignado
-              const newAsignado = asignadoVal || "";
-              const oldAsignado = existing.asignado?.nombre || "";
-              nuevoObj.asignado = newAsignado;
-              existenteObj.asignado = oldAsignado;
-              if (newAsignado && oldAsignado && newAsignado.toLowerCase() === oldAsignado.toLowerCase()) iguales.push("asignado");
-              else if (newAsignado || oldAsignado) diferentes.push("asignado");
-
-              const newEtiqueta = String((data.etiqueta ?? "") as string).trim();
-              const oldEtiqueta = String((existing as any).etiqueta ?? "").trim();
-              nuevoObj.etiqueta = newEtiqueta;
-              existenteObj.etiqueta = oldEtiqueta;
-              if (newEtiqueta && oldEtiqueta && newEtiqueta.toLowerCase() === oldEtiqueta.toLowerCase()) iguales.push("etiqueta");
-              else if (newEtiqueta || oldEtiqueta) diferentes.push("etiqueta");
-
-              duplicates.push({ fila: i + 2, serial: ns, nuevo: nuevoObj, existente: existenteObj, iguales, diferentes });
-
-              // Si updateExisting está activo, sobreescribir con los datos nuevos (solo campos con valor)
+              const diff = calcularDiff(data, existing, asignadoVal);
               if (updateExisting) {
-                const updateData: Record<string, unknown> = {};
-                for (const [key, val] of Object.entries(data)) {
-                  if (key === "numeroSerie") continue; // no cambiar el serial
-                  if (val !== undefined && val !== null && val !== "") {
-                    updateData[key] = val;
-                  }
-                }
-                await prisma.equipo.update({ where: { id: existing.id }, data: updateData as any });
+                await withRetry(() => prisma.equipo.update({ where: { id: existing.id }, data: buildUpdateData(true) as any }));
                 updated++;
+                duplicates.push({ fila: i + 2, serial: ns, nuevo: diff.nuevo, existente: diff.existente, iguales: diff.iguales, diferentes: diff.diferentes, accion: "actualizado" });
+                updates.push({ fila: i + 2, serial: ns, cambios: diff.cambios });
               } else {
                 errors.push(`Fila ${i + 2}: Número de serie duplicado`);
-                skipped++;
+                skipped++; motivos.duplicado++;
+                duplicates.push({ fila: i + 2, serial: ns, nuevo: diff.nuevo, existente: diff.existente, iguales: diff.iguales, diferentes: diff.diferentes, accion: "omitido" });
               }
               continue;
             }
           }
 
-          await prisma.equipo.create({ data: data as any });
+          const creado = await withRetry(() => prisma.equipo.create({ data: data as any, include: equipoInclude }));
           created++;
+          // Registrar en el map para deduplicar repeticiones del mismo serial dentro de la lista.
+          if (ns) existingBySerial.set(ns, creado);
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "Error desconocido";
-          errors.push(`Fila ${i + 2}: ${msg.includes("Unique constraint") ? "Número de serie duplicado" : msg}`);
-          skipped++;
+          const e = err as { code?: string; message?: string };
+          const msg = e?.message || "Error desconocido";
+          if (e?.code === "P2002" || /unique constraint/i.test(msg)) {
+            errors.push(`Fila ${i + 2}: Número de serie duplicado`);
+            skipped++; motivos.duplicado++;
+          } else if (isTransientError(err)) {
+            errors.push(`Fila ${i + 2}: error transitorio de base de datos tras reintentos — reintentá la importación de esta fila`);
+            skipped++; motivos.transitorio++;
+          } else {
+            errors.push(`Fila ${i + 2}: ${msg.slice(0, 200)}`);
+            skipped++; motivos.error++;
+          }
         }
       }
     }
@@ -618,8 +677,9 @@ export async function POST(request: NextRequest) {
             updated,
             skipped,
             total: rows.length,
-            errors: errors.slice(0, 20),
-            duplicates: duplicates.slice(0, 20),
+            motivos,
+            errors: errors.slice(0, 50),
+            duplicates: duplicates.slice(0, 50),
             updateExisting: Boolean(updateExisting),
             espacioId: espacioId || null,
             mappingsCount: mappings.length,
@@ -628,7 +688,28 @@ export async function POST(request: NextRequest) {
       });
     } catch { /* no bloquear por log */ }
 
-    return NextResponse.json({ success: true, created, updated, skipped, total: rows.length, errors: errors.slice(0, 20), duplicates: duplicates.slice(0, 20) });
+    return NextResponse.json({
+      success: true,
+      created,
+      updated,
+      skipped,
+      total: rows.length,
+      // Desglose amplio para que se vea qué pasó con cada fila.
+      resumen: {
+        creados: created,
+        actualizados: updated,
+        omitidos: skipped,
+        omitidoPorDuplicado: motivos.duplicado,
+        omitidoPorIdNoEncontrado: motivos.idNoEncontrado,
+        omitidoSinNombre: motivos.sinNombre,
+        falladoTransitorio: motivos.transitorio,
+        falladoOtro: motivos.error,
+        filaInvalida: motivos.filaInvalida,
+      },
+      errors: errors.slice(0, 300),
+      duplicates: duplicates.slice(0, 300),
+      updates: updates.slice(0, 300),
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error desconocido";
     console.error("Import error:", msg);

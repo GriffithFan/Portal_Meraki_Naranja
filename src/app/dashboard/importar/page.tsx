@@ -877,6 +877,39 @@ export default function ImportarPage() {
             <div><span className="text-2xl font-bold text-yellow-600">{result.skipped}</span><p className="text-surface-500">Omitidos</p></div>
             <div><span className="text-2xl font-bold text-surface-400">{result.total}</span><p className="text-surface-500">Total</p></div>
           </div>
+          {result.resumen && result.skipped > 0 && (
+            <div className="text-left bg-surface-50 border border-surface-200 rounded-lg p-3 mb-4 text-xs">
+              <p className="font-semibold text-surface-700 mb-1.5">Desglose de omitidos ({result.skipped})</p>
+              <ul className="space-y-0.5 text-surface-600">
+                {result.resumen.omitidoPorDuplicado > 0 && <li>• {result.resumen.omitidoPorDuplicado} duplicado(s) por número de serie (no se sobreescribieron — activá &quot;Actualizar existentes&quot; para hacerlo)</li>}
+                {result.resumen.omitidoPorIdNoEncontrado > 0 && <li>• {result.resumen.omitidoPorIdNoEncontrado} con ID interno inexistente (¿se editó la columna ID?)</li>}
+                {result.resumen.omitidoSinNombre > 0 && <li>• {result.resumen.omitidoSinNombre} sin Nombre ni Número de Serie</li>}
+                {result.resumen.filaInvalida > 0 && <li>• {result.resumen.filaInvalida} fila(s) vacías o inválidas</li>}
+                {result.resumen.falladoOtro > 0 && <li className="text-red-600">• {result.resumen.falladoOtro} con error de datos (ver lista de errores)</li>}
+                {result.resumen.falladoTransitorio > 0 && <li className="text-red-700 font-semibold">⚠ {result.resumen.falladoTransitorio} por error transitorio de base de datos — volvé a importar la MISMA lista; esas filas se completan sin duplicar nada</li>}
+              </ul>
+            </div>
+          )}
+          {result.updates?.length > 0 && (() => {
+            const L: Record<string, string> = { nombre: "Equipo", modelo: "Modelo", estado: "Estado", ubicacion: "Ubicación", fecha: "Fecha", notas: "Notas", marca: "Marca", categoria: "Categoría", asignado: "Asignado", etiqueta: "Etiqueta", proveedor: "Proveedor" };
+            return (
+              <div className="text-left bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 max-h-60 overflow-y-auto">
+                <p className="text-sm font-semibold text-blue-800 mb-2">{result.updated} actualizado{result.updated > 1 ? "s" : ""} — qué cambió</p>
+                <ul className="space-y-1">
+                  {result.updates.map((u: any, i: number) => (
+                    <li key={i} className="text-xs text-surface-700 leading-relaxed">
+                      <span className="font-mono text-surface-500">Fila {u.fila}{u.serial ? ` · ${u.serial}` : u.id ? ` · ID ${u.id}` : ""}:</span>{" "}
+                      {(!u.cambios || u.cambios.length === 0)
+                        ? <span className="text-surface-400">sin cambios (datos iguales)</span>
+                        : u.cambios.map((c: any, j: number) => (
+                            <span key={j} className="mr-2 inline-block">{(L[c.campo] || c.campo)}: <span className="text-surface-400 line-through">{c.antes}</span> → <span className="text-blue-700 font-medium">{c.despues}</span></span>
+                          ))}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
           {result.errors?.length > 0 && !result.duplicates?.length && (
             <div className="text-left bg-red-50 rounded-lg p-3 mb-4 max-h-40 overflow-y-auto">
               <p className="text-xs font-medium text-red-700 mb-1">Errores:</p>
@@ -894,8 +927,8 @@ export default function ImportarPage() {
                 }
               </p>
               {result.duplicates.map((dup: any, idx: number) => {
-                const FIELD_LABELS: Record<string, string> = { nombre: "Equipo", modelo: "Modelo", estado: "Estado", ubicacion: "Ubicación", fecha: "Fecha", notas: "Notas", marca: "Marca", categoria: "Categoría", asignado: "Asignado" };
-                const wasUpdated = result.updated > 0;
+                const FIELD_LABELS: Record<string, string> = { nombre: "Equipo", modelo: "Modelo", estado: "Estado", ubicacion: "Ubicación", fecha: "Fecha", notas: "Notas", marca: "Marca", categoria: "Categoría", asignado: "Asignado", etiqueta: "Etiqueta", proveedor: "Proveedor" };
+                const wasUpdated = dup.accion ? dup.accion === "actualizado" : result.updated > 0;
                 return (
                   <div key={idx} className={`mb-4 last:mb-0 rounded-lg border p-3 ${wasUpdated ? "bg-blue-50 border-blue-200" : "bg-white border-amber-100"}`}>
                     <div className="flex items-center gap-2 mb-2">
