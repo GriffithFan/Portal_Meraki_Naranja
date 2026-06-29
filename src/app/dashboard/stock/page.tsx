@@ -861,20 +861,20 @@ export default function StockPage() {
         Proveedor: eq.proveedor || "",
       };
       for (const col of customColumns) row[col.label] = eq.camposExtra?.[col.field.replace("_custom_", "")] || "";
-      // Identificadores al final y OCULTOS (ver !cols abajo): no se deben editar.
-      row["ID interno"] = eq.id || "";
-      row["Nº inv"] = eq.inventario != null ? String(eq.inventario) : "";
+      // Identificadores VISIBLES (no editar): si se ocultan, al mover/reordenar datos
+      // en Excel el ID no acompaña a su fila y el re-import termina pisando el equipo
+      // equivocado. Visibles + el cruce de seguridad del import evitan ese error.
+      row["ID interno (no editar)"] = eq.id || "";
+      row["Nº inventario (no editar)"] = eq.inventario != null ? String(eq.inventario) : "";
       return row;
     });
 
     if (data.length === 0) { toast.error("No hay datos para exportar"); return; }
 
     const ws = XLSX.utils.json_to_sheet(data);
-    // Auto-width + ocultar las columnas de identificadores (no editables).
-    const HIDDEN_COLS = new Set(["ID interno", "Nº inv"]);
+    // Auto-width (las columnas de identificadores quedan VISIBLES a propósito).
     ws["!cols"] = Object.keys(data[0]).map(key => ({
       wch: Math.max(key.length, ...data.map((r: any) => String(r[key] ?? "").length)) + 2,
-      hidden: HIDDEN_COLS.has(key) || undefined,
     }));
 
     const wb = XLSX.utils.book_new();

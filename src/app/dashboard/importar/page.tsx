@@ -235,6 +235,7 @@ export default function ImportarPage() {
 
       const equipoAliases: Record<string, string[]> = {
         id:          ["id", "idinterno", "identificador"],
+        inventario:  ["inventario", "ninventario", "ninv", "nroinventario", "nro_inventario", "n_inventario", "norden"],
         nombre:      ["nombre", "name", "equipo", "dispositivo", "device"],
         descripcion: ["descripcion", "descripción", "desc", "detalle"],
         numeroSerie: ["numero_serie", "numeroserie", "n/s", "ns", "serial", "serie", "sn", "numero_de_serie"],
@@ -882,7 +883,8 @@ export default function ImportarPage() {
               <p className="font-semibold text-surface-700 mb-1.5">Desglose de omitidos ({result.skipped})</p>
               <ul className="space-y-0.5 text-surface-600">
                 {result.resumen.omitidoPorDuplicado > 0 && <li>• {result.resumen.omitidoPorDuplicado} duplicado(s) por número de serie (no se sobreescribieron — activá &quot;Actualizar existentes&quot; para hacerlo)</li>}
-                {result.resumen.omitidoPorIdNoEncontrado > 0 && <li>• {result.resumen.omitidoPorIdNoEncontrado} con ID interno inexistente (¿se editó la columna ID?)</li>}
+                {result.resumen.omitidoPorDesalineacion > 0 && <li className="text-amber-700 font-semibold">⚠ {result.resumen.omitidoPorDesalineacion} fila(s) desalineada(s): el ID y el Nº inventario no coinciden — NO se modificaron (revisá que no se hayan movido/ordenado columnas o filas en el Excel)</li>}
+                {result.resumen.omitidoPorIdNoEncontrado > 0 && <li>• {result.resumen.omitidoPorIdNoEncontrado} con ID/Nº inventario inexistente (¿se editó esa columna?)</li>}
                 {result.resumen.omitidoSinNombre > 0 && <li>• {result.resumen.omitidoSinNombre} sin Nombre ni Número de Serie</li>}
                 {result.resumen.filaInvalida > 0 && <li>• {result.resumen.filaInvalida} fila(s) vacías o inválidas</li>}
                 {result.resumen.falladoOtro > 0 && <li className="text-red-600">• {result.resumen.falladoOtro} con error de datos (ver lista de errores)</li>}

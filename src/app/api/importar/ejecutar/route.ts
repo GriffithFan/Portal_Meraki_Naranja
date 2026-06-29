@@ -69,6 +69,7 @@ const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
 
 const EQUIPO_FIELDS: Record<string, string> = {
   id: "ID (interno — no editar)",
+  inventario: "Nº inventario (interno — no editar)",
   nombre: "Nombre",
   descripcion: "Descripción",
   numeroSerie: "Número de Serie",
@@ -208,7 +209,7 @@ export async function POST(request: NextRequest) {
   const duplicates: { fila: number; serial: string; nuevo: Record<string, string>; existente: Record<string, string>; iguales: string[]; diferentes: string[]; accion?: "actualizado" | "omitido" }[] = [];
   // Detalle de lo actualizado (qué campos cambiaron) y desglose de motivos de omisión.
   const updates: { fila: number; serial: string | null; id?: string; cambios: { campo: string; antes: string; despues: string }[] }[] = [];
-  const motivos = { duplicado: 0, idNoEncontrado: 0, sinNombre: 0, transitorio: 0, error: 0, filaInvalida: 0 };
+  const motivos = { duplicado: 0, idNoEncontrado: 0, desalineado: 0, sinNombre: 0, transitorio: 0, error: 0, filaInvalida: 0 };
 
   try {
     if (tipo === "PREDIO") {
@@ -505,6 +506,18 @@ export async function POST(request: NextRequest) {
         const found = await prisma.equipo.findMany({ where: { id: { in: Array.from(idsEnLista) } }, include: equipoInclude });
         for (const e of found) existingById.set(e.id, e);
       }
+      // Precarga por Nº inventario para el cruce de seguridad ID ↔ inventario.
+      const inventariosEnLista = new Set<number>();
+      for (const r of rows) {
+        if (!Array.isArray(r)) continue;
+        const iv = safeGet(r, fieldMap.get("inventario"));
+        if (iv) { const n = parseInt(iv, 10); if (!Number.isNaN(n)) inventariosEnLista.add(n); }
+      }
+      const existingByInventario = new Map<number, any>();
+      if (inventariosEnLista.size > 0) {
+        const found = await prisma.equipo.findMany({ where: { inventario: { in: Array.from(inventariosEnLista) } }, include: equipoInclude });
+        for (const e of found) existingByInventario.set(e.inventario, e);
+      }
 
       const COMPARE_FIELDS = ["nombre", "modelo", "estado", "ubicacion", "fecha", "notas", "marca", "categoria", "proveedor"];
       // Compara la fila nueva contra el equipo existente y arma el diff + la lista
@@ -604,22 +617,54 @@ export async function POST(request: NextRequest) {
             return u;
           };
 
-          // ── Match por ID interno (key estable) ──
-          // Si la fila trae el ID que se exportó, se ACTUALIZA ese equipo aunque hayan
-          // cambiado el serial u otros datos → nunca duplica. Si el ID no existe (lo
-          // editaron/typo), se omite la fila para no crear un duplicado.
+          // ── Match por identidad (ID interno + Nº inventario) con CRUCE DE SEGURIDAD ──
+          // Ambas columnas se exportan VISIBLES. Si una fila trae las dos y NO apuntan al
+          // mismo equipo (o alguna no existe), es una fila DESALINEADA — típico de mover/
+          // reordenar/ordenar datos en el Excel sin que el identificador acompañe a la
+          // fila. En ese caso se OMITE sin escribir, para nunca pisar el equipo equivocado.
           const idVal = safeGet(row, fieldMap.get("id"));
-          if (idVal) {
-            const ex = existingById.get(idVal);
-            if (!ex) {
-              errors.push(`Fila ${i + 2}: ID "${idVal}" no encontrado (¿se editó la columna ID?). Omitido para no duplicar.`);
-              skipped++; motivos.idNoEncontrado++;
-              continue;
+          const invStr = safeGet(row, fieldMap.get("inventario"));
+          const invNum = invStr ? parseInt(invStr, 10) : NaN;
+          const hasId = !!idVal;
+          const hasInv = !Number.isNaN(invNum);
+
+          if (hasId || hasInv) {
+            const byId = hasId ? existingById.get(idVal) : null;
+            const byInv = hasInv ? existingByInventario.get(invNum) : null;
+            let target: any = null;
+
+            if (hasId && hasInv) {
+              if (byId && byInv && byId.id === byInv.id) {
+                target = byId; // identidad consistente
+              } else {
+                const detalle = (!byId && !byInv) ? `ni el ID ni el Nº inventario (${invNum}) existen`
+                  : !byId ? `el ID no existe pero el Nº inventario ${invNum} pertenece a otro equipo`
+                  : !byInv ? `el Nº inventario ${invNum} no existe pero el ID pertenece a otro equipo`
+                  : `el ID y el Nº inventario ${invNum} apuntan a equipos DISTINTOS`;
+                errors.push(`Fila ${i + 2}: fila desalineada — ${detalle}. NO se modificó (revisá que no se hayan movido/ordenado las columnas o filas en el Excel).`);
+                skipped++; motivos.desalineado++;
+                continue;
+              }
+            } else if (hasId) {
+              if (!byId) {
+                errors.push(`Fila ${i + 2}: ID "${idVal}" no encontrado (¿se editó/desordenó la columna ID?). Omitido para no pisar otro equipo.`);
+                skipped++; motivos.idNoEncontrado++;
+                continue;
+              }
+              target = byId;
+            } else { // solo Nº inventario
+              if (!byInv) {
+                errors.push(`Fila ${i + 2}: Nº inventario ${invNum} no existe. Omitido (dejá esa celda vacía si es un equipo nuevo).`);
+                skipped++; motivos.idNoEncontrado++;
+                continue;
+              }
+              target = byInv;
             }
-            const diff = calcularDiff(data, ex, asignadoVal);
-            await withRetry(() => prisma.equipo.update({ where: { id: idVal }, data: buildUpdateData(false) as any }));
+
+            const diff = calcularDiff(data, target, asignadoVal);
+            await withRetry(() => prisma.equipo.update({ where: { id: target.id }, data: buildUpdateData(false) as any }));
             updated++;
-            updates.push({ fila: i + 2, id: idVal, serial: ex.numeroSerie || ns || null, cambios: diff.cambios });
+            updates.push({ fila: i + 2, id: target.id, serial: target.numeroSerie || ns || null, cambios: diff.cambios });
             continue;
           }
 
@@ -700,6 +745,7 @@ export async function POST(request: NextRequest) {
         actualizados: updated,
         omitidos: skipped,
         omitidoPorDuplicado: motivos.duplicado,
+        omitidoPorDesalineacion: motivos.desalineado,
         omitidoPorIdNoEncontrado: motivos.idNoEncontrado,
         omitidoSinNombre: motivos.sinNombre,
         falladoTransitorio: motivos.transitorio,
