@@ -59,12 +59,17 @@ const PREDIO_FIELDS: Record<string, string> = {
 const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
   Q2PD: { nombre: "AP", modelo: "MR33" },
   Q3AJ: { nombre: "AP", modelo: "MR36" },
+  Q2AJ: { nombre: "AP", modelo: "MR36" },   // mismo AP que Q3AJ (248 equipos en stock)
   Q3AL: { nombre: "AP", modelo: "MR44" },
   Q2GW: { nombre: "SWITCH 24P", modelo: "MS225" },
   Q2CX: { nombre: "SWITCH 8P", modelo: "MS120" },
   Q2PN: { nombre: "UTM", modelo: "MX84" },
   Q2YN: { nombre: "UTM", modelo: "MX85" },
   Q2TN: { nombre: "Gateway", modelo: "Z3" },
+  // Switches no-Meraki frecuentes (prefijo estable por lote en el stock actual):
+  LD25: { nombre: "SWITCH", modelo: "S5735-L8T4S-A-V2" },   // Huawei (87)
+  FCW2: { nombre: "SWITCH", modelo: "WS-C2960L-8PS-LL" },   // Cisco (78)
+  "4E25": { nombre: "SWITCH", modelo: "S5735-S24P4XE-V2" }, // Huawei (12)
 };
 
 const EQUIPO_FIELDS: Record<string, string> = {
@@ -471,11 +476,11 @@ export async function POST(request: NextRequest) {
       }
 
       // Pre-cargar usuarios para matching de asignado
-      let allUsers: { id: string; nombre: string }[] = [];
+      let allUsers: { id: string; nombre: string; email: string }[] = [];
       if (fieldMap.has("asignado")) {
         allUsers = await prisma.user.findMany({
           where: { activo: true },
-          select: { id: true, nombre: true },
+          select: { id: true, nombre: true, email: true },
         });
       }
 
@@ -511,7 +516,7 @@ export async function POST(request: NextRequest) {
       for (const r of rows) {
         if (!Array.isArray(r)) continue;
         const iv = safeGet(r, fieldMap.get("inventario"));
-        if (iv) { const n = parseInt(iv, 10); if (!Number.isNaN(n)) inventariosEnLista.add(n); }
+        if (iv) { const n = parseInt(iv.replace(/\D/g, ""), 10); if (!Number.isNaN(n)) inventariosEnLista.add(n); }
       }
       const existingByInventario = new Map<number, any>();
       if (inventariosEnLista.size > 0) {
@@ -600,10 +605,9 @@ export async function POST(request: NextRequest) {
           if (asignadoVal && allUsers.length > 0) {
             const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
             const needle = norm(asignadoVal);
-            const match = allUsers.find(u => {
-              const n = norm(u.nombre);
-              return n === needle || n.includes(needle) || needle.includes(n);
-            });
+            // Match ESTRICTO: nombre exacto o parte local del email. Evita asignar al
+            // usuario equivocado por coincidencias parciales (substring).
+            const match = allUsers.find(u => norm(u.nombre) === needle || norm(u.email).split("@")[0] === needle);
             if (match) data.asignadoId = match.id;
           }
 
@@ -624,7 +628,8 @@ export async function POST(request: NextRequest) {
           // fila. En ese caso se OMITE sin escribir, para nunca pisar el equipo equivocado.
           const idVal = safeGet(row, fieldMap.get("id"));
           const invStr = safeGet(row, fieldMap.get("inventario"));
-          const invNum = invStr ? parseInt(invStr, 10) : NaN;
+          // Robusto ante separadores de miles (es-AR: "1.234"): tomar solo dígitos.
+          const invNum = invStr ? parseInt(invStr.replace(/\D/g, ""), 10) : NaN;
           const hasId = !!idVal;
           const hasInv = !Number.isNaN(invNum);
 
