@@ -830,10 +830,16 @@ export default function TareaDetalleModal({
         <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-surface-100 flex items-start justify-between shrink-0">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] text-surface-400 uppercase tracking-wider mb-1">Detalle de Tarea</p>
+            {/* El título lleva el número de predio (codigo). Si el nombre es distinto
+                (p. ej. escuelas de PBA donde nombre = institución), va como subtítulo,
+                para que el número siempre sea visible sin importar la config del espacio. */}
             <h2 className="text-base font-semibold text-surface-800 truncate flex items-center gap-1">
-              {loading ? "Cargando..." : tarea?.nombre || tarea?.incidencias || "Sin nombre"}
-              {!loading && tarea && <CopyButton value={tarea.nombre || tarea.incidencias || ""} />}
+              {loading ? "Cargando..." : tarea?.codigo || tarea?.nombre || tarea?.incidencias || "Sin nombre"}
+              {!loading && tarea && <CopyButton value={tarea?.codigo || tarea?.nombre || tarea?.incidencias || ""} />}
             </h2>
+            {!loading && tarea?.codigo && tarea?.nombre && tarea.nombre !== tarea.codigo && (
+              <p className="text-xs text-surface-500 truncate">{tarea.nombre}</p>
+            )}
           </div>
           <button
             onClick={onClose}
