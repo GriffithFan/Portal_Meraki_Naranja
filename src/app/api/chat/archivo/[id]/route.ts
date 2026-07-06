@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { readFile } from "fs/promises";
+import { createReadStream } from "fs";
+import { stat } from "fs/promises";
+import { Readable } from "stream";
 import path from "path";
 
 const SAFE_MIME: Record<string, string> = {
@@ -22,6 +24,10 @@ const SAFE_MIME: Record<string, string> = {
 /**
  * GET /api/chat/archivo/[id] — Descargar archivo de un mensaje de chat
  * ?inline=true para mostrar en el navegador (imágenes, audio, video)
+ *
+ * Sirve por streaming (sin cargar el archivo entero en memoria) y soporta
+ * HTTP Range: imprescindible para que iOS/Android reproduzcan video/audio
+ * y permitan adelantar/retroceder sin descargar todo el archivo.
  */
 export async function GET(
   request: NextRequest,
@@ -73,7 +79,7 @@ export async function GET(
       return NextResponse.json({ error: "Ruta no permitida" }, { status: 403 });
     }
 
-    const fileBuffer = await readFile(filePath);
+    const stats = await stat(filePath);
 
     const ext = path.extname(mensaje.archivoUrl).toLowerCase();
     // Preferir el MIME tipo guardado en la DB (más preciso para .webm audio vs video)
@@ -84,13 +90,53 @@ export async function GET(
     const disposition = inline ? "inline" : "attachment";
     const fileName = mensaje.archivoNombre || `archivo${ext}`;
 
-    return new NextResponse(fileBuffer, {
+    const baseHeaders: Record<string, string> = {
+      "Content-Type": safeContentType,
+      "Content-Disposition": `${disposition}; filename="${encodeURIComponent(fileName)}"`,
+      "X-Content-Type-Options": "nosniff",
+      "Accept-Ranges": "bytes",
+      // El nombre de archivo en disco es único e inmutable: cachear fuerte
+      // para que el celular no re-descargue las mismas fotos en cada vista.
+      "Cache-Control": "private, max-age=31536000, immutable",
+    };
+
+    const rangeHeader = request.headers.get("range");
+    if (rangeHeader) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+      let start = match?.[1] ? parseInt(match[1], 10) : NaN;
+      let end = match?.[2] ? parseInt(match[2], 10) : NaN;
+
+      if (match && !match[1] && match[2]) {
+        // Sufijo "bytes=-N": últimos N bytes
+        start = Math.max(0, stats.size - parseInt(match[2], 10));
+        end = stats.size - 1;
+      }
+      if (Number.isNaN(start)) start = 0;
+      if (Number.isNaN(end) || end >= stats.size) end = stats.size - 1;
+
+      if (!match || start > end || start >= stats.size) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${stats.size}` },
+        });
+      }
+
+      const stream = createReadStream(filePath, { start, end });
+      return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
+        status: 206,
+        headers: {
+          ...baseHeaders,
+          "Content-Range": `bytes ${start}-${end}/${stats.size}`,
+          "Content-Length": String(end - start + 1),
+        },
+      });
+    }
+
+    const stream = createReadStream(filePath);
+    return new NextResponse(Readable.toWeb(stream) as unknown as ReadableStream, {
       headers: {
-        "Content-Type": safeContentType,
-        "Content-Disposition": `${disposition}; filename="${encodeURIComponent(fileName)}"`,
-        "Content-Length": String(fileBuffer.length),
-        "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "private, max-age=3600",
+        ...baseHeaders,
+        "Content-Length": String(stats.size),
       },
     });
   } catch {

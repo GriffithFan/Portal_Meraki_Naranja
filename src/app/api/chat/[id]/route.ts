@@ -80,11 +80,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
   }
 
-  // Marcar como leído (fire-and-forget)
-  if (esCreador) {
-    prisma.chatConversacion.update({ where: { id }, data: { leidoPorCreadorAt: new Date() } }).catch(() => {});
-  } else if (esMesa || esAdminOMod) {
-    prisma.chatConversacion.update({ where: { id }, data: { leidoPorMesaAt: new Date() } }).catch(() => {});
+  // Marcar como leído (fire-and-forget). Solo cuando es la carga inicial o el
+  // polling incremental trajo mensajes nuevos: evita una escritura a la DB
+  // cada 2,5s por cada chat abierto (con 15 usuarios era churn constante).
+  const hayNovedades = !validSinceDate || conversacion.mensajes.length > 0;
+  if (hayNovedades) {
+    if (esCreador) {
+      prisma.chatConversacion.update({ where: { id }, data: { leidoPorCreadorAt: new Date() } }).catch(() => {});
+    } else if (esMesa || esAdminOMod) {
+      prisma.chatConversacion.update({ where: { id }, data: { leidoPorMesaAt: new Date() } }).catch(() => {});
+    }
   }
 
   const otraParteEscribiendo = isSomeoneTyping(id, session.userId);
@@ -250,7 +255,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     });
 
-    return NextResponse.json(nuevoMensaje, { status: 201 });
+    // Para técnicos: anonimizar el autor de la cita (mismo criterio que el GET),
+    // ya que el front hace merge directo de esta respuesta.
+    const esAdminOModPost = session.rol === "ADMIN" || session.rol === "MODERADOR";
+    const payload = !esMesaUser && !esAdminOModPost && (nuevoMensaje as any).replyTo?.autor?.esMesa
+      ? { ...nuevoMensaje, replyTo: { ...(nuevoMensaje as any).replyTo, autor: { id: "mesa", nombre: "Mesa de Ayuda", esMesa: true } } }
+      : nuevoMensaje;
+
+    return NextResponse.json(payload, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }

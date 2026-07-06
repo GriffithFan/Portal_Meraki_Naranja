@@ -8,6 +8,7 @@ import { useConfirm } from "@/contexts/ConfirmContext";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
+import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload } from "@/lib/chatUpload";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import clsx from "clsx";
@@ -186,6 +187,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
+  const [subidaPct, setSubidaPct] = useState(0);
   const [grabando, setGrabando] = useState(false);
   const [grabSegundos, setGrabSegundos] = useState(0);
   const [vistaMovil, setVistaMovil] = useState<"lista" | "chat">("lista");
@@ -420,7 +422,10 @@ export default function ChatPage() {
         setNuevoMensaje("");
         if (inputRef.current) inputRef.current.style.height = "auto";
         setRespondiendoA(null);
-        await cargarMensajes(seleccionada.id);
+        // El POST ya devuelve el mensaje creado con autor/reply/reacciones:
+        // merge directo, sin re-descargar toda la conversación.
+        const creado = await res.json().catch(() => null);
+        if (creado?.id) mergeMensajes([creado]);
         return true;
       }
       const err = await res.json().catch(() => ({}));
@@ -559,18 +564,23 @@ export default function ChatPage() {
     if (!seleccionada?.id) return;
     if (files.length === 0) return;
     setSubiendo(true);
+    setSubidaPct(0);
     try {
-      const fd = new FormData();
-      files.forEach((file) => fd.append("file", file));
-      fd.append("conversacionId", seleccionada.id);
-      if (respondiendoA?.id) fd.append("replyToId", respondiendoA.id);
-      const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
-      if (res.ok) {
+      // Comprimir imágenes en el cliente antes de subir (clave en 4G)
+      const preparados = await prepararArchivosChat(files);
+      const resultado = await subirArchivosChat({
+        conversacionId: seleccionada.id,
+        files: preparados,
+        replyToId: respondiendoA?.id,
+        onProgress: setSubidaPct,
+      });
+      if (resultado.ok) {
         setRespondiendoA(null);
-        await cargarMensajes(seleccionada.id);
+        // Merge de los mensajes creados (la respuesta ya los trae): sin
+        // re-descargar toda la conversación por cada envío.
+        mergeMensajes(mensajesDeRespuestaUpload(resultado.data));
       } else {
-        const err = await res.json();
-        toast.error(err.error || "Error al subir archivo");
+        toast.error(resultado.error);
       }
     } catch (err) { console.error("[Chat] Error subiendo archivo:", err); toast.error("Error al subir archivo. Intentá de nuevo."); }
     setSubiendo(false);
@@ -1129,7 +1139,7 @@ export default function ChatPage() {
                     ) : subiendo ? (
                       <div className="flex items-center justify-center gap-2 py-2">
                         <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
-                        <span className="text-sm text-surface-500">Subiendo archivo...</span>
+                        <span className="text-sm text-surface-500">Subiendo archivo... {subidaPct > 0 ? `${subidaPct}%` : ""}</span>
                       </div>
                     ) : (
                       <form ref={formRef} onSubmit={enviarMensaje} className="space-y-2 touch-manipulation">

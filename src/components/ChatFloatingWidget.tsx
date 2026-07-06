@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
+import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload } from "@/lib/chatUpload";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
@@ -183,6 +184,7 @@ export default function ChatFloatingWidget() {
   const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
+  const [subidaPct, setSubidaPct] = useState(0);
   const [grabando, setGrabando] = useState(false);
   const [grabSegundos, setGrabSegundos] = useState(0);
   const [respondiendoA, setRespondiendoA] = useState<any | null>(null);
@@ -204,6 +206,10 @@ export default function ChatFloatingWidget() {
   const convActivaLoadingRef = useRef(false);
   const supportLoadingRef = useRef(false);
   const pollMensajesLoadingRef = useRef(false);
+  // Ref espejo de mensajes para que el polling lea el último timestamp sin
+  // reiniciar el intervalo en cada mensaje nuevo.
+  const mensajesRef = useRef<any[]>([]);
+  mensajesRef.current = mensajes;
   const isHidden = pathname === "/dashboard/chat";
   const isSupportUser = isMesa || isModOrAdmin;
   useChatReminders(Boolean(session) && !isHidden, session?.userId || "default");
@@ -354,7 +360,8 @@ export default function ChatFloatingWidget() {
       if (pollMensajesLoadingRef.current) return;
       pollMensajesLoadingRef.current = true;
       try {
-        const ultimo = mensajes[mensajes.length - 1]?.createdAt;
+        const actuales = mensajesRef.current;
+        const ultimo = actuales[actuales.length - 1]?.createdAt;
         const query = ultimo ? `?since=${encodeURIComponent(ultimo)}` : "";
         const res = await fetch(`/api/chat/${conversacion.id}${query}`, { credentials: "include" });
         if (res.ok) {
@@ -375,7 +382,7 @@ export default function ChatFloatingWidget() {
       finally { pollMensajesLoadingRef.current = false; }
     }, 2500);
     return () => clearInterval(pollRef.current);
-  }, [open, conversacion?.id, mensajes, mergeMensajes]);
+  }, [open, conversacion?.id, mergeMensajes]);
 
   useEffect(() => {
     if (mensajes.length > prevMsgCountRef.current) {
@@ -410,6 +417,7 @@ export default function ChatFloatingWidget() {
   const subirArchivos = async (files: File[]) => {
     if (files.length === 0) return;
     setSubiendo(true);
+    setSubidaPct(0);
     try {
       let convId = conversacion?.id;
       // Si no hay conversación activa, crear una con mensaje descriptivo
@@ -427,18 +435,21 @@ export default function ChatFloatingWidget() {
         if (!convId) { toast.error("No se pudo crear la conversación"); setSubiendo(false); return; }
         await cargarConvActiva();
       }
-      const fd = new FormData();
-      files.forEach((file) => fd.append("file", file));
-      fd.append("conversacionId", convId);
-      if (respondiendoA?.id) fd.append("replyToId", respondiendoA.id);
-      const res = await fetch("/api/chat/upload", { method: "POST", credentials: "include", body: fd });
-      if (res.ok) {
+      // Comprimir imágenes en el cliente antes de subir (clave en 4G)
+      const preparados = await prepararArchivosChat(files);
+      const resultado = await subirArchivosChat({
+        conversacionId: convId,
+        files: preparados,
+        replyToId: respondiendoA?.id,
+        onProgress: setSubidaPct,
+      });
+      if (resultado.ok) {
         setRespondiendoA(null);
-        const res2 = await fetch(`/api/chat/${convId}`, { credentials: "include" });
-        if (res2.ok) { const data = await res2.json(); setMensajes(data.mensajes || []); }
+        // Merge de los mensajes creados (la respuesta ya los trae): sin
+        // re-descargar toda la conversación por cada envío.
+        mergeMensajes(mensajesDeRespuestaUpload(resultado.data));
       } else {
-        const err = await res.json();
-        toast.error(err.error || "Error al subir archivo");
+        toast.error(resultado.error);
       }
     } catch (err) { console.error("[ChatWidget] Error subiendo archivo:", err); toast.error("Error al subir archivo. Intentá de nuevo."); }
     setSubiendo(false);
@@ -549,12 +560,10 @@ export default function ChatFloatingWidget() {
           setNuevoMensaje("");
           if (inputRef.current) inputRef.current.style.height = "auto";
           setRespondiendoA(null);
-          const res2 = await fetch(`/api/chat/${conversacion.id}`, { credentials: "include" });
-          if (res2.ok) {
-            const data = await res2.json();
-            setConversacion(data);
-            setMensajes(data.mensajes || []);
-          }
+          // El POST ya devuelve el mensaje creado con autor/reply/reacciones:
+          // merge directo, sin re-descargar toda la conversación.
+          const creado = await res.json().catch(() => null);
+          if (creado?.id) mergeMensajes([creado]);
           if (isSupportUser) await cargarConversacionesSoporte();
         }
       }
@@ -730,7 +739,7 @@ export default function ChatFloatingWidget() {
                     {subiendo ? (
                       <div className="flex items-center justify-center gap-2 py-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
-                        <span className="text-xs text-surface-500">Subiendo archivo...</span>
+                        <span className="text-xs text-surface-500">Subiendo archivo... {subidaPct > 0 ? `${subidaPct}%` : ""}</span>
                       </div>
                     ) : (
                     <>

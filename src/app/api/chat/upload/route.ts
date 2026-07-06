@@ -185,7 +185,16 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    return NextResponse.json(files.length === 1 ? mensajesCreados[0] : { mensajes: mensajesCreados }, { status: 201 });
+    // Para técnicos: anonimizar el autor de la cita (mismo criterio que el GET
+    // de la conversación), ya que el front hace merge directo de esta respuesta.
+    const anonimizar = !esMesa && !esAdmin;
+    const mensajesRespuesta = mensajesCreados.map((m) =>
+      anonimizar && (m as unknown as { replyTo?: { autor?: { esMesa?: boolean } } }).replyTo?.autor?.esMesa
+        ? { ...m, replyTo: { ...(m as unknown as { replyTo: object }).replyTo, autor: { id: "mesa", nombre: "Mesa de Ayuda", esMesa: true } } }
+        : m
+    );
+
+    return NextResponse.json(files.length === 1 ? mensajesRespuesta[0] : { mensajes: mensajesRespuesta }, { status: 201 });
   } catch (error) {
     console.error("[chat/upload] Error:", error);
     return NextResponse.json({ error: "Error al subir archivo" }, { status: 500 });
