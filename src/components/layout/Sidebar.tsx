@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
 import { tieneAccesoFichas } from "@/lib/fichasAccess";
+import { useAnuncios } from "@/contexts/AnunciosContext";
 
 interface NavItem {
   label: string;
@@ -138,6 +139,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const { session } = useSession();
   const { puedeVer } = usePermisos();
+  const { noLeidos: anunciosNoLeidos } = useAnuncios();
   const [collapsed, setCollapsed] = useState(false);
   const userCollapseOverride = useRef(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
@@ -325,13 +327,14 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               <ul className="space-y-0.5 px-2">
                 {section.items.map((item) => {
                   const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                  const badge = item.href === "/dashboard/anuncios" ? anunciosNoLeidos : 0;
                   return (
                     <li key={item.href}>
                       <Link
                         href={item.href}
                         title={collapsed ? item.label : undefined}
                         className={clsx(
-                          "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                          "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
                           active
                             ? "bg-primary-600/20 text-primary-400 shadow-sm"
                             : "text-surface-400 hover:bg-surface-800 hover:text-white hover:translate-x-0.5"
@@ -339,6 +342,12 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                       >
                         <span className={clsx("shrink-0", active && "text-accent-400")}>{item.icon}</span>
                         {!collapsed && <span className="truncate">{item.label}</span>}
+                        {badge > 0 && !collapsed && (
+                          <span className="ml-auto min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-accent-500 text-white text-[10px] font-bold rounded-full">{badge > 9 ? "9+" : badge}</span>
+                        )}
+                        {badge > 0 && collapsed && (
+                          <span className="absolute top-1.5 right-1.5 min-w-[16px] h-[16px] px-1 flex items-center justify-center bg-accent-500 text-white text-[9px] font-bold rounded-full">{badge > 9 ? "9+" : badge}</span>
+                        )}
                       </Link>
                     </li>
                   );

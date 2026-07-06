@@ -13,6 +13,8 @@ import PushNotificationRegistrar from "@/components/PushNotificationRegistrar";
 import CommandPalette from "@/components/CommandPalette";
 import ChatFloatingWidget from "@/components/ChatFloatingWidget";
 import AnunciosBloqueantes from "@/components/AnunciosBloqueantes";
+import AnunciosToast from "@/components/AnunciosToast";
+import { AnunciosProvider } from "@/contexts/AnunciosContext";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 
 export default function DashboardLayout({
@@ -29,9 +31,11 @@ export default function DashboardLayout({
     <SessionProvider>
       <SearchProvider>
       <NetworkProvider>
+        <AnunciosProvider>
         <PushNotificationRegistrar />
         <CommandPalette />
         <AnunciosBloqueantes />
+        <AnunciosToast />
         <div className="flex min-h-screen bg-surface-50">
           <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
           <div className="flex-1 flex flex-col min-w-0">
@@ -43,6 +47,7 @@ export default function DashboardLayout({
             <ChatFloatingWidget />
           </div>
         </div>
+        </AnunciosProvider>
       </NetworkProvider>
       </SearchProvider>
     </SessionProvider>
