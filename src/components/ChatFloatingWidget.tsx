@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
-import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload } from "@/lib/chatUpload";
+import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload, intervaloPollingAdaptativo } from "@/lib/chatUpload";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
@@ -15,6 +15,11 @@ import clsx from "clsx";
 const MAX_AUDIO_SECONDS = 120; // 2 minutos
 const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/pdf,.pdf,application/zip,application/x-zip-compressed";
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏", "🎉"];
+
+// Renderizado diferido de mensajes fuera de pantalla: el navegador saltea el
+// layout/paint de lo que no se ve — clave en Android de gama baja con
+// conversaciones largas. Ignorado sin efecto en navegadores viejos.
+const MSG_ROW_STYLE = { contentVisibility: "auto", containIntrinsicSize: "auto 80px" } as React.CSSProperties;
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -205,6 +210,7 @@ export default function ChatFloatingWidget() {
   const unreadLoadingRef = useRef(false);
   const convActivaLoadingRef = useRef(false);
   const supportLoadingRef = useRef(false);
+  const supportConvsJsonRef = useRef("");
   const pollMensajesLoadingRef = useRef(false);
   // Ref espejo de mensajes para que el polling lea el último timestamp sin
   // reiniciar el intervalo en cada mensaje nuevo.
@@ -297,7 +303,13 @@ export default function ChatFloatingWidget() {
       const res = await fetch("/api/chat", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        setSupportConversations(Array.isArray(data) ? data.slice(0, 8) : []);
+        const lista = Array.isArray(data) ? data.slice(0, 8) : [];
+        // Solo actualizar estado (y re-renderizar) si la lista realmente cambió
+        const raw = JSON.stringify(lista);
+        if (raw !== supportConvsJsonRef.current) {
+          supportConvsJsonRef.current = raw;
+          setSupportConversations(lista);
+        }
       }
     } catch { /* silenciar */ }
     finally {
@@ -341,7 +353,7 @@ export default function ChatFloatingWidget() {
     checkUnread();
     const interval = setInterval(() => {
       if (document.visibilityState !== "hidden") checkUnread();
-    }, 10000);
+    }, intervaloPollingAdaptativo(10000));
     return () => clearInterval(interval);
   }, [loading, session, checkUnread]);
 
@@ -349,7 +361,7 @@ export default function ChatFloatingWidget() {
     if (!open || !isSupportUser) return;
     const interval = setInterval(() => {
       if (document.visibilityState !== "hidden") cargarConversacionesSoporte();
-    }, 10000);
+    }, intervaloPollingAdaptativo(10000));
     return () => clearInterval(interval);
   }, [cargarConversacionesSoporte, isSupportUser, open]);
 
@@ -374,13 +386,19 @@ export default function ChatFloatingWidget() {
             setMensajes([]);
             setRespondiendoA(null);
           } else {
-            // Mantener typing/estado al día sin reemplazar el resto del objeto
-            setConversacion((prev: any) => prev && prev.id === data.id ? { ...prev, typing: data.typing, estado: data.estado } : prev);
+            // Mantener typing/estado al día sin reemplazar el resto del objeto.
+            // Si nada cambió, devolver la misma referencia: React saltea el
+            // re-render (importante en celulares de gama baja, esto corre cada pocos segundos).
+            setConversacion((prev: any) => {
+              if (!prev || prev.id !== data.id) return prev;
+              if (prev.typing === data.typing && prev.estado === data.estado) return prev;
+              return { ...prev, typing: data.typing, estado: data.estado };
+            });
           }
         }
       } catch { /* silenciar */ }
       finally { pollMensajesLoadingRef.current = false; }
-    }, 2500);
+    }, intervaloPollingAdaptativo(2500));
     return () => clearInterval(pollRef.current);
   }, [open, conversacion?.id, mergeMensajes]);
 
@@ -481,7 +499,8 @@ export default function ChatFloatingWidget() {
   const iniciarGrabacion = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
+      // 32kbps alcanza de sobra para voz y reduce ~4x el tamaño del audio a subir
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4", audioBitsPerSecond: 32000 });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       setGrabSegundos(0);
@@ -681,7 +700,7 @@ export default function ChatFloatingWidget() {
                   {mensajes.map((msg) => {
                     const esMio = msg.autorId === session?.userId;
                     return (
-                      <div key={msg.id} ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }} className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}>
+                      <div key={msg.id} ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }} style={MSG_ROW_STYLE} className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}>
                         {esMio && !msg.eliminadoAt && conversacion.estado !== "CERRADA" && (
                           <div className="relative mr-1 flex items-center opacity-0 transition group-hover/msg:opacity-100">
                             {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
@@ -925,6 +944,7 @@ export default function ChatFloatingWidget() {
                 <div
                   key={msg.id}
                   ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
+                  style={MSG_ROW_STYLE}
                   className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
                 >
                   {esMio && !msg.eliminadoAt && conversacion?.estado !== "CERRADA" && (

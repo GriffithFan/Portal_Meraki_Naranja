@@ -35,6 +35,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // En polling incremental filtramos por updatedAt (no createdAt) para que
         // ediciones y borrados de mensajes viejos también lleguen a la otra parte.
         where: validSinceDate ? { updatedAt: { gt: validSinceDate } } : undefined,
+        // Carga inicial acotada a los últimos 300: una conversación muy larga
+        // no debe reventar el parseo/render en celulares de gama baja.
+        ...(validSinceDate ? {} : { take: -300 }),
         orderBy: { createdAt: "asc" },
         select: {
           id: true,

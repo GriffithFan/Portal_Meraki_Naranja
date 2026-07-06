@@ -8,10 +8,15 @@ import { useConfirm } from "@/contexts/ConfirmContext";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
-import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload } from "@/lib/chatUpload";
+import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload, intervaloPollingAdaptativo } from "@/lib/chatUpload";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import clsx from "clsx";
+
+// Renderizado diferido de mensajes fuera de pantalla: el navegador saltea el
+// layout/paint de lo que no se ve — clave en Android de gama baja con
+// conversaciones largas. Ignorado sin efecto en navegadores viejos.
+const MSG_ROW_STYLE = { contentVisibility: "auto", containIntrinsicSize: "auto 80px" } as React.CSSProperties;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -219,6 +224,7 @@ export default function ChatPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
   const conversacionesLoadingRef = useRef(false);
+  const conversacionesJsonRef = useRef("");
   const mensajesAbortRef = useRef<AbortController | null>(null);
 
   const mergeMensajes = useCallback((nuevos: any[]) => {
@@ -275,7 +281,12 @@ export default function ChatPage() {
       const res = await fetch("/api/chat", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        setConversaciones(data);
+        // Solo actualizar estado (y re-renderizar) si la lista realmente cambió
+        const raw = JSON.stringify(data);
+        if (raw !== conversacionesJsonRef.current) {
+          conversacionesJsonRef.current = raw;
+          setConversaciones(data);
+        }
       }
     } catch { /* silenciar */ }
     finally { conversacionesLoadingRef.current = false; }
@@ -308,7 +319,18 @@ export default function ChatPage() {
       if (res.ok) {
         const data = await res.json();
         mergeMensajes(data.mensajes || []);
-        setSeleccionada((prev: any) => prev?.id === data.id ? { ...prev, ...data, mensajes: prev.mensajes } : data);
+        // Si nada relevante cambió, conservar la misma referencia: React
+        // saltea el re-render (esto corre cada pocos segundos).
+        setSeleccionada((prev: any) => {
+          if (prev?.id !== data.id) return data;
+          const sinCambios = prev.typing === data.typing
+            && prev.estado === data.estado
+            && prev.agenteId === data.agenteId
+            && prev.leidoPorCreadorAt === data.leidoPorCreadorAt
+            && prev.leidoPorMesaAt === data.leidoPorMesaAt
+            && (data.mensajes?.length || 0) === 0;
+          return sinCambios ? prev : { ...prev, ...data, mensajes: prev.mensajes };
+        });
       }
     } catch { /* silenciar */ }
   }, [cargarMensajes, mensajes, mergeMensajes]);
@@ -362,7 +384,7 @@ export default function ChatPage() {
     pollRef.current = setInterval(() => {
       if (document.visibilityState === "hidden") return;
       cargarConversaciones();
-    }, 5000);
+    }, intervaloPollingAdaptativo(5000));
     return () => clearInterval(pollRef.current);
   }, [cargarConversaciones]);
 
@@ -375,7 +397,7 @@ export default function ChatPage() {
     const t = setInterval(() => {
       if (document.visibilityState === "hidden") return;
       cargarMensajesNuevos(id);
-    }, 2500);
+    }, intervaloPollingAdaptativo(2500));
     return () => clearInterval(t);
   }, [seleccionada?.id, cargarMensajesNuevos]);
 
@@ -598,7 +620,8 @@ export default function ChatPage() {
   const iniciarGrabacion = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
+      // 32kbps alcanza de sobra para voz y reduce ~4x el tamaño del audio a subir
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4", audioBitsPerSecond: 32000 });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       setGrabSegundos(0);
@@ -1005,6 +1028,7 @@ export default function ChatPage() {
                     <div
                       key={msg.id}
                       ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
+                      style={MSG_ROW_STYLE}
                       className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
                     >
                       {/* Botones de acción (hover) — lado izquierdo para mensajes míos */}

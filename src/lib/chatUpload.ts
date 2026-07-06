@@ -11,11 +11,47 @@ const MAX_DIMENSION = 1920;
 const JPEG_QUALITY = 0.82;
 const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
+/**
+ * Lee las dimensiones de una imagen sin decodificarla entera (solo la
+ * cabecera): barato incluso en equipos de gama baja.
+ */
+function leerDimensiones(file: File): Promise<{ w: number; h: number } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+/**
+ * Decodifica la imagen ya escalada al tamaño objetivo cuando el navegador lo
+ * soporta: una foto de 12-48MP entera puede ocupar 50-200MB de RAM decodificada,
+ * suficiente para tirar la pestaña en un Android de gama baja.
+ */
+async function decodificarImagen(file: File): Promise<ImageBitmap> {
+  const dims = await leerDimensiones(file);
+  if (dims && Math.max(dims.w, dims.h) > MAX_DIMENSION) {
+    const scale = MAX_DIMENSION / Math.max(dims.w, dims.h);
+    try {
+      return await createImageBitmap(file, {
+        imageOrientation: "from-image",
+        resizeWidth: Math.max(1, Math.round(dims.w * scale)),
+        resizeHeight: Math.max(1, Math.round(dims.h * scale)),
+        resizeQuality: "high",
+      });
+    } catch { /* navegador sin soporte de resize: decodificar entera abajo */ }
+  }
+  return createImageBitmap(file, { imageOrientation: "from-image" });
+}
+
 /** Comprime una imagen en el cliente. Ante cualquier problema devuelve el archivo original. */
 export async function comprimirImagenChat(file: File): Promise<File> {
   if (!COMPRESSIBLE_TYPES.includes(file.type) || file.size <= COMPRESS_THRESHOLD) return file;
   try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const bitmap = await decodificarImagen(file);
+    // Si la decodificación escalada no estuvo disponible, escalar al dibujar
     const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -103,4 +139,23 @@ export function mensajesDeRespuestaUpload(data: any): any[] {
   if (!data) return [];
   if (Array.isArray(data.mensajes)) return data.mensajes;
   return data.id ? [data] : [];
+}
+
+/**
+ * Intervalo de polling adaptado a la conexión (Network Information API,
+ * disponible en Chrome/Android): con ahorro de datos o señal 2G/3G se pollea
+ * menos seguido — menos radio, menos batería y menos CPU en gama baja.
+ */
+export function intervaloPollingAdaptativo(baseMs: number): number {
+  try {
+    const conn = (navigator as any).connection;
+    if (!conn) return baseMs;
+    if (conn.saveData) return baseMs * 3;
+    const tipo = conn.effectiveType;
+    if (tipo === "slow-2g" || tipo === "2g") return baseMs * 3;
+    if (tipo === "3g") return baseMs * 2;
+    return baseMs;
+  } catch {
+    return baseMs;
+  }
 }
