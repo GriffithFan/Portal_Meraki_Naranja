@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { getAuditActor } from "@/lib/auditContext";
+import "@/lib/errorLog"; // registra handlers globales de errores (side-effect)
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -13,7 +14,7 @@ const WRITE_OPS = new Set(["create", "update", "delete", "upsert", "createMany",
 const EXCLUDED_MODELS = new Set([
   "Actividad", "RegistroAcceso", "ConfiguracionVista", "Notificacion", "PushSubscription",
   "AnuncioLectura", "ChatConversacion", "ChatMensaje", "ChatMensajeReaction",
-  "JornadaLaboral", "MonitoreoPostCambio",
+  "JornadaLaboral", "MonitoreoPostCambio", "ErrorLog",
   "Predio", "Equipo", "Asignacion", "PredioEtiqueta", "Comentario",
 ]);
 const ACCION: Record<string, string> = {

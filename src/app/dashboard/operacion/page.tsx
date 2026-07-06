@@ -26,6 +26,55 @@ export default function OperacionPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // ── Administración / mantenimiento ──
+  const [backups, setBackups] = useState<any>(null);
+  const [errores, setErrores] = useState<any>(null);
+  const [logCatalog, setLogCatalog] = useState<any[]>([]);
+  const [logView, setLogView] = useState<any>(null);
+  const [logFile, setLogFile] = useState<string>("pm2-error");
+  const [logErrorsOnly, setLogErrorsOnly] = useState(false);
+  const [logLines, setLogLines] = useState(200);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [adminMsg, setAdminMsg] = useState<string | null>(null);
+
+  const fetchBackups = useCallback(async () => {
+    try { const r = await fetch("/api/operacion/backups", { credentials: "include" }); if (r.ok) setBackups(await r.json()); } catch { /* noop */ }
+  }, []);
+  const fetchErrores = useCallback(async () => {
+    try { const r = await fetch("/api/operacion/errores?pageSize=50", { credentials: "include" }); if (r.ok) setErrores(await r.json()); } catch { /* noop */ }
+  }, []);
+  const fetchLogCatalog = useCallback(async () => {
+    try { const r = await fetch("/api/operacion/logs", { credentials: "include" }); if (r.ok) { const d = await r.json(); setLogCatalog(d.catalogo || []); } } catch { /* noop */ }
+  }, []);
+  const fetchLog = useCallback(async (file: string, errorsOnly: boolean, lines: number) => {
+    setBusy("log");
+    try {
+      const r = await fetch(`/api/operacion/logs?file=${encodeURIComponent(file)}&lines=${lines}&errorsOnly=${errorsOnly ? "1" : "0"}`, { credentials: "include" });
+      if (r.ok) setLogView(await r.json());
+    } catch { /* noop */ } finally { setBusy(null); }
+  }, []);
+
+  useEffect(() => { fetchBackups(); fetchErrores(); fetchLogCatalog(); }, [fetchBackups, fetchErrores, fetchLogCatalog]);
+
+  async function doBackup(tipo: "db" | "full") {
+    setBusy(`backup-${tipo}`); setAdminMsg(null);
+    try {
+      const r = await fetch("/api/operacion/backups", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ tipo }) });
+      const d = await r.json();
+      if (r.ok) { setAdminMsg(d.iniciado ? d.mensaje : `Backup de BD creado: ${d.ultimoDb?.name || "ok"}`); await fetchBackups(); }
+      else setAdminMsg(d.error || "No se pudo hacer el backup");
+    } catch { setAdminMsg("No se pudo hacer el backup"); } finally { setBusy(null); }
+  }
+
+  async function purgeErrores(olderThanDays: number) {
+    setBusy("purge");
+    try {
+      const url = olderThanDays > 0 ? `/api/operacion/errores?olderThanDays=${olderThanDays}` : "/api/operacion/errores";
+      const r = await fetch(url, { method: "DELETE", credentials: "include" });
+      if (r.ok) await fetchErrores();
+    } catch { /* noop */ } finally { setBusy(null); }
+  }
+
   if (loading) {
     return (
       <div className="animate-fade-in-up space-y-5">
@@ -251,6 +300,94 @@ export default function OperacionPage() {
               </div>
               <span className="text-[11px] text-surface-400 shrink-0">{formatDate(item.createdAt)}</span>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Backups y mantenimiento ── */}
+      <section className="bg-white border border-surface-200 rounded-lg p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Backups y mantenimiento</h2>
+          <div className="flex items-center gap-2">
+            <button disabled={!!busy} onClick={() => doBackup("db")} className="px-3 py-1.5 text-xs rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">{busy === "backup-db" ? "Generando..." : "Backup BD ahora"}</button>
+            <button disabled={!!busy} onClick={() => doBackup("full")} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50 disabled:opacity-50">{busy === "backup-full" ? "Iniciando..." : "Backup completo"}</button>
+          </div>
+        </div>
+        {backups?.schedule?.configurado && backups.schedule.hora && (
+          <p className="text-xs text-surface-500 mb-2">Backup automático diario a las <b>{backups.schedule.hora}</b>{backups.schedule.proximaCorrida ? ` · próxima: ${formatDate(backups.schedule.proximaCorrida)}` : ""}.</p>
+        )}
+        {adminMsg && <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-3 py-2 mb-2">{adminMsg}</p>}
+        <div className="rounded-md border border-amber-100 bg-amber-50 px-3 py-2 mb-3">
+          <p className="text-[11px] text-amber-700">Restaurar reemplaza datos y se hace por consola con asistencia (evitamos un botón que pueda pisar toda la base). Descargá el backup que necesites y coordinamos la restauración.</p>
+        </div>
+        <div className="max-h-72 overflow-y-auto divide-y divide-surface-100">
+          {(backups?.backups || []).length === 0 && <p className="text-sm text-surface-400 py-2">Sin backups todavía.</p>}
+          {(backups?.backups || []).map((b: any) => (
+            <div key={b.name} className="py-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm text-surface-800 truncate font-mono">{b.name}</p>
+                <p className="text-[11px] text-surface-400">{b.tipo === "uploads" ? "Archivos" : "Base de datos"} · {formatSize(b.size)} · {formatDate(b.modifiedAt)}</p>
+              </div>
+              <a href={`/api/operacion/backups/download?name=${encodeURIComponent(b.name)}`} className="shrink-0 px-2.5 py-1 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50">Descargar</a>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Visor de logs del VPS ── */}
+      <section className="bg-white border border-surface-200 rounded-lg p-4">
+        <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Visor de logs del VPS</h2>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <select value={logFile} onChange={(e) => setLogFile(e.target.value)} className="text-xs border border-surface-200 rounded-md px-2 py-1.5">
+            {logCatalog.map((c) => <option key={c.key} value={c.key} disabled={!c.exists}>{c.label}{c.exists ? "" : " (no disponible)"}</option>)}
+          </select>
+          <select value={logLines} onChange={(e) => setLogLines(parseInt(e.target.value))} className="text-xs border border-surface-200 rounded-md px-2 py-1.5">
+            {[100, 200, 500, 1000].map((n) => <option key={n} value={n}>{n} líneas</option>)}
+          </select>
+          <label className="flex items-center gap-1.5 text-xs text-surface-600"><input type="checkbox" checked={logErrorsOnly} onChange={(e) => setLogErrorsOnly(e.target.checked)} /> Solo errores</label>
+          <button disabled={busy === "log"} onClick={() => fetchLog(logFile, logErrorsOnly, logLines)} className="px-3 py-1.5 text-xs rounded-md bg-surface-800 text-white hover:bg-surface-700 disabled:opacity-50">{busy === "log" ? "Cargando..." : "Ver"}</button>
+        </div>
+        {logView && (
+          <div>
+            <p className="text-[11px] text-surface-400 mb-1">{logView.label} · {logView.lines?.length || 0} línea(s){logView.size ? ` · ${formatSize(logView.size)}` : ""}{logView.modifiedAt ? ` · ${formatDate(logView.modifiedAt)}` : ""}{logView.error ? ` · ${logView.error}` : ""}</p>
+            <pre className="text-[11px] leading-relaxed bg-surface-900 text-surface-100 rounded-md p-3 max-h-96 overflow-auto whitespace-pre-wrap break-words">{(logView.lines || []).join("\n") || "(sin líneas)"}</pre>
+          </div>
+        )}
+      </section>
+
+      {/* ── Errores de la página ── */}
+      <section className="bg-white border border-surface-200 rounded-lg p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <h2 className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Errores de la página</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => fetchErrores()} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-600 hover:bg-surface-50">Actualizar</button>
+            <button disabled={busy === "purge"} onClick={() => purgeErrores(7)} className="px-3 py-1.5 text-xs rounded-md border border-surface-200 text-surface-500 hover:bg-surface-50 disabled:opacity-50">Limpiar +7 días</button>
+          </div>
+        </div>
+        {errores?.resumen && (
+          <div className="flex flex-wrap gap-3 mb-3 text-xs">
+            <span className="rounded-md bg-surface-50 border border-surface-100 px-2.5 py-1">Últimas 24h: <b className={errores.resumen.ultimas24h > 0 ? "text-red-600" : "text-emerald-600"}>{errores.resumen.ultimas24h}</b></span>
+            <span className="rounded-md bg-surface-50 border border-surface-100 px-2.5 py-1">Servidor: <b>{errores.resumen.totalServer}</b></span>
+            <span className="rounded-md bg-surface-50 border border-surface-100 px-2.5 py-1">Cliente: <b>{errores.resumen.totalCliente}</b></span>
+            <span className="rounded-md bg-surface-50 border border-surface-100 px-2.5 py-1">Total: <b>{errores.total}</b></span>
+          </div>
+        )}
+        <div className="max-h-96 overflow-y-auto divide-y divide-surface-100">
+          {(errores?.items || []).length === 0 && <p className="text-sm text-surface-400 py-2">Sin errores registrados. 🎉</p>}
+          {(errores?.items || []).map((e: any) => (
+            <details key={e.id} className="py-2">
+              <summary className="cursor-pointer list-none flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-surface-800 truncate">{e.mensaje}</p>
+                  <p className="text-[11px] text-surface-400">
+                    <span className={`font-semibold ${e.origen === "CLIENTE" ? "text-purple-600" : "text-red-600"}`}>{e.origen}</span>
+                    {e.ruta ? ` · ${e.metodo || ""} ${e.ruta}` : ""}{e.userNombre ? ` · ${e.userNombre}` : ""}
+                  </p>
+                </div>
+                <span className="text-[11px] text-surface-400 shrink-0">{formatDate(e.createdAt)}</span>
+              </summary>
+              {e.stack && <pre className="mt-2 text-[10px] leading-relaxed bg-surface-50 border border-surface-100 rounded-md p-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-surface-600">{e.stack}</pre>}
+            </details>
           ))}
         </div>
       </section>

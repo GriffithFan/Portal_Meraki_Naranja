@@ -12,6 +12,20 @@ export default function DashboardError({
 }) {
   useEffect(() => {
     console.error("[dashboard] error de render:", error);
+    try {
+      fetch("/api/operacion/error-cliente", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        keepalive: true,
+        body: JSON.stringify({
+          mensaje: error?.message || "Error de render (dashboard)",
+          stack: error?.stack,
+          digest: error?.digest,
+          ruta: typeof window !== "undefined" ? window.location.pathname : null,
+        }),
+      }).catch(() => {});
+    } catch { /* ignore */ }
   }, [error]);
 
   return (

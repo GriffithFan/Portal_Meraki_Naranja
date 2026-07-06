@@ -7,6 +7,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/var/www/carrot}"
 BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
+DB_ONLY="${DB_ONLY:-0}"   # 1 = solo dump de la base (rápido), sin tar de uploads
 TS="$(date +%Y%m%d-%H%M%S)"
 
 cd "$APP_DIR"
@@ -26,7 +27,9 @@ fi
 echo "Creando backup DB..."
 pg_dump "$DATABASE_URL" | gzip > "$BACKUP_DIR/db-$TS.sql.gz"
 
-if [ -d "uploads" ]; then
+if [ "$DB_ONLY" = "1" ]; then
+  echo "DB_ONLY=1: se omite el backup de uploads."
+elif [ -d "uploads" ]; then
   echo "Creando backup uploads..."
   tar -czf "$BACKUP_DIR/uploads-$TS.tar.gz" uploads
 else

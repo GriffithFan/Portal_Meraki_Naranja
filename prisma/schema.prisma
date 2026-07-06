@@ -851,3 +851,27 @@ model RegistroAcceso {
   @@index([accion, createdAt])
   @@index([createdAt])
 }
+
+// ─── REGISTRO DE ERRORES DE LA APLICACIÓN ───────────
+// Captura errores de servidor (rutas API, rechazos no manejados) y de cliente
+// (error boundary) para verlos desde el panel de Operación. Sin FK a User: se
+// guarda un snapshot del nombre para poder registrar incluso sin sesión.
+model ErrorLog {
+  id         String   @id @default(cuid())
+  nivel      String   @default("ERROR") // ERROR | WARN
+  origen     String   @default("SERVER") // SERVER | CLIENTE
+  mensaje    String   @db.Text
+  stack      String?  @db.Text
+  ruta       String?  // path de la request / contexto
+  metodo     String?  // GET/POST/...
+  statusCode Int?
+  userId     String?
+  userNombre String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([nivel, createdAt])
+  @@index([origen, createdAt])
+}

@@ -15,6 +15,21 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error("[global] error de render:", error);
+    // Reportar al registro de errores (best-effort, no bloquea la UI).
+    try {
+      fetch("/api/operacion/error-cliente", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        keepalive: true,
+        body: JSON.stringify({
+          mensaje: error?.message || "Error de render (global)",
+          stack: error?.stack,
+          digest: error?.digest,
+          ruta: typeof window !== "undefined" ? window.location.pathname : null,
+        }),
+      }).catch(() => {});
+    } catch { /* ignore */ }
   }, [error]);
 
   return (
