@@ -24,8 +24,12 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
+# pg_dump/libpq no acepta parámetros propios de Prisma en la query string
+# (connection_limit, pool_timeout, etc.): los quitamos antes de conectar.
+DUMP_URL="${DATABASE_URL%%\?*}"
+
 echo "Creando backup DB..."
-pg_dump "$DATABASE_URL" | gzip > "$BACKUP_DIR/db-$TS.sql.gz"
+pg_dump "$DUMP_URL" | gzip > "$BACKUP_DIR/db-$TS.sql.gz"
 
 if [ "$DB_ONLY" = "1" ]; then
   echo "DB_ONLY=1: se omite el backup de uploads."
