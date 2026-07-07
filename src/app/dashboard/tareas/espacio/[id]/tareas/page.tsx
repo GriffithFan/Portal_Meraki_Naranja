@@ -2730,6 +2730,7 @@ export default function EspacioTareasPage() {
           isModOrAdmin={isModOrAdmin}
           onClose={() => setSelectedTareaId(null)}
           onUpdated={fetchData}
+          onTareaPatched={(t) => setTareas(prev => prev.map(x => x.id === t.id ? { ...x, ...t } : x))}
           listColumns={sanitizeTaskFieldConfigs(columns)}
           variant="drawer"
         />

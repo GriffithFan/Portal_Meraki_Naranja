@@ -2548,6 +2548,7 @@ export default function TareasPage() {
           isModOrAdmin={isModOrAdmin}
           onClose={closeDetail}
           onUpdated={fetchTareas}
+          onTareaPatched={(t) => setTareas(prev => prev.map(x => x.id === t.id ? { ...x, ...t } : x))}
           listColumns={sanitizeTaskFieldConfigs(columns)}
           variant="drawer"
         />

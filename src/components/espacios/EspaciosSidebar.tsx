@@ -573,6 +573,19 @@ export default function EspaciosSidebar() {
     document.addEventListener("mouseup", onUp);
   }
 
+  // Actualiza un nodo del árbol (recursivo) sin recargar todo → sin parpadeo.
+  function updateNodeInTree(nodes: any[], id: string, patch: (n: any) => any): any[] {
+    return nodes.map((n) => {
+      if (n.id === id) return patch(n);
+      return n.children?.length ? { ...n, children: updateNodeInTree(n.children, id, patch) } : n;
+    });
+  }
+  function removeNodeFromTree(nodes: any[], id: string): any[] {
+    return nodes
+      .filter((n) => n.id !== id)
+      .map((n) => (n.children?.length ? { ...n, children: removeNodeFromTree(n.children, id) } : n));
+  }
+
   // ── Rename espacio ──
   async function handleRenameEspacio(id: string, nuevoNombre: string) {
     try {
@@ -582,15 +595,17 @@ export default function EspaciosSidebar() {
         credentials: "include",
         body: JSON.stringify({ nombre: nuevoNombre }),
       });
-      if (res.ok) fetchEspacios();
+      // Merge quirúrgico: solo cambia el nombre de ese nodo, sin recargar el árbol.
+      if (res.ok) setEspacios((prev) => updateNodeInTree(prev, id, (n) => ({ ...n, nombre: nuevoNombre })));
     } catch { /* ignore */ }
   }
 
   async function handleDeleteEspacio() {
     if (!deleteConfirm) return;
-    const res = await fetch(`/api/espacios/${deleteConfirm.id}`, { method: "DELETE", credentials: "include" });
+    const id = deleteConfirm.id;
+    const res = await fetch(`/api/espacios/${id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) {
-      fetchEspacios();
+      setEspacios((prev) => removeNodeFromTree(prev, id));
     }
     setDeleteConfirm(null);
   }

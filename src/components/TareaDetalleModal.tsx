@@ -131,7 +131,8 @@ interface TareaDetalleModalProps {
   estados: any[];
   isModOrAdmin: boolean;
   onClose: () => void;
-  onUpdated?: (options?: { page?: number; append?: boolean }) => void | Promise<void>; // callback para refrescar la lista
+  onUpdated?: (options?: { page?: number; append?: boolean }) => void | Promise<void>; // callback para refrescar la lista (recarga completa)
+  onTareaPatched?: (tarea: any) => void; // merge quirúrgico: actualiza solo esta tarea en la lista (sin recargar → sin parpadeo/pisadas)
   listColumns?: TaskColumnConfig[];
   variant?: "modal" | "drawer";
 }
@@ -204,6 +205,7 @@ export default function TareaDetalleModal({
   isModOrAdmin,
   onClose,
   onUpdated,
+  onTareaPatched,
   listColumns,
   variant = "modal",
 }: TareaDetalleModalProps) {
@@ -381,11 +383,15 @@ export default function TareaDetalleModal({
       }
 
       const updated = await res.json().catch(() => null);
-      setTarea((prev: any) => updated?.id ? updated : (field === "camposExtra"
-        ? { ...prev, camposExtra: { ...(prev?.camposExtra || {}), ...(value || {}) } }
-        : { ...prev, [field]: value }));
+      const nextTarea = updated?.id ? updated : (field === "camposExtra"
+        ? { ...tarea, camposExtra: { ...(tarea?.camposExtra || {}), ...(value || {}) } }
+        : { ...tarea, [field]: value });
+      setTarea(nextTarea);
       await refreshTimeline();
-      onUpdated?.();
+      // Merge quirúrgico en la lista (instantáneo, sin parpadeo ni pisada por
+      // recarga stale). Si el padre no lo soporta, cae a la recarga completa.
+      if (onTareaPatched && nextTarea?.id) onTareaPatched(nextTarea);
+      else onUpdated?.();
       return true;
     } catch {
       toast.error("No se pudo guardar el cambio");
