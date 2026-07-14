@@ -23,7 +23,10 @@ export async function GET() {
       autorId: { not: session.userId }, // el autor no se bloquea con su propio anuncio
       AND: [
         { OR: [{ fechaPublicacion: null }, { fechaPublicacion: { lte: ahora } }] },
-        { OR: [{ fechaExpiracion: null }, { fechaExpiracion: { gt: ahora } }] },
+        // NOTA: a propósito NO se filtra por fechaExpiracion. Un anuncio bloqueante
+        // debe seguir apareciendo hasta que CADA destinatario lo acepte, aunque haya
+        // expirado (la expiración solo corta el push/visibilidad en el tablero). Para
+        // dejar de bloquear, el autor lo desactiva (activo=false) o lo elimina.
         anuncioAudienceWhere(session.userId, session.rol),
         { lecturas: { none: { userId: session.userId } } }, // aún no aceptado
       ],
