@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
-import { tieneAccesoFichas } from "@/lib/fichasAccess";
+import { tieneAccesoFichas, esPersonalOnly } from "@/lib/fichasAccess";
 import { useAnuncios } from "@/contexts/AnunciosContext";
 
 interface NavItem {
@@ -221,12 +221,16 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     return seg || null;
   };
 
+  // Cuentas ultra-restringidas: el nav muestra únicamente el ítem Personal.
+  const soloPersonal = esPersonalOnly(session?.email);
+
   // Filtrar secciones y elementos según el rol del usuario + permisos dinámicos
   const filteredSections = sections
     .filter(section => !section.roles || (userRole && section.roles.includes(userRole)))
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        if (soloPersonal) return item.requiereFichas === true && tieneAccesoFichas(session?.email);
         if (item.roles && (!userRole || !item.roles.includes(userRole))) return false;
         // Acceso fijado por código (no por la matriz de Permisos editable).
         if (item.requiereFichas) return tieneAccesoFichas(session?.email);

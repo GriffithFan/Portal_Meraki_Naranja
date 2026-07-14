@@ -9,10 +9,22 @@
  * de usuarios no permite cambiarlo), por lo que una cuenta nueva no puede tomar
  * estos emails. Para cambiar quién entra hay que editar esta lista y desplegar.
  */
-export const FICHAS_EMAILS = ["griffith@thnet.com", "fernando@thnet.com"] as const;
+export const FICHAS_EMAILS = ["griffith@thnet.com", "fernando@thnet.com", "leonel@thnet.com", "andrea@thnet.com"] as const;
 
 export function tieneAccesoFichas(email?: string | null): boolean {
   return !!email && (FICHAS_EMAILS as readonly string[]).includes(email.trim().toLowerCase());
+}
+
+/**
+ * Cuentas ULTRA-RESTRINGIDAS: solo pueden acceder a la sección Personal, nada más.
+ * El middleware las mantiene dentro de /dashboard/personal (redirige cualquier otra
+ * página) y el sidebar les muestra únicamente ese ítem. Deben estar también en
+ * FICHAS_EMAILS para poder entrar a Personal.
+ */
+export const PERSONAL_ONLY_EMAILS = ["andrea@thnet.com"] as const;
+
+export function esPersonalOnly(email?: string | null): boolean {
+  return !!email && (PERSONAL_ONLY_EMAILS as readonly string[]).includes(email.trim().toLowerCase());
 }
 
 /** Secciones (apartados) válidas para notas y archivos de una ficha. */

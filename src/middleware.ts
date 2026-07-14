@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-import { tieneAccesoFichas } from "@/lib/fichasAccess";
+import { tieneAccesoFichas, esPersonalOnly } from "@/lib/fichasAccess";
 
 // Validación crítica: JWT_SECRET debe estar definido en producción
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -173,6 +173,14 @@ export async function middleware(request: NextRequest) {
         }
         return NextResponse.redirect(new URL("/dashboard", request.url));
       }
+    }
+
+    // ── Cuentas ULTRA-RESTRINGIDAS (solo Personal): no pueden navegar a ninguna
+    //    página del dashboard que no sea Personal. Se deja pasar /api para que el
+    //    caparazón (sesión, sidebar, etc.) funcione; el acceso real a cada sección
+    //    ya está protegido por rol/permiso, y aquí bloqueamos la navegación. ──
+    if (esPersonalOnly(email) && pathname.startsWith("/dashboard") && !pathname.startsWith("/dashboard/personal")) {
+      return NextResponse.redirect(new URL("/dashboard/personal", request.url));
     }
 
     return NextResponse.next();
