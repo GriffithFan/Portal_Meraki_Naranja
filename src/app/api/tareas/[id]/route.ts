@@ -336,6 +336,12 @@ export async function PATCH(
         return NextResponse.json({ error: "Sin permisos para editar estos campos" }, { status: 403 });
       }
 
+      // No puede MOVER la tarea a un estado que tiene oculto (p.ej. CONFORME):
+      // valida el estado destino, no solo el actual.
+      if (bodyAny.estadoId && hiddenEstadoIds.includes(bodyAny.estadoId as string)) {
+        return NextResponse.json({ error: "No podés mover tareas a este estado" }, { status: 403 });
+      }
+
       if (bodyAny.camposExtra !== undefined) {
         const incoming = bodyAny.camposExtra;
         if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
