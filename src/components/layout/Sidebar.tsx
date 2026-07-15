@@ -362,7 +362,8 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Footer — Reloj + GPS */}
+      {/* Footer — Reloj + GPS (oculto para cuentas solo-Personal) */}
+      {!soloPersonal && (
       <div className="border-t border-surface-800 shrink-0 mt-auto">
         {SHOW_DATETIME_GPS ? (
           <div className={clsx("text-center transition-all duration-300", collapsed ? "px-2 py-3" : "px-4 py-3")}>
@@ -410,6 +411,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           </div>
         )}
       </div>
+      )}
     </aside>
     </>
   );

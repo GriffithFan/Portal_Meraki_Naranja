@@ -7,6 +7,7 @@ import { useNetworkContext } from "@/contexts/NetworkContext";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { useSession } from "@/hooks/useSession";
 import { useTheme } from "@/contexts/ThemeContext";
+import { esPersonalOnly } from "@/lib/fichasAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -94,6 +95,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const { selectedNetwork, setSelectedNetwork } = useNetworkContext();
   const { setHeaderSearch } = useSearchContext();
   const { session } = useSession();
+  const soloPersonal = esPersonalOnly(session?.email);
   const isMonitoring = MONITORING_PATHS.some((p) => pathname.startsWith(p));
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -279,7 +281,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         </svg>
       </button>
 
-      {/* Barra de búsqueda */}
+      {/* Barra de búsqueda (oculta para cuentas solo-Personal) */}
+      {soloPersonal ? <div className="flex-1" /> : (
       <div className="relative flex-1 min-w-0 max-w-md" ref={searchRef}>
         <svg
           className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400"
@@ -396,13 +399,15 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           </button>
         )}
       </div>
+      )}
 
       {/* Acciones */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Dark mode toggle */}
         <ThemeToggle />
 
-        {/* Notificaciones — dropdown preview */}
+        {/* Notificaciones — dropdown preview (oculto para cuentas solo-Personal) */}
+        {!soloPersonal && (
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => { setNotifOpen(!notifOpen); if (!notifOpen) fetchNotifs(); }}
@@ -472,6 +477,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             </div>
           )}
         </div>
+        )}
 
         {/* Menú de usuario */}
         <div className="relative" ref={menuRef}>

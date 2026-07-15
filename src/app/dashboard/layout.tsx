@@ -15,6 +15,7 @@ import ChatFloatingWidget from "@/components/ChatFloatingWidget";
 import AnunciosBloqueantes from "@/components/AnunciosBloqueantes";
 import AnunciosToast from "@/components/AnunciosToast";
 import { AnunciosProvider } from "@/contexts/AnunciosContext";
+import OcultarParaPersonalOnly from "@/components/OcultarParaPersonalOnly";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 
 export default function DashboardLayout({
@@ -32,10 +33,13 @@ export default function DashboardLayout({
       <SearchProvider>
       <NetworkProvider>
         <AnunciosProvider>
-        <PushNotificationRegistrar />
-        <CommandPalette />
-        <AnunciosBloqueantes />
-        <AnunciosToast />
+        {/* Piezas del caparazón que NO deben existir para cuentas solo-Personal. */}
+        <OcultarParaPersonalOnly>
+          <PushNotificationRegistrar />
+          <CommandPalette />
+          <AnunciosBloqueantes />
+          <AnunciosToast />
+        </OcultarParaPersonalOnly>
         <div className="flex min-h-screen bg-surface-50">
           <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
           <div className="flex-1 flex flex-col min-w-0">
@@ -44,7 +48,9 @@ export default function DashboardLayout({
               <Breadcrumbs />
               {children}
             </main>
-            <ChatFloatingWidget />
+            <OcultarParaPersonalOnly>
+              <ChatFloatingWidget />
+            </OcultarParaPersonalOnly>
           </div>
         </div>
         </AnunciosProvider>
