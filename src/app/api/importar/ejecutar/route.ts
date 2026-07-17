@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, importarEjecutarSchema } from "@/lib/validation";
 import { detectarProvincia } from "@/utils/provinciaUtils";
+import { detectarPorSerial } from "@/utils/serialPrefix";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -55,22 +56,7 @@ const PREDIO_FIELDS: Record<string, string> = {
   orden: "Orden (nro)",
 };
 
-/* Auto-fill por prefijo de serial (4 primeros caracteres) */
-const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
-  Q2PD: { nombre: "AP", modelo: "MR33" },
-  Q3AJ: { nombre: "AP", modelo: "MR36" },
-  Q2AJ: { nombre: "AP", modelo: "MR36" },   // mismo AP que Q3AJ (248 equipos en stock)
-  Q3AL: { nombre: "AP", modelo: "MR44" },
-  Q2GW: { nombre: "SWITCH 24P", modelo: "MS225" },
-  Q2CX: { nombre: "SWITCH 8P", modelo: "MS120" },
-  Q2PN: { nombre: "UTM", modelo: "MX84" },
-  Q2YN: { nombre: "UTM", modelo: "MX85" },
-  Q2TN: { nombre: "Gateway", modelo: "Z3" },
-  // Switches no-Meraki frecuentes (prefijo estable por lote en el stock actual):
-  LD25: { nombre: "SWITCH", modelo: "S5735-L8T4S-A-V2" },   // Huawei (87)
-  FCW2: { nombre: "SWITCH", modelo: "WS-C2960L-8PS-LL" },   // Cisco (78)
-  "4E25": { nombre: "SWITCH", modelo: "S5735-S24P4XE-V2" }, // Huawei (12)
-};
+/* Auto-fill por prefijo de serial: mapa compartido en @/utils/serialPrefix. */
 
 const EQUIPO_FIELDS: Record<string, string> = {
   id: "ID (interno — no editar)",
@@ -552,7 +538,7 @@ export async function POST(request: NextRequest) {
           const ns = safeGet(row, fieldMap.get("numeroSerie"));
 
           // Auto-fill por prefijo de serial
-          const prefixMatch = ns ? SERIAL_PREFIX_MAP[ns.slice(0, 4).toUpperCase()] : null;
+          const prefixMatch = detectarPorSerial(ns);
           const finalNombre = nombre || prefixMatch?.nombre || "";
           if (!finalNombre) { skipped++; motivos.sinNombre++; errors.push(`Fila ${i + 2}: sin Nombre ni Número de Serie reconocible — omitida`); continue; }
 
@@ -564,7 +550,7 @@ export async function POST(request: NextRequest) {
           const modelo = safeGet(row, fieldMap.get("modelo"));
           data.modelo = modelo || prefixMatch?.modelo || "";
           const marca = safeGet(row, fieldMap.get("marca"));
-          if (marca) data.marca = marca;
+          if (marca) data.marca = marca; // autocompletado por serial: solo al crear (abajo)
           const cat = safeGet(row, fieldMap.get("categoria"));
           if (cat) data.categoria = cat;
           const ub = safeGet(row, fieldMap.get("ubicacion"));
@@ -578,6 +564,9 @@ export async function POST(request: NextRequest) {
           }
           const proveedorVal = safeGet(row, fieldMap.get("proveedor"));
           if (proveedorVal) data.proveedor = proveedorVal.toUpperCase().trim();
+          // OJO: el proveedor NO se autocompleta aquí (data se usa también para
+          // UPDATE y pisaría el proveedor real de un equipo existente). El
+          // autocompletado por serial se aplica solo al CREAR (más abajo).
           const fecha = safeGet(row, fieldMap.get("fecha"));
           // Auto-rellenar fecha con hoy si está vacía
           data.fecha = fecha || fechaHoy;
@@ -692,7 +681,12 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const creado = await withRetry(() => prisma.equipo.create({ data: data as any, include: equipoInclude }));
+          // Equipo NUEVO: autocompletar proveedor/marca por serial si la fila no los trajo.
+          // Solo acá (nunca en update, para no pisar el proveedor real de un equipo existente).
+          const createData: Record<string, unknown> = { ...data };
+          if (!createData.proveedor && prefixMatch?.proveedor) createData.proveedor = prefixMatch.proveedor;
+          if (!createData.marca && prefixMatch?.marca) createData.marca = prefixMatch.marca;
+          const creado = await withRetry(() => prisma.equipo.create({ data: createData as any, include: equipoInclude }));
           created++;
           // Registrar en el map para deduplicar repeticiones del mismo serial dentro de la lista.
           if (ns) existingBySerial.set(ns, creado);

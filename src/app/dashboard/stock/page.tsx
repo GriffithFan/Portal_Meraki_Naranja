@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Bookmark, PackageSearch, Save, SearchX, Trash2 } from "lucide-react";
 import { dedupeUsersByName } from "@/utils/asignacionUtils";
+import { detectarPorSerial } from "@/utils/serialPrefix";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -74,17 +75,7 @@ const FILTER_COLUMNS = [
   { field: "proveedor", label: "Proveedor" },
 ];
 
-/* ── Auto-fill por prefijo de serial ── */
-const SERIAL_PREFIX_MAP: Record<string, { nombre: string; modelo: string }> = {
-  Q2PD: { nombre: "AP", modelo: "MR33" },
-  Q3AJ: { nombre: "AP", modelo: "MR36" },
-  Q3AL: { nombre: "AP", modelo: "MR44" },
-  Q2GW: { nombre: "SWITCH 24P", modelo: "MS225" },
-  Q2CX: { nombre: "SWITCH 8P", modelo: "MS120" },
-  Q2PN: { nombre: "UTM", modelo: "MX84" },
-  Q2YN: { nombre: "UTM", modelo: "MX85" },
-  Q2TN: { nombre: "Gateway", modelo: "Z3" },
-};
+/* ── Auto-fill por prefijo de serial: mapa compartido en @/utils/serialPrefix ── */
 
 const DEFAULT_COLUMNS: StockColumn[] = [
   { id: "inventario",  label: "Nº",          field: "inventario",  visible: true,  editable: false, type: "text" },
@@ -2165,17 +2156,20 @@ export default function StockPage() {
                 <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">{stockFieldLabel("numeroSerie", "Número de serie")}</label>
                 <input ref={serialInputRef} value={form.numeroSerie} onChange={(e) => {
                   const val = e.target.value;
-                  const prefix = val.slice(0, 4).toUpperCase();
-                  const match = prefix.length === 4 ? SERIAL_PREFIX_MAP[prefix] : null;
+                  const match = detectarPorSerial(val);
                   setForm(f => ({
                     ...f,
                     numeroSerie: val,
-                    ...(match ? { nombre: match.nombre, modelo: match.modelo } : {}),
+                    ...(match ? {
+                      nombre: match.nombre,
+                      ...(match.modelo ? { modelo: match.modelo } : {}),
+                      ...(match.proveedor ? { proveedor: match.proveedor } : {}),
+                    } : {}),
                   }));
                 }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} onBlur={handleSerialBlur} placeholder="Ej: Q2PD-XXXX-XXXX" className="w-full px-3 py-2 border border-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" disabled={!!duplicateEquipo} />
-                {form.numeroSerie.length >= 4 && SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()] && (
-                  <p className="text-[10px] text-green-600 mt-0.5 ml-1">Auto-completado: {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].nombre} · {SERIAL_PREFIX_MAP[form.numeroSerie.slice(0, 4).toUpperCase()].modelo}</p>
-                )}
+                {(() => { const m = detectarPorSerial(form.numeroSerie); return m ? (
+                  <p className="text-[10px] text-green-600 mt-0.5 ml-1">Auto-completado: {[m.nombre, m.modelo, m.proveedor].filter(Boolean).join(" · ")}</p>
+                ) : null; })()}
               </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
