@@ -115,14 +115,17 @@ export async function middleware(request: NextRequest) {
     const token = request.cookies.get(COOKIE_NAME)?.value;
     let userId: string | null = null;
     let email: string | null = null;
+    let rol: string | null = null;
     if (token) {
       try {
         const { payload } = await jwtVerify(token, secret);
         userId = typeof payload.userId === "string" ? payload.userId : null;
         email = typeof payload.email === "string" ? payload.email : null;
+        rol = typeof payload.rol === "string" ? payload.rol : null;
       } catch {
         userId = null; // token inválido/expirado
         email = null;
+        rol = null;
       }
     }
 
@@ -181,6 +184,11 @@ export async function middleware(request: NextRequest) {
     //    ya está protegido por rol/permiso, y aquí bloqueamos la navegación. ──
     if (esPersonalOnly(email) && pathname.startsWith("/dashboard") && !pathname.startsWith("/dashboard/personal")) {
       return NextResponse.redirect(new URL("/dashboard/personal", request.url));
+    }
+
+    // ── Enriquecimiento: sección solo ADMIN (la API ya valida con el rol fresco). ──
+    if (pathname.startsWith("/dashboard/enriquecimiento") && rol !== "ADMIN") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
     }
 
     return NextResponse.next();

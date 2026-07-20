@@ -64,6 +64,7 @@ model User {
   anuncios             Anuncio[]          @relation("AutorAnuncio")
   lecturasAnuncio      AnuncioLectura[]
   jornadas             JornadaLaboral[]
+  enriquecimientos     EnriquecimientoJob[] @relation("CreadorEnriquecimiento")
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -167,6 +168,10 @@ model Predio {
   camposExtra       Json?     // Campos dinámicos adicionales
   enFacturacion     Boolean   @default(false) // Marcado para facturación manual
 
+  // ── Enriquecimiento (import de datos de Salesforce) ──
+  ultimoEnriquecimiento DateTime? // Última corrida de enriquecimiento que tocó este predio (dedup)
+  enriquecimientoJobId  String?   // Job de la última corrida (para trazar/revertir)
+
   merakiNetworkId   String?
   merakiOrgId       String?
   merakiNetworkName String?
@@ -205,6 +210,27 @@ model Predio {
   @@index([estadoId, updatedAt])
   @@index([creadorId])
   @@index([enFacturacion])
+  @@index([ultimoEnriquecimiento])
+}
+
+// ─── ENRIQUECIMIENTO (import de datos de Salesforce) ──
+model EnriquecimientoJob {
+  id             String    @id @default(cuid())
+  estado         String    @default("ESPERANDO_ARCHIVO") // ESPERANDO_ARCHIVO | APLICADO | ERROR | REVERTIDO
+  alcance        Json      // { espacioId?, incluyeSubcarpetas?, filtros:{estados?,provincia?,ciudad?,tecnicoId?}, excluirYaEnriquecidos, excluirConforme }
+  paresSnapshot  Json      // [{ predioId, codigo, incidencia }] congelado al generar la entrada
+  resumen        Json?     // conteos + detalle por campo tras aplicar/previsualizar
+  cambiosPrevios Json?     // { predioId: { campo: valorAnterior, ... } } para revertir
+  archivoEntrada String?   // nombre del xlsx generado
+  archivoSalida  String?   // nombre del xlsx subido
+  creadoPorId    String
+  creadoPor      User      @relation("CreadorEnriquecimiento", fields: [creadoPorId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  aplicadoAt     DateTime?
+
+  @@index([estado])
+  @@index([creadoPorId])
+  @@index([createdAt])
 }
 
 // ─── EQUIPOS (STOCK) ────────────────────────────────
