@@ -53,8 +53,10 @@ export default function EnriquecimientoPage() {
   const [provincia, setProvincia] = useState("");
   const [ciudad, setCiudad] = useState("");
   const [tecnicoId, setTecnicoId] = useState("");
-  const [excluirYaEnriquecidos, setExcluirYaEnriquecidos] = useState(true);
-  const [excluirConforme, setExcluirConforme] = useState(true);
+  // Por defecto se enriquecen TODOS los predios del alcance (menos CONFORME), incluidos
+  // los ya enriquecidos, para refrescar fechas de cronograma. El toggle solo permite
+  // opcionalmente saltar los ya hechos (corrida más rápida).
+  const [excluirYaEnriquecidos, setExcluirYaEnriquecidos] = useState(false);
 
   const [conteos, setConteos] = useState<Conteos | null>(null);
   const [cargandoConteos, setCargandoConteos] = useState(false);
@@ -85,9 +87,9 @@ export default function EnriquecimientoPage() {
         tecnicoId: tecnicoId || undefined,
       },
       excluirYaEnriquecidos,
-      excluirConforme,
+      excluirConforme: true, // CONFORME siempre excluido (nunca se enriquece)
     }),
-    [espacioId, incluyeSubcarpetas, estadosSel, provincia, ciudad, tecnicoId, excluirYaEnriquecidos, excluirConforme]
+    [espacioId, incluyeSubcarpetas, estadosSel, provincia, ciudad, tecnicoId, excluirYaEnriquecidos]
   );
 
   const cargarHistorial = useCallback(async () => {
@@ -367,14 +369,11 @@ export default function EnriquecimientoPage() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-surface-100">
-          <label className="text-xs text-surface-600 flex items-center gap-2">
-            <input type="checkbox" checked={excluirConforme} onChange={(e) => setExcluirConforme(e.target.checked)} />
-            Excluir CONFORME (recomendado)
-          </label>
+        <div className="flex flex-wrap items-center gap-4 mt-3 pt-3 border-t border-surface-100">
+          <span className="text-xs text-surface-500">Se enriquecen <b>todos</b> los estados del alcance. CONFORME nunca se enriquece.</span>
           <label className="text-xs text-surface-600 flex items-center gap-2">
             <input type="checkbox" checked={excluirYaEnriquecidos} onChange={(e) => setExcluirYaEnriquecidos(e.target.checked)} />
-            Excluir ya enriquecidos
+            Saltar los ya enriquecidos (más rápido, no refresca sus fechas)
           </label>
         </div>
 
@@ -382,7 +381,7 @@ export default function EnriquecimientoPage() {
           <div className="mt-3 text-xs text-surface-600 bg-surface-50 rounded-md px-3 py-2">
             <b>{conteos.prediosEnAlcance}</b> predios en el alcance · <b>{conteos.conIncidencia}</b> con incidencia
             {conteos.sinIncidencia > 0 && <> · {conteos.sinIncidencia} sin incidencia (no enriquecibles)</>}
-            {conteos.conforme > 0 && <> · {conteos.conforme} en CONFORME{excluirConforme ? " (se saltean)" : ""}</>}
+            {conteos.conforme > 0 && <> · {conteos.conforme} en CONFORME (se saltean)</>}
             {conteos.yaEnriquecidos > 0 && <> · {conteos.yaEnriquecidos} ya enriquecidos{excluirYaEnriquecidos ? " (se saltean)" : ""}</>}
             <div className="mt-1 font-medium text-brand-700">→ {conteos.efectivos} predios entrarían en el Excel {cargandoConteos && "…"}</div>
           </div>
