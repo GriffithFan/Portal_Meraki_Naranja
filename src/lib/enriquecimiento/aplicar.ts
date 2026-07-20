@@ -194,11 +194,14 @@ export function planificarEnriquecimiento(
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
     ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
-    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0,
+    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0,
   };
-  // LAC-R = SI para predios SIN ASIGNAR cuya fecha HASTA de cronograma sea de los
-  // últimos 29 días en adelante (cronograma reciente/vigente).
-  const cutoffLacR = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000);
+  // Umbral LAC-R por antigüedad (en días enteros) de la fecha HASTA del cronograma:
+  //   diff >= 29 → "NO" (cronograma viejo)  → todos los estados salvo CONFORME
+  //   diff <  29 → "SI" (cronograma vigente) → solo SIN ASIGNAR
+  const MS_DIA = 24 * 60 * 60 * 1000;
+  const hoyDia = Math.floor(Date.now() / MS_DIA);
+  const diffDias = (d: Date) => hoyDia - Math.floor(d.getTime() / MS_DIA);
   const conflictos: { codigo: string; motivo: string }[] = [];
   const gpsOmitido: { codigo: string; dist: number }[] = [];
   const sinVerificar: string[] = [];
@@ -296,12 +299,18 @@ export function planificarEnriquecimiento(
       if (curH !== df.toISOString().slice(0, 10)) { upd.fechaHasta = df; previos.fechaHasta = p.fechaHasta; stats.fechaHasta++; }
     }
 
-    // LAC-R = SI: solo SIN ASIGNAR, con cronograma cuya HASTA sea de hoy-29d en
-    // adelante (usa la HASTA efectiva: la nueva del reporte o la actual).
-    if ((p.estadoNombre || "").trim().toUpperCase() === "SIN ASIGNAR") {
-      const hastaEfectiva: Date | null = (upd.fechaHasta as Date | undefined) ?? p.fechaHasta;
-      if (hastaEfectiva && hastaEfectiva >= cutoffLacR && cur("lacR").toUpperCase() !== "SI") {
-        upd.lacR = "SI"; previos.lacR = p.lacR ?? null; stats.lacRSi++;
+    // ── Regla LAC-R según antigüedad de la fecha HASTA del cronograma ──
+    // Usa la HASTA efectiva (la nueva del reporte o la actual). CONFORME nunca se toca.
+    const estadoUp = (p.estadoNombre || "").trim().toUpperCase();
+    const hastaEfectiva: Date | null = (upd.fechaHasta as Date | undefined) ?? p.fechaHasta;
+    if (estadoUp !== "CONFORME" && hastaEfectiva) {
+      const diff = diffDias(hastaEfectiva);
+      if (diff >= 29) {
+        // Cronograma viejo (29 días o más) → NO, en todos los estados no-CONFORME.
+        if (cur("lacR").toUpperCase() !== "NO") { upd.lacR = "NO"; previos.lacR = p.lacR ?? null; stats.lacRNo++; }
+      } else if (estadoUp === "SIN ASIGNAR") {
+        // Cronograma vigente (menos de 29 días) → SI, solo SIN ASIGNAR.
+        if (cur("lacR").toUpperCase() !== "SI") { upd.lacR = "SI"; previos.lacR = p.lacR ?? null; stats.lacRSi++; }
       }
     }
 

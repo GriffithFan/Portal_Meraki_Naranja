@@ -42,6 +42,7 @@ export function resumenDePlan(plan: ResultadoPlan, errores: ErrorExtraccion[] = 
     conflictos: plan.conflictos,
     gpsOmitido: plan.gpsOmitido,
     lacRSi: plan.stats.lacRSi || 0,
+    lacRNo: plan.stats.lacRNo || 0,
     // Errores/problemas a revisar: fallas de extracción + predios no verificados.
     erroresExtraccion: errores.slice(0, 100),
     sinVerificar: plan.sinVerificar.length,

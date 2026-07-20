@@ -269,10 +269,11 @@ export default function EnriquecimientoPage() {
     if (!res) return null;
     const erroresExt = res.erroresExtraccion || [];
     const sinVer = res.sinVerificarCodigos || [];
-    if (erroresExt.length === 0 && sinVer.length === 0 && !res.lacRSi) return null;
+    if (erroresExt.length === 0 && sinVer.length === 0 && !res.lacRSi && !res.lacRNo) return null;
     return (
       <div className="mt-2 text-[11px] space-y-1">
         {res.lacRSi > 0 && <div className="text-surface-600">🏷️ {res.lacRSi} predio(s) marcados LAC-R = SI (cronograma vigente)</div>}
+        {res.lacRNo > 0 && <div className="text-surface-600">🏷️ {res.lacRNo} predio(s) marcados LAC-R = NO (cronograma de 29+ días)</div>}
         {erroresExt.length > 0 && (
           <details className="text-red-700">
             <summary className="cursor-pointer">⚠ {erroresExt.length} error(es) de extracción en Salesforce</summary>
