@@ -3,13 +3,9 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { resolverPrediosAlcance, type AlcanceSpec } from "@/lib/enriquecimiento/alcance";
+import { filasEntradaDesdePredios } from "@/lib/enriquecimiento/persistir";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-function fechaAR(d: Date | null): string {
-  if (!d) return "";
-  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
-}
 
 // POST /api/enriquecimiento/generar-entrada — crea el job y devuelve el Excel de
 // entrada (Predio + Incidencia + columnas Origen_* de contexto). Solo ADMIN.
@@ -46,14 +42,7 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  const rows = conPar.map((p) => ({
-    Predio: p.codigo,
-    Incidencia: p.incidencia,
-    Origen_Departamento: p.ciudad || "",
-    Origen_DESDE: fechaAR(p.fechaDesde),
-    Origen_HASTA: fechaAR(p.fechaHasta),
-    Origen_Asignados: p.asignados || "",
-  }));
+  const rows = filasEntradaDesdePredios(conPar);
 
   const ws = XLSX.utils.json_to_sheet(rows);
   ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 24 }];

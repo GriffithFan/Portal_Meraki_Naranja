@@ -68,6 +68,12 @@ export default function EnriquecimientoPage() {
   const [historial, setHistorial] = useState<any[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Fase 2 (automático en el servidor)
+  const [ejecJobId, setEjecJobId] = useState<string | null>(null);
+  const [progreso, setProgreso] = useState<any>(null);
+  const [ejecResultado, setEjecResultado] = useState<any>(null);
+  const [lanzando, setLanzando] = useState(false);
+
   const alcance = useMemo(
     () => ({
       espacioId: espacioId || null,
@@ -210,6 +216,52 @@ export default function EnriquecimientoPage() {
     else setError("No se pudo revertir");
   };
 
+  // ── Fase 2: enriquecer automáticamente en el servidor ──
+  const enriquecerAhora = async () => {
+    setError("");
+    setEjecResultado(null);
+    setProgreso(null);
+    setLanzando(true);
+    try {
+      const res = await fetch("/api/enriquecimiento/ejecutar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(alcance),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || "No se pudo iniciar el enriquecimiento"); return; }
+      setEjecJobId(d.jobId);
+      setProgreso({ fase: "En cola", hechos: 0, total: d.pares });
+    } finally {
+      setLanzando(false);
+    }
+  };
+
+  // Polling del estado mientras corre.
+  useEffect(() => {
+    if (!ejecJobId) return;
+    const t = setInterval(async () => {
+      const res = await fetch(`/api/enriquecimiento/${ejecJobId}/estado`, { credentials: "include" });
+      if (!res.ok) return;
+      const j = await res.json();
+      if (j.estado === "EJECUTANDO") {
+        setProgreso(j.resumen?.progreso || null);
+      } else if (j.estado === "APLICADO") {
+        setEjecResultado(j.resumen);
+        setProgreso(null);
+        setEjecJobId(null);
+        cargarHistorial();
+      } else if (j.estado === "ERROR") {
+        setError("La extracción falló: " + (j.resumen?.error || "error desconocido"));
+        setProgreso(null);
+        setEjecJobId(null);
+        cargarHistorial();
+      }
+    }, 3000);
+    return () => clearInterval(t);
+  }, [ejecJobId, cargarHistorial]);
+
   const espaciosArbol = useMemo(() => (opciones ? ordenarArbol(opciones.espacios) : []), [opciones]);
 
   if (!esAdmin) {
@@ -296,10 +348,48 @@ export default function EnriquecimientoPage() {
           </div>
         )}
 
-        <button onClick={generarEntrada} disabled={generando || !conteos || conteos.efectivos === 0}
-          className="mt-3 px-4 py-2 bg-brand-600 text-white rounded-md text-sm font-medium disabled:opacity-50 hover:bg-brand-700 transition-colors">
-          {generando ? "Generando…" : "Generar Excel de entrada"}
-        </button>
+        {/* Acción principal: automático en el servidor (Fase 2) */}
+        <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+          <button onClick={enriquecerAhora} disabled={lanzando || !!ejecJobId || !conteos || conteos.efectivos === 0}
+            className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-semibold disabled:opacity-50 hover:bg-green-700 transition-colors">
+            {ejecJobId ? "Enriqueciendo…" : lanzando ? "Iniciando…" : `🚀 Enriquecer ahora${conteos ? ` (${conteos.efectivos})` : ""}`}
+          </button>
+          <span className="text-[11px] text-surface-400">
+            El servidor baja los datos de Salesforce y los aplica solo. No necesitás PC.
+          </span>
+        </div>
+
+        {/* Progreso de la corrida automática */}
+        {progreso && (
+          <div className="mt-3 bg-surface-50 rounded-md px-3 py-2">
+            <div className="flex justify-between text-xs text-surface-600 mb-1">
+              <span>{progreso.fase}…</span>
+              <span>{progreso.total ? `${progreso.hechos}/${progreso.total}` : ""}</span>
+            </div>
+            <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden">
+              <div className="h-full bg-green-500 transition-all"
+                style={{ width: progreso.total ? `${Math.round((progreso.hechos / progreso.total) * 100)}%` : "10%" }} />
+            </div>
+          </div>
+        )}
+
+        {ejecResultado && (
+          <div className="mt-3 text-xs bg-green-50 rounded-md px-3 py-2 text-green-800">
+            ✓ Enriquecimiento aplicado a <b>{ejecResultado.prediosAActualizar}</b> predios.
+            {ejecResultado.conflictos?.length > 0 && <span className="text-amber-700"> · {ejecResultado.conflictos.length} conflicto(s) salteado(s)</span>}
+          </div>
+        )}
+
+        {/* Alternativa manual (avanzado) */}
+        <details className="mt-3">
+          <summary className="text-[11px] text-surface-400 cursor-pointer hover:text-surface-600">
+            Alternativa: generar el Excel y correr el extractor a mano
+          </summary>
+          <button onClick={generarEntrada} disabled={generando || !conteos || conteos.efectivos === 0}
+            className="mt-2 px-3 py-1.5 bg-surface-100 text-surface-700 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-surface-200 transition-colors">
+            {generando ? "Generando…" : "Generar Excel de entrada"}
+          </button>
+        </details>
       </div>
 
       {/* Paso 2: subir resultado */}

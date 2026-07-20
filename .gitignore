@@ -50,3 +50,6 @@ next-env.d.ts
 *.old
 *.orig
 tmp_deploy.sh
+
+# Extractor de Salesforce (Python venv + cache, vive en el VPS)
+/extractor/

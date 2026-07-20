@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "child_process";
-import { promisify } from "util";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { procesarSubida, resumenDePlan, type ParSnapshot } from "@/lib/enriquecimiento/procesar";
+import { aplicarCambiosEnDB, backupBestEffort } from "@/lib/enriquecimiento/persistir";
 import type { AlcanceSpec } from "@/lib/enriquecimiento/alcance";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const execFileAsync = promisify(execFile);
 const MAX_FILE = 40 * 1024 * 1024;
 
 // POST /api/enriquecimiento/[jobId]/aplicar — aplica el enriquecimiento (solo ADMIN).
@@ -53,43 +51,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ resumen, aplicados: 0, nota: "No había nada para actualizar." });
   }
 
-  // Backup best-effort de la base antes de escribir (no bloquea si falla / no existe).
-  try {
-    await execFileAsync("bash", ["scripts/backup-production.sh"], {
-      cwd: process.env.APP_DIR || "/var/www/carrot",
-      env: { ...process.env, DB_ONLY: "1" },
-      timeout: 90000,
-    });
-  } catch (e) {
-    console.error("[enriquecimiento] backup best-effort falló (se continúa):", (e as Error).message);
-  }
-
-  // cambiosPrevios por predio (incluye camposExtra completo previo si se toca).
-  const cambiosPrevios: Record<string, any> = {};
-  const ahora = new Date();
-
-  await prisma.$transaction(async (tx) => {
-    for (const c of plan!.cambios) {
-      const data: Record<string, any> = { ...c.upd };
-      const previos: Record<string, any> = { ...c.cambiosPrevios };
-      if (Object.keys(c.extra).length > 0) {
-        const actual = prediosPorCodigo!.get(c.codigo);
-        const baseExtra = (actual?.camposExtra && typeof actual.camposExtra === "object") ? actual.camposExtra : {};
-        previos.camposExtra = actual?.camposExtra ?? null; // para revertir el objeto completo
-        data.camposExtra = { ...baseExtra, ...c.extra };
-      }
-      data.ultimoEnriquecimiento = ahora;
-      data.enriquecimientoJobId = jobId;
-      data.fechaActualizacion = ahora;
-      cambiosPrevios[c.predioId] = previos;
-      await tx.predio.update({ where: { id: c.predioId }, data });
-    }
-  }, { timeout: 180000 });
+  await backupBestEffort();
+  const { aplicados, cambiosPrevios } = await aplicarCambiosEnDB(jobId, plan.cambios, prediosPorCodigo);
 
   await prisma.enriquecimientoJob.update({
     where: { id: jobId },
-    data: { estado: "APLICADO", aplicadoAt: ahora, resumen: resumen as any, cambiosPrevios: cambiosPrevios as any },
+    data: { estado: "APLICADO", aplicadoAt: new Date(), resumen: resumen as any, cambiosPrevios: cambiosPrevios as any },
   });
 
-  return NextResponse.json({ resumen, aplicados: plan.cambios.length });
+  return NextResponse.json({ resumen, aplicados });
 }
