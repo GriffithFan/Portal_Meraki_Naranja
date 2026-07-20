@@ -162,19 +162,26 @@ function construirNotas(
   genericos: Set<string>,
   existente: string
 ): string | null {
-  const filtrados = items.filter((it) => it.com && !genericos.has(it.com));
-  if (filtrados.length === 0) return null;
+  // Solo comentarios que NO estén ya en la nota actual: así el enriquecimiento
+  // AGREGA los nuevos debajo sin borrar lo que había ni duplicar en cada corrida.
+  const nuevos = items.filter(
+    (it) => it.com && !genericos.has(it.com) && !existente.includes(it.com)
+  );
+  if (nuevos.length === 0) return null; // nada nuevo → no se toca la nota
   const fdate = (f: string) => {
     const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(f || "");
     return m ? `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3]}` : "";
   };
-  const lineas = filtrados.map((it) => {
+  const lineas = nuevos.map((it) => {
     const d = fdate(it.fecha);
     return `• ${d ? d + " — " : ""}${it.com}`;
   });
-  const ni = filtrados[0].ni;
-  const bloque = `Comentarios de incidencia${ni ? " " + ni : ""}:\n` + lineas.join("\n");
-  return existente ? existente.trimEnd() + "\n\n" + bloque : bloque;
+  if (existente) {
+    // Ya hay nota: agregar solo las líneas nuevas debajo (sin repetir encabezado).
+    return existente.trimEnd() + "\n" + lineas.join("\n");
+  }
+  const ni = nuevos[0].ni;
+  return `Comentarios de incidencia${ni ? " " + ni : ""}:\n` + lineas.join("\n");
 }
 
 /**
@@ -215,7 +222,8 @@ export function planificarEnriquecimiento(
     const p = prediosPorCodigo.get(codigo);
     if (!p) { sinMatch.push(codigo); continue; }
     if (g(fila, "Predio_Verificado").toUpperCase() !== "SI") { sinVerificar.push(codigo); continue; }
-    if (opciones.excluirConforme && (p.estadoNombre || "").trim().toUpperCase() === "CONFORME") {
+    // CONFORME NUNCA se modifica (regla dura, sin importar el toggle).
+    if ((p.estadoNombre || "").trim().toUpperCase() === "CONFORME") {
       salteadosConforme.push(codigo); continue;
     }
     if (opciones.excluirYaEnriquecidos && p.yaEnriquecido) {
