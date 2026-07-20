@@ -26,9 +26,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const pares = (job.paresSnapshot as unknown as ParSnapshot[]) || [];
-    const { plan } = await procesarSubida(buffer, pares, job.alcance as unknown as AlcanceSpec);
+    const { plan, errores } = await procesarSubida(buffer, pares, job.alcance as unknown as AlcanceSpec);
 
-    return NextResponse.json({ resumen: resumenDePlan(plan) });
+    return NextResponse.json({ resumen: resumenDePlan(plan, errores) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error al procesar el archivo";
     return NextResponse.json({ error: msg }, { status: 400 });

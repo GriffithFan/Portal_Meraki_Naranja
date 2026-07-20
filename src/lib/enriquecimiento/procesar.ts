@@ -1,4 +1,4 @@
-import { parsearExcelExtractor } from "./parseExcel";
+import { parsearExcelExtractor, type ErrorExtraccion } from "./parseExcel";
 import { cargarPrediosPorCodigo } from "./cargar";
 import { planificarEnriquecimiento, type ResultadoPlan } from "./aplicar";
 import type { AlcanceSpec } from "./alcance";
@@ -16,8 +16,8 @@ export async function procesarSubida(
   buffer: Buffer,
   pares: ParSnapshot[],
   alcance: AlcanceSpec
-): Promise<{ plan: ResultadoPlan; prediosPorCodigo: Awaited<ReturnType<typeof cargarPrediosPorCodigo>> }> {
-  const { filas, comentariosPorCodigo } = parsearExcelExtractor(buffer);
+): Promise<{ plan: ResultadoPlan; prediosPorCodigo: Awaited<ReturnType<typeof cargarPrediosPorCodigo>>; errores: ErrorExtraccion[] }> {
+  const { filas, comentariosPorCodigo, errores } = parsearExcelExtractor(buffer);
 
   const idsSnapshot = pares.map((p) => p.predioId);
   const codigosSnapshot = new Set(pares.map((p) => String(p.codigo)));
@@ -31,17 +31,21 @@ export async function procesarSubida(
     excluirYaEnriquecidos: Boolean(alcance.excluirYaEnriquecidos),
   });
 
-  return { plan, prediosPorCodigo };
+  return { plan, prediosPorCodigo, errores };
 }
 
 /** Resumen serializable del plan (para la UI y para guardar en el job). */
-export function resumenDePlan(plan: ResultadoPlan) {
+export function resumenDePlan(plan: ResultadoPlan, errores: ErrorExtraccion[] = []) {
   return {
     prediosAActualizar: plan.cambios.length,
     detallePorCampo: plan.stats,
     conflictos: plan.conflictos,
     gpsOmitido: plan.gpsOmitido,
+    lacRSi: plan.stats.lacRSi || 0,
+    // Errores/problemas a revisar: fallas de extracción + predios no verificados.
+    erroresExtraccion: errores.slice(0, 100),
     sinVerificar: plan.sinVerificar.length,
+    sinVerificarCodigos: plan.sinVerificar.slice(0, 100),
     salteadosConforme: plan.salteadosConforme.length,
     salteadosYaEnriquecidos: plan.salteadosYaEnriquecidos.length,
     sinMatch: plan.sinMatch.length,

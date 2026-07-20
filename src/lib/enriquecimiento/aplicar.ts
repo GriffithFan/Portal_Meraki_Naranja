@@ -34,6 +34,7 @@ export interface PredioActual {
   provincia: string | null;
   fechaDesde: Date | null;
   fechaHasta: Date | null;
+  lacR: string | null;
   notas: string | null;
   camposExtra: Record<string, any> | null;
 }
@@ -193,8 +194,11 @@ export function planificarEnriquecimiento(
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
     ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
-    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0,
+    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0,
   };
+  // LAC-R = SI para predios SIN ASIGNAR cuya fecha HASTA de cronograma sea de los
+  // últimos 29 días en adelante (cronograma reciente/vigente).
+  const cutoffLacR = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000);
   const conflictos: { codigo: string; motivo: string }[] = [];
   const gpsOmitido: { codigo: string; dist: number }[] = [];
   const sinVerificar: string[] = [];
@@ -290,6 +294,15 @@ export function planificarEnriquecimiento(
     if (df) {
       const curH = p.fechaHasta ? p.fechaHasta.toISOString().slice(0, 10) : "";
       if (curH !== df.toISOString().slice(0, 10)) { upd.fechaHasta = df; previos.fechaHasta = p.fechaHasta; stats.fechaHasta++; }
+    }
+
+    // LAC-R = SI: solo SIN ASIGNAR, con cronograma cuya HASTA sea de hoy-29d en
+    // adelante (usa la HASTA efectiva: la nueva del reporte o la actual).
+    if ((p.estadoNombre || "").trim().toUpperCase() === "SIN ASIGNAR") {
+      const hastaEfectiva: Date | null = (upd.fechaHasta as Date | undefined) ?? p.fechaHasta;
+      if (hastaEfectiva && hastaEfectiva >= cutoffLacR && cur("lacR").toUpperCase() !== "SI") {
+        upd.lacR = "SI"; previos.lacR = p.lacR ?? null; stats.lacRSi++;
+      }
     }
 
     // camposExtra cantidades: rellenar si vacío (formato "X,00" del reporte)

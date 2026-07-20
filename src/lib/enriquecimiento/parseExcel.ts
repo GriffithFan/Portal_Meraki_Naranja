@@ -3,9 +3,17 @@ import type { FilaReporte, ComentarioIncidencia } from "./aplicar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+export interface ErrorExtraccion {
+  codigo: string;
+  incidencia: string;
+  tipo: string;
+  error: string;
+}
+
 export interface ExcelExtractor {
   filas: FilaReporte[];
   comentariosPorCodigo: Map<string, ComentarioIncidencia[]>;
+  errores: ErrorExtraccion[];
 }
 
 /** Convierte una hoja a array de objetos {header: valor} (sin tope de columnas). */
@@ -74,5 +82,18 @@ export function parsearExcelExtractor(buffer: Buffer): ExcelExtractor {
   agregar("Comentarios_Incidencias");
   agregar("Comentarios_Nivel3");
 
-  return { filas, comentariosPorCodigo };
+  // Hoja "Errores": búsquedas/descargas que fallaron en la extracción.
+  const errores: ErrorExtraccion[] = [];
+  for (const f of hojaAObjetos(wb.Sheets["Errores"])) {
+    const error = (f["Error"] || "").trim();
+    if (!error) continue;
+    errores.push({
+      codigo: (f["Numero_Predio"] || "").trim(),
+      incidencia: (f["Numero_Incidencia"] || "").trim(),
+      tipo: (f["Tipo"] || "").trim(),
+      error,
+    });
+  }
+
+  return { filas, comentariosPorCodigo, errores };
 }

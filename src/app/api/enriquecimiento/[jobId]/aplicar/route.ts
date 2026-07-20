@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const res = await procesarSubida(buffer, pares, job.alcance as unknown as AlcanceSpec);
     plan = res.plan;
     prediosPorCodigo = res.prediosPorCodigo;
-    resumen = resumenDePlan(plan);
+    resumen = resumenDePlan(plan, res.errores);
 
     // Guardamos el nombre del archivo subido para trazabilidad.
     await prisma.enriquecimientoJob.update({

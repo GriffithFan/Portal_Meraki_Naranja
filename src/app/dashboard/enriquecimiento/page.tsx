@@ -264,6 +264,36 @@ export default function EnriquecimientoPage() {
 
   const espaciosArbol = useMemo(() => (opciones ? ordenarArbol(opciones.espacios) : []), [opciones]);
 
+  // Errores/avisos a revisar tras una corrida (extracción + no verificados + LAC-R).
+  const renderProblemas = (res: any) => {
+    if (!res) return null;
+    const erroresExt = res.erroresExtraccion || [];
+    const sinVer = res.sinVerificarCodigos || [];
+    if (erroresExt.length === 0 && sinVer.length === 0 && !res.lacRSi) return null;
+    return (
+      <div className="mt-2 text-[11px] space-y-1">
+        {res.lacRSi > 0 && <div className="text-surface-600">🏷️ {res.lacRSi} predio(s) marcados LAC-R = SI (cronograma vigente)</div>}
+        {erroresExt.length > 0 && (
+          <details className="text-red-700">
+            <summary className="cursor-pointer">⚠ {erroresExt.length} error(es) de extracción en Salesforce</summary>
+            <ul className="mt-1 ml-4 list-disc text-surface-600">
+              {erroresExt.slice(0, 20).map((e: any, i: number) => (
+                <li key={i}><b>{e.codigo || "—"}</b> {e.incidencia}: {e.error}</li>
+              ))}
+              {erroresExt.length > 20 && <li>…y {erroresExt.length - 20} más</li>}
+            </ul>
+          </details>
+        )}
+        {sinVer.length > 0 && (
+          <details className="text-amber-700">
+            <summary className="cursor-pointer">⚠ {res.sinVerificar} predio(s) no verificados en Salesforce (no se tocaron)</summary>
+            <div className="mt-1 ml-4 text-surface-600 break-words">{sinVer.slice(0, 60).join(", ")}{sinVer.length > 60 ? "…" : ""}</div>
+          </details>
+        )}
+      </div>
+    );
+  };
+
   if (!esAdmin) {
     return <div className="p-6 text-sm text-surface-500">Esta sección es solo para administradores.</div>;
   }
@@ -378,6 +408,7 @@ export default function EnriquecimientoPage() {
             ✓ Enriquecimiento aplicado a <b>{ejecResultado.prediosAActualizar}</b> predios.
             {ejecResultado.conflictos?.length > 0 && <span className="text-amber-700"> · {ejecResultado.conflictos.length} con departamento distinto (salteados)</span>}
             {ejecResultado.gpsOmitido?.length > 0 && <span className="text-surface-500"> · {ejecResultado.gpsOmitido.length} con GPS dudoso (se enriqueció el resto)</span>}
+            {renderProblemas(ejecResultado)}
           </div>
         )}
 
@@ -422,6 +453,7 @@ export default function EnriquecimientoPage() {
               {preview.salteadosYaEnriquecidos > 0 && <>· {preview.salteadosYaEnriquecidos} ya enriquecidos </>}
               {preview.sinMatch > 0 && <>· {preview.sinMatch} sin match </>}
             </div>
+            {renderProblemas(preview)}
             <button onClick={aplicar} disabled={aplicando || preview.prediosAActualizar === 0}
               className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium disabled:opacity-50 hover:bg-green-700 transition-colors">
               {aplicando ? "Aplicando…" : `Aplicar a ${preview.prediosAActualizar} predios`}

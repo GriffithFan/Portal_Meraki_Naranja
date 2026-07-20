@@ -123,13 +123,13 @@ export async function ejecutarExtraccion(
     // 3. Leer la salida y aplicar con la lógica segura.
     await setProgreso(jobId, { fase: "Aplicando datos", hechos: 0, total: pares.length });
     const buf = await readFile(outPath);
-    const { filas, comentariosPorCodigo } = parsearExcelExtractor(buf);
+    const { filas, comentariosPorCodigo, errores } = parsearExcelExtractor(buf);
     const prediosPorCodigo = await cargarPrediosPorCodigo(pares.map((p) => p.predioId));
     const plan = planificarEnriquecimiento(filas, prediosPorCodigo, comentariosPorCodigo, {
       excluirConforme: alcance.excluirConforme !== false,
       excluirYaEnriquecidos: Boolean(alcance.excluirYaEnriquecidos),
     });
-    const resumen = resumenDePlan(plan);
+    const resumen = resumenDePlan(plan, errores);
 
     if (plan.cambios.length > 0) {
       await backupBestEffort();
