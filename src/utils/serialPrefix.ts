@@ -26,6 +26,8 @@ export const SERIAL_PREFIX_MAP: Record<string, SerialPrefixInfo> = {
   Q3AJ: { nombre: "AP", modelo: "MR36", marca: "Meraki" },
   Q2AJ: { nombre: "AP", modelo: "MR36", marca: "Meraki" },
   Q3AL: { nombre: "AP", modelo: "MR44", marca: "Meraki" },
+  Q2KD: { nombre: "AP", modelo: "MR42", marca: "Meraki" },
+  Q2LD: { nombre: "AP", modelo: "MR52", marca: "Meraki" },
   Q2GW: { nombre: "SWITCH 24P", modelo: "MS225", marca: "Meraki" },
   Q2CX: { nombre: "SWITCH 8P", modelo: "MS120", marca: "Meraki" },
   Q2PN: { nombre: "UTM", modelo: "MX84", marca: "Meraki" },
