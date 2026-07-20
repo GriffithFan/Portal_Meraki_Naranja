@@ -92,7 +92,16 @@ export default function EnriquecimientoPage() {
 
   const cargarHistorial = useCallback(async () => {
     const res = await fetch("/api/enriquecimiento", { credentials: "include" });
-    if (res.ok) setHistorial((await res.json()).jobs || []);
+    if (!res.ok) return;
+    const jobs = (await res.json()).jobs || [];
+    setHistorial(jobs);
+    // Retomar una corrida EN CURSO para poder ver el progreso desde cualquier
+    // pestaña o al reabrir la página (el trabajo corre en el servidor, no acá).
+    const enCurso = jobs.find((j: any) => j.estado === "EJECUTANDO");
+    if (enCurso) {
+      setEjecJobId(enCurso.id);
+      setProgreso((prev: any) => prev || enCurso.resumen?.progreso || { fase: "En curso", hechos: 0, total: 0 });
+    }
   }, []);
 
   useEffect(() => {
