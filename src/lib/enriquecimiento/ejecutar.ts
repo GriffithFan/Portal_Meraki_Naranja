@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import { writeFile, readFile, unlink } from "fs/promises";
+import { readFileSync } from "fs";
 import path from "path";
 import os from "os";
 import * as XLSX from "xlsx";
@@ -16,6 +17,32 @@ import type { AlcanceSpec, PredioAlcance } from "./alcance";
 const EXTRACTOR_DIR = process.env.EXTRACTOR_DIR || "/var/www/carrot/extractor";
 const EXTRACTOR_PYTHON = process.env.EXTRACTOR_PYTHON || path.join(EXTRACTOR_DIR, ".venv/bin/python");
 const EXTRACTOR_SCRIPT = "extractor_datos_predio_incidencia.py";
+const CREDS = ["SALESFORCE_URL_BASE", "SALESFORCE_USERNAME", "SALESFORCE_PASSWORD"] as const;
+
+/**
+ * Devuelve el env para el subproceso con las credenciales de Salesforce
+ * garantizadas: usa process.env y, si falta alguna, la lee del .env del servidor
+ * como respaldo (por si Next no la cargó). Lanza error claro si no están.
+ */
+function envConCredenciales(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const faltan = CREDS.filter((k) => !env[k]);
+  if (faltan.length > 0) {
+    try {
+      const envPath = path.join(process.env.APP_DIR || "/var/www/carrot", ".env");
+      const contenido = readFileSync(envPath, "utf8");
+      for (const k of faltan) {
+        const m = contenido.match(new RegExp(`^${k}=(.*)$`, "m"));
+        if (m) env[k] = m[1].trim().replace(/^["']|["']$/g, "");
+      }
+    } catch { /* se valida abajo */ }
+  }
+  const siguenFaltando = CREDS.filter((k) => !env[k]);
+  if (siguenFaltando.length > 0) {
+    throw new Error(`Faltan credenciales en el servidor: ${siguenFaltando.join(", ")}`);
+  }
+  return env;
+}
 
 async function setProgreso(jobId: string, progreso: any) {
   try {
@@ -51,6 +78,7 @@ export async function ejecutarExtraccion(
     await setProgreso(jobId, { fase: "Iniciando sesión en Salesforce", hechos: 0, total: pares.length });
 
     // 2. Lanzar el extractor de Python (login con Chrome headless + fetch paralelo).
+    const env = envConCredenciales();
     await new Promise<void>((resolve, reject) => {
       const proc = spawn(
         EXTRACTOR_PYTHON,
@@ -63,7 +91,7 @@ export async function ejecutarExtraccion(
           "--workers", "8",
           "--no-page-cache",
         ],
-        { cwd: EXTRACTOR_DIR, env: { ...process.env } }
+        { cwd: EXTRACTOR_DIR, env }
       );
 
       let stderrTail = "";
