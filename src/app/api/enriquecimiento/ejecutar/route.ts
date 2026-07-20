@@ -20,10 +20,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  // Solo una extracción a la vez (una sola sesión de Chrome/login).
+  // Solo una extracción a la vez (una sola sesión de Chrome/login). Si quedó un
+  // job "colgado" (ej: el servidor se reinició en medio de una corrida), lo
+  // marcamos ERROR pasados 30 min para no bloquear nuevas corridas para siempre.
   const enCurso = await prisma.enriquecimientoJob.findFirst({ where: { estado: "EJECUTANDO" } });
-  if (enCurso)
-    return NextResponse.json({ error: "Ya hay un enriquecimiento en curso. Esperá a que termine." }, { status: 409 });
+  if (enCurso) {
+    const edadMin = (Date.now() - enCurso.createdAt.getTime()) / 60000;
+    if (edadMin < 30) {
+      return NextResponse.json({ error: "Ya hay un enriquecimiento en curso. Esperá a que termine." }, { status: 409 });
+    }
+    await prisma.enriquecimientoJob.update({
+      where: { id: enCurso.id },
+      data: { estado: "ERROR", resumen: { error: "Corrida interrumpida (probable reinicio del servidor)." } as any },
+    });
+  }
 
   const predios = await resolverPrediosAlcance(alcance);
   const conPar = predios.filter((p) => p.codigo && p.incidencia);
