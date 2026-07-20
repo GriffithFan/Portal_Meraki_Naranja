@@ -316,8 +316,8 @@ export function planificarEnriquecimiento(
       if (diff >= 29) {
         // Cronograma viejo (29 días o más) → NO, en todos los estados no-CONFORME.
         if (cur("lacR").toUpperCase() !== "NO") { upd.lacR = "NO"; previos.lacR = p.lacR ?? null; stats.lacRNo++; }
-      } else if (estadoUp === "SIN ASIGNAR") {
-        // Cronograma vigente (menos de 29 días) → SI, solo SIN ASIGNAR.
+      } else if (estadoUp === "SIN ASIGNAR" || estadoUp === "NO CONFORME") {
+        // Cronograma vigente (menos de 29 días) → SI, en SIN ASIGNAR y NO CONFORME.
         if (cur("lacR").toUpperCase() !== "SI") { upd.lacR = "SI"; previos.lacR = p.lacR ?? null; stats.lacRSi++; }
       }
     }
