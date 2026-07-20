@@ -51,6 +51,11 @@ function getProvColor(nombre: string): string {
   return PROVINCIA_COLOR_MAP.get(nombre.toUpperCase()) || "#94a3b8";
 }
 
+// Valor centinela para filtrar predios SIN estado asignado (estado == null).
+// No es un id real, así que no se manda a la API: se filtra en el cliente.
+const SIN_ESTADO = "__sin_estado__";
+const SIN_ESTADO_COLOR = "#94a3b8"; // gris, igual que el marcador por defecto en el mapa
+
 export default function PrediosPage() {
   const { session, isModOrAdmin } = useSession();
   const isTecnico = session?.rol === "TECNICO";
@@ -93,7 +98,8 @@ export default function PrediosPage() {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (filtroEstado) params.set("estadoId", filtroEstado);
+      // "Sin estado" no es un estadoId real: no se manda a la API (se filtra en cliente).
+      if (filtroEstado && filtroEstado !== SIN_ESTADO) params.set("estadoId", filtroEstado);
       const res = await fetch(`/api/dashboard/mapa?${params}`, { credentials: "include" });
       if (res.ok) {
         setPredios(await res.json());
@@ -158,8 +164,15 @@ export default function PrediosPage() {
     return sorted.map(s => ({ ...s, color: colorMap[s.nombre] || "#94a3b8" }));
   }, [predios]);
 
+  // ¿Hay predios sin estado asignado en el set cargado? (para mostrar la fila/opción)
+  const haySinEstado = useMemo(() => predios.some((p) => !p.estado), [predios]);
+
   const filtered = useMemo(() => {
     let result = predios;
+    // "Sin estado" se filtra en el cliente (la API no lo entiende como estadoId).
+    if (filtroEstado === SIN_ESTADO) {
+      result = result.filter(p => !p.estado);
+    }
     if (filtroProvincia) {
       result = result.filter(p => obtenerProvincia(p.provincia, p.codigo) === filtroProvincia);
     }
@@ -177,7 +190,7 @@ export default function PrediosPage() {
       );
     }
     return result;
-  }, [predios, search, filtroProvincia, filtroAsignado]);
+  }, [predios, search, filtroProvincia, filtroAsignado, filtroEstado]);
 
   return (
     <div className="animate-fade-in-up flex flex-col overflow-hidden" style={{ height: "calc(100vh - 120px)" }}>
@@ -207,6 +220,9 @@ export default function PrediosPage() {
             {estados.map((e) => (
               <option key={e.id} value={e.id}>{e.nombre}</option>
             ))}
+            {(haySinEstado || filtroEstado === SIN_ESTADO) && (
+              <option value={SIN_ESTADO}>Sin estado</option>
+            )}
           </select>
           <select
             value={filtroAsignado}
@@ -337,23 +353,41 @@ export default function PrediosPage() {
                     </button>
                   ))
                 ) : (
-                  estados.map((e) => {
-                    const count = filtered.filter(p => p.estado?.id === e.id).length;
-                    return (
+                  <>
+                    {estados.map((e) => {
+                      const count = filtered.filter(p => p.estado?.id === e.id).length;
+                      return (
+                        <button
+                          key={e.id}
+                          onClick={() => setFiltroEstado(e.id)}
+                          className={`flex items-center gap-1.5 md:gap-2 md:w-full text-left px-1.5 py-1 rounded text-xs hover:bg-surface-50 transition-colors whitespace-nowrap ${filtroEstado === e.id ? "bg-surface-100 font-medium" : ""}`}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shrink-0"
+                            style={{ background: e.color }}
+                          />
+                          <span className="truncate">{e.nombre}</span>
+                          <span className="text-[10px] text-surface-400">{count}</span>
+                        </button>
+                      );
+                    })}
+                    {/* Predios sin estado asignado: se cuentan aparte para que la suma
+                        del lateral coincida con el total del encabezado. Toggle al clickear. */}
+                    {(haySinEstado || filtroEstado === SIN_ESTADO) && (
                       <button
-                        key={e.id}
-                        onClick={() => setFiltroEstado(e.id)}
-                        className={`flex items-center gap-1.5 md:gap-2 md:w-full text-left px-1.5 py-1 rounded text-xs hover:bg-surface-50 transition-colors whitespace-nowrap ${filtroEstado === e.id ? "bg-surface-100 font-medium" : ""}`}
+                        key={SIN_ESTADO}
+                        onClick={() => setFiltroEstado(filtroEstado === SIN_ESTADO ? "" : SIN_ESTADO)}
+                        className={`flex items-center gap-1.5 md:gap-2 md:w-full text-left px-1.5 py-1 rounded text-xs hover:bg-surface-50 transition-colors whitespace-nowrap ${filtroEstado === SIN_ESTADO ? "bg-surface-100 font-medium" : ""}`}
                       >
                         <span
                           className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full shrink-0"
-                          style={{ background: e.color }}
+                          style={{ background: SIN_ESTADO_COLOR }}
                         />
-                        <span className="truncate">{e.nombre}</span>
-                        <span className="text-[10px] text-surface-400">{count}</span>
+                        <span className="truncate">Sin estado</span>
+                        <span className="text-[10px] text-surface-400">{filtered.filter(p => !p.estado).length}</span>
                       </button>
-                    );
-                  })
+                    )}
+                  </>
                 )}
               </div>
             </div>
