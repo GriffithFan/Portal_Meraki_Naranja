@@ -510,7 +510,7 @@ export async function POST(request: NextRequest) {
         for (const e of found) existingByInventario.set(e.inventario, e);
       }
 
-      const COMPARE_FIELDS = ["nombre", "modelo", "estado", "ubicacion", "fecha", "notas", "marca", "categoria", "proveedor"];
+      const COMPARE_FIELDS = ["nombre", "modelo", "numeroSerie", "estado", "ubicacion", "fecha", "notas", "marca", "categoria", "proveedor"];
       // Compara la fila nueva contra el equipo existente y arma el diff + la lista
       // de cambios reales (campos con valor nuevo distinto al actual).
       const calcularDiff = (data: Record<string, unknown>, existing: any, asignadoVal: string) => {
@@ -653,6 +653,17 @@ export async function POST(request: NextRequest) {
                 continue;
               }
               target = byInv;
+            }
+
+            // Cruce de seguridad adicional: si la fila trae Número de Serie y el
+            // equipo destino YA tiene uno cargado, deben coincidir. Si no coinciden,
+            // lo más probable es que el ID/Nº inventario haya quedado pegado de otra
+            // fila (ej: se copió una fila existente como plantilla para un equipo
+            // NUEVO y no se borraron esas dos celdas) — no se pisa el equipo real.
+            if (ns && target.numeroSerie && target.numeroSerie !== ns) {
+              errors.push(`Fila ${i + 2}: el ID/Nº inventario apuntan a un equipo con otro número de serie ya cargado (existente: ${target.numeroSerie}, en la fila: ${ns}). Probablemente quedó un ID/Nº inventario viejo pegado en una fila de equipo NUEVO. NO se modificó — dejá esas celdas vacías si es un equipo nuevo.`);
+              skipped++; motivos.desalineado++;
+              continue;
             }
 
             const diff = calcularDiff(data, target, asignadoVal);
