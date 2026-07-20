@@ -40,6 +40,7 @@ export function resumenDePlan(plan: ResultadoPlan) {
     prediosAActualizar: plan.cambios.length,
     detallePorCampo: plan.stats,
     conflictos: plan.conflictos,
+    gpsOmitido: plan.gpsOmitido,
     sinVerificar: plan.sinVerificar.length,
     salteadosConforme: plan.salteadosConforme.length,
     salteadosYaEnriquecidos: plan.salteadosYaEnriquecidos.length,

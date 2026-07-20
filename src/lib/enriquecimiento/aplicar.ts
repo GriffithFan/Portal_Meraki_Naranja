@@ -60,7 +60,10 @@ export interface OpcionesPlan {
 export interface ResultadoPlan {
   cambios: PlanCambio[];
   stats: Record<string, number>;
+  // Conflictos DUROS (departamento distinto): se saltea el predio entero.
   conflictos: { codigo: string; motivo: string }[];
+  // GPS dudoso (reporte lejos del actual): se enriquece TODO menos el GPS.
+  gpsOmitido: { codigo: string; dist: number }[];
   sinVerificar: string[];
   salteadosConforme: string[];
   salteadosYaEnriquecidos: string[];
@@ -68,6 +71,20 @@ export interface ResultadoPlan {
 }
 
 const PLACEHOLDER_LAB = new Set(["sin-adjudicar", "sin adjudicar", "sin_adjudicar", ""]);
+
+// Coordenadas "basura" conocidas: valores placeholder que aparecen repetidos en
+// predios de provincias distintas (no son ubicaciones reales). Cuando un predio
+// las tiene, se tratan como GPS vacío para que el enriquecimiento las corrija.
+const GPS_PLACEHOLDERS: [number, number][] = [
+  [-34.75940139473794, -58.37239525447914], // se veía repetida en ER y Bs As (cerca de Quilmes)
+];
+
+function esGpsPlaceholder(coord: [number, number] | null): boolean {
+  if (!coord) return false;
+  return GPS_PLACEHOLDERS.some(
+    ([la, ln]) => Math.abs(coord[0] - la) < 0.001 && Math.abs(coord[1] - ln) < 0.001
+  );
+}
 
 function g(fila: FilaReporte, col: string): string {
   const v = fila[col];
@@ -179,6 +196,7 @@ export function planificarEnriquecimiento(
     aps: 0, utm: 0, switch: 0, z3: 0, notas: 0,
   };
   const conflictos: { codigo: string; motivo: string }[] = [];
+  const gpsOmitido: { codigo: string; dist: number }[] = [];
   const sinVerificar: string[] = [];
   const salteadosConforme: string[] = [];
   const salteadosYaEnriquecidos: string[] = [];
@@ -197,22 +215,27 @@ export function planificarEnriquecimiento(
       salteadosYaEnriquecidos.push(codigo); continue;
     }
 
-    // ── Guard de consistencia (desalineamiento de ubicación) ──
+    // ── Guard DURO: departamento distinto = identidad sospechosa → saltear todo.
+    //    (El extractor ya verifica por nombre, así que esto casi nunca dispara.)
     const depRep = primero(fila, ["Departamento_Reporte", "Incidencia_Departamento", "Predio_Departamento"]).toUpperCase();
     const depCur = (p.ciudad || "").trim().toUpperCase();
     if (depRep && depCur && depRep !== depCur) {
       conflictos.push({ codigo, motivo: `departamento distinto (actual "${depCur}" vs reporte "${depRep}")` });
       continue;
     }
+
+    // ── GPS: el placeholder basura se trata como vacío (se corrige); un GPS que
+    //    discrepa >5 km NO frena el predio: se enriquece todo lo demás y solo se
+    //    deja el GPS sin tocar (dato dudoso, requiere decisión humana). ──
     const gpsRep = dmsADecimal(primero(fila, ["GPS_Reporte", "Predio_Coordenadas_GPS"]));
-    let gpsCur = gpsDecimal(p.gpsPredio);
-    if (!gpsCur && p.latitud != null && p.longitud != null) gpsCur = [p.latitud, p.longitud];
+    let gpsCurRaw = gpsDecimal(p.gpsPredio);
+    if (!gpsCurRaw && p.latitud != null && p.longitud != null) gpsCurRaw = [p.latitud, p.longitud];
+    const curEsPlaceholder = esGpsPlaceholder(gpsCurRaw);
+    const gpsCur = curEsPlaceholder ? null : gpsCurRaw; // placeholder = como si no tuviera GPS
+    let gpsBloqueado = false;
     if (gpsRep && gpsCur) {
       const d = haversineKm(gpsRep, gpsCur);
-      if (d > 5) {
-        conflictos.push({ codigo, motivo: `GPS a ${d.toFixed(1)} km del actual` });
-        continue;
-      }
+      if (d > 5) { gpsBloqueado = true; gpsOmitido.push({ codigo, dist: d }); }
     }
 
     const upd: Record<string, any> = {};
@@ -240,17 +263,21 @@ export function planificarEnriquecimiento(
       else if (PLACEHOLDER_LAB.has(labCur.toLowerCase())) { upd.lab = labRep; previos.lab = p.lab ?? null; stats.labPlaceholder++; }
     }
 
-    // GPS decimal disponible (actual o convertido del reporte)
-    let gpsDec = gpsCur || gpsRep;
-    if (!cur("gpsPredio") && gpsRep) {
-      upd.gpsPredio = `${gpsRep[0].toFixed(6)}S ${gpsRep[1].toFixed(6)}W`;
-      previos.gpsPredio = p.gpsPredio ?? null; stats.gpsPredio++;
-      gpsDec = gpsDec || gpsRep;
-    }
-    if (gpsDec && (p.latitud == null || p.longitud == null)) {
-      upd.latitud = Number(gpsDec[0].toFixed(6));
-      upd.longitud = Number(gpsDec[1].toFixed(6));
-      previos.latitud = p.latitud; previos.longitud = p.longitud; stats.latlong++;
+    // GPS: solo si no está bloqueado por discrepancia. El placeholder cuenta como
+    // vacío, así que se sobrescribe con el dato real del reporte.
+    if (!gpsBloqueado) {
+      const gpsTextoVacio = !cur("gpsPredio") || curEsPlaceholder;
+      let gpsDec = gpsCur || gpsRep;
+      if (gpsTextoVacio && gpsRep) {
+        upd.gpsPredio = `${gpsRep[0].toFixed(6)}S ${gpsRep[1].toFixed(6)}W`;
+        previos.gpsPredio = p.gpsPredio ?? null; stats.gpsPredio++;
+        gpsDec = gpsDec || gpsRep;
+      }
+      if (gpsDec && (p.latitud == null || p.longitud == null || curEsPlaceholder)) {
+        upd.latitud = Number(gpsDec[0].toFixed(6));
+        upd.longitud = Number(gpsDec[1].toFixed(6));
+        previos.latitud = p.latitud; previos.longitud = p.longitud; stats.latlong++;
+      }
     }
 
     // Fechas de cronograma: actualizar al valor del reporte (dato nuevo)
@@ -288,5 +315,5 @@ export function planificarEnriquecimiento(
     }
   }
 
-  return { cambios, stats, conflictos, sinVerificar, salteadosConforme, salteadosYaEnriquecidos, sinMatch };
+  return { cambios, stats, conflictos, gpsOmitido, sinVerificar, salteadosConforme, salteadosYaEnriquecidos, sinMatch };
 }

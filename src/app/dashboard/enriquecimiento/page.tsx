@@ -376,7 +376,8 @@ export default function EnriquecimientoPage() {
         {ejecResultado && (
           <div className="mt-3 text-xs bg-green-50 rounded-md px-3 py-2 text-green-800">
             ✓ Enriquecimiento aplicado a <b>{ejecResultado.prediosAActualizar}</b> predios.
-            {ejecResultado.conflictos?.length > 0 && <span className="text-amber-700"> · {ejecResultado.conflictos.length} conflicto(s) salteado(s)</span>}
+            {ejecResultado.conflictos?.length > 0 && <span className="text-amber-700"> · {ejecResultado.conflictos.length} con departamento distinto (salteados)</span>}
+            {ejecResultado.gpsOmitido?.length > 0 && <span className="text-surface-500"> · {ejecResultado.gpsOmitido.length} con GPS dudoso (se enriqueció el resto)</span>}
           </div>
         )}
 
@@ -414,7 +415,8 @@ export default function EnriquecimientoPage() {
               ))}
             </div>
             <div className="mt-1 text-surface-500">
-              {preview.conflictos?.length > 0 && <div className="text-amber-700">⚠ {preview.conflictos.length} conflicto(s) de ubicación (se saltean)</div>}
+              {preview.conflictos?.length > 0 && <div className="text-amber-700">⚠ {preview.conflictos.length} con departamento distinto (se saltea el predio)</div>}
+              {preview.gpsOmitido?.length > 0 && <div className="text-surface-500">ℹ {preview.gpsOmitido.length} con GPS dudoso: se enriqueció todo menos el GPS</div>}
               {preview.sinVerificar > 0 && <>· {preview.sinVerificar} sin verificar </>}
               {preview.salteadosConforme > 0 && <>· {preview.salteadosConforme} en CONFORME </>}
               {preview.salteadosYaEnriquecidos > 0 && <>· {preview.salteadosYaEnriquecidos} ya enriquecidos </>}
