@@ -41,6 +41,16 @@ function ordenarArbol(espacios: Opciones["espacios"]): { id: string; label: stri
   return out;
 }
 
+// Etiquetas legibles para el detalle por campo del resumen.
+const CAMPO_LABELS: Record<string, string> = {
+  ciudad: "Departamento", nombreInstitucion: "Institución", cuePredio: "CUE del predio",
+  telefono: "Teléfono", lab: "Proveedor LAB", labPlaceholder: "LAB (reemplazo)",
+  ambito: "Ámbito", gpsPredio: "GPS", latlong: "Lat / Long",
+  fechaDesde: "Fecha DESDE", fechaHasta: "Fecha HASTA",
+  aps: "Cant. APs", utm: "Cant. UTM", switch: "Cant. Switch", z3: "Cant. Z3",
+  notas: "Notas / comentarios", lacRSi: "LAC-R → SI", lacRNo: "LAC-R → NO",
+};
+
 export default function EnriquecimientoPage() {
   const { session } = useSession();
   const confirm = useConfirm();
@@ -306,23 +316,57 @@ export default function EnriquecimientoPage() {
     );
   };
 
+  // Detalle por campo como chips con etiquetas legibles (fechas y LAC-R primero).
+  const renderResumenCampos = (res: any) => {
+    const campos = res.detallePorCampo || {};
+    const items = Object.entries(campos).filter(([, v]) => (v as number) > 0) as [string, number][];
+    if (items.length === 0) return null;
+    const orden = ["fechaDesde", "fechaHasta", "lacRSi", "lacRNo"];
+    items.sort((a, b) => (orden.indexOf(a[0]) + 1 || 99) - (orden.indexOf(b[0]) + 1 || 99));
+    return (
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {items.map(([k, v]) => {
+          const esClave = k.startsWith("lacR") || k.startsWith("fecha");
+          return (
+            <span key={k} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] ${esClave ? "bg-brand-100 text-brand-700 font-medium" : "bg-white border border-surface-200 text-surface-600"}`}>
+              {CAMPO_LABELS[k] || k} <b>{v}</b>
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
   if (!esAdmin) {
     return <div className="p-6 text-sm text-surface-500">Esta sección es solo para administradores.</div>;
   }
 
   return (
     <div className="animate-fade-in-up max-w-4xl mx-auto pb-10">
-      <h1 className="text-xl font-semibold text-surface-800 mb-1">Enriquecimiento de datos</h1>
-      <p className="text-xs text-surface-400 mb-4">
-        Generá el Excel de entrada de un alcance, corré el extractor de Salesforce, subí el resultado
-        y Carrot rellena los datos faltantes sin tocar estados ni asignados.
-      </p>
+      {/* Encabezado */}
+      <div className="flex items-start gap-3 mb-5">
+        <div className="shrink-0 w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white flex items-center justify-center shadow-sm">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+          </svg>
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-surface-800 leading-tight">Enriquecimiento de datos</h1>
+          <p className="text-xs text-surface-400 mt-0.5 max-w-xl">
+            Elegí un alcance y el servidor baja los datos actualizados de Salesforce y los aplica solo —
+            fechas de cronograma, GPS, teléfono, LAC-R y más. <b>Nunca toca estados ni asignados</b>, y CONFORME queda intacto.
+          </p>
+        </div>
+      </div>
 
-      {error && <div className="mb-3 px-3 py-2 rounded-md bg-red-50 text-red-700 text-sm">{error}</div>}
+      {error && <div className="mb-3 px-3 py-2 rounded-md bg-red-50 text-red-700 text-sm flex items-center gap-2"><span>⚠</span>{error}</div>}
 
       {/* Paso 1: alcance */}
-      <div className="bg-white rounded-lg border border-surface-200 p-4 mb-4">
-        <h2 className="text-sm font-semibold text-surface-700 mb-3">1 · Elegí el alcance</h2>
+      <div className="bg-white rounded-xl border border-surface-200 shadow-sm p-4 sm:p-5 mb-4">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-surface-700 mb-3">
+          <span className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-[11px] flex items-center justify-center font-bold">1</span>
+          Elegí el alcance
+        </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-xs text-surface-500">
             Espacio / carpeta
@@ -377,54 +421,84 @@ export default function EnriquecimientoPage() {
           </label>
         </div>
 
+        {/* Resumen del alcance en tarjetas */}
         {conteos && (
-          <div className="mt-3 text-xs text-surface-600 bg-surface-50 rounded-md px-3 py-2">
-            <b>{conteos.prediosEnAlcance}</b> predios en el alcance · <b>{conteos.conIncidencia}</b> con incidencia
-            {conteos.sinIncidencia > 0 && <> · {conteos.sinIncidencia} sin incidencia (no enriquecibles)</>}
-            {conteos.conforme > 0 && <> · {conteos.conforme} en CONFORME (se saltean)</>}
-            {conteos.yaEnriquecidos > 0 && <> · {conteos.yaEnriquecidos} ya enriquecidos{excluirYaEnriquecidos ? " (se saltean)" : ""}</>}
-            <div className="mt-1 font-medium text-brand-700">→ {conteos.efectivos} predios entrarían en el Excel {cargandoConteos && "…"}</div>
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { n: conteos.prediosEnAlcance, l: "en el alcance", big: false },
+              { n: conteos.conIncidencia, l: "con incidencia", big: false },
+              { n: conteos.conforme, l: "en CONFORME (intactos)", big: false },
+              { n: conteos.efectivos, l: "se enriquecen", big: true },
+            ].map((s, i) => (
+              <div key={i} className={`rounded-lg px-3 py-2 ${s.big ? "bg-brand-50 border border-brand-200" : "bg-surface-50"}`}>
+                <div className={`text-lg font-bold tabular-nums ${s.big ? "text-brand-700" : "text-surface-700"}`}>
+                  {s.n}{s.big && cargandoConteos && <span className="text-xs font-normal text-surface-400"> …</span>}
+                </div>
+                <div className="text-[10px] text-surface-500 leading-tight">{s.l}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {conteos && (conteos.sinIncidencia > 0 || conteos.yaEnriquecidos > 0) && (
+          <div className="mt-2 text-[11px] text-surface-400">
+            {conteos.sinIncidencia > 0 && <>{conteos.sinIncidencia} sin incidencia (no enriquecibles). </>}
+            {conteos.yaEnriquecidos > 0 && <>{conteos.yaEnriquecidos} ya enriquecidos {excluirYaEnriquecidos ? "(se saltean)" : "(se refrescan)"}.</>}
           </div>
         )}
 
-        {/* Acción principal: automático en el servidor (Fase 2) */}
-        <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+        {/* Acción principal */}
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
           <button onClick={enriquecerAhora} disabled={lanzando || !!ejecJobId || !conteos || conteos.efectivos === 0}
-            className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-semibold disabled:opacity-50 hover:bg-green-700 transition-colors">
-            {ejecJobId ? "Enriqueciendo…" : lanzando ? "Iniciando…" : `🚀 Enriquecer ahora${conteos ? ` (${conteos.efectivos})` : ""}`}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-green-700 active:scale-[.98] transition shadow-sm">
+            {ejecJobId ? (<><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Enriqueciendo…</>)
+              : lanzando ? "Iniciando…"
+              : <>🚀 Enriquecer ahora{conteos ? ` · ${conteos.efectivos}` : ""}</>}
           </button>
-          <span className="text-[11px] text-surface-400">
-            El servidor baja los datos de Salesforce y los aplica solo. No necesitás PC.
-          </span>
+          <span className="text-[11px] text-surface-400">Corre en el servidor: podés cerrar la pestaña, sigue solo.</span>
         </div>
 
-        {/* Progreso de la corrida automática */}
-        {progreso && (
-          <div className="mt-3 bg-surface-50 rounded-md px-3 py-2">
-            <div className="flex justify-between text-xs text-surface-600 mb-1">
-              <span>{progreso.fase}…</span>
-              <span>{progreso.total ? `${progreso.hechos}/${progreso.total}` : ""}</span>
+        {/* Progreso */}
+        {progreso && (() => {
+          const pct = progreso.total ? Math.round((progreso.hechos / progreso.total) * 100) : null;
+          return (
+            <div className="mt-4 bg-surface-50 rounded-lg px-3 py-3 border border-surface-100">
+              <div className="flex justify-between items-center text-xs mb-1.5">
+                <span className="font-medium text-surface-700 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />{progreso.fase}…
+                </span>
+                <span className="text-surface-500 tabular-nums">
+                  {progreso.total ? `${progreso.hechos}/${progreso.total}` : ""}{pct != null && ` · ${pct}%`}
+                </span>
+              </div>
+              <div className="h-2 bg-surface-200 rounded-full overflow-hidden">
+                <div className="h-full bg-green-500 transition-all duration-500" style={{ width: pct != null ? `${Math.max(pct, 3)}%` : "12%" }} />
+              </div>
             </div>
-            <div className="h-1.5 bg-surface-200 rounded-full overflow-hidden">
-              <div className="h-full bg-green-500 transition-all"
-                style={{ width: progreso.total ? `${Math.round((progreso.hechos / progreso.total) * 100)}%` : "10%" }} />
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
+        {/* Resultado */}
         {ejecResultado && (
-          <div className="mt-3 text-xs bg-green-50 rounded-md px-3 py-2 text-green-800">
-            ✓ Enriquecimiento aplicado a <b>{ejecResultado.prediosAActualizar}</b> predios.
-            {ejecResultado.conflictos?.length > 0 && <span className="text-amber-700"> · {ejecResultado.conflictos.length} con departamento distinto (salteados)</span>}
-            {ejecResultado.gpsOmitido?.length > 0 && <span className="text-surface-500"> · {ejecResultado.gpsOmitido.length} con GPS dudoso (se enriqueció el resto)</span>}
+          <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-green-800">
+              <span className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-xs">✓</span>
+              Aplicado a {ejecResultado.prediosAActualizar} predios
+            </div>
+            {renderResumenCampos(ejecResultado)}
+            {(ejecResultado.gpsOmitido?.length > 0 || ejecResultado.conflictos?.length > 0) && (
+              <div className="mt-2 text-[11px] text-surface-500">
+                {ejecResultado.gpsOmitido?.length > 0 && <span>ℹ {ejecResultado.gpsOmitido.length} con GPS dudoso (se enriqueció el resto). </span>}
+                {ejecResultado.conflictos?.length > 0 && <span className="text-amber-700">⚠ {ejecResultado.conflictos.length} con departamento distinto (salteados).</span>}
+              </div>
+            )}
             {renderProblemas(ejecResultado)}
           </div>
         )}
 
         {/* Alternativa manual (avanzado) */}
-        <details className="mt-3">
-          <summary className="text-[11px] text-surface-400 cursor-pointer hover:text-surface-600">
-            Alternativa: generar el Excel y correr el extractor a mano
+        <details className="mt-4">
+          <summary className="text-[11px] text-surface-400 cursor-pointer hover:text-surface-600 select-none">
+            ⚙ Alternativa avanzada: generar el Excel y correr el extractor a mano
           </summary>
           <button onClick={generarEntrada} disabled={generando || !conteos || conteos.efectivos === 0}
             className="mt-2 px-3 py-1.5 bg-surface-100 text-surface-700 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-surface-200 transition-colors">
@@ -433,13 +507,17 @@ export default function EnriquecimientoPage() {
         </details>
       </div>
 
-      {/* Paso 2: subir resultado */}
-      <div className={`bg-white rounded-lg border border-surface-200 p-4 mb-4 ${!jobId ? "opacity-50 pointer-events-none" : ""}`}>
-        <h2 className="text-sm font-semibold text-surface-700 mb-3">2 · Subí el resultado del extractor</h2>
-        {!jobId && <p className="text-xs text-surface-400">Primero generá el Excel de entrada.</p>}
+      {/* Paso 2: subir resultado (flujo manual) */}
+      <div className={`bg-white rounded-xl border border-surface-200 shadow-sm p-4 sm:p-5 mb-4 ${!jobId ? "opacity-60" : ""}`}>
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-surface-700 mb-3">
+          <span className="w-5 h-5 rounded-full bg-surface-200 text-surface-600 text-[11px] flex items-center justify-center font-bold">2</span>
+          Subí el resultado del extractor <span className="text-[10px] font-normal text-surface-400">(solo flujo manual)</span>
+        </h2>
+        {!jobId ? <p className="text-xs text-surface-400">Este paso es solo para el flujo manual. Con &quot;Enriquecer ahora&quot; no hace falta.</p> : (
+        <>
         <div className="flex flex-wrap items-center gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={(e) => { setArchivo(e.target.files?.[0] || null); setPreview(null); setResultado(null); }}
-            className="text-xs" />
+            className="text-xs file:mr-2 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:bg-surface-100 file:text-surface-700 file:text-xs file:font-medium hover:file:bg-surface-200 file:cursor-pointer" />
           <button onClick={previsualizar} disabled={!archivo}
             className="px-3 py-1.5 bg-surface-100 text-surface-700 rounded-md text-sm font-medium disabled:opacity-50 hover:bg-surface-200 transition-colors">
             Previsualizar
@@ -447,60 +525,66 @@ export default function EnriquecimientoPage() {
         </div>
 
         {preview && (
-          <div className="mt-3 text-xs bg-surface-50 rounded-md px-3 py-2 text-surface-700">
-            <div className="font-medium mb-1">Se actualizarían <b>{preview.prediosAActualizar}</b> predios:</div>
-            <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-              {Object.entries(preview.detallePorCampo).filter(([, v]) => (v as number) > 0).map(([k, v]) => (
-                <span key={k}>{k}: <b>{v as number}</b></span>
-              ))}
-            </div>
-            <div className="mt-1 text-surface-500">
+          <div className="mt-3 rounded-lg border border-surface-200 bg-surface-50 p-3">
+            <div className="text-xs font-medium text-surface-700 mb-1">Se actualizarían <b>{preview.prediosAActualizar}</b> predios:</div>
+            {renderResumenCampos(preview)}
+            <div className="mt-2 text-[11px] text-surface-500 space-y-0.5">
               {preview.conflictos?.length > 0 && <div className="text-amber-700">⚠ {preview.conflictos.length} con departamento distinto (se saltea el predio)</div>}
-              {preview.gpsOmitido?.length > 0 && <div className="text-surface-500">ℹ {preview.gpsOmitido.length} con GPS dudoso: se enriqueció todo menos el GPS</div>}
-              {preview.sinVerificar > 0 && <>· {preview.sinVerificar} sin verificar </>}
-              {preview.salteadosConforme > 0 && <>· {preview.salteadosConforme} en CONFORME </>}
-              {preview.salteadosYaEnriquecidos > 0 && <>· {preview.salteadosYaEnriquecidos} ya enriquecidos </>}
-              {preview.sinMatch > 0 && <>· {preview.sinMatch} sin match </>}
+              {preview.gpsOmitido?.length > 0 && <div>ℹ {preview.gpsOmitido.length} con GPS dudoso: se enriqueció todo menos el GPS</div>}
+              <div>
+                {preview.sinVerificar > 0 && <>{preview.sinVerificar} sin verificar · </>}
+                {preview.salteadosConforme > 0 && <>{preview.salteadosConforme} en CONFORME · </>}
+                {preview.salteadosYaEnriquecidos > 0 && <>{preview.salteadosYaEnriquecidos} ya enriquecidos · </>}
+                {preview.sinMatch > 0 && <>{preview.sinMatch} sin match</>}
+              </div>
             </div>
             {renderProblemas(preview)}
             <button onClick={aplicar} disabled={aplicando || preview.prediosAActualizar === 0}
-              className="mt-2 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium disabled:opacity-50 hover:bg-green-700 transition-colors">
+              className="mt-3 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-green-700 active:scale-[.98] transition shadow-sm">
               {aplicando ? "Aplicando…" : `Aplicar a ${preview.prediosAActualizar} predios`}
             </button>
           </div>
         )}
 
         {resultado && (
-          <div className="mt-3 text-xs bg-green-50 rounded-md px-3 py-2 text-green-800">
+          <div className="mt-3 text-xs bg-green-50 rounded-lg px-3 py-2 text-green-800 border border-green-200">
             ✓ Enriquecimiento aplicado a <b>{resultado.aplicados}</b> predios.
           </div>
+        )}
+        </>
         )}
       </div>
 
       {/* Historial */}
-      <div className="bg-white rounded-lg border border-surface-200 p-4">
-        <h2 className="text-sm font-semibold text-surface-700 mb-3">Historial</h2>
+      <div className="bg-white rounded-xl border border-surface-200 shadow-sm p-4 sm:p-5">
+        <h2 className="text-sm font-semibold text-surface-700 mb-3">Historial de corridas</h2>
         {historial.length === 0 ? (
           <p className="text-xs text-surface-400">Sin corridas todavía.</p>
         ) : (
           <div className="space-y-1.5">
-            {historial.map((j) => (
-              <div key={j.id} className="flex items-center justify-between text-xs border border-surface-100 rounded-md px-3 py-2">
-                <div>
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold mr-2 ${
-                    j.estado === "APLICADO" ? "bg-green-100 text-green-700" :
-                    j.estado === "REVERTIDO" ? "bg-surface-200 text-surface-600" :
-                    j.estado === "ERROR" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                  }`}>{j.estado}</span>
-                  <span className="text-surface-600">{new Date(j.createdAt).toLocaleString("es-AR")}</span>
-                  {j.resumen?.prediosAActualizar != null && <span className="text-surface-400 ml-2">· {j.resumen.prediosAActualizar} predios</span>}
-                  <span className="text-surface-400 ml-2">· {j.creadoPor?.nombre}</span>
+            {historial.map((j) => {
+              const estilo: Record<string, string> = {
+                APLICADO: "bg-green-100 text-green-700", REVERTIDO: "bg-surface-200 text-surface-600",
+                ERROR: "bg-red-100 text-red-700", EJECUTANDO: "bg-amber-100 text-amber-700",
+              };
+              const r = j.resumen || {};
+              return (
+                <div key={j.id} className="flex items-center justify-between gap-2 text-xs border border-surface-100 rounded-lg px-3 py-2 hover:bg-surface-50 transition-colors">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${estilo[j.estado] || "bg-amber-100 text-amber-700"}`}>
+                      {j.estado === "EJECUTANDO" && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}{j.estado}
+                    </span>
+                    <span className="text-surface-600 whitespace-nowrap">{new Date(j.createdAt).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                    {r.prediosAActualizar != null && <span className="text-surface-500">· {r.prediosAActualizar} predios</span>}
+                    {(r.lacRSi > 0 || r.lacRNo > 0) && <span className="text-brand-600">· LAC-R {r.lacRSi || 0}↑/{r.lacRNo || 0}↓</span>}
+                    <span className="text-surface-400 truncate">· {j.creadoPor?.nombre}</span>
+                  </div>
+                  {j.estado === "APLICADO" && (
+                    <button onClick={() => revertir(j.id)} className="shrink-0 text-red-600 hover:bg-red-50 rounded px-2 py-0.5 transition-colors">Revertir</button>
+                  )}
                 </div>
-                {j.estado === "APLICADO" && (
-                  <button onClick={() => revertir(j.id)} className="text-red-600 hover:underline">Revertir</button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
