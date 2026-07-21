@@ -328,7 +328,7 @@ export default function EnriquecimientoPage() {
         {items.map(([k, v]) => {
           const esClave = k.startsWith("lacR") || k.startsWith("fecha");
           return (
-            <span key={k} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] ${esClave ? "bg-brand-100 text-brand-700 font-medium" : "bg-white border border-surface-200 text-surface-600"}`}>
+            <span key={k} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] ${esClave ? "bg-primary-100 text-primary-700 font-medium" : "bg-white border border-surface-200 text-surface-600"}`}>
               {CAMPO_LABELS[k] || k} <b>{v}</b>
             </span>
           );
@@ -344,17 +344,17 @@ export default function EnriquecimientoPage() {
   return (
     <div className="animate-fade-in-up max-w-4xl mx-auto pb-10">
       {/* Encabezado */}
-      <div className="flex items-start gap-3 mb-5">
-        <div className="shrink-0 w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white flex items-center justify-center shadow-sm">
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+      <div className="flex items-start gap-3.5 mb-5">
+        <div className="shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-accent-400 to-accent-600 text-white flex items-center justify-center shadow-glow-accent ring-1 ring-accent-500/20">
+          <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.9}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
           </svg>
         </div>
         <div>
-          <h1 className="text-xl font-semibold text-surface-800 leading-tight">Enriquecimiento de datos</h1>
-          <p className="text-xs text-surface-400 mt-0.5 max-w-xl">
+          <h1 className="text-xl font-bold text-surface-800 leading-tight tracking-tight">Enriquecimiento de datos</h1>
+          <p className="text-xs text-surface-500 mt-1 max-w-xl leading-relaxed">
             Elegí un alcance y el servidor baja los datos actualizados de Salesforce y los aplica solo —
-            fechas de cronograma, GPS, teléfono, LAC-R y más. <b>Nunca toca estados ni asignados</b>, y CONFORME queda intacto.
+            fechas de cronograma, GPS, teléfono, LAC-R y más. <b className="text-surface-700">Nunca toca estados ni asignados</b>, y CONFORME queda intacto.
           </p>
         </div>
       </div>
@@ -364,7 +364,7 @@ export default function EnriquecimientoPage() {
       {/* Paso 1: alcance */}
       <div className="bg-white rounded-xl border border-surface-200 shadow-sm p-4 sm:p-5 mb-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-surface-700 mb-3">
-          <span className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-[11px] flex items-center justify-center font-bold">1</span>
+          <span className="w-5 h-5 rounded-full bg-primary-100 text-primary-700 text-[11px] flex items-center justify-center font-bold">1</span>
           Elegí el alcance
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -398,14 +398,14 @@ export default function EnriquecimientoPage() {
             </select>
           </label>
           <div className="text-xs text-surface-500">
-            Estados
-            <div className="mt-1 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+            Estados <span className="text-surface-400 font-normal">(vacío = todos)</span>
+            <div className="mt-1 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-md border border-surface-200 bg-surface-50/50 scrollbar-thin">
               {opciones?.estados.map((e) => {
                 const on = estadosSel.includes(e.id);
                 return (
                   <button key={e.id} type="button"
                     onClick={() => setEstadosSel((prev) => on ? prev.filter((x) => x !== e.id) : [...prev, e.id])}
-                    className={`px-2 py-0.5 rounded text-[11px] border ${on ? "bg-brand-50 border-brand-300 text-brand-700" : "border-surface-200 text-surface-500"}`}>
+                    className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${on ? "bg-primary-600 border-primary-600 text-white font-medium" : "bg-white border-surface-200 text-surface-500 hover:border-primary-300"}`}>
                     {e.nombre}
                   </button>
                 );
@@ -430,8 +430,8 @@ export default function EnriquecimientoPage() {
               { n: conteos.conforme, l: "en CONFORME (intactos)", big: false },
               { n: conteos.efectivos, l: "se enriquecen", big: true },
             ].map((s, i) => (
-              <div key={i} className={`rounded-lg px-3 py-2 ${s.big ? "bg-brand-50 border border-brand-200" : "bg-surface-50"}`}>
-                <div className={`text-lg font-bold tabular-nums ${s.big ? "text-brand-700" : "text-surface-700"}`}>
+              <div key={i} className={`rounded-lg px-3 py-2 ${s.big ? "bg-primary-50 border border-primary-200" : "bg-surface-50"}`}>
+                <div className={`text-lg font-bold tabular-nums ${s.big ? "text-primary-700" : "text-surface-700"}`}>
                   {s.n}{s.big && cargandoConteos && <span className="text-xs font-normal text-surface-400"> …</span>}
                 </div>
                 <div className="text-[10px] text-surface-500 leading-tight">{s.l}</div>
@@ -576,7 +576,7 @@ export default function EnriquecimientoPage() {
                     </span>
                     <span className="text-surface-600 whitespace-nowrap">{new Date(j.createdAt).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
                     {r.prediosAActualizar != null && <span className="text-surface-500">· {r.prediosAActualizar} predios</span>}
-                    {(r.lacRSi > 0 || r.lacRNo > 0) && <span className="text-brand-600">· LAC-R {r.lacRSi || 0}↑/{r.lacRNo || 0}↓</span>}
+                    {(r.lacRSi > 0 || r.lacRNo > 0) && <span className="text-primary-600">· LAC-R {r.lacRSi || 0}↑/{r.lacRNo || 0}↓</span>}
                     <span className="text-surface-400 truncate">· {j.creadoPor?.nombre}</span>
                   </div>
                   {j.estado === "APLICADO" && (
