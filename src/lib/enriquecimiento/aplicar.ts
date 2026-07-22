@@ -203,16 +203,12 @@ export function planificarEnriquecimiento(
     ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
     aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0,
   };
-  // Umbral LAC-R por antigüedad (en días enteros) de la fecha HASTA del cronograma:
-  //   diff >= 29 → "NO" (cronograma viejo)  → todos los estados salvo CONFORME
-  //   diff <  29 Y cronograma ACTIVO → "SI"  → solo SIN ASIGNAR / NO CONFORME
-  // "Activo" = casilla tildada en Salesforce (estado Aprobado y hoy dentro de
-  // [inicio, fin] del último cronograma). Lo trae el extractor en la columna
-  // Ultimo_Cronograma_Activo. Sin eso, un cronograma finalizado hace pocos días
-  // (diff<29 pero ya no vigente) se marcaba SI por error.
-  const MS_DIA = 24 * 60 * 60 * 1000;
-  const hoyDia = Math.floor(Date.now() / MS_DIA);
-  const diffDias = (d: Date) => hoyDia - Math.floor(d.getTime() / MS_DIA);
+  // ── Regla LAC-R según el TILDE "Activo" REAL del último cronograma ──
+  // El tilde manda en todo: Activo ✓ → "SI", sin tilde (o sin cronograma) → "NO".
+  // Aplica a todos los estados MENOS CONFORME (nunca se toca) y NO CONFORME (se
+  // saltea siempre). La fecha ya NO influye. El extractor lee el checkbox real
+  // del detalle del cronograma y lo trae en Cronograma_Ultimo_Activo_Real
+  // ("SI"/"NO"/"") + Tiene_Cronograma ("SI"/"NO").
   const conflictos: { codigo: string; motivo: string }[] = [];
   const gpsOmitido: { codigo: string; dist: number }[] = [];
   const sinVerificar: string[] = [];
@@ -311,23 +307,21 @@ export function planificarEnriquecimiento(
       if (curH !== df.toISOString().slice(0, 10)) { upd.fechaHasta = df; previos.fechaHasta = p.fechaHasta; stats.fechaHasta++; }
     }
 
-    // ── Regla LAC-R según antigüedad de la fecha HASTA del cronograma ──
-    // Usa la HASTA efectiva (la nueva del reporte o la actual). CONFORME nunca se toca.
+    // ── LAC-R por el tilde "Activo" real del último cronograma ──
+    // CONFORME nunca se toca; NO CONFORME se saltea siempre.
     const estadoUp = (p.estadoNombre || "").trim().toUpperCase();
-    // Cronograma ACTIVO según el extractor (casilla tildada = estado Aprobado y
-    // hoy dentro de [inicio, fin]). Requisito extra para marcar SI.
-    const cronoActivo =
-      g(fila, "Ultimo_Cronograma_Activo").toUpperCase() === "SI" ||
-      g(fila, "Ultimo_Cronograma_Situacion").toUpperCase() === "ACTIVO";
-    const hastaEfectiva: Date | null = (upd.fechaHasta as Date | undefined) ?? p.fechaHasta;
-    if (estadoUp !== "CONFORME" && hastaEfectiva) {
-      const diff = diffDias(hastaEfectiva);
-      if (diff >= 29) {
-        // Cronograma viejo (29 días o más) → NO, en todos los estados no-CONFORME.
-        if (cur("lacR").toUpperCase() !== "NO") { upd.lacR = "NO"; previos.lacR = p.lacR ?? null; stats.lacRNo++; }
-      } else if ((estadoUp === "SIN ASIGNAR" || estadoUp === "NO CONFORME") && cronoActivo) {
-        // Cronograma vigente (<29 días) Y activo → SI, en SIN ASIGNAR y NO CONFORME.
-        if (cur("lacR").toUpperCase() !== "SI") { upd.lacR = "SI"; previos.lacR = p.lacR ?? null; stats.lacRSi++; }
+    if (estadoUp !== "CONFORME" && estadoUp !== "NO CONFORME") {
+      const activoReal = g(fila, "Cronograma_Ultimo_Activo_Real").toUpperCase(); // "SI" | "NO" | ""
+      const tieneCrono = g(fila, "Tiene_Cronograma").toUpperCase();             // "SI" | "NO"
+      let objetivo: "SI" | "NO" | null = null;
+      if (activoReal === "SI") objetivo = "SI";
+      else if (activoReal === "NO") objetivo = "NO";
+      else if (tieneCrono === "NO") objetivo = "NO"; // sin cronograma → NO
+      // activoReal vacío CON cronograma = no se pudo leer el tilde → no se toca (seguro).
+      if (objetivo && cur("lacR").toUpperCase() !== objetivo) {
+        upd.lacR = objetivo;
+        previos.lacR = p.lacR ?? null;
+        if (objetivo === "SI") stats.lacRSi++; else stats.lacRNo++;
       }
     }
 
