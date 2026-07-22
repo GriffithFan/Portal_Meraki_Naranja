@@ -205,7 +205,11 @@ export function planificarEnriquecimiento(
   };
   // Umbral LAC-R por antigüedad (en días enteros) de la fecha HASTA del cronograma:
   //   diff >= 29 → "NO" (cronograma viejo)  → todos los estados salvo CONFORME
-  //   diff <  29 → "SI" (cronograma vigente) → solo SIN ASIGNAR
+  //   diff <  29 Y cronograma ACTIVO → "SI"  → solo SIN ASIGNAR / NO CONFORME
+  // "Activo" = casilla tildada en Salesforce (estado Aprobado y hoy dentro de
+  // [inicio, fin] del último cronograma). Lo trae el extractor en la columna
+  // Ultimo_Cronograma_Activo. Sin eso, un cronograma finalizado hace pocos días
+  // (diff<29 pero ya no vigente) se marcaba SI por error.
   const MS_DIA = 24 * 60 * 60 * 1000;
   const hoyDia = Math.floor(Date.now() / MS_DIA);
   const diffDias = (d: Date) => hoyDia - Math.floor(d.getTime() / MS_DIA);
@@ -310,14 +314,19 @@ export function planificarEnriquecimiento(
     // ── Regla LAC-R según antigüedad de la fecha HASTA del cronograma ──
     // Usa la HASTA efectiva (la nueva del reporte o la actual). CONFORME nunca se toca.
     const estadoUp = (p.estadoNombre || "").trim().toUpperCase();
+    // Cronograma ACTIVO según el extractor (casilla tildada = estado Aprobado y
+    // hoy dentro de [inicio, fin]). Requisito extra para marcar SI.
+    const cronoActivo =
+      g(fila, "Ultimo_Cronograma_Activo").toUpperCase() === "SI" ||
+      g(fila, "Ultimo_Cronograma_Situacion").toUpperCase() === "ACTIVO";
     const hastaEfectiva: Date | null = (upd.fechaHasta as Date | undefined) ?? p.fechaHasta;
     if (estadoUp !== "CONFORME" && hastaEfectiva) {
       const diff = diffDias(hastaEfectiva);
       if (diff >= 29) {
         // Cronograma viejo (29 días o más) → NO, en todos los estados no-CONFORME.
         if (cur("lacR").toUpperCase() !== "NO") { upd.lacR = "NO"; previos.lacR = p.lacR ?? null; stats.lacRNo++; }
-      } else if (estadoUp === "SIN ASIGNAR" || estadoUp === "NO CONFORME") {
-        // Cronograma vigente (menos de 29 días) → SI, en SIN ASIGNAR y NO CONFORME.
+      } else if ((estadoUp === "SIN ASIGNAR" || estadoUp === "NO CONFORME") && cronoActivo) {
+        // Cronograma vigente (<29 días) Y activo → SI, en SIN ASIGNAR y NO CONFORME.
         if (cur("lacR").toUpperCase() !== "SI") { upd.lacR = "SI"; previos.lacR = p.lacR ?? null; stats.lacRSi++; }
       }
     }
