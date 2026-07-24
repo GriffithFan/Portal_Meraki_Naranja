@@ -259,10 +259,26 @@ export default function EnriquecimientoPage() {
     }
   };
 
-  // Polling del estado mientras corre.
+  // Cancelar la corrida en curso (o destrabar un job huérfano del historial).
+  const cancelarJob = async (id: string) => {
+    const ok = await confirm({
+      title: "Cancelar enriquecimiento",
+      message: "Se detiene la extracción en curso. Los predios ya aplicados no se revierten. ¿Cancelar?",
+      confirmLabel: "Sí, cancelar",
+    });
+    if (!ok) return;
+    const res = await fetch(`/api/enriquecimiento/${id}/cancelar`, { method: "POST", credentials: "include" });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { setError(d.error || "No se pudo cancelar"); return; }
+    if (ejecJobId === id) { setEjecJobId(null); setProgreso(null); }
+    cargarHistorial();
+  };
+
+  // Polling del estado mientras corre (pausado con la pestaña oculta).
   useEffect(() => {
     if (!ejecJobId) return;
     const t = setInterval(async () => {
+      if (document.visibilityState === "hidden") return;
       const res = await fetch(`/api/enriquecimiento/${ejecJobId}/estado`, { credentials: "include" });
       if (!res.ok) return;
       const j = await res.json();
@@ -473,6 +489,13 @@ export default function EnriquecimientoPage() {
               <div className="h-2 bg-surface-200 rounded-full overflow-hidden">
                 <div className="h-full bg-green-500 transition-all duration-500" style={{ width: pct != null ? `${Math.max(pct, 3)}%` : "12%" }} />
               </div>
+              {ejecJobId && (
+                <div className="mt-2 text-right">
+                  <button onClick={() => cancelarJob(ejecJobId)} className="text-[11px] text-red-600 hover:bg-red-50 rounded px-2 py-1 transition-colors font-medium">
+                    Cancelar extracción
+                  </button>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -579,9 +602,21 @@ export default function EnriquecimientoPage() {
                     {(r.lacRSi > 0 || r.lacRNo > 0) && <span className="text-primary-600">· LAC-R {r.lacRSi || 0}↑/{r.lacRNo || 0}↓</span>}
                     <span className="text-surface-400 truncate">· {j.creadoPor?.nombre}</span>
                   </div>
-                  {j.estado === "APLICADO" && (
-                    <button onClick={() => revertir(j.id)} className="shrink-0 text-red-600 hover:bg-red-50 rounded px-2 py-0.5 transition-colors">Revertir</button>
-                  )}
+                  <div className="shrink-0 flex items-center gap-1">
+                    {j.archivoSalida && (
+                      <a href={`/api/enriquecimiento/${j.id}/archivo?tipo=salida`} className="text-primary-600 hover:bg-primary-50 rounded px-2 py-0.5 transition-colors" title="Descargar el Excel que trajo esta corrida">
+                        Excel ⬇
+                      </a>
+                    )}
+                    {j.estado === "EJECUTANDO" && (
+                      <button onClick={() => cancelarJob(j.id)} className="text-red-600 hover:bg-red-50 rounded px-2 py-0.5 transition-colors" title="Cancelar (o destrabar si quedó colgado)">
+                        Cancelar
+                      </button>
+                    )}
+                    {j.estado === "APLICADO" && (
+                      <button onClick={() => revertir(j.id)} className="text-red-600 hover:bg-red-50 rounded px-2 py-0.5 transition-colors">Revertir</button>
+                    )}
+                  </div>
                 </div>
               );
             })}

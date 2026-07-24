@@ -12,10 +12,17 @@ const ALLOWED_MIME: Record<string, string[]> = {
   video: ["video/mp4", "video/quicktime", "video/webm"],
   audio: ["audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4"],
   zip: ["application/zip", "application/x-zip-compressed"],
+  doc: [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ],
 };
 
 const ALL_ALLOWED = Object.values(ALLOWED_MIME).flat();
-const SAFE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "mp3", "ogg", "wav", "zip"];
+const SAFE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "webm", "mp3", "ogg", "wav", "zip", "pdf", "doc", "docx", "xls", "xlsx"];
 
 export const runtime = "nodejs";
 

@@ -50,6 +50,60 @@ function isYouTubeUrl(url: string | null): boolean {
   return /youtube\.com|youtu\.be/i.test(url);
 }
 
+/** Negritas **así** dentro de una línea (sin HTML crudo: solo texto). */
+function conNegritas(linea: string) {
+  const partes = linea.split(/\*\*(.+?)\*\*/g);
+  return partes.map((p, i) => (i % 2 === 1 ? <strong key={i} className="font-semibold text-surface-800">{p}</strong> : p));
+}
+
+/**
+ * Render liviano del contenido: títulos (#), pasos numerados (1. / 1)), listas
+ * (- / •) y negritas (**texto**). Sin dependencias ni HTML crudo — pensado para
+ * que los procedimientos se lean como pasos y no como un bloque plano.
+ */
+function ContenidoFormateado({ texto }: { texto: string }) {
+  const bloques: React.ReactNode[] = [];
+  let lista: { tipo: "ol" | "ul"; items: string[] } | null = null;
+
+  const cerrarLista = (key: string) => {
+    if (!lista) return;
+    const items = lista.items.map((it, i) => (
+      <li key={i} className="leading-relaxed">{conNegritas(it)}</li>
+    ));
+    bloques.push(
+      lista.tipo === "ol"
+        ? <ol key={key} className="list-decimal pl-5 space-y-1.5 my-2 marker:text-primary-600 marker:font-semibold">{items}</ol>
+        : <ul key={key} className="list-disc pl-5 space-y-1.5 my-2 marker:text-primary-400">{items}</ul>
+    );
+    lista = null;
+  };
+
+  texto.split(/\r?\n/).forEach((raw, idx) => {
+    const linea = raw.trim();
+    const key = `l${idx}`;
+    let m: RegExpMatchArray | null;
+    if (!linea) { cerrarLista(key); return; }
+    if ((m = linea.match(/^#{1,3}\s+(.*)/))) {
+      cerrarLista(key);
+      bloques.push(<h4 key={key} className="text-sm font-bold text-surface-800 mt-4 mb-1.5 first:mt-0">{conNegritas(m[1])}</h4>);
+    } else if ((m = linea.match(/^\d{1,2}[.)]\s+(.*)/))) {
+      if (lista?.tipo !== "ol") cerrarLista(key);
+      lista = lista?.tipo === "ol" ? lista : { tipo: "ol", items: [] };
+      lista.items.push(m[1]);
+    } else if ((m = linea.match(/^[-•]\s+(.*)/))) {
+      if (lista?.tipo !== "ul") cerrarLista(key);
+      lista = lista?.tipo === "ul" ? lista : { tipo: "ul", items: [] };
+      lista.items.push(m[1]);
+    } else {
+      cerrarLista(key);
+      bloques.push(<p key={key} className="my-1.5 leading-relaxed">{conNegritas(linea)}</p>);
+    }
+  });
+  cerrarLista("fin");
+
+  return <div className="text-sm text-surface-700 max-w-none">{bloques}</div>;
+}
+
 export default function InstructivoPage() {
   const [instructivos, setInstructivos] = useState<Instructivo[]>([]);
   const [selected, setSelected] = useState<Instructivo | null>(null);
@@ -101,6 +155,30 @@ export default function InstructivoPage() {
     return instructivos.filter((inst) => [inst.titulo, inst.contenido, inst.categoria, inst.videoNombre, inst.pdfNombre]
       .some((value) => String(value || "").toLowerCase().includes(q)));
   }, [instructivos, search]);
+
+  // Mueve un instructivo ↑/↓ dentro de su categoría intercambiando `orden`.
+  // El PATCH pisa título/contenido/videoUrl si no se mandan, así que se envían
+  // los valores actuales de ambos registros para no perder nada.
+  const patchOrden = async (inst: Instructivo, nuevoOrden: number) => {
+    const fd = new FormData();
+    fd.append("titulo", inst.titulo);
+    fd.append("contenido", inst.contenido || "");
+    fd.append("categoria", inst.categoria);
+    fd.append("orden", String(nuevoOrden));
+    if (inst.videoUrl) fd.append("youtubeUrl", inst.videoUrl);
+    await fetch(`/api/instructivos/${inst.id}`, { method: "PATCH", credentials: "include", body: fd });
+  };
+
+  const moverInstructivo = async (inst: Instructivo, dir: -1 | 1) => {
+    const misma = instructivos.filter((i) => i.categoria === inst.categoria);
+    const idx = misma.findIndex((i) => i.id === inst.id);
+    const vecino = misma[idx + dir];
+    if (!vecino) return;
+    // Si comparten `orden` (p.ej. todos en 0), forzar valores distintos.
+    const ordenInst = vecino.orden === inst.orden ? inst.orden + dir : vecino.orden;
+    await Promise.all([patchOrden(inst, ordenInst), patchOrden(vecino, inst.orden)]);
+    fetchInstructivos();
+  };
 
   const handleDelete = async (id: string) => {
     toast("¿Eliminar este instructivo?", {
@@ -231,10 +309,13 @@ export default function InstructivoPage() {
           {/* Lista lateral */}
           <div className="lg:col-span-1 space-y-2 max-h-[50vh] lg:max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
             {instructivosFiltrados.map(inst => (
-              <button
+              <div
                 key={inst.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelected(inst)}
-                className={`w-full text-left p-3 rounded-lg border transition-all ${
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(inst); } }}
+                className={`group/item w-full cursor-pointer text-left p-3 rounded-lg border transition-all ${
                   selected?.id === inst.id
                     ? "bg-primary-50 border-primary-300 ring-1 ring-primary-200"
                     : "bg-white border-surface-200 hover:border-surface-300 hover:shadow-sm"
@@ -283,8 +364,28 @@ export default function InstructivoPage() {
                       )}
                     </div>
                   </div>
+                  {canEdit && (
+                    <div className="flex flex-col gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); moverInstructivo(inst, -1); }}
+                        className="rounded p-0.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700"
+                        title="Subir en el orden"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" /></svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); moverInstructivo(inst, 1); }}
+                        className="rounded p-0.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700"
+                        title="Bajar en el orden"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
 
@@ -408,12 +509,10 @@ export default function InstructivoPage() {
                   </div>
                 )}
 
-                {/* Contenido de texto */}
+                {/* Contenido de texto (con formato: títulos, pasos y negritas) */}
                 {selected.contenido && (
                   <div className="p-4">
-                    <div className="prose prose-sm max-w-none text-surface-700 whitespace-pre-wrap">
-                      {selected.contenido}
-                    </div>
+                    <ContenidoFormateado texto={selected.contenido} />
                   </div>
                 )}
 

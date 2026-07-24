@@ -1,8 +1,7 @@
-import { spawn } from "child_process";
-import { writeFile, readFile, unlink } from "fs/promises";
+import { spawn, type ChildProcess } from "child_process";
+import { writeFile, readFile, mkdir } from "fs/promises";
 import { readFileSync } from "fs";
 import path from "path";
-import os from "os";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { parsearExcelExtractor } from "./parseExcel";
@@ -18,6 +17,26 @@ const EXTRACTOR_DIR = process.env.EXTRACTOR_DIR || "/var/www/carrot/extractor";
 const EXTRACTOR_PYTHON = process.env.EXTRACTOR_PYTHON || path.join(EXTRACTOR_DIR, ".venv/bin/python");
 const EXTRACTOR_SCRIPT = "extractor_datos_predio_incidencia.py";
 const CREDS = ["SALESFORCE_URL_BASE", "SALESFORCE_USERNAME", "SALESFORCE_PASSWORD"] as const;
+
+// Los Excel de entrada/salida se conservan por corrida (auditoría + descarga).
+const ARCHIVOS_DIR = path.join(process.cwd(), "uploads", "enriquecimiento");
+
+// Registro en memoria de procesos en ejecución, para poder cancelarlos.
+// Si el server se reinicia el registro se pierde: esos jobs quedan "huérfanos"
+// y la ruta de cancelar los marca como ERROR directamente.
+const PROCESOS = new Map<string, { proc: ChildProcess; cancelado: boolean }>();
+
+/**
+ * Cancela el proceso de un job en ejecución.
+ * @returns "cancelado" si había proceso vivo, "huerfano" si no está en el registro.
+ */
+export function cancelarProcesoExtraccion(jobId: string): "cancelado" | "huerfano" {
+  const entry = PROCESOS.get(jobId);
+  if (!entry) return "huerfano";
+  entry.cancelado = true;
+  try { entry.proc.kill("SIGTERM"); } catch { /* ya muerto */ }
+  return "cancelado";
+}
 
 /**
  * Devuelve el env para el subproceso con las credenciales de Salesforce
@@ -61,8 +80,9 @@ export async function ejecutarExtraccion(
   predios: PredioAlcance[],
   alcance: AlcanceSpec
 ): Promise<void> {
-  const inPath = path.join(os.tmpdir(), `enriq_in_${jobId}.xlsx`);
-  const outPath = path.join(os.tmpdir(), `enriq_out_${jobId}.xlsx`);
+  await mkdir(ARCHIVOS_DIR, { recursive: true }).catch(() => {});
+  const inPath = path.join(ARCHIVOS_DIR, `entrada_${jobId}.xlsx`);
+  const outPath = path.join(ARCHIVOS_DIR, `salida_${jobId}.xlsx`);
   const pares = predios
     .filter((p) => p.codigo && p.incidencia)
     .map((p) => ({ predioId: p.id, codigo: p.codigo, incidencia: p.incidencia })) as ParSnapshot[];
@@ -74,6 +94,10 @@ export async function ejecutarExtraccion(
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Entrada");
     await writeFile(inPath, XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer);
+    await prisma.enriquecimientoJob.update({
+      where: { id: jobId },
+      data: { archivoEntrada: `/uploads/enriquecimiento/entrada_${jobId}.xlsx` },
+    }).catch(() => {});
 
     await setProgreso(jobId, { fase: "Iniciando sesión en Salesforce", hechos: 0, total: pares.length });
 
@@ -111,11 +135,15 @@ export async function ejecutarExtraccion(
           }
         }
       };
+      PROCESOS.set(jobId, { proc, cancelado: false });
       proc.stdout.on("data", onData);
       proc.stderr.on("data", (c: Buffer) => { stderrTail = (stderrTail + c.toString()).slice(-2000); });
-      proc.on("error", (e) => reject(e));
+      proc.on("error", (e) => { PROCESOS.delete(jobId); reject(e); });
       proc.on("close", (code) => {
-        if (code === 0) resolve();
+        const cancelado = PROCESOS.get(jobId)?.cancelado;
+        PROCESOS.delete(jobId);
+        if (cancelado) reject(new Error("Cancelado por el usuario"));
+        else if (code === 0) resolve();
         else reject(new Error(`Extractor terminó con código ${code}. ${stderrTail.trim().slice(-500)}`));
       });
     });
@@ -123,6 +151,10 @@ export async function ejecutarExtraccion(
     // 3. Leer la salida y aplicar con la lógica segura.
     await setProgreso(jobId, { fase: "Aplicando datos", hechos: 0, total: pares.length });
     const buf = await readFile(outPath);
+    await prisma.enriquecimientoJob.update({
+      where: { id: jobId },
+      data: { archivoSalida: `/uploads/enriquecimiento/salida_${jobId}.xlsx` },
+    }).catch(() => {});
     const { filas, comentariosPorCodigo, errores } = parsearExcelExtractor(buf);
     const prediosPorCodigo = await cargarPrediosPorCodigo(pares.map((p) => p.predioId));
     const plan = planificarEnriquecimiento(filas, prediosPorCodigo, comentariosPorCodigo, {
@@ -151,8 +183,6 @@ export async function ejecutarExtraccion(
       where: { id: jobId },
       data: { estado: "ERROR", resumen: { error: msg } as any },
     }).catch(() => {});
-  } finally {
-    await unlink(inPath).catch(() => {});
-    await unlink(outPath).catch(() => {});
   }
+  // Los Excel de entrada/salida quedan en uploads/enriquecimiento (auditoría/descarga).
 }

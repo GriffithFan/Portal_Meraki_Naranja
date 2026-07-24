@@ -21,7 +21,7 @@ const MSG_ROW_STYLE = { contentVisibility: "auto", containIntrinsicSize: "auto 8
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const MAX_AUDIO_SECONDS = 120;
-const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/zip,application/x-zip-compressed";
+const ALLOWED_FILE_TYPES = "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,application/zip,application/x-zip-compressed";
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏", "🎉"];
 const PARTICIPANT_COLORS = [
   "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:ring-blue-700",
@@ -220,6 +220,16 @@ export default function ChatPage() {
   const lastTypingPingRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // ── Notificaciones de mensajes nuevos (sonido + escritorio) ──
+  const [notifOn, setNotifOn] = useState<boolean>(() =>
+    typeof window === "undefined" ? true : localStorage.getItem("chat-notifs") !== "off"
+  );
+  const notifOnRef = useRef(notifOn);
+  useEffect(() => { notifOnRef.current = notifOn; }, [notifOn]);
+  const sessionIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => { sessionIdRef.current = session?.userId; }, [session?.userId]);
+  const lastMsgStampRef = useRef<string | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const grabTimerRef = useRef<ReturnType<typeof setInterval>>();
@@ -274,6 +284,59 @@ export default function ChatPage() {
   }, [seleccionada?.id]);
 
   // Cargar conversaciones
+  // Ding corto con WebAudio (sin asset). Si el navegador bloquea el audio
+  // (sin interacción previa), falla en silencio.
+  const playDing = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      const t0 = ctx.currentTime;
+      [880, 1174.7].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t0 + i * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.12, t0 + i * 0.12 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.12 + 0.25);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t0 + i * 0.12);
+        osc.stop(t0 + i * 0.12 + 0.3);
+      });
+    } catch { /* silenciar */ }
+  }, []);
+
+  // Detecta mensajes entrantes nuevos (de otros) comparando el último mensaje de
+  // cada conversación contra la marca previa; avisa con sonido y, si la pestaña
+  // no está enfocada, con una notificación de escritorio.
+  const detectarEntrantes = useCallback((data: any[]) => {
+    const míos = sessionIdRef.current;
+    let maxStamp = lastMsgStampRef.current || "";
+    const nuevos: { de: string; texto: string }[] = [];
+    for (const conv of data) {
+      const m = conv?.mensajes?.[0];
+      if (!m?.createdAt) continue;
+      if (m.createdAt > maxStamp) maxStamp = m.createdAt;
+      if (lastMsgStampRef.current && m.createdAt > lastMsgStampRef.current && m.autorId !== míos && !m.eliminadoAt) {
+        nuevos.push({ de: m.autor?.nombre || conv.creador?.nombre || "Chat", texto: (m.contenido || "Nuevo mensaje").slice(0, 90) });
+      }
+    }
+    const primeraCarga = lastMsgStampRef.current === null;
+    lastMsgStampRef.current = maxStamp;
+    if (primeraCarga || nuevos.length === 0 || !notifOnRef.current) return;
+    playDing();
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
+      const n = new Notification(nuevos.length === 1 ? `💬 ${nuevos[0].de}` : `💬 ${nuevos.length} mensajes nuevos`, {
+        body: nuevos.length === 1 ? nuevos[0].texto : nuevos.map((x) => `${x.de}: ${x.texto}`).join("\n").slice(0, 160),
+        tag: "chat-mesa-nuevos",
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+    }
+  }, [playDing]);
+
   const cargarConversaciones = useCallback(async () => {
     if (conversacionesLoadingRef.current) return;
     conversacionesLoadingRef.current = true;
@@ -286,11 +349,12 @@ export default function ChatPage() {
         if (raw !== conversacionesJsonRef.current) {
           conversacionesJsonRef.current = raw;
           setConversaciones(data);
+          if (Array.isArray(data)) detectarEntrantes(data);
         }
       }
     } catch { /* silenciar */ }
     finally { conversacionesLoadingRef.current = false; }
-  }, []);
+  }, [detectarEntrantes]);
 
   // Cargar mensajes de una conversación
   const cargarMensajes = useCallback(async (id: string) => {
@@ -763,6 +827,29 @@ export default function ChatPage() {
                 : "Enviá tus consultas a Mesa de Ayuda"}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !notifOn;
+            setNotifOn(next);
+            localStorage.setItem("chat-notifs", next ? "on" : "off");
+            if (next) {
+              playDing(); // gesto del usuario: desbloquea el audio y sirve de prueba
+              if (typeof Notification !== "undefined" && Notification.permission === "default") {
+                Notification.requestPermission().catch(() => {});
+              }
+            }
+          }}
+          className={clsx(
+            "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+            notifOn
+              ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+              : "border-surface-200 bg-surface-50 text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400"
+          )}
+          title={notifOn ? "Notificaciones activadas (sonido + escritorio)" : "Notificaciones silenciadas"}
+        >
+          {notifOn ? "🔔 Sonido" : "🔕 Silencio"}
+        </button>
       </div>
 
       {/* Layout principal: lista + chat */}

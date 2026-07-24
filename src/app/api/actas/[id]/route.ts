@@ -5,7 +5,7 @@ import { readFile, unlink } from "fs/promises";
 import path from "path";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
@@ -51,10 +51,13 @@ export async function GET(
     const ext = path.extname(acta.archivoRuta).toLowerCase();
     const safeContentType = SAFE_MIME[ext] || "application/octet-stream";
 
+    // ?inline=true: vista previa en el navegador (solo PDF; el resto siempre descarga)
+    const inline = request.nextUrl.searchParams.get("inline") === "true" && ext === ".pdf";
+
     return new NextResponse(fileBuffer, {
       headers: {
         "Content-Type": safeContentType,
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(acta.archivoNombre)}"`,
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(acta.archivoNombre)}"`,
         "Content-Length": String(fileBuffer.length),
         "X-Content-Type-Options": "nosniff",
       },
