@@ -499,6 +499,11 @@ export default function ActasPage() {
                     <button onClick={() => downloadActa(a)} className="px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 rounded-lg transition-colors font-medium" title="Descargar">
                       Descargar
                     </button>
+                    {canEdit && /\.(docx|doc|odt|xlsx|xls|pptx|ppt)$/i.test(a.archivoNombre || "") && (
+                      <a href={`/dashboard/actas/${a.id}/editar`} className="px-3 py-1.5 text-sm font-medium text-accent-600 hover:bg-accent-50 rounded-lg transition-colors" title="Editar en el navegador (Word). Descargá como PDF desde Archivo → Descargar como → PDF">
+                        Editar
+                      </a>
+                    )}
                     {canEdit && (
                       <button
                         onClick={() => requestDeleteSingle(a)}

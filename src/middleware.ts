@@ -64,6 +64,9 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 const MAX_COMENTARIOS_BYTES = 120 * 1024 * 1024;
 
 const publicPaths = ["/login", "/api/auth/login", "/api/health", "/api/cron", "/api/notificaciones/changelog"];
+// Endpoints que OnlyOffice llama server-to-server (sin cookie de sesión): se
+// autentican con su propio token JWT firmado, no con la sesión de Carrot.
+const ONLYOFFICE_TOKEN_PATHS = /^\/api\/actas\/[^/]+\/onlyoffice\/(file|callback)$/;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -87,6 +90,7 @@ export async function middleware(request: NextRequest) {
   // Permitir rutas públicas y archivos estáticos (sin rate-limit general)
   if (
     publicPaths.some((p) => pathname.startsWith(p)) ||
+    ONLYOFFICE_TOKEN_PATHS.test(pathname) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname === "/"
