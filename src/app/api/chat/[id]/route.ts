@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isSomeoneTyping, clearTyping } from "@/lib/chatTyping";
+import { publicarCambioChat } from "@/lib/chatBus";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -217,6 +218,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       where: { id },
       data: { updatedAt: new Date() },
     });
+
+    // Avisar en tiempo real a los clientes suscritos por SSE (harán su fetch ?since=).
+    publicarCambioChat(id, { tipo: "mensaje", mensajeId: nuevoMensaje.id });
 
     // Notificar a la otra parte (fire-and-forget: no debe bloquear la respuesta)
     import("@/lib/pushNotifications").then(async ({ enviarPushYBandeja }) => {

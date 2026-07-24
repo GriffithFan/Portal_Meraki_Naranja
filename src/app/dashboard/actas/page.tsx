@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
 import { ListSkeleton } from "@/components/ui/Skeletons";
@@ -51,7 +52,7 @@ export default function ActasPage() {
   const LIST_LIMIT = 500;
   const SEARCH_LIMIT = 3000;
 
-  const { isModOrAdmin } = useSession();
+  const { isModOrAdmin, isAdmin } = useSession();
   const { puedeEditar } = usePermisos();
   const canEdit = isModOrAdmin || puedeEditar("actas");
   const [actas, setActas] = useState<any[]>([]);
@@ -289,6 +290,35 @@ export default function ActasPage() {
   }
 
   const esPdf = (acta: any) => (acta?.archivoTipo || "").includes("pdf") || /\.pdf$/i.test(acta?.archivoNombre || "");
+  const esWord = (acta: any) => /\.(docx?|odt)$/i.test(acta?.archivoNombre || "");
+
+  // Convierte el acta de Word a PDF (vía OnlyOffice) y la descarga.
+  const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null);
+  async function downloadPdf(acta: any) {
+    if (pdfLoadingId) return;
+    setPdfLoadingId(acta.id);
+    try {
+      const res = await fetch(`/api/actas/${acta.id}/pdf`);
+      if (!res.ok) {
+        const msg = await res.json().catch(() => ({}));
+        toast.error(msg?.error || "No se pudo generar el PDF");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (acta.archivoNombre || "acta").replace(/\.(docx?|odt)$/i, "") + ".pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch {
+      toast.error("No se pudo generar el PDF");
+    } finally {
+      setPdfLoadingId(null);
+    }
+  }
 
   // Aceptar un archivo soltado (drag & drop) en el modal de subida.
   function aceptarArchivo(file: File | undefined | null) {
@@ -553,8 +583,18 @@ export default function ActasPage() {
                     <button onClick={() => downloadActa(a)} className="px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors font-medium" title="Descargar">
                       Descargar
                     </button>
-                    {canEdit && /\.(docx|doc|odt|xlsx|xls|pptx|ppt)$/i.test(a.archivoNombre || "") && (
-                      <a href={`/dashboard/actas/${a.id}/editar`} className="px-3 py-1.5 text-sm font-medium text-accent-600 hover:bg-accent-50 rounded-lg transition-colors" title="Editar en el navegador (Word). Descargá como PDF desde Archivo → Descargar como → PDF">
+                    {esWord(a) && (
+                      <button
+                        onClick={() => downloadPdf(a)}
+                        disabled={pdfLoadingId === a.id}
+                        className="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-wait"
+                        title="Descargar como PDF (convierte el Word a PDF)"
+                      >
+                        {pdfLoadingId === a.id ? "Generando…" : "PDF"}
+                      </button>
+                    )}
+                    {isAdmin && /\.(docx|doc|odt|xlsx|xls|pptx|ppt)$/i.test(a.archivoNombre || "") && (
+                      <a href={`/dashboard/actas/${a.id}/editar`} className="px-3 py-1.5 text-sm font-medium text-accent-600 hover:bg-accent-50 rounded-lg transition-colors" title="Editar en el navegador (solo administradores)">
                         Editar
                       </a>
                     )}

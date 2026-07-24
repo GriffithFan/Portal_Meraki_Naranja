@@ -64,7 +64,7 @@ export default function PrediosPage() {
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroAsignado, setFiltroAsignado] = useState("");
   const [filtroProvincia, setFiltroProvincia] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("search") || "" : ""));
   const [colorBy, setColorBy] = useState<"provincia" | "estado" | "tecnico">("provincia");
   // Initialize colorBy based on role once session loads
   const [roleInitialized, setRoleInitialized] = useState(false);

@@ -51,10 +51,22 @@ export async function POST(
         const filePath = path.resolve(process.cwd(), acta.archivoRuta.replace(/^\/+/, ""));
         if (!filePath.startsWith(uploadsDir)) throw new Error("ruta no permitida");
         await writeFile(filePath, buf);
-        await prisma.acta.update({
+        const actualizada = await prisma.acta.update({
           where: { id },
           data: { archivoSize: buf.length, version: { increment: 1 }, updatedAt: new Date() },
+          select: { version: true },
         });
+        // Registrar quién editó (OnlyOffice manda los ids en body.users).
+        const editorId = Array.isArray(body?.users) ? body.users.find((u: string) => u && !String(u).startsWith("uid-")) : null;
+        await prisma.actividad.create({
+          data: {
+            accion: "EDITAR",
+            descripcion: `Acta "${acta.nombre}" editada (v${actualizada.version})`,
+            entidad: "ACTA",
+            entidadId: id,
+            userId: editorId || acta.subidoPorId,
+          },
+        }).catch(() => {});
       } catch (e) {
         console.error("[onlyoffice callback] guardar falló:", (e as Error).message);
         return NextResponse.json({ error: 1 });

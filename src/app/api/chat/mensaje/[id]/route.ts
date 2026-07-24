@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { publicarCambioChat } from "@/lib/chatBus";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -28,7 +29,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const mensaje = await prisma.chatMensaje.findUnique({
       where: { id },
-      select: { id: true, autorId: true, archivoUrl: true, eliminadoAt: true },
+      select: { id: true, autorId: true, archivoUrl: true, eliminadoAt: true, conversacionId: true },
     });
 
     if (!mensaje) {
@@ -57,6 +58,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       },
     });
 
+    publicarCambioChat(mensaje.conversacionId, { tipo: "edicion", mensajeId: id });
+
     return NextResponse.json(actualizado);
   } catch {
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
@@ -78,7 +81,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
 
   const mensaje = await prisma.chatMensaje.findUnique({
     where: { id },
-    select: { id: true, autorId: true, archivoUrl: true, eliminadoAt: true },
+    select: { id: true, autorId: true, archivoUrl: true, eliminadoAt: true, conversacionId: true },
   });
 
   if (!mensaje) {
@@ -124,6 +127,8 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       reacciones: { deleteMany: {} },
     },
   });
+
+  publicarCambioChat(mensaje.conversacionId, { tipo: "borrado", mensajeId: id });
 
   return NextResponse.json({ ok: true });
 }

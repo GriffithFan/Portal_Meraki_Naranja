@@ -10,6 +10,7 @@ import { planificarEnriquecimiento } from "./aplicar";
 import { aplicarCambiosEnDB, backupBestEffort, filasEntradaDesdePredios } from "./persistir";
 import { resumenDePlan, type ParSnapshot } from "./procesar";
 import type { AlcanceSpec, PredioAlcance } from "./alcance";
+import { avisarAdminsFallo } from "@/lib/alertasAdmin";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -183,6 +184,13 @@ export async function ejecutarExtraccion(
       where: { id: jobId },
       data: { estado: "ERROR", resumen: { error: msg } as any },
     }).catch(() => {});
+    // Avisar a los admin que la corrida de enriquecimiento falló.
+    await avisarAdminsFallo({
+      titulo: "Falló el enriquecimiento de datos",
+      mensaje: msg.slice(0, 300),
+      enlace: "/dashboard/enriquecimiento",
+      tag: `enriquecimiento-${jobId}`,
+    });
   }
   // Los Excel de entrada/salida quedan en uploads/enriquecimiento (auditoría/descarga).
 }

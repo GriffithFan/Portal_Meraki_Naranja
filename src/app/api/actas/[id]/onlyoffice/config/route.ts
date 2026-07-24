@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession, isModOrAdmin } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import {
   ONLYOFFICE_ENABLED, ONLYOFFICE_URL, PUBLIC_BASE,
   signOnlyOffice, fileExt, documentType, esEditableOnlyOffice,
@@ -9,13 +9,14 @@ import {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Devuelve el config firmado para embeber el editor OnlyOffice de un acta.
+// Editar actas es SOLO para ADMIN (ni moderador ni técnico).
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
-  if (!session || !isModOrAdmin(session.rol)) {
-    return NextResponse.json({ error: "Sin permisos para editar actas" }, { status: 403 });
+  if (!session || session.rol !== "ADMIN") {
+    return NextResponse.json({ error: "Solo un administrador puede editar actas" }, { status: 403 });
   }
   if (!ONLYOFFICE_ENABLED || !PUBLIC_BASE) {
     return NextResponse.json({ error: "El editor de documentos no está configurado" }, { status: 503 });

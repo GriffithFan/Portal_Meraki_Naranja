@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyCronAuth } from "@/lib/cronAuth";
+import { avisarAdminsFallo } from "@/lib/alertasAdmin";
 
 const MINIMOS_POR_TIPO: Record<string, number> = {
   AP: 10,
@@ -221,6 +222,12 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("[CRON Reportes] Error:", error);
+    await avisarAdminsFallo({
+      titulo: "Falló el cron de reportes",
+      mensaje: (error as Error)?.message?.slice(0, 300) || "Error generando el reporte semanal",
+      enlace: "/dashboard",
+      tag: "cron-reportes",
+    });
     return NextResponse.json({ error: "Error generando reporte" }, { status: 500 });
   }
 }

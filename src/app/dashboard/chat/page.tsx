@@ -465,6 +465,28 @@ export default function ChatPage() {
     return () => clearInterval(t);
   }, [seleccionada?.id, cargarMensajesNuevos]);
 
+  // Ref siempre-actual del cargador incremental, para que el SSE no reabra el
+  // stream en cada render (cargarMensajesNuevos cambia con cada mensaje).
+  const cargarNuevosRef = useRef(cargarMensajesNuevos);
+  useEffect(() => { cargarNuevosRef.current = cargarMensajesNuevos; }, [cargarMensajesNuevos]);
+
+  // SSE: entrega instantánea de mensajes/ediciones/reacciones. Es ADITIVO sobre
+  // el polling de arriba, que sigue como fallback si el stream se corta (nginx,
+  // proxies, red móvil). Al recibir un aviso, dispara el mismo fetch ?since=.
+  useEffect(() => {
+    if (!seleccionada?.id || typeof EventSource === "undefined") return;
+    const id = seleccionada.id;
+    let cerrado = false;
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`/api/chat/${id}/stream`, { withCredentials: true });
+      es.addEventListener("cambio", () => {
+        if (!cerrado && document.visibilityState !== "hidden") cargarNuevosRef.current(id);
+      });
+    } catch { /* sin SSE: el polling cubre la entrega */ }
+    return () => { cerrado = true; es?.close(); };
+  }, [seleccionada?.id]);
+
   // Scroll al último mensaje solo cuando llegan mensajes nuevos
   useEffect(() => {
     if (mensajes.length > prevMsgCountRef.current) {

@@ -365,42 +365,64 @@ export default function ChatFloatingWidget() {
     return () => clearInterval(interval);
   }, [cargarConversacionesSoporte, isSupportUser, open]);
 
+  // Trae los mensajes nuevos (fetch incremental ?since=). Reutilizado por el
+  // polling y por el SSE, para no duplicar la lógica de merge/estado.
+  const sincronizarMensajes = useCallback(async (convId: string) => {
+    if (pollMensajesLoadingRef.current) return;
+    pollMensajesLoadingRef.current = true;
+    try {
+      const actuales = mensajesRef.current;
+      const ultimo = actuales[actuales.length - 1]?.createdAt;
+      const query = ultimo ? `?since=${encodeURIComponent(ultimo)}` : "";
+      const res = await fetch(`/api/chat/${convId}${query}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        if (ultimo) mergeMensajes(data.mensajes || []);
+        else setMensajes(data.mensajes || []);
+        if (data.estado === "CERRADA") {
+          // Auto-limpiar: mostrar vista de nueva consulta
+          setConversacion(null);
+          setMensajes([]);
+          setRespondiendoA(null);
+        } else {
+          // Mantener typing/estado al día sin reemplazar el resto del objeto.
+          // Si nada cambió, devolver la misma referencia: React saltea el
+          // re-render (importante en celulares de gama baja, esto corre cada pocos segundos).
+          setConversacion((prev: any) => {
+            if (!prev || prev.id !== data.id) return prev;
+            if (prev.typing === data.typing && prev.estado === data.estado) return prev;
+            return { ...prev, typing: data.typing, estado: data.estado };
+          });
+        }
+      }
+    } catch { /* silenciar */ }
+    finally { pollMensajesLoadingRef.current = false; }
+  }, [mergeMensajes]);
+
   useEffect(() => {
     if (!open || !conversacion?.id) return;
-    pollRef.current = setInterval(async () => {
+    const id = conversacion.id;
+    pollRef.current = setInterval(() => {
       if (document.visibilityState === "hidden") return;
-      if (pollMensajesLoadingRef.current) return;
-      pollMensajesLoadingRef.current = true;
-      try {
-        const actuales = mensajesRef.current;
-        const ultimo = actuales[actuales.length - 1]?.createdAt;
-        const query = ultimo ? `?since=${encodeURIComponent(ultimo)}` : "";
-        const res = await fetch(`/api/chat/${conversacion.id}${query}`, { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json();
-          if (ultimo) mergeMensajes(data.mensajes || []);
-          else setMensajes(data.mensajes || []);
-          if (data.estado === "CERRADA") {
-            // Auto-limpiar: mostrar vista de nueva consulta
-            setConversacion(null);
-            setMensajes([]);
-            setRespondiendoA(null);
-          } else {
-            // Mantener typing/estado al día sin reemplazar el resto del objeto.
-            // Si nada cambió, devolver la misma referencia: React saltea el
-            // re-render (importante en celulares de gama baja, esto corre cada pocos segundos).
-            setConversacion((prev: any) => {
-              if (!prev || prev.id !== data.id) return prev;
-              if (prev.typing === data.typing && prev.estado === data.estado) return prev;
-              return { ...prev, typing: data.typing, estado: data.estado };
-            });
-          }
-        }
-      } catch { /* silenciar */ }
-      finally { pollMensajesLoadingRef.current = false; }
+      sincronizarMensajes(id);
     }, intervaloPollingAdaptativo(2500));
     return () => clearInterval(pollRef.current);
-  }, [open, conversacion?.id, mergeMensajes]);
+  }, [open, conversacion?.id, sincronizarMensajes]);
+
+  // SSE: entrega instantánea (aditiva; el polling de arriba queda como fallback).
+  useEffect(() => {
+    if (!open || !conversacion?.id || typeof EventSource === "undefined") return;
+    const id = conversacion.id;
+    let cerrado = false;
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`/api/chat/${id}/stream`, { withCredentials: true });
+      es.addEventListener("cambio", () => {
+        if (!cerrado && document.visibilityState !== "hidden") sincronizarMensajes(id);
+      });
+    } catch { /* sin SSE: el polling cubre la entrega */ }
+    return () => { cerrado = true; es?.close(); };
+  }, [open, conversacion?.id, sincronizarMensajes]);
 
   useEffect(() => {
     if (mensajes.length > prevMsgCountRef.current) {

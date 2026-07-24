@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyCronAuth } from "@/lib/cronAuth";
+import { avisarAdminsFallo } from "@/lib/alertasAdmin";
 
 /**
  * GET /api/cron/cleanup
@@ -57,6 +58,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, ...resumen });
   } catch (error) {
     console.error("[CRON Cleanup] Error:", error);
+    await avisarAdminsFallo({
+      titulo: "Falló el cron de limpieza",
+      mensaje: (error as Error)?.message?.slice(0, 300) || "Error en la limpieza periódica",
+      enlace: "/dashboard",
+      tag: "cron-cleanup",
+    });
     return NextResponse.json({ error: "Error en limpieza" }, { status: 500 });
   }
 }

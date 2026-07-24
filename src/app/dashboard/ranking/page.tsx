@@ -26,6 +26,20 @@ type RankingData = {
   ranking: RankingRow[];
 };
 
+type SerieTecnico = {
+  tecnicoId: string;
+  nombre: string;
+  equipoKey: string;
+  conformesPorSemana: number[];
+  totalPorSemana: number[];
+};
+
+type EvolucionData = {
+  semanas: { label: string; desde: string }[];
+  global: { conformesPorSemana: number[]; totalPorSemana: number[] };
+  tecnicos: SerieTecnico[];
+};
+
 const CrownIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 18.75h15m-13.5 0L4.5 7.5l5.25 4.5L12 5.25 14.25 12l5.25-4.5-1.5 11.25" />
@@ -40,6 +54,7 @@ const RefreshIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 
 export default function RankingTecnicosPage() {
   const [data, setData] = useState<RankingData | null>(null);
+  const [evolucion, setEvolucion] = useState<EvolucionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +76,13 @@ export default function RankingTecnicosPage() {
     }
   }, [offset]);
 
+  const fetchEvolucion = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/ranking-tecnicos/evolucion?semanas=8`, { credentials: "include", cache: "no-store" });
+      if (res.ok) setEvolucion(await res.json());
+    } catch { /* la evolución es opcional; no rompe la vista */ }
+  }, []);
+
   useEffect(() => {
     fetchData();
     // Auto-refresco solo en la semana actual (las pasadas ya están cerradas).
@@ -68,6 +90,15 @@ export default function RankingTecnicosPage() {
     const interval = window.setInterval(() => fetchData(true), 60000);
     return () => window.clearInterval(interval);
   }, [fetchData, offset]);
+
+  useEffect(() => { fetchEvolucion(); }, [fetchEvolucion]);
+
+  // Series de evolución indexadas por técnico (mismo tecnicoId que el ranking).
+  const seriePorTecnico = useMemo(() => {
+    const map = new Map<string, SerieTecnico>();
+    evolucion?.tecnicos.forEach((s) => map.set(s.tecnicoId, s));
+    return map;
+  }, [evolucion]);
 
   const topConformes = data?.ranking[0]?.conformes || 0;
   const dateRange = useMemo(() => {
@@ -154,6 +185,10 @@ export default function RankingTecnicosPage() {
         <Stat label="No conformes" value={data.resumen.noConformes} tone="danger" />
       </div>
 
+      {evolucion && evolucion.global.conformesPorSemana.some((n) => n > 0) && (
+        <EvolucionGlobal evolucion={evolucion} />
+      )}
+
       {data.ranking.length === 0 ? (
         <section className="rounded-lg border border-surface-200 bg-white p-8 text-center">
           <p className="text-sm font-medium text-surface-700">Sin actividad en esta semana</p>
@@ -162,11 +197,94 @@ export default function RankingTecnicosPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {data.ranking.map((tecnico) => (
-            <RankingCard key={tecnico.tecnicoId} tecnico={tecnico} maxConformes={topConformes} />
+            <RankingCard key={tecnico.tecnicoId} tecnico={tecnico} maxConformes={topConformes} serie={seriePorTecnico.get(tecnico.tecnicoId)} />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+// Sparkline SVG simple (sin dependencias): dibuja la serie normalizada.
+function Sparkline({ values, width = 72, height = 22, stroke = "#10b981" }: { values: number[]; width?: number; height?: number; stroke?: string }) {
+  if (!values || values.length === 0) return null;
+  const max = Math.max(...values, 1);
+  const stepX = values.length > 1 ? width / (values.length - 1) : 0;
+  const pts = values.map((v, i) => {
+    const x = i * stepX;
+    const y = height - 2 - (v / max) * (height - 4);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const areaPts = `0,${height} ${pts.join(" ")} ${width},${height}`;
+  const lastX = (values.length - 1) * stepX;
+  const lastY = height - 2 - (values[values.length - 1] / max) * (height - 4);
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible" aria-hidden>
+      <polygon points={areaPts} fill={stroke} opacity={0.12} />
+      <polyline points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lastX} cy={lastY} r={2} fill={stroke} />
+    </svg>
+  );
+}
+
+// Delta entre las dos últimas semanas cerradas (la última de la serie está en curso).
+function deltaSemanal(values: number[]): { delta: number; hayDatos: boolean } {
+  if (!values || values.length < 3) return { delta: 0, hayDatos: false };
+  const ultimaCerrada = values[values.length - 2];
+  const previa = values[values.length - 3];
+  return { delta: ultimaCerrada - previa, hayDatos: true };
+}
+
+function DeltaBadge({ values }: { values: number[] }) {
+  const { delta, hayDatos } = deltaSemanal(values);
+  if (!hayDatos || delta === 0) {
+    return <span className="text-[10px] font-medium text-surface-400">→ estable</span>;
+  }
+  const up = delta > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${up ? "text-emerald-600" : "text-red-500"}`} title="Variación de conformes entre las dos últimas semanas cerradas">
+      {up ? "▲" : "▼"} {Math.abs(delta)}
+    </span>
+  );
+}
+
+function EvolucionGlobal({ evolucion }: { evolucion: EvolucionData }) {
+  const valores = evolucion.global.conformesPorSemana;
+  const labels = evolucion.semanas.map((s) => s.label.replace(/^\d+-/, "")); // "W30"
+  const max = Math.max(...valores, 1);
+  const total = valores.reduce((a, b) => a + b, 0);
+  const { delta, hayDatos } = deltaSemanal(valores);
+  return (
+    <section className="rounded-lg border border-surface-200 bg-white p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-surface-800">Evolución de conformes</h2>
+          <p className="text-[11px] text-surface-400">Últimas {valores.length} semanas · {total} conformes en total</p>
+        </div>
+        {hayDatos && delta !== 0 && (
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${delta > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
+            {delta > 0 ? "▲" : "▼"} {Math.abs(delta)} vs semana previa
+          </span>
+        )}
+      </div>
+      <div className="flex items-end gap-1.5 sm:gap-2" style={{ height: 96 }}>
+        {valores.map((v, i) => {
+          const h = Math.max(2, Math.round((v / max) * 84));
+          const enCurso = i === valores.length - 1;
+          return (
+            <div key={i} className="flex flex-1 flex-col items-center justify-end gap-1">
+              <span className="text-[10px] font-medium tabular-nums text-surface-500">{v}</span>
+              <div
+                className={`w-full rounded-t ${enCurso ? "bg-emerald-300" : "bg-emerald-500"}`}
+                style={{ height: `${h}px` }}
+                title={`${evolucion.semanas[i].label}: ${v} conformes${enCurso ? " (en curso)" : ""}`}
+              />
+              <span className="text-[9px] text-surface-400">{labels[i]}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -180,9 +298,11 @@ function Stat({ label, value, tone = "default" }: { label: string; value: number
   );
 }
 
-function RankingCard({ tecnico, maxConformes }: { tecnico: RankingRow; maxConformes: number }) {
+function RankingCard({ tecnico, maxConformes, serie }: { tecnico: RankingRow; maxConformes: number; serie?: SerieTecnico }) {
   const progress = maxConformes > 0 ? Math.round((tecnico.conformes / maxConformes) * 100) : 0;
   const positionClass = tecnico.puesto === 1 ? "bg-amber-50 text-amber-700 border-amber-200" : tecnico.puesto === 2 ? "bg-surface-100 text-surface-700 border-surface-200" : tecnico.puesto === 3 ? "bg-orange-50 text-orange-700 border-orange-200" : "bg-white text-surface-500 border-surface-200";
+  const conformesSerie = serie?.conformesPorSemana || [];
+  const tieneSerie = conformesSerie.some((n) => n > 0);
 
   return (
     <section className="rounded-lg border border-surface-200 bg-white p-3.5 shadow-sm shadow-surface-200/40 transition-colors hover:border-surface-300 sm:p-4">
@@ -218,6 +338,16 @@ function RankingCard({ tecnico, maxConformes }: { tecnico: RankingRow; maxConfor
           <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
         </div>
       </div>
+
+      {tieneSerie && (
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-100 pt-2.5">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wide text-surface-400">Tendencia (8 sem.)</p>
+            <DeltaBadge values={conformesSerie} />
+          </div>
+          <Sparkline values={conformesSerie} />
+        </div>
+      )}
     </section>
   );
 }

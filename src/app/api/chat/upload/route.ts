@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { sanitizeFileName, validateAndReadUpload } from "@/lib/uploadSecurity";
+import { publicarCambioChat } from "@/lib/chatBus";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
@@ -149,6 +150,9 @@ export async function POST(request: NextRequest) {
       where: { id: conversacionId },
       data: { updatedAt: new Date() },
     });
+
+    // Avisar por SSE a los clientes suscritos (harán su fetch ?since=).
+    publicarCambioChat(conversacionId, { tipo: "archivo", cantidad: mensajesCreados.length });
 
     // Notificar (fire-and-forget: no debe bloquear la respuesta)
     import("@/lib/pushNotifications").then(async ({ enviarPushYBandeja }) => {

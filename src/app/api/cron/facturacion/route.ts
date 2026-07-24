@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { verifyCronAuth } from "@/lib/cronAuth";
+import { avisarAdminsFallo } from "@/lib/alertasAdmin";
 import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -200,6 +201,12 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("[CRON Facturación] Error:", error);
+    await avisarAdminsFallo({
+      titulo: "Falló el cron de facturación",
+      mensaje: (error as Error)?.message?.slice(0, 300) || "Error generando el reporte de facturación",
+      enlace: "/dashboard/facturacion",
+      tag: "cron-facturacion",
+    });
     return NextResponse.json({ error: "Error generando reporte" }, { status: 500 });
   }
 }

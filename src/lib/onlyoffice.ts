@@ -52,3 +52,87 @@ export function documentType(ext: string): "word" | "cell" | "slide" | "pdf" {
 export function esEditableOnlyOffice(nombre: string): boolean {
   return ["docx", "doc", "odt", "xlsx", "xls", "pptx", "ppt"].includes(fileExt(nombre));
 }
+
+/** Extensiones que se pueden convertir a PDF con OnlyOffice. */
+export function esConvertibleAPdf(nombre: string): boolean {
+  return ["docx", "doc", "odt", "rtf", "txt"].includes(fileExt(nombre));
+}
+
+// Mensajes de los códigos de error de la API de conversión de OnlyOffice.
+const CONVERT_ERRORES: Record<number, string> = {
+  [-1]: "Error desconocido de conversión",
+  [-2]: "Tiempo de conversión agotado",
+  [-3]: "Error de conversión del documento",
+  [-4]: "No se pudo descargar el documento de origen",
+  [-5]: "Contraseña incorrecta",
+  [-6]: "Error al acceder a la base de datos de conversión",
+  [-7]: "Documento de entrada inválido",
+  [-8]: "Token JWT inválido",
+  [-9]: "Formato de conversión no soportado",
+};
+
+/**
+ * Convierte un documento (por URL alcanzable por OnlyOffice) a otro formato.
+ * Devuelve la URL del archivo convertido (hospedado por OnlyOffice, temporal).
+ * Usa la API /converter con JWT. `async:false` + reintentos por si tarda.
+ */
+export async function convertirDocumento(opts: {
+  url: string;            // URL del documento de origen (alcanzable por OnlyOffice)
+  filetype: string;       // extensión de origen (docx, doc, ...)
+  outputtype: string;     // extensión destino (pdf)
+  key: string;            // clave única de la conversión
+  title?: string;
+}): Promise<string> {
+  if (!ONLYOFFICE_ENABLED) throw new Error("El servidor de documentos no está configurado");
+
+  const base = {
+    async: false,
+    filetype: opts.filetype,
+    outputtype: opts.outputtype,
+    key: opts.key,
+    title: opts.title || `documento.${opts.filetype}`,
+    url: opts.url,
+  };
+
+  // El endpoint de conversión cambió de nombre entre versiones del Document
+  // Server: probamos el moderno (/converter) y caemos al clásico (ConvertService.ashx).
+  const endpoints = [`${ONLYOFFICE_URL}/converter`, `${ONLYOFFICE_URL}/ConvertService.ashx`];
+
+  async function llamar(url: string): Promise<{ error?: number; endConvert?: boolean; fileUrl?: string } | null> {
+    const token = await signOnlyOffice(base, "5m");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ ...base, token }),
+    });
+    if (res.status === 404) return null; // endpoint inexistente en esta versión
+    if (!res.ok) throw new Error(`El servidor de documentos respondió ${res.status}`);
+    return (await res.json()) as { error?: number; endConvert?: boolean; fileUrl?: string };
+  }
+
+  // Elegir el endpoint disponible una sola vez.
+  let endpoint: string | null = null;
+  for (const url of endpoints) {
+    const data = await llamar(url);
+    if (data === null) continue;
+    endpoint = url;
+    if (typeof data.error === "number") throw new Error(CONVERT_ERRORES[data.error] || `Error de conversión (${data.error})`);
+    if (data.endConvert && data.fileUrl) return data.fileUrl;
+    break;
+  }
+  if (!endpoint) throw new Error("El servidor de documentos no expone el conversor");
+
+  // Hasta ~28s más: poll con la misma key hasta que termine.
+  for (let intento = 0; intento < 14; intento++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const data = await llamar(endpoint);
+    if (!data) throw new Error("El conversor dejó de responder");
+    if (typeof data.error === "number") throw new Error(CONVERT_ERRORES[data.error] || `Error de conversión (${data.error})`);
+    if (data.endConvert && data.fileUrl) return data.fileUrl;
+  }
+  throw new Error("La conversión tardó demasiado");
+}

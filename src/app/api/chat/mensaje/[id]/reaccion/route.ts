@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { publicarCambioChat } from "@/lib/chatBus";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -75,6 +76,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         data: { mensajeId, userId: session.userId, emoji },
       });
     }
+
+    // Tocar updatedAt del mensaje para que el fetch incremental (?since=) re-envíe
+    // el mensaje con sus reacciones a la otra parte, y avisar por SSE.
+    await prisma.chatMensaje.update({ where: { id: mensajeId }, data: { updatedAt: new Date() } });
+    publicarCambioChat(mensaje.conversacionId, { tipo: "reaccion", mensajeId });
 
     const reacciones = await prisma.chatMensajeReaction.findMany({
       where: { mensajeId },
