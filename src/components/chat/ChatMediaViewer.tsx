@@ -5,7 +5,7 @@ import clsx from "clsx";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-type Tool = "draw" | "erase" | "crop";
+type Tool = "draw" | "erase" | "crop" | "mover";
 
 type CropBox = {
   startX: number;
@@ -17,7 +17,7 @@ type CropBox = {
 const MAX_CANVAS_SIDE = 1600;
 const COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#111827", "#ffffff"];
 const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 4;
+const MAX_ZOOM = 6;
 
 function formatFileSize(bytes?: number) {
   if (!bytes) return "";
@@ -62,14 +62,17 @@ export default function ChatMediaViewer({
   compact?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const imageSrcRef = useRef<string>("");
   const drawingRef = useRef(false);
+  const panRef = useRef({ panning: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 });
   const [tool, setTool] = useState<Tool>("draw");
   const [color, setColor] = useState("#ef4444");
   const [strokeSize, setStrokeSize] = useState(6);
   const [crop, setCrop] = useState<CropBox | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
@@ -89,6 +92,7 @@ export default function ChatMediaViewer({
     setError("");
     setCrop(null);
     setZoom(1);
+    setPan({ x: 0, y: 0 });
     const img = new Image();
     img.onload = () => {
       const ratio = Math.min(1, MAX_CANVAS_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
@@ -127,6 +131,12 @@ export default function ChatMediaViewer({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
+    // Herramienta "Mover": arrastrar para paneear la imagen ampliada (no dibuja).
+    if (tool === "mover") {
+      canvas.setPointerCapture(event.pointerId);
+      panRef.current = { panning: true, startX: event.clientX, startY: event.clientY, startPanX: pan.x, startPanY: pan.y };
+      return;
+    }
     const point = pointerPosition(canvas, event);
     canvas.setPointerCapture(event.pointerId);
     drawingRef.current = true;
@@ -139,6 +149,13 @@ export default function ChatMediaViewer({
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (panRef.current.panning) {
+      setPan({
+        x: panRef.current.startPanX + (event.clientX - panRef.current.startX),
+        y: panRef.current.startPanY + (event.clientY - panRef.current.startY),
+      });
+      return;
+    }
     if (!drawingRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -160,6 +177,7 @@ export default function ChatMediaViewer({
   const stopDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (canvas?.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    if (panRef.current.panning) { panRef.current.panning = false; return; }
     drawingRef.current = false;
     const ctx = canvas?.getContext("2d");
     if (ctx) ctx.globalCompositeOperation = "source-over";
@@ -181,17 +199,37 @@ export default function ChatMediaViewer({
     ctx.drawImage(temp, 0, 0);
     setCanvasSize({ width: temp.width, height: temp.height });
     setCrop(null);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
     setTool("draw");
   };
 
   const changeZoom = (delta: number) => {
-    setZoom((current) => clampZoom(current + delta));
+    setZoom((current) => {
+      const next = clampZoom(current + delta);
+      if (next <= 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
   };
 
+  // Zoom con Ctrl+rueda HACIA EL CURSOR: ajusta el paneo para que el punto bajo
+  // el mouse quede fijo mientras se hace zoom (permite "direccionar" el acercamiento).
   const handleCanvasWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     if (!event.ctrlKey) return;
     event.preventDefault();
-    changeZoom(event.deltaY > 0 ? -0.1 : 0.1);
+    const z2 = clampZoom(zoom + (event.deltaY > 0 ? -0.2 : 0.2));
+    if (z2 === zoom) return;
+    const vp = viewportRef.current;
+    if (!vp || z2 <= 1) {
+      setZoom(z2);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const rect = vp.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    setPan({ x: dx - (dx - pan.x) * (z2 / zoom), y: dy - (dy - pan.y) * (z2 / zoom) });
+    setZoom(z2);
   };
 
   const sendCorrection = async () => {
@@ -250,14 +288,14 @@ export default function ChatMediaViewer({
 
         {isImage ? (
           <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-surface-950 p-1 sm:p-3" onWheel={handleCanvasWheel}>
+            <div ref={viewportRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-surface-950 p-1 sm:p-3" onWheel={handleCanvasWheel}>
               <div
-                className="relative inline-block max-h-full max-w-full transition-transform duration-150"
-                style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
+                className="relative inline-block max-h-full max-w-full"
+                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "center center", willChange: "transform" }}
               >
                 <canvas
                   ref={canvasRef}
-                  className={clsx("block max-h-[86vh] max-w-full touch-none rounded bg-white", tool === "crop" ? "cursor-crosshair" : "cursor-pointer")}
+                  className={clsx("block max-h-[86vh] max-w-full touch-none rounded bg-white", tool === "crop" ? "cursor-crosshair" : tool === "mover" ? "cursor-grab active:cursor-grabbing" : "cursor-crosshair")}
                   onPointerDown={handlePointerDown}
                   onPointerMove={handlePointerMove}
                   onPointerUp={stopDrawing}
@@ -268,16 +306,16 @@ export default function ChatMediaViewer({
             </div>
             <div className="w-full space-y-3 border-t border-surface-200 p-3 dark:border-surface-700 md:w-72 md:border-l md:border-t-0">
               <div>
-                <p className="mb-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">Zoom {Math.round(zoom * 100)}%</p>
+                <p className="mb-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">Zoom {Math.round(zoom * 100)}% · <span className="text-surface-400">Ctrl+rueda</span></p>
                 <div className="grid grid-cols-3 gap-1">
                   <button type="button" onClick={() => changeZoom(-0.25)} className="rounded-lg bg-surface-100 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-200 disabled:opacity-40 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700" disabled={zoom <= MIN_ZOOM}>-</button>
-                  <button type="button" onClick={() => setZoom(1)} className="rounded-lg bg-surface-100 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700">100%</button>
+                  <button type="button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="rounded-lg bg-surface-100 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700">100%</button>
                   <button type="button" onClick={() => changeZoom(0.25)} className="rounded-lg bg-surface-100 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-200 disabled:opacity-40 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700" disabled={zoom >= MAX_ZOOM}>+</button>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-1">
-                {(["draw", "erase", "crop"] as Tool[]).map((item) => (
-                  <button key={item} type="button" onClick={() => setTool(item)} className={clsx("rounded-lg px-2 py-1.5 text-xs font-medium", tool === item ? "bg-blue-600 text-white" : "bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700")}>{item === "draw" ? "Dibujar" : item === "erase" ? "Borrar" : "Recortar"}</button>
+              <div className="grid grid-cols-2 gap-1">
+                {(["draw", "erase", "crop", "mover"] as Tool[]).map((item) => (
+                  <button key={item} type="button" onClick={() => setTool(item)} className={clsx("rounded-lg px-2 py-1.5 text-xs font-medium", tool === item ? "bg-blue-600 text-white" : "bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700")}>{item === "draw" ? "Dibujar" : item === "erase" ? "Borrar" : item === "crop" ? "Recortar" : "Mover"}</button>
                 ))}
               </div>
               <div>
