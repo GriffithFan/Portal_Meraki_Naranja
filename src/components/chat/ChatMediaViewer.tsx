@@ -66,6 +66,7 @@ export default function ChatMediaViewer({
   const imageSrcRef = useRef<string>("");
   const drawingRef = useRef(false);
   const panRef = useRef({ panning: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 });
+  const viewStateRef = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
   const [tool, setTool] = useState<Tool>("draw");
   const [color, setColor] = useState("#ef4444");
   const [strokeSize, setStrokeSize] = useState(6);
@@ -124,6 +125,35 @@ export default function ChatMediaViewer({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [message, onClose]);
+
+  // Espejo del zoom/pan actuales para que el listener nativo (abajo) lea el valor
+  // vigente sin re-engancharse en cada cambio.
+  useEffect(() => {
+    viewStateRef.current = { zoom, pan };
+  }, [zoom, pan]);
+
+  // Zoom con Ctrl+rueda HACIA EL CURSOR. Se engancha NATIVO con { passive:false }
+  // para poder hacer preventDefault y evitar que el navegador haga zoom a toda la
+  // página (el onWheel de React es pasivo y no deja frenar el zoom del navegador).
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const { zoom: z, pan: pn } = viewStateRef.current;
+      const z2 = clampZoom(z + (event.deltaY > 0 ? -0.25 : 0.25));
+      if (z2 === z) return;
+      if (z2 <= 1) { setZoom(z2); setPan({ x: 0, y: 0 }); return; }
+      const rect = vp.getBoundingClientRect();
+      const dx = event.clientX - (rect.left + rect.width / 2);
+      const dy = event.clientY - (rect.top + rect.height / 2);
+      setPan({ x: dx - (dx - pn.x) * (z2 / z), y: dy - (dy - pn.y) * (z2 / z) });
+      setZoom(z2);
+    };
+    vp.addEventListener("wheel", onWheel, { passive: false });
+    return () => vp.removeEventListener("wheel", onWheel);
+  }, [message?.id]);
 
   if (!message) return null;
 
@@ -212,26 +242,6 @@ export default function ChatMediaViewer({
     });
   };
 
-  // Zoom con Ctrl+rueda HACIA EL CURSOR: ajusta el paneo para que el punto bajo
-  // el mouse quede fijo mientras se hace zoom (permite "direccionar" el acercamiento).
-  const handleCanvasWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (!event.ctrlKey) return;
-    event.preventDefault();
-    const z2 = clampZoom(zoom + (event.deltaY > 0 ? -0.2 : 0.2));
-    if (z2 === zoom) return;
-    const vp = viewportRef.current;
-    if (!vp || z2 <= 1) {
-      setZoom(z2);
-      setPan({ x: 0, y: 0 });
-      return;
-    }
-    const rect = vp.getBoundingClientRect();
-    const dx = event.clientX - (rect.left + rect.width / 2);
-    const dy = event.clientY - (rect.top + rect.height / 2);
-    setPan({ x: dx - (dx - pan.x) * (z2 / zoom), y: dy - (dy - pan.y) * (z2 / zoom) });
-    setZoom(z2);
-  };
-
   const sendCorrection = async () => {
     if (!conversacionId || !message?.id) return;
     const canvas = canvasRef.current;
@@ -288,7 +298,7 @@ export default function ChatMediaViewer({
 
         {isImage ? (
           <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-            <div ref={viewportRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-surface-950 p-1 sm:p-3" onWheel={handleCanvasWheel}>
+            <div ref={viewportRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-surface-950 p-1 sm:p-3">
               <div
                 className="relative inline-block max-h-full max-w-full"
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "center center", willChange: "transform" }}
