@@ -90,6 +90,28 @@ const sections: NavSection[] = [
   },
 ];
 
+// ── Orden preferido del menú SOLO para TÉCNICOS (las más usadas primero) ──
+// Reordena únicamente lo que el técnico ya ve; admin/moderador no se tocan.
+const TEC_ORDEN_SECCIONES = ["Gestión", "Monitoreo Meraki", "Recursos", "Comunicación"];
+const TEC_ORDEN_ITEMS = [
+  "/dashboard/anuncios", "/dashboard/tareas", "/dashboard/predios", "/dashboard/ranking",
+  "/dashboard/mis-tareas", "/dashboard/calendario", "/dashboard/hospedajes",
+  "/dashboard/topologia", "/dashboard/switches", "/dashboard/aps", "/dashboard/appliance",
+  "/dashboard/actas", "/dashboard/instructivo",
+  "/dashboard/chat", "/dashboard/bandeja",
+];
+function ordenarPor<T>(lista: T[], orden: string[], clave: (x: T) => string): T[] {
+  const idx = (v: string) => {
+    const i = orden.indexOf(v);
+    return i === -1 ? orden.length : i; // lo no listado va al final (orden estable)
+  };
+  return [...lista].sort((a, b) => idx(clave(a)) - idx(clave(b)));
+}
+function reordenarParaTecnico(secs: NavSection[]): NavSection[] {
+  const conItems = secs.map((s) => ({ ...s, items: ordenarPor(s.items, TEC_ORDEN_ITEMS, (i) => i.href) }));
+  return ordenarPor(conItems, TEC_ORDEN_SECCIONES, (s) => s.title);
+}
+
 const SHOW_DATETIME_GPS = true;
 
 /**
@@ -242,6 +264,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     }))
     .filter(section => section.items.length > 0);
 
+  // Los técnicos ven las secciones/ítems reordenados por uso; el resto, orden base.
+  const seccionesRender =
+    userRole === "TECNICO" ? reordenarParaTecnico(filteredSections) : filteredSections;
+
   function toggleSection(title: string) {
     setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }));
   }
@@ -306,7 +332,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin">
-        {filteredSections.map((section) => (
+        {seccionesRender.map((section) => (
           <div key={section.title} className="mb-2">
             {/* Section header */}
             {!collapsed && (
