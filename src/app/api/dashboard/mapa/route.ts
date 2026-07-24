@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
   const espacioId = searchParams.get("espacioId");
   const provincia = searchParams.get("provincia");
   const estadoId = searchParams.get("estadoId");
-  const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session);
+  // En el mapa, al técnico solo se le ocultan los estados terminados
+  // (conforme/cerrado/finalizado): ve el resto de sus predios asignados.
+  const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session, "PREDIO", { tecnicoHideOnlyClosed: true });
   const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
 
   const where: any = {

@@ -48,6 +48,20 @@ export function isDefaultHiddenStateForTecnico(estado: Pick<EstadoRecord, "nombr
     .some((token) => label.includes(token));
 }
 
+// Variante para el MAPA: al técnico se le ocultan SOLO los estados "terminados"
+// (conforme / cerrado / finalizado). INSTALADO y BLOQUEADO SÍ se muestran, para
+// que vea todos sus predios asignados en sus diferentes estados activos.
+export function isClosedStateForTecnico(estado: Pick<EstadoRecord, "nombre" | "clave">) {
+  const nombre = normalizeStateLabel(estado.nombre);
+  const clave = normalizeStateLabel(estado.clave);
+  const label = `${clave} ${nombre}`.trim();
+
+  if (!label) return false;
+  if (label.includes("no conforme")) return false;
+
+  return ["conforme", "cerrad", "finaliz"].some((token) => label.includes(token));
+}
+
 export async function getDelegatedVisibleUserIds(session: SessionLike) {
   const delegaciones = await prisma.delegacion.findMany({
     where: { delegadoId: session.userId, activo: true },
@@ -78,7 +92,11 @@ export function appendVisibleEstadosClause(where: Record<string, unknown>, hidde
   });
 }
 
-export async function getHiddenEstadoIdsForSession(session: SessionLike, entidad = "PREDIO") {
+export async function getHiddenEstadoIdsForSession(
+  session: SessionLike,
+  entidad = "PREDIO",
+  opts?: { tecnicoHideOnlyClosed?: boolean }
+) {
   if (isAdmin(session.rol)) return [] as string[];
 
   const [estados, permisosRol, permisosUsuario] = await Promise.all([
@@ -100,8 +118,9 @@ export async function getHiddenEstadoIdsForSession(session: SessionLike, entidad
   const hidden = new Set<string>();
 
   if (session.rol === "TECNICO") {
+    const oculta = opts?.tecnicoHideOnlyClosed ? isClosedStateForTecnico : isDefaultHiddenStateForTecnico;
     for (const estado of estados) {
-      if (isDefaultHiddenStateForTecnico(estado)) hidden.add(estado.id);
+      if (oculta(estado)) hidden.add(estado.id);
     }
   }
 
