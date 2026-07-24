@@ -55,6 +55,7 @@ const AsignadosInlineEditor = forwardRef<AsignadosInlineEditorHandle, Props>(
     const [query, setQuery] = useState("");
     const [saving, setSaving] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
 
     useImperativeHandle(ref, () => ({
       toggle: (tareaId, anchor) => {
@@ -79,11 +80,17 @@ const AsignadosInlineEditor = forwardRef<AsignadosInlineEditorHandle, Props>(
 
     useEffect(() => {
       if (!state) return;
-      const handler = () => setState(null);
-      document.addEventListener("click", handler);
+      // Cerrar SOLO al hacer clic fuera del panel. Antes se cerraba con cualquier
+      // click confiando en stopPropagation, que no es confiable y cerraba el editor
+      // al elegir un técnico o al tocar Guardar (nunca llegaba a guardar).
+      const handler = (e: MouseEvent) => {
+        if (panelRef.current?.contains(e.target as Node)) return;
+        setState(null);
+      };
+      document.addEventListener("mousedown", handler);
       const t = setTimeout(() => searchRef.current?.focus(), 30);
       return () => {
-        document.removeEventListener("click", handler);
+        document.removeEventListener("mousedown", handler);
         clearTimeout(t);
       };
     }, [state]);
@@ -129,6 +136,7 @@ const AsignadosInlineEditor = forwardRef<AsignadosInlineEditorHandle, Props>(
 
     return (
       <div
+        ref={panelRef}
         className="fixed z-[9999] flex flex-col bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-xl animate-fade-in-up"
         style={{ left: state.x, top: state.y, width: WIDTH, maxHeight: MAX_HEIGHT }}
         onClick={(e) => e.stopPropagation()}
