@@ -28,18 +28,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!tieneAccesoFichas(session.email)) return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
 
   const { id } = await params;
-  const ficha = await prisma.fichaPersonal.findUnique({ where: { id }, select: { id: true, camposExtra: true } });
+  const ficha = await prisma.fichaPersonal.findUnique({ where: { id }, select: { id: true, secciones: true } });
   if (!ficha) return NextResponse.json({ error: "Ficha no encontrada" }, { status: 404 });
 
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const seccionRaw = (formData.get("seccion") as string | null)?.trim() || "general";
-    // Acepta una sección fija o una clave de campo personalizado de ESTA ficha.
-    const clavesCustom = (ficha.camposExtra && typeof ficha.camposExtra === "object" && !Array.isArray(ficha.camposExtra))
-      ? Object.keys(ficha.camposExtra as Record<string, any>)
-      : [];
-    const seccion = (esSeccionValida(seccionRaw) || clavesCustom.includes(seccionRaw)) ? seccionRaw : "general";
+    // La "sección" del adjunto es el id de un campo de ESTA ficha (o "general").
+    // Se acepta también una sección legacy por compatibilidad.
+    const idsCampos = new Set<string>();
+    if (Array.isArray(ficha.secciones)) {
+      for (const s of ficha.secciones as any[]) {
+        if (Array.isArray(s?.campos)) for (const c of s.campos) if (c?.id) idsCampos.add(String(c.id));
+      }
+    }
+    const seccion = (seccionRaw === "general" || idsCampos.has(seccionRaw) || esSeccionValida(seccionRaw)) ? seccionRaw : "general";
 
     if (!file) return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
 

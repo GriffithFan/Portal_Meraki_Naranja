@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
 import { tieneAccesoFichas } from "@/lib/fichasAccess";
 import { useConfirm } from "@/contexts/ConfirmContext";
@@ -11,67 +11,20 @@ import { IconPlus, IconTrash, IconX, IconDownload, IconEdit, IconCheck } from "@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-interface Archivo { id: string; seccion: string; nombre: string; ruta: string; tipo: string; size: number; createdAt: string; }
+type TipoCampo = "text" | "number" | "date";
+interface Campo { id: string; label: string; valor: string; tipo: TipoCampo; nota?: string }
+interface Seccion { id: string; titulo: string; campos: Campo[] }
+interface Proyecto { id: string; nombre: string; orden?: number }
+interface Archivo { id: string; seccion: string; nombre: string; ruta: string; tipo: string; size: number; createdAt: string }
 interface FichaListItem {
-  id: string; tipo: string; nombre: string; dni: string | null; direccion: string | null; telefono: string | null;
-  carnet: string | null; seguro: string | null; monotributo: string | null; autoModelo: string | null;
-  autoPatente: string | null; autoTarjetaRed: string | null; proyecto: string | null; _count?: { archivos: number };
+  id: string; tipo: string; nombre: string; fotoUrl: string | null;
+  secciones: Seccion[] | null; proyectos: Proyecto[]; updatedAt: string; _count?: { archivos: number };
 }
-interface Ficha {
-  id: string; tipo: string; nombre: string; dni: string | null; direccion: string | null;
-  telefono: string | null; carnet: string | null; seguro: string | null; monotributo: string | null;
-  autoModelo: string | null; autoPatente: string | null; autoKmts: number | null; autoTarjetaRed: string | null;
-  proyecto: string | null; notasGenerales: string | null; notasSecciones: Record<string, string> | null;
-  camposExtra: Record<string, string> | null; archivos: Archivo[];
-}
+interface Ficha extends FichaListItem { notasGenerales: string | null; archivos: Archivo[] }
 
-type Campo = { name: keyof Ficha; label: string; type?: "text" | "number" };
-type SeccionDef = { key: string; label: string; campos: Campo[] };
-
-const SECCIONES: SeccionDef[] = [
-  { key: "nombre", label: "Nombre", campos: [{ name: "nombre", label: "Nombre" }] },
-  { key: "dni", label: "DNI", campos: [{ name: "dni", label: "DNI" }] },
-  { key: "direccion", label: "Dirección", campos: [{ name: "direccion", label: "Dirección" }] },
-  { key: "telefono", label: "Teléfono", campos: [{ name: "telefono", label: "Teléfono" }] },
-  { key: "carnet", label: "Carnet", campos: [{ name: "carnet", label: "Carnet" }] },
-  { key: "seguro", label: "Seguro", campos: [{ name: "seguro", label: "Seguro" }] },
-  { key: "monotributo", label: "Monotributo", campos: [{ name: "monotributo", label: "Monotributo" }] },
-  {
-    key: "auto", label: "Vehículo", campos: [
-      { name: "autoModelo", label: "Modelo" },
-      { name: "autoPatente", label: "Patente" },
-      { name: "autoKmts", label: "Kilómetros", type: "number" },
-      { name: "autoTarjetaRed", label: "Tarjeta en red" },
-    ],
-  },
-  { key: "proyecto", label: "Proyecto", campos: [{ name: "proyecto", label: "Proyecto" }] },
-];
-const SECCION_POR_CLAVE = Object.fromEntries(SECCIONES.map((s) => [s.key, s]));
-
-const GRUPOS: { titulo: string; claves: string[] }[] = [
-  { titulo: "Datos personales", claves: ["nombre", "dni", "direccion", "telefono"] },
-  { titulo: "Documentación", claves: ["carnet", "seguro", "monotributo"] },
-  { titulo: "Vehículo", claves: ["auto"] },
-  { titulo: "Asignación", claves: ["proyecto"] },
-];
-
-const CLAVES_RESERVADAS = new Set([...SECCIONES.map((s) => s.key), "general"]);
 const TIPO_LABEL: Record<string, string> = { TECNICO: "Técnico", CONTRATISTA: "Contratista" };
-const SEARCH_FIELDS: (keyof FichaListItem)[] = [
-  "nombre", "dni", "direccion", "telefono", "carnet", "seguro", "monotributo", "autoModelo", "autoPatente", "autoTarjetaRed", "proyecto",
-];
-const DOC_FILTROS: { value: string; label: string }[] = [
-  { value: "todos", label: "Documentación: todas" },
-  { value: "sin-carnet", label: "Sin carnet" },
-  { value: "sin-seguro", label: "Sin seguro" },
-  { value: "sin-monotributo", label: "Sin monotributo" },
-  { value: "sin-auto", label: "Sin vehículo" },
-  { value: "con-auto", label: "Con vehículo" },
-  { value: "con-adjuntos", label: "Con adjuntos" },
-  { value: "sin-adjuntos", label: "Sin adjuntos" },
-  { value: "sin-proyecto", label: "Sin proyecto" },
-];
 
+function nid(p = "c") { return `${p}_${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`; }
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -81,14 +34,17 @@ function iniciales(nombre: string) {
   const parts = nombre.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "?";
 }
-function archivoUrl(id: string, descargar = false) {
-  return `/api/personal/archivo/${id}${descargar ? "?dl=1" : ""}`;
+function archivoUrl(id: string, descargar = false) { return `/api/personal/archivo/${id}${descargar ? "?dl=1" : ""}`; }
+function fotoSrc(f: { id: string; updatedAt?: string }) { return `/api/personal/${f.id}/foto?v=${encodeURIComponent(f.updatedAt || "")}`; }
+function textoBusqueda(f: FichaListItem) {
+  const campos = (f.secciones || []).flatMap((s) => [s.titulo, ...s.campos.flatMap((c) => [c.label, c.valor])]);
+  return [f.nombre, ...(f.proyectos || []).map((p) => p.nombre), ...campos].join(" ").toLowerCase();
 }
 
 const INPUT_CLS = "w-full bg-surface-50 dark:bg-surface-700/50 border border-transparent rounded-md px-2.5 py-1.5 text-sm text-surface-800 dark:text-surface-100 placeholder:text-surface-300 focus:bg-white dark:focus:bg-surface-700 focus:border-primary-300 focus:ring-2 focus:ring-primary-500/15 focus:outline-none transition-colors";
 
 export default function PersonalPage() {
-  const { session, loading: sessionLoading } = useSession();
+  const { session, loading: sessionLoading, isAdmin } = useSession();
   const acceso = tieneAccesoFichas(session?.email);
   const confirm = useConfirm();
 
@@ -98,13 +54,16 @@ export default function PersonalPage() {
   const [search, setSearch] = useState("");
   const [filterTipo, setFilterTipo] = useState("todos");
   const [filterProyecto, setFilterProyecto] = useState("todos");
-  const [filterDoc, setFilterDoc] = useState("todos");
+
+  const [catalogo, setCatalogo] = useState<Proyecto[]>([]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [ficha, setFicha] = useState<Ficha | null>(null);
-  const [form, setForm] = useState<Partial<Ficha>>({});
-  const [notas, setNotas] = useState<Record<string, string>>({});
-  const [campos, setCampos] = useState<Record<string, string>>({});
+  const [nombre, setNombre] = useState("");
+  const [tipo, setTipo] = useState("TECNICO");
+  const [secciones, setSecciones] = useState<Seccion[]>([]);
+  const [notasGen, setNotasGen] = useState("");
+  const [proyectoIds, setProyectoIds] = useState<string[]>([]);
   const [notasAbiertas, setNotasAbiertas] = useState<Set<string>>(new Set());
   const [loadingFicha, setLoadingFicha] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -115,17 +74,13 @@ export default function PersonalPage() {
   const [nuevaTipo, setNuevaTipo] = useState("TECNICO");
   const [creando, setCreando] = useState(false);
 
-  const [showCampo, setShowCampo] = useState(false);
-  const [nuevoCampo, setNuevoCampo] = useState("");
-
+  const [showGestor, setShowGestor] = useState(false);
   const [uploadingSeccion, setUploadingSeccion] = useState<string | null>(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [viewer, setViewer] = useState<Archivo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
   const pendingSeccionRef = useRef<string>("general");
-
-  const closeNueva = useCallback(() => setShowNueva(false), []);
-  const closeCampo = useCallback(() => setShowCampo(false), []);
-  const closeViewer = useCallback(() => setViewer(null), []);
 
   const cargarLista = useCallback(async () => {
     try {
@@ -140,13 +95,22 @@ export default function PersonalPage() {
     }
   }, []);
 
-  useEffect(() => { if (acceso) cargarLista(); }, [acceso, cargarLista]);
+  const cargarCatalogo = useCallback(async () => {
+    try {
+      const data = await fetchJson<{ proyectos: Proyecto[] }>("/api/proyectos");
+      setCatalogo(data.proyectos || []);
+    } catch { /* opcional */ }
+  }, []);
+
+  useEffect(() => { if (acceso) { cargarLista(); cargarCatalogo(); } }, [acceso, cargarLista, cargarCatalogo]);
 
   const aplicarFicha = (data: Ficha) => {
     setFicha(data);
-    setForm(data);
-    setNotas(data.notasSecciones && typeof data.notasSecciones === "object" ? data.notasSecciones : {});
-    setCampos(data.camposExtra && typeof data.camposExtra === "object" ? data.camposExtra : {});
+    setNombre(data.nombre || "");
+    setTipo(data.tipo || "TECNICO");
+    setSecciones(Array.isArray(data.secciones) ? data.secciones : []);
+    setNotasGen(data.notasGenerales || "");
+    setProyectoIds((data.proyectos || []).map((p) => p.id));
     setNotasAbiertas(new Set());
     setDirty(false);
   };
@@ -164,22 +128,32 @@ export default function PersonalPage() {
 
   useEffect(() => {
     if (selectedId) cargarFicha(selectedId);
-    else { setFicha(null); setForm({}); setNotas({}); setCampos({}); setDirty(false); }
+    else { setFicha(null); setSecciones([]); setDirty(false); }
   }, [selectedId, cargarFicha]);
 
-  const setCampoForm = (name: keyof Ficha, value: string) => { setForm((p) => ({ ...p, [name]: value })); setDirty(true); };
-  const setNota = (seccion: string, value: string) => { setNotas((p) => ({ ...p, [seccion]: value })); setDirty(true); };
-  const setValorExtra = (key: string, value: string) => { setCampos((p) => ({ ...p, [key]: value })); setDirty(true); };
-  const toggleNota = (key: string) => setNotasAbiertas((p) => {
-    const n = new Set(p); if (n.has(key)) n.delete(key); else n.add(key); return n;
-  });
+  // ── Edición de la estructura dinámica ──
+  const marcar = () => setDirty(true);
+  const patchCampo = (sId: string, cId: string, patch: Partial<Campo>) => {
+    setSecciones((prev) => prev.map((s) => s.id !== sId ? s : { ...s, campos: s.campos.map((c) => c.id !== cId ? c : { ...c, ...patch }) }));
+    marcar();
+  };
+  const patchSeccion = (sId: string, patch: Partial<Seccion>) => {
+    setSecciones((prev) => prev.map((s) => s.id !== sId ? s : { ...s, ...patch }));
+    marcar();
+  };
+  const agregarCampo = (sId: string) => {
+    setSecciones((prev) => prev.map((s) => s.id !== sId ? s : { ...s, campos: [...s.campos, { id: nid(), label: "", valor: "", tipo: "text", nota: "" }] }));
+    marcar();
+  };
+  const agregarSeccion = () => {
+    setSecciones((prev) => [...prev, { id: nid("s"), titulo: "Nueva sección", campos: [{ id: nid(), label: "", valor: "", tipo: "text", nota: "" }] }]);
+    marcar();
+  };
 
-  const buildPayload = (overrides?: { campos?: Record<string, string>; notas?: Record<string, string> }) => ({
-    tipo: form.tipo, nombre: form.nombre, dni: form.dni, direccion: form.direccion,
-    telefono: form.telefono, carnet: form.carnet, seguro: form.seguro, monotributo: form.monotributo,
-    autoModelo: form.autoModelo, autoPatente: form.autoPatente, autoKmts: form.autoKmts,
-    autoTarjetaRed: form.autoTarjetaRed, proyecto: form.proyecto, notasGenerales: form.notasGenerales,
-    notasSecciones: overrides?.notas ?? notas, camposExtra: overrides?.campos ?? campos,
+  const buildPayload = (over?: Partial<{ secciones: Seccion[]; proyectoIds: string[] }>) => ({
+    nombre, tipo, notasGenerales: notasGen,
+    secciones: over?.secciones ?? secciones,
+    proyectoIds: over?.proyectoIds ?? proyectoIds,
   });
 
   const guardar = useCallback(async (id: string, payload: any) => {
@@ -200,17 +174,12 @@ export default function PersonalPage() {
   const guardarActual = useCallback(async () => {
     if (!selectedId || !dirty || saving) return;
     await guardar(selectedId, buildPayload());
-  }, [selectedId, dirty, saving, guardar, form, notas, campos]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedId, dirty, saving, guardar, nombre, tipo, secciones, notasGen, proyectoIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Guardar al presionar ENTER (SHIFT+ENTER = salto de línea en notas).
   const onEnterGuardar = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      guardarActual();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); guardarActual(); }
   };
 
-  // Al cambiar de ficha, guardar lo pendiente para no perder cambios.
   const seleccionar = async (id: string) => {
     if (id === selectedId) return;
     if (dirty && selectedId && !saving) await guardar(selectedId, buildPayload());
@@ -221,13 +190,13 @@ export default function PersonalPage() {
     if (!nuevaNombre.trim()) { toast.error("El nombre es obligatorio"); return; }
     setCreando(true);
     try {
-      const ficha = await fetchJson<Ficha>("/api/personal", {
+      const f = await fetchJson<Ficha>("/api/personal", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nombre: nuevaNombre.trim(), tipo: nuevaTipo }),
       });
       setShowNueva(false); setNuevaNombre(""); setNuevaTipo("TECNICO");
       await cargarLista();
-      setSelectedId(ficha.id);
+      setSelectedId(f.id);
       toast.success("Ficha creada");
     } catch (e) {
       toast.error(mensajeError(e, "No se pudo crear la ficha"));
@@ -238,7 +207,7 @@ export default function PersonalPage() {
 
   const eliminarFicha = async () => {
     if (!selectedId || !ficha) return;
-    if (!(await confirm({ title: "Eliminar ficha", message: `¿Eliminar la ficha de "${ficha.nombre}"? Se borrarán también sus archivos.`, confirmLabel: "Eliminar" }))) return;
+    if (!(await confirm({ title: "Eliminar ficha", message: `¿Eliminar la ficha de "${ficha.nombre}"? Se borrarán también su foto y archivos.`, confirmLabel: "Eliminar" }))) return;
     try {
       await fetchJson(`/api/personal/${selectedId}`, { method: "DELETE" });
       setSelectedId(null);
@@ -249,43 +218,81 @@ export default function PersonalPage() {
     }
   };
 
-  // ── Campos personalizados ──
-  const agregarCampo = async () => {
-    const nombre = nuevoCampo.trim().slice(0, 60);
-    if (!nombre || !selectedId) return;
-    const clave = nombre.toLowerCase();
-    if (CLAVES_RESERVADAS.has(clave) || Object.keys(campos).some((k) => k.toLowerCase() === clave)) {
-      toast.error("Ya existe un campo con ese nombre"); return;
-    }
-    const next = { ...campos, [nombre]: "" };
-    setShowCampo(false); setNuevoCampo("");
-    await guardar(selectedId, buildPayload({ campos: next }));
-  };
-
-  const eliminarCampo = async (key: string) => {
+  const borrarCampo = async (sId: string, campo: Campo) => {
     if (!selectedId) return;
-    if (!(await confirm({ title: "Eliminar campo", message: `¿Eliminar el campo "${key}" y sus archivos?`, confirmLabel: "Eliminar" }))) return;
+    if (!(await confirm({ title: "Eliminar campo", message: `¿Eliminar el campo "${campo.label || "(sin nombre)"}" y sus archivos?`, confirmLabel: "Eliminar" }))) return;
     try {
-      for (const a of (ficha?.archivos || []).filter((x) => x.seccion === key)) {
+      for (const a of (ficha?.archivos || []).filter((x) => x.seccion === campo.id)) {
         await fetchJson(`/api/personal/archivo/${a.id}`, { method: "DELETE" }).catch(() => {});
       }
-      const nextCampos = { ...campos }; delete nextCampos[key];
-      const nextNotas = { ...notas }; delete nextNotas[key];
-      await guardar(selectedId, buildPayload({ campos: nextCampos, notas: nextNotas }));
-      toast.success("Campo eliminado");
+      const next = secciones.map((s) => s.id !== sId ? s : { ...s, campos: s.campos.filter((c) => c.id !== campo.id) });
+      setSecciones(next);
+      await guardar(selectedId, buildPayload({ secciones: next }));
     } catch (e) {
       toast.error(mensajeError(e, "No se pudo eliminar el campo"));
     }
   };
 
-  // ── Archivos ──
-  const pedirSubida = (seccion: string) => { pendingSeccionRef.current = seccion; fileInputRef.current?.click(); };
+  const borrarSeccion = async (seccion: Seccion) => {
+    if (!selectedId) return;
+    if (!(await confirm({ title: "Eliminar sección", message: `¿Eliminar la sección "${seccion.titulo || "(sin nombre)"}" con todos sus campos y archivos?`, confirmLabel: "Eliminar" }))) return;
+    try {
+      const idsCampos = new Set(seccion.campos.map((c) => c.id));
+      for (const a of (ficha?.archivos || []).filter((x) => idsCampos.has(x.seccion))) {
+        await fetchJson(`/api/personal/archivo/${a.id}`, { method: "DELETE" }).catch(() => {});
+      }
+      const next = secciones.filter((s) => s.id !== seccion.id);
+      setSecciones(next);
+      await guardar(selectedId, buildPayload({ secciones: next }));
+    } catch (e) {
+      toast.error(mensajeError(e, "No se pudo eliminar la sección"));
+    }
+  };
 
+  // ── Proyectos por persona ──
+  const toggleProyecto = (id: string) => {
+    setProyectoIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    marcar();
+  };
+
+  // ── Foto de perfil ──
+  const onFotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !selectedId) return;
+    setSubiendoFoto(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await fetchJson(`/api/personal/${selectedId}/foto`, { method: "POST", body: fd });
+      await cargarFicha(selectedId);
+      cargarLista();
+      toast.success("Foto actualizada");
+    } catch (err) {
+      toast.error(mensajeError(err, "No se pudo subir la foto"));
+    } finally {
+      setSubiendoFoto(false);
+    }
+  };
+  const quitarFoto = async () => {
+    if (!selectedId) return;
+    if (!(await confirm({ title: "Quitar foto", message: "¿Quitar la foto de perfil?", confirmLabel: "Quitar" }))) return;
+    try {
+      await fetchJson(`/api/personal/${selectedId}/foto`, { method: "DELETE" });
+      await cargarFicha(selectedId);
+      cargarLista();
+    } catch (e) { toast.error(mensajeError(e, "No se pudo quitar la foto")); }
+  };
+
+  // ── Archivos por campo ──
+  const pedirSubida = (seccion: string) => { pendingSeccionRef.current = seccion; fileInputRef.current?.click(); };
   const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !selectedId) return;
     const seccion = pendingSeccionRef.current;
+    // Si hay cambios sin guardar, guardar primero para que el id del campo exista en la ficha.
+    if (dirty) await guardar(selectedId, buildPayload());
     setUploadingSeccion(seccion);
     try {
       const fd = new FormData();
@@ -301,7 +308,6 @@ export default function PersonalPage() {
       setUploadingSeccion(null);
     }
   };
-
   const eliminarArchivo = async (archivo: Archivo) => {
     if (!(await confirm({ title: "Eliminar archivo", message: `¿Eliminar "${archivo.nombre}"?`, confirmLabel: "Eliminar" }))) return;
     try {
@@ -315,11 +321,6 @@ export default function PersonalPage() {
     }
   };
 
-  const proyectos = useMemo(
-    () => Array.from(new Set(lista.map((f) => (f.proyecto || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "es")),
-    [lista]
-  );
-
   if (sessionLoading) {
     return <div className="flex justify-center py-20"><div className="w-5 h-5 border-2 border-surface-200 border-t-surface-500 rounded-full animate-spin" /></div>;
   }
@@ -327,88 +328,62 @@ export default function PersonalPage() {
     return <div className="flex items-center justify-center py-20"><p className="text-sm text-surface-400">No tenés acceso a esta sección.</p></div>;
   }
 
-  const cumpleDoc = (f: FichaListItem) => {
-    switch (filterDoc) {
-      case "sin-carnet": return !f.carnet?.trim();
-      case "sin-seguro": return !f.seguro?.trim();
-      case "sin-monotributo": return !f.monotributo?.trim();
-      case "sin-auto": return !f.autoModelo?.trim() && !f.autoPatente?.trim();
-      case "con-auto": return Boolean(f.autoModelo?.trim() || f.autoPatente?.trim());
-      case "con-adjuntos": return (f._count?.archivos || 0) > 0;
-      case "sin-adjuntos": return (f._count?.archivos || 0) === 0;
-      case "sin-proyecto": return !f.proyecto?.trim();
-      default: return true;
-    }
-  };
-
   const listaFiltrada = lista.filter((f) => {
     if (filterTipo !== "todos" && f.tipo !== filterTipo) return false;
-    if (filterProyecto !== "todos" && (f.proyecto || "").trim() !== filterProyecto) return false;
-    if (!cumpleDoc(f)) return false;
+    if (filterProyecto !== "todos" && !(f.proyectos || []).some((p) => p.id === filterProyecto)) return false;
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return SEARCH_FIELDS.some((k) => String(f[k] || "").toLowerCase().includes(q));
+    return textoBusqueda(f).includes(q);
   });
-
-  const hayFiltros = filterTipo !== "todos" || filterProyecto !== "todos" || filterDoc !== "todos" || search.trim() !== "";
+  const hayFiltros = filterTipo !== "todos" || filterProyecto !== "todos" || search.trim() !== "";
   const archivosDe = (seccion: string) => (ficha?.archivos || []).filter((a) => a.seccion === seccion);
 
-  // Render de una fila de campo dentro de una tarjeta de grupo.
-  const renderCampoRow = (key: string, label: string, opts: { custom?: boolean; campos?: Campo[] }) => {
-    const archivos = archivosDe(key);
-    const tieneNota = Boolean((notas[key] || "").trim());
-    const notaVisible = tieneNota || notasAbiertas.has(key);
-    const multi = (opts.campos?.length || 1) > 1;
+  const renderCampo = (seccion: Seccion, c: Campo) => {
+    const archivos = archivosDe(c.id);
+    const tieneNota = Boolean((c.nota || "").trim());
+    const notaVisible = tieneNota || notasAbiertas.has(c.id);
     return (
-      <div key={key} className="group/row px-4 py-2.5 hover:bg-surface-50/60 dark:hover:bg-surface-700/20 transition-colors">
-        <div className="flex items-start gap-3">
-          <span className="w-24 shrink-0 pt-2 text-[11px] font-medium uppercase tracking-wide text-surface-400">{label}</span>
+      <div key={c.id} className="group/row px-4 py-2.5 hover:bg-surface-50/60 dark:hover:bg-surface-700/20 transition-colors">
+        <div className="flex items-start gap-2">
+          <input value={c.label} onChange={(e) => patchCampo(seccion.id, c.id, { label: e.target.value })} placeholder="Nombre del campo"
+            className="w-28 sm:w-32 shrink-0 mt-1 bg-transparent text-[11px] font-medium uppercase tracking-wide text-surface-500 placeholder:text-surface-300 placeholder:normal-case focus:outline-none focus:text-surface-700 dark:focus:text-surface-200 border-b border-transparent focus:border-surface-300" title="Renombrar campo" />
           <div className="flex-1 min-w-0">
-            {opts.custom ? (
-              <input type="text" value={campos[key] ?? ""} onChange={(e) => setValorExtra(key, e.target.value)} onKeyDown={onEnterGuardar} placeholder={label} className={INPUT_CLS} />
-            ) : multi ? (
-              <div className="grid grid-cols-2 gap-2">
-                {(opts.campos || []).map((c) => (
-                  <input key={c.name as string} type={c.type === "number" ? "number" : "text"} value={(form[c.name] as any) ?? ""}
-                    onChange={(e) => setCampoForm(c.name, e.target.value)} onKeyDown={onEnterGuardar} placeholder={c.label} className={INPUT_CLS} />
-                ))}
-              </div>
-            ) : (
-              <input type={(opts.campos?.[0]?.type) === "number" ? "number" : "text"} value={(form[opts.campos![0].name] as any) ?? ""}
-                onChange={(e) => setCampoForm(opts.campos![0].name, e.target.value)} onKeyDown={onEnterGuardar} className={INPUT_CLS} />
-            )}
+            <input type={c.tipo === "number" ? "number" : c.tipo === "date" ? "date" : "text"} value={c.valor}
+              onChange={(e) => patchCampo(seccion.id, c.id, { valor: e.target.value })} onKeyDown={onEnterGuardar} placeholder={c.label || "Valor"} className={INPUT_CLS} />
           </div>
           <div className="flex items-center gap-0.5 pt-1 shrink-0">
-            <button onClick={() => toggleNota(key)} title={notaVisible ? "Ocultar nota" : "Agregar nota"}
+            <select value={c.tipo} onChange={(e) => patchCampo(seccion.id, c.id, { tipo: e.target.value as TipoCampo })} title="Tipo de campo"
+              className="text-[10px] text-surface-400 bg-transparent focus:outline-none cursor-pointer rounded opacity-0 group-hover/row:opacity-100 focus:opacity-100">
+              <option value="text">Aa</option><option value="number">123</option><option value="date">📅</option>
+            </select>
+            <button onClick={() => setNotasAbiertas((p) => { const n = new Set(p); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} title={notaVisible ? "Ocultar nota" : "Agregar nota"}
               className={`p-1.5 rounded-md transition-colors ${tieneNota ? "text-amber-500 bg-amber-50 dark:bg-transparent" : "text-surface-300 hover:text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700"}`}>
               <IconEdit className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => pedirSubida(key)} disabled={uploadingSeccion === key} title="Adjuntar archivo"
+            <button onClick={() => pedirSubida(c.id)} disabled={uploadingSeccion === c.id} title="Adjuntar archivo"
               className="p-1.5 rounded-md text-surface-300 hover:text-primary-600 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50">
-              {uploadingSeccion === key ? <span className="block w-3.5 h-3.5 border-2 border-surface-300 border-t-primary-500 rounded-full animate-spin" /> : <PaperclipIcon />}
+              {uploadingSeccion === c.id ? <span className="block w-3.5 h-3.5 border-2 border-surface-300 border-t-primary-500 rounded-full animate-spin" /> : <PaperclipIcon />}
             </button>
-            {opts.custom && (
-              <button onClick={() => eliminarCampo(key)} title="Eliminar campo" className="p-1.5 rounded-md text-surface-300 hover:text-red-500 hover:bg-surface-100 dark:hover:bg-surface-700">
-                <IconTrash className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button onClick={() => borrarCampo(seccion.id, c)} title="Eliminar campo" className="p-1.5 rounded-md text-surface-300 hover:text-red-500 hover:bg-surface-100 dark:hover:bg-surface-700">
+              <IconTrash className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
         {notaVisible && (
-          <div className="mt-2 pl-0 sm:pl-[6.75rem]">
-            <textarea value={notas[key] || ""} onChange={(e) => setNota(key, e.target.value)} onKeyDown={onEnterGuardar} placeholder={`Nota de ${label.toLowerCase()}…`} rows={2}
+          <div className="mt-2 pl-0 sm:pl-[8.5rem]">
+            <textarea value={c.nota || ""} onChange={(e) => patchCampo(seccion.id, c.id, { nota: e.target.value })} onKeyDown={onEnterGuardar} placeholder="Nota…" rows={2}
               className="w-full px-2.5 py-1.5 text-xs bg-amber-50/50 dark:bg-surface-700/40 border border-amber-100 dark:border-surface-600 rounded-md focus:outline-none focus:border-amber-300 resize-y" />
           </div>
         )}
-        {archivos.length > 0 && <div className="mt-2 sm:pl-[6.75rem]"><ArchivosGrid archivos={archivos} onView={setViewer} onDelete={eliminarArchivo} /></div>}
+        {archivos.length > 0 && <div className="mt-2 sm:pl-[8.5rem]"><ArchivosGrid archivos={archivos} onView={setViewer} onDelete={eliminarArchivo} /></div>}
       </div>
     );
   };
 
   return (
     <div className="animate-fade-in-up">
-      <input ref={fileInputRef} type="file" className="hidden" onChange={onFileSelected}
-        accept=".pdf,.zip,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc" />
+      <input ref={fileInputRef} type="file" className="hidden" onChange={onFileSelected} accept=".pdf,.zip,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc" />
+      <input ref={fotoInputRef} type="file" className="hidden" onChange={onFotoSelected} accept=".jpg,.jpeg,.png,.webp" />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -417,11 +392,13 @@ export default function PersonalPage() {
           <p className="text-xs text-surface-400 mt-0.5">Fichas de técnicos y contratistas · {lista.length} registro{lista.length === 1 ? "" : "s"} · acceso restringido.</p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button onClick={() => setShowGestor(true)} className="px-3 py-2 text-xs font-medium rounded-lg border border-surface-200 dark:border-surface-600 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 inline-flex items-center gap-1.5">
+              Proyectos
+            </button>
+          )}
           <a href="/api/personal/export?formato=xlsx" className="px-3 py-2 text-xs font-medium rounded-lg border border-surface-200 dark:border-surface-600 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 inline-flex items-center gap-1.5">
             <IconDownload className="w-4 h-4 text-emerald-600" /> Excel
-          </a>
-          <a href="/api/personal/export?formato=csv" className="px-3 py-2 text-xs font-medium rounded-lg border border-surface-200 dark:border-surface-600 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 inline-flex items-center gap-1.5">
-            <IconDownload className="w-4 h-4 text-surface-500" /> CSV
           </a>
         </div>
       </div>
@@ -433,7 +410,7 @@ export default function PersonalPage() {
             <button onClick={() => setShowNueva(true)} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 shadow-sm">
               <IconPlus className="w-4 h-4" /> Nueva ficha
             </button>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, DNI, dirección…"
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, dato, proyecto…"
               className="w-full px-2.5 py-1.5 text-xs border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md focus:outline-none focus:border-primary-400" />
             <div className="grid grid-cols-2 gap-2">
               <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} className="px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md focus:outline-none focus:border-surface-400">
@@ -443,16 +420,13 @@ export default function PersonalPage() {
               </select>
               <select value={filterProyecto} onChange={(e) => setFilterProyecto(e.target.value)} className="px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md focus:outline-none focus:border-surface-400">
                 <option value="todos">Proyecto: todos</option>
-                {proyectos.map((p) => <option key={p} value={p}>{p}</option>)}
+                {catalogo.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
-            <select value={filterDoc} onChange={(e) => setFilterDoc(e.target.value)} className="w-full px-2 py-1.5 text-xs border border-surface-200 dark:border-surface-600 dark:bg-surface-700 rounded-md focus:outline-none focus:border-surface-400">
-              {DOC_FILTROS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
             <div className="flex items-center justify-between text-[11px] text-surface-400 px-0.5">
               <span>{listaFiltrada.length} de {lista.length}</span>
               {hayFiltros && (
-                <button onClick={() => { setSearch(""); setFilterTipo("todos"); setFilterProyecto("todos"); setFilterDoc("todos"); }} className="text-primary-600 hover:underline">Limpiar filtros</button>
+                <button onClick={() => { setSearch(""); setFilterTipo("todos"); setFilterProyecto("todos"); }} className="text-primary-600 hover:underline">Limpiar filtros</button>
               )}
             </div>
           </div>
@@ -466,15 +440,13 @@ export default function PersonalPage() {
             ) : listaFiltrada.map((f) => (
               <button key={f.id} onClick={() => seleccionar(f.id)}
                 className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 transition-colors ${selectedId === f.id ? "bg-primary-50 dark:bg-surface-700" : "hover:bg-surface-50 dark:hover:bg-surface-700/50"}`}>
-                <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[11px] font-semibold ${f.tipo === "CONTRATISTA" ? "bg-amber-100 text-amber-700" : "bg-primary-100 text-primary-700"}`}>
-                  {iniciales(f.nombre)}
-                </span>
+                <Avatar ficha={f} size={8} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-surface-800 dark:text-surface-100 truncate">{f.nombre}</span>
                     {f._count?.archivos ? <span className="text-[10px] text-surface-400 shrink-0 inline-flex items-center gap-0.5"><PaperclipIcon className="w-3 h-3" />{f._count.archivos}</span> : null}
                   </span>
-                  <span className="block text-[11px] text-surface-400 truncate">{[TIPO_LABEL[f.tipo] || f.tipo, f.dni && `DNI ${f.dni}`, f.proyecto].filter(Boolean).join(" · ")}</span>
+                  <span className="block text-[11px] text-surface-400 truncate">{[TIPO_LABEL[f.tipo] || f.tipo, ...(f.proyectos || []).map((p) => p.nombre)].filter(Boolean).join(" · ")}</span>
                 </span>
               </button>
             ))}
@@ -494,16 +466,24 @@ export default function PersonalPage() {
               {/* Header de la ficha (sticky) */}
               <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-xl border border-surface-200 dark:border-surface-700 bg-white/95 dark:bg-surface-800/95 backdrop-blur px-4 py-3 shadow-sm">
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-sm font-bold ${form.tipo === "CONTRATISTA" ? "bg-amber-100 text-amber-700" : "bg-primary-100 text-primary-700"}`}>
-                    {iniciales(String(form.nombre || ficha.nombre))}
-                  </span>
+                  <div className="relative group/foto shrink-0">
+                    <Avatar ficha={ficha} size={12} />
+                    <button onClick={() => fotoInputRef.current?.click()} disabled={subiendoFoto} title="Cambiar foto"
+                      className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 group-hover/foto:opacity-100 transition-opacity text-[9px] font-medium disabled:opacity-100">
+                      {subiendoFoto ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : "Foto"}
+                    </button>
+                  </div>
                   <div className="min-w-0">
-                    <p className="text-base font-semibold text-surface-800 dark:text-surface-100 truncate leading-tight">{form.nombre || "—"}</p>
-                    <select value={form.tipo || "TECNICO"} onChange={(e) => setCampoForm("tipo", e.target.value)} onKeyDown={onEnterGuardar}
-                      className="mt-0.5 -ml-1 text-[11px] text-surface-500 bg-transparent focus:outline-none cursor-pointer rounded px-1">
-                      <option value="TECNICO">Técnico</option>
-                      <option value="CONTRATISTA">Contratista</option>
-                    </select>
+                    <input value={nombre} onChange={(e) => { setNombre(e.target.value); marcar(); }} onKeyDown={onEnterGuardar} placeholder="Nombre"
+                      className="w-full bg-transparent text-base font-semibold text-surface-800 dark:text-surface-100 leading-tight focus:outline-none border-b border-transparent focus:border-surface-300" />
+                    <div className="flex items-center gap-2">
+                      <select value={tipo} onChange={(e) => { setTipo(e.target.value); marcar(); }}
+                        className="mt-0.5 -ml-1 text-[11px] text-surface-500 bg-transparent focus:outline-none cursor-pointer rounded px-1">
+                        <option value="TECNICO">Técnico</option>
+                        <option value="CONTRATISTA">Contratista</option>
+                      </select>
+                      {ficha.fotoUrl && <button onClick={quitarFoto} className="mt-0.5 text-[10px] text-surface-300 hover:text-red-500">quitar foto</button>}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -522,39 +502,57 @@ export default function PersonalPage() {
                 </div>
               </div>
 
-              <p className="text-[11px] text-surface-400 px-1 -mt-1">Tip: <b>Enter</b> guarda · <b>Shift+Enter</b> hace salto de línea en las notas.</p>
+              <p className="text-[11px] text-surface-400 px-1 -mt-1">Tip: <b>Enter</b> guarda · <b>Shift+Enter</b> salto de línea en notas · el nombre de cada campo se puede editar directo.</p>
 
-              {/* Grupos fijos */}
-              {GRUPOS.map((g) => (
-                <div key={g.titulo} className="rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden">
-                  <div className="px-4 py-2 border-b border-surface-100 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-700/30">
-                    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-surface-500">{g.titulo}</h2>
+              {/* Proyectos (multi-select desde el catálogo) */}
+              <div className="rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden">
+                <div className="px-4 py-2 border-b border-surface-100 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-700/30 flex items-center justify-between">
+                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-surface-500">Proyectos</h2>
+                  {isAdmin && <button onClick={() => setShowGestor(true)} className="text-[11px] font-medium text-primary-600 hover:text-primary-700">Gestionar</button>}
+                </div>
+                <div className="p-3">
+                  {catalogo.length === 0 ? (
+                    <p className="text-xs text-surface-400">No hay proyectos en el catálogo{isAdmin ? " — creá uno en “Gestionar”." : "."}</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {catalogo.map((p) => {
+                        const on = proyectoIds.includes(p.id);
+                        return (
+                          <button key={p.id} onClick={() => toggleProyecto(p.id)}
+                            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${on ? "bg-primary-600 border-primary-600 text-white" : "bg-surface-50 dark:bg-surface-700/50 border-surface-200 dark:border-surface-600 text-surface-600 dark:text-surface-300 hover:border-primary-300"}`}>
+                            {on ? "✓ " : ""}{p.nombre}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Secciones dinámicas */}
+              {secciones.map((seccion) => (
+                <div key={seccion.id} className="rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden">
+                  <div className="px-4 py-2 border-b border-surface-100 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-700/30 flex items-center justify-between gap-2">
+                    <input value={seccion.titulo} onChange={(e) => patchSeccion(seccion.id, { titulo: e.target.value })} placeholder="Título de la sección"
+                      className="flex-1 min-w-0 bg-transparent text-[11px] font-semibold uppercase tracking-wider text-surface-500 placeholder:text-surface-300 focus:outline-none focus:text-surface-700 dark:focus:text-surface-200 border-b border-transparent focus:border-surface-300" />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => agregarCampo(seccion.id)} className="text-[11px] font-medium text-primary-600 hover:text-primary-700 inline-flex items-center gap-0.5"><IconPlus className="w-3.5 h-3.5" /> Campo</button>
+                      <button onClick={() => borrarSeccion(seccion)} title="Eliminar sección" className="p-1 rounded text-surface-300 hover:text-red-500"><IconTrash className="w-3.5 h-3.5" /></button>
+                    </div>
                   </div>
-                  <div className="divide-y divide-surface-100 dark:divide-surface-700/50">
-                    {g.claves.map((k) => {
-                      const sec = SECCION_POR_CLAVE[k];
-                      return sec ? renderCampoRow(sec.key, sec.label, { campos: sec.campos }) : null;
-                    })}
-                  </div>
+                  {seccion.campos.length === 0 ? (
+                    <p className="px-4 py-3 text-xs text-surface-400">Sin campos. Agregá uno con “+ Campo”.</p>
+                  ) : (
+                    <div className="divide-y divide-surface-100 dark:divide-surface-700/50">
+                      {seccion.campos.map((c) => renderCampo(seccion, c))}
+                    </div>
+                  )}
                 </div>
               ))}
 
-              {/* Campos personalizados */}
-              <div className="rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden">
-                <div className="px-4 py-2 border-b border-surface-100 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-700/30 flex items-center justify-between">
-                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-surface-500">Campos personalizados</h2>
-                  <button onClick={() => setShowCampo(true)} className="text-[11px] font-medium text-primary-600 hover:text-primary-700 inline-flex items-center gap-0.5">
-                    <IconPlus className="w-3.5 h-3.5" /> Agregar
-                  </button>
-                </div>
-                {Object.keys(campos).length === 0 ? (
-                  <p className="px-4 py-3 text-xs text-surface-400">Sin campos personalizados. Agregá uno para datos extra (ej: Email, Talle, Grupo sanguíneo).</p>
-                ) : (
-                  <div className="divide-y divide-surface-100 dark:divide-surface-700/50">
-                    {Object.keys(campos).map((key) => renderCampoRow(key, key, { custom: true }))}
-                  </div>
-                )}
-              </div>
+              <button onClick={agregarSeccion} className="w-full py-2 text-xs font-medium rounded-xl border border-dashed border-surface-300 dark:border-surface-600 text-surface-500 hover:border-primary-400 hover:text-primary-600 inline-flex items-center justify-center gap-1.5">
+                <IconPlus className="w-4 h-4" /> Agregar sección
+              </button>
 
               {/* Notas generales */}
               <div className="rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-sm overflow-hidden">
@@ -566,7 +564,7 @@ export default function PersonalPage() {
                   </button>
                 </div>
                 <div className="p-4">
-                  <textarea value={(form.notasGenerales as any) ?? ""} onChange={(e) => setCampoForm("notasGenerales", e.target.value)} onKeyDown={onEnterGuardar}
+                  <textarea value={notasGen} onChange={(e) => { setNotasGen(e.target.value); marcar(); }} onKeyDown={onEnterGuardar}
                     placeholder="Notas generales… (Shift+Enter para salto de línea)" rows={4} className={INPUT_CLS + " resize-y"} />
                   {archivosDe("general").length > 0 && <div className="mt-2"><ArchivosGrid archivos={archivosDe("general")} onView={setViewer} onDelete={eliminarArchivo} /></div>}
                 </div>
@@ -577,7 +575,7 @@ export default function PersonalPage() {
       </div>
 
       {/* Modal nueva ficha */}
-      <Modal open={showNueva} onClose={closeNueva} title="Nueva ficha">
+      <Modal open={showNueva} onClose={() => setShowNueva(false)} title="Nueva ficha">
         <div className="space-y-3">
           <label className="block">
             <span className="text-xs text-surface-500">Nombre</span>
@@ -590,8 +588,9 @@ export default function PersonalPage() {
               <option value="CONTRATISTA">Contratista</option>
             </select>
           </label>
+          <p className="text-[11px] text-surface-400">Arranca con las secciones estándar (Datos personales, Documentación, Vehículo). Después podés editarlas libremente.</p>
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={closeNueva} className="px-3 py-1.5 text-xs text-surface-500 hover:text-surface-700">Cancelar</button>
+            <button onClick={() => setShowNueva(false)} className="px-3 py-1.5 text-xs text-surface-500 hover:text-surface-700">Cancelar</button>
             <button onClick={crearFicha} disabled={creando} className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
               {creando ? "Creando…" : "Crear"}
             </button>
@@ -599,22 +598,12 @@ export default function PersonalPage() {
         </div>
       </Modal>
 
-      {/* Modal nuevo campo */}
-      <Modal open={showCampo} onClose={closeCampo} title="Agregar campo personalizado">
-        <div className="space-y-3">
-          <label className="block">
-            <span className="text-xs text-surface-500">Nombre del campo (ej: Email, Talle de ropa, Grupo sanguíneo)</span>
-            <input autoFocus value={nuevoCampo} onChange={(e) => setNuevoCampo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") agregarCampo(); }} className={INPUT_CLS + " mt-1"} />
-          </label>
-          <div className="flex justify-end gap-2 pt-1">
-            <button onClick={closeCampo} className="px-3 py-1.5 text-xs text-surface-500 hover:text-surface-700">Cancelar</button>
-            <button onClick={agregarCampo} className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary-600 text-white hover:bg-primary-700">Agregar</button>
-          </div>
-        </div>
-      </Modal>
+      {/* Gestor de proyectos (catálogo global) */}
+      <ProyectosManager open={showGestor} onClose={() => setShowGestor(false)} catalogo={catalogo}
+        onChange={async () => { await cargarCatalogo(); cargarLista(); }} confirm={confirm} />
 
       {/* Visor de imágenes */}
-      <Modal open={!!viewer} onClose={closeViewer} title={viewer?.nombre} maxWidth="max-w-3xl">
+      <Modal open={!!viewer} onClose={() => setViewer(null)} title={viewer?.nombre} maxWidth="max-w-3xl">
         {viewer && (
           <div className="space-y-3">
             <div className="flex items-center justify-center bg-surface-900/5 dark:bg-surface-900/40 rounded-lg overflow-hidden">
@@ -631,6 +620,80 @@ export default function PersonalPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+function Avatar({ ficha, size }: { ficha: { id: string; nombre: string; tipo: string; fotoUrl: string | null; updatedAt?: string }; size: number }) {
+  const [err, setErr] = useState(false);
+  const cls = `shrink-0 rounded-full flex items-center justify-center font-semibold overflow-hidden ${ficha.tipo === "CONTRATISTA" ? "bg-amber-100 text-amber-700" : "bg-primary-100 text-primary-700"}`;
+  const style = { width: `${size * 0.25}rem`, height: `${size * 0.25}rem`, fontSize: size >= 12 ? "0.875rem" : "0.6875rem" } as React.CSSProperties;
+  if (ficha.fotoUrl && !err) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={fotoSrc(ficha)} alt={ficha.nombre} onError={() => setErr(true)} className={cls + " object-cover"} style={style} />
+    );
+  }
+  return <span className={cls} style={style}>{iniciales(ficha.nombre)}</span>;
+}
+
+function ProyectosManager({ open, onClose, catalogo, onChange, confirm }: {
+  open: boolean; onClose: () => void; catalogo: Proyecto[]; onChange: () => Promise<void>; confirm: ReturnType<typeof useConfirm>;
+}) {
+  const [nuevo, setNuevo] = useState("");
+  const [creando, setCreando] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNombre, setEditNombre] = useState("");
+
+  const crear = async () => {
+    const nombre = nuevo.trim();
+    if (!nombre) return;
+    setCreando(true);
+    try {
+      await fetchJson("/api/proyectos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre }) });
+      setNuevo(""); await onChange();
+    } catch (e) { toast.error(mensajeError(e, "No se pudo crear el proyecto")); }
+    finally { setCreando(false); }
+  };
+  const renombrar = async (id: string) => {
+    const nombre = editNombre.trim();
+    if (!nombre) { setEditId(null); return; }
+    try {
+      await fetchJson(`/api/proyectos/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre }) });
+      setEditId(null); await onChange();
+    } catch (e) { toast.error(mensajeError(e, "No se pudo renombrar")); }
+  };
+  const borrar = async (p: Proyecto) => {
+    if (!(await confirm({ title: "Eliminar proyecto", message: `¿Eliminar “${p.nombre}” del catálogo? Se quita de todas las fichas que lo tengan.`, confirmLabel: "Eliminar" }))) return;
+    try { await fetchJson(`/api/proyectos/${p.id}`, { method: "DELETE" }); await onChange(); }
+    catch (e) { toast.error(mensajeError(e, "No se pudo eliminar")); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Proyectos (catálogo general)">
+      <div className="space-y-3">
+        <p className="text-[11px] text-surface-400">Estos proyectos aparecen como opciones para todas las personas. Cada uno puede tener varios.</p>
+        <div className="flex gap-2">
+          <input value={nuevo} onChange={(e) => setNuevo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") crear(); }} placeholder="Nuevo proyecto…" className={INPUT_CLS} />
+          <button onClick={crear} disabled={creando || !nuevo.trim()} className="px-3 py-1.5 text-xs font-semibold rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 shrink-0">Agregar</button>
+        </div>
+        <div className="divide-y divide-surface-100 dark:divide-surface-700/50 rounded-md border border-surface-200 dark:border-surface-700 max-h-64 overflow-y-auto">
+          {catalogo.length === 0 ? (
+            <p className="px-3 py-4 text-center text-xs text-surface-400">Sin proyectos. Agregá el primero arriba.</p>
+          ) : catalogo.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 px-3 py-2">
+              {editId === p.id ? (
+                <input autoFocus value={editNombre} onChange={(e) => setEditNombre(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") renombrar(p.id); if (e.key === "Escape") setEditId(null); }} onBlur={() => renombrar(p.id)} className={INPUT_CLS} />
+              ) : (
+                <span className="flex-1 text-sm text-surface-700 dark:text-surface-200">{p.nombre}</span>
+              )}
+              <button onClick={() => { setEditId(p.id); setEditNombre(p.nombre); }} title="Renombrar" className="p-1.5 rounded text-surface-300 hover:text-surface-600"><IconEdit className="w-3.5 h-3.5" /></button>
+              <button onClick={() => borrar(p)} title="Eliminar" className="p-1.5 rounded text-surface-300 hover:text-red-500"><IconTrash className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end pt-1"><button onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-surface-600 hover:text-surface-800">Listo</button></div>
+      </div>
+    </Modal>
   );
 }
 

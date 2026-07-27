@@ -6,38 +6,33 @@ import { tieneAccesoFichas } from "@/lib/fichasAccess";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const BASE_COLS = [
-  "Nombre", "DNI", "Dirección", "Teléfono", "Carnet", "Seguro", "Monotributo",
-  "Auto - Modelo", "Auto - Patente", "Auto - Kmts", "Tarjeta en red", "Proyecto", "Notas generales",
-];
+const BASE_COLS = ["Nombre", "Proyectos"];
+const COLS_FINALES = ["Notas generales"];
 
 function fichaToRow(f: any): Record<string, any> {
   const row: Record<string, any> = {
     "Nombre": f.nombre || "",
-    "DNI": f.dni || "",
-    "Dirección": f.direccion || "",
-    "Teléfono": f.telefono || "",
-    "Carnet": f.carnet || "",
-    "Seguro": f.seguro || "",
-    "Monotributo": f.monotributo || "",
-    "Auto - Modelo": f.autoModelo || "",
-    "Auto - Patente": f.autoPatente || "",
-    "Auto - Kmts": f.autoKmts ?? "",
-    "Tarjeta en red": f.autoTarjetaRed || "",
-    "Proyecto": f.proyecto || "",
-    "Notas generales": f.notasGenerales || "",
+    "Proyectos": (f.proyectos || []).map((p: any) => p.nombre).join(", "),
   };
-  if (f.camposExtra && typeof f.camposExtra === "object" && !Array.isArray(f.camposExtra)) {
-    for (const [k, v] of Object.entries(f.camposExtra)) row[k] = typeof v === "string" ? v : String(v ?? "");
+  // Campos de la estructura dinámica: columna = etiqueta del campo → valor.
+  if (Array.isArray(f.secciones)) {
+    for (const s of f.secciones as any[]) {
+      if (!Array.isArray(s?.campos)) continue;
+      for (const c of s.campos) {
+        const label = String(c?.label || "").trim();
+        if (label && c?.valor) row[label] = String(c.valor);
+      }
+    }
   }
+  row["Notas generales"] = f.notasGenerales || "";
   return row;
 }
 
-/** Encabezados: base + claves de campos personalizados (unión), en orden estable. */
+/** Encabezados: Nombre/Proyectos + etiquetas de campos (unión) + Notas generales. */
 function headersFor(rows: Record<string, any>[]): string[] {
   const extra = new Set<string>();
-  for (const r of rows) for (const k of Object.keys(r)) if (!BASE_COLS.includes(k)) extra.add(k);
-  return [...BASE_COLS, ...Array.from(extra).sort((a, b) => a.localeCompare(b, "es"))];
+  for (const r of rows) for (const k of Object.keys(r)) if (!BASE_COLS.includes(k) && !COLS_FINALES.includes(k)) extra.add(k);
+  return [...BASE_COLS, ...Array.from(extra).sort((a, b) => a.localeCompare(b, "es")), ...COLS_FINALES];
 }
 
 export async function GET(request: NextRequest) {
@@ -47,7 +42,10 @@ export async function GET(request: NextRequest) {
 
   const formato = request.nextUrl.searchParams.get("formato") === "csv" ? "csv" : "xlsx";
 
-  const fichas = await prisma.fichaPersonal.findMany({ orderBy: { nombre: "asc" } });
+  const fichas = await prisma.fichaPersonal.findMany({
+    orderBy: { nombre: "asc" },
+    include: { proyectos: { select: { nombre: true }, orderBy: { orden: "asc" } } },
+  });
   const tecnicos = fichas.filter((f) => f.tipo !== "CONTRATISTA").map(fichaToRow);
   const contratistas = fichas.filter((f) => f.tipo === "CONTRATISTA").map(fichaToRow);
 

@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { tieneAccesoFichas } from "@/lib/fichasAccess";
-import { normalizeFichaBody } from "@/lib/fichaPersonal";
+import { plantillaSecciones } from "@/lib/personalSecciones";
+import { Prisma } from "@prisma/client";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+const TIPOS = ["TECNICO", "CONTRATISTA"];
 
 export async function GET() {
   const session = await getSession();
@@ -14,9 +17,8 @@ export async function GET() {
   const fichas = await prisma.fichaPersonal.findMany({
     orderBy: { nombre: "asc" },
     select: {
-      id: true, tipo: true, nombre: true, dni: true, direccion: true, telefono: true,
-      carnet: true, seguro: true, monotributo: true, autoModelo: true, autoPatente: true,
-      autoTarjetaRed: true, proyecto: true, updatedAt: true,
+      id: true, tipo: true, nombre: true, fotoUrl: true, secciones: true, updatedAt: true,
+      proyectos: { select: { id: true, nombre: true }, orderBy: { orden: "asc" } },
       _count: { select: { archivos: true } },
     },
   });
@@ -36,9 +38,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const data = normalizeFichaBody(body);
-  if (!data.nombre) return NextResponse.json({ error: "El nombre es obligatorio" }, { status: 400 });
+  const nombre = typeof body?.nombre === "string" ? body.nombre.trim().slice(0, 200) : "";
+  if (!nombre) return NextResponse.json({ error: "El nombre es obligatorio" }, { status: 400 });
+  const tipo = TIPOS.includes(body?.tipo) ? body.tipo : "TECNICO";
+  const proyectoIds: string[] = Array.isArray(body?.proyectoIds) ? body.proyectoIds.filter((x: any) => typeof x === "string") : [];
 
-  const ficha = await prisma.fichaPersonal.create({ data });
+  const ficha = await prisma.fichaPersonal.create({
+    data: {
+      nombre,
+      tipo,
+      // Ficha nueva arranca con las secciones estándar ya puestas (solo completar valores).
+      secciones: plantillaSecciones() as unknown as Prisma.InputJsonValue,
+      ...(proyectoIds.length ? { proyectos: { connect: proyectoIds.map((id) => ({ id })) } } : {}),
+    },
+    include: { archivos: true, proyectos: { select: { id: true, nombre: true } } },
+  });
   return NextResponse.json(ficha, { status: 201 });
 }

@@ -480,6 +480,11 @@ model FichaPersonal {
   id             String   @id @default(cuid())
   tipo           String   @default("TECNICO") // "TECNICO" | "CONTRATISTA"
   nombre         String
+  fotoUrl        String?  // foto de perfil (/uploads/personal/fotos/<archivo>)
+  // Estructura dinámica de campos por persona (cada ficha es independiente):
+  // [{ id, titulo, campos: [{ id, label, valor, tipo: "text"|"number"|"date", nota }] }]
+  secciones      Json?
+  // ── Campos legacy (se conservan tras migrar a `secciones`; ya no los usa la UI) ──
   dni            String?
   direccion      String?
   telefono       String?
@@ -490,13 +495,27 @@ model FichaPersonal {
   autoPatente    String?
   autoKmts       Int?
   autoTarjetaRed String?
-  proyecto       String?
+  proyecto       String?  // legacy: reemplazado por la relación many-to-many `proyectos`
   notasGenerales String?  @db.Text
-  notasSecciones Json?    // notas por apartado: { dni: "...", carnet: "...", auto: "...", ... }
-  camposExtra    Json?    // campos personalizados por persona: { "Email": "...", "Talle": "...", ... }
+  notasSecciones Json?    // legacy: notas por apartado (migradas a secciones)
+  camposExtra    Json?    // legacy: campos personalizados (migrados a secciones)
+  proyectos      Proyecto[] @relation("FichaProyectos")
   archivos       FichaArchivo[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// Catálogo global de proyectos (editable por ADMIN). Se asigna a fichas como multi-select.
+model Proyecto {
+  id        String          @id @default(cuid())
+  nombre    String          @unique
+  orden     Int             @default(0)
+  activo    Boolean         @default(true)
+  fichas    FichaPersonal[] @relation("FichaProyectos")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([activo])
 }
 
 model FichaArchivo {
