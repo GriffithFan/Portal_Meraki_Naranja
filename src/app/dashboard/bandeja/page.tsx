@@ -19,6 +19,7 @@ const TIPO_ICON_PATHS: Record<string, string> = {
   RECORDATORIO: "M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z",
   GENERAL: "M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0",
   SISTEMA_FALLO: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z",
+  VENCIMIENTO: "M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z",
 };
 
 const TIPO_ICON_COLORS: Record<string, string> = {
@@ -30,6 +31,7 @@ const TIPO_ICON_COLORS: Record<string, string> = {
   ALERTA_MONITOREO: "text-orange-500",
   MONITOREO_OK: "text-emerald-500",
   SISTEMA_FALLO: "text-red-500",
+  VENCIMIENTO: "text-amber-500",
 };
 
 const TIPO_BG_COLORS: Record<string, string> = {
@@ -41,6 +43,7 @@ const TIPO_BG_COLORS: Record<string, string> = {
   ALERTA_MONITOREO: "bg-orange-50",
   MONITOREO_OK: "bg-emerald-50",
   SISTEMA_FALLO: "bg-red-50",
+  VENCIMIENTO: "bg-amber-50",
 };
 
 export default function BandejaPage() {
@@ -97,6 +100,7 @@ export default function BandejaPage() {
     ALERTA_MONITOREO: "Monitoreo",
     MONITOREO_OK: "Monitoreo OK",
     SISTEMA_FALLO: "Fallo del sistema",
+    VENCIMIENTO: "Vencimiento",
   };
 
   return (

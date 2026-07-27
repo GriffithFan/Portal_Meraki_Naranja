@@ -8,6 +8,7 @@ import { fetchJson, mensajeError } from "@/lib/fetchJson";
 import Modal from "@/components/ui/Modal";
 import { toast } from "sonner";
 import { IconPlus, IconTrash, IconX, IconDownload, IconEdit, IconCheck } from "@/components/ui/Icons";
+import { esCampoVencimiento, parseFechaVenc, analizarVencimientos, estadoVencMasUrgente, textoVencimiento, type EstadoVenc } from "@/lib/vencimientos";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -342,6 +343,10 @@ export default function PersonalPage() {
     const archivos = archivosDe(c.id);
     const tieneNota = Boolean((c.nota || "").trim());
     const notaVisible = tieneNota || notasAbiertas.has(c.id);
+    const venc = (esCampoVencimiento(c.label) && parseFechaVenc(c.valor)) ? analizarVencimientos([{ titulo: seccion.titulo, campos: [c] }])[0] : null;
+    const vencCls = venc?.estado === "vencido" ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20"
+      : venc?.estado === "proximo" ? "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20"
+      : "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20";
     return (
       <div key={c.id} className="group/row px-4 py-2.5 hover:bg-surface-50/60 dark:hover:bg-surface-700/20 transition-colors">
         <div className="flex items-start gap-2">
@@ -349,7 +354,13 @@ export default function PersonalPage() {
             className="w-28 sm:w-32 shrink-0 mt-1 bg-transparent text-[11px] font-medium uppercase tracking-wide text-surface-500 placeholder:text-surface-300 placeholder:normal-case focus:outline-none focus:text-surface-700 dark:focus:text-surface-200 border-b border-transparent focus:border-surface-300" title="Renombrar campo" />
           <div className="flex-1 min-w-0">
             <input type={c.tipo === "number" ? "number" : c.tipo === "date" ? "date" : "text"} value={c.valor}
-              onChange={(e) => patchCampo(seccion.id, c.id, { valor: e.target.value })} onKeyDown={onEnterGuardar} placeholder={c.label || "Valor"} className={INPUT_CLS} />
+              onChange={(e) => patchCampo(seccion.id, c.id, { valor: e.target.value })} onKeyDown={onEnterGuardar} placeholder={c.label || "Valor"}
+              className={INPUT_CLS + (venc && venc.estado !== "ok" ? (venc.estado === "vencido" ? " ring-2 ring-red-400/40 border-red-300" : " ring-2 ring-amber-400/40 border-amber-300") : "")} />
+            {venc && (
+              <span className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border ${vencCls}`}>
+                {venc.estado !== "ok" && "⚠ "}{textoVencimiento(venc)}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-0.5 pt-1 shrink-0">
             <select value={c.tipo} onChange={(e) => patchCampo(seccion.id, c.id, { tipo: e.target.value as TipoCampo })} title="Tipo de campo"
@@ -440,7 +451,7 @@ export default function PersonalPage() {
             ) : listaFiltrada.map((f) => (
               <button key={f.id} onClick={() => seleccionar(f.id)}
                 className={`w-full text-left px-3 py-2.5 flex items-center gap-2.5 transition-colors ${selectedId === f.id ? "bg-primary-50 dark:bg-surface-700" : "hover:bg-surface-50 dark:hover:bg-surface-700/50"}`}>
-                <Avatar ficha={f} size={8} />
+                <Avatar ficha={f} size={8} alerta={estadoVencMasUrgente(f.secciones)} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-surface-800 dark:text-surface-100 truncate">{f.nombre}</span>
@@ -467,7 +478,7 @@ export default function PersonalPage() {
               <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-xl border border-surface-200 dark:border-surface-700 bg-white/95 dark:bg-surface-800/95 backdrop-blur px-4 py-3 shadow-sm">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="relative group/foto shrink-0">
-                    <Avatar ficha={ficha} size={12} />
+                    <Avatar ficha={ficha} size={12} alerta={estadoVencMasUrgente(secciones)} />
                     <button onClick={() => fotoInputRef.current?.click()} disabled={subiendoFoto} title="Cambiar foto"
                       className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 group-hover/foto:opacity-100 transition-opacity text-[9px] font-medium disabled:opacity-100">
                       {subiendoFoto ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : "Foto"}
@@ -623,17 +634,27 @@ export default function PersonalPage() {
   );
 }
 
-function Avatar({ ficha, size }: { ficha: { id: string; nombre: string; tipo: string; fotoUrl: string | null; updatedAt?: string }; size: number }) {
+function Avatar({ ficha, size, alerta }: { ficha: { id: string; nombre: string; tipo: string; fotoUrl: string | null; updatedAt?: string }; size: number; alerta?: EstadoVenc | null }) {
   const [err, setErr] = useState(false);
   const cls = `shrink-0 rounded-full flex items-center justify-center font-semibold overflow-hidden ${ficha.tipo === "CONTRATISTA" ? "bg-amber-100 text-amber-700" : "bg-primary-100 text-primary-700"}`;
   const style = { width: `${size * 0.25}rem`, height: `${size * 0.25}rem`, fontSize: size >= 12 ? "0.875rem" : "0.6875rem" } as React.CSSProperties;
-  if (ficha.fotoUrl && !err) {
+  const inner = (ficha.fotoUrl && !err)
+    // eslint-disable-next-line @next/next/no-img-element
+    ? <img src={fotoSrc(ficha)} alt={ficha.nombre} onError={() => setErr(true)} className={cls + " object-cover"} style={style} />
+    : <span className={cls} style={style}>{iniciales(ficha.nombre)}</span>;
+  if (alerta && alerta !== "ok") {
+    const color = alerta === "vencido" ? "bg-red-500" : "bg-amber-500";
+    const dot = size >= 12 ? "w-3.5 h-3.5 -top-0.5 -right-0.5" : "w-2.5 h-2.5 -top-0.5 -right-0.5";
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={fotoSrc(ficha)} alt={ficha.nombre} onError={() => setErr(true)} className={cls + " object-cover"} style={style} />
+      <span className="relative inline-flex shrink-0" title={alerta === "vencido" ? "Tiene un vencimiento vencido" : "Tiene un vencimiento próximo"}>
+        {inner}
+        <span className={`absolute ${dot} rounded-full ${color} ring-2 ring-white dark:ring-surface-800 flex items-center justify-center`}>
+          {size >= 12 && <span className="text-white text-[9px] font-bold leading-none">!</span>}
+        </span>
+      </span>
     );
   }
-  return <span className={cls} style={style}>{iniciales(ficha.nombre)}</span>;
+  return inner;
 }
 
 function ProyectosManager({ open, onClose, catalogo, onChange, confirm }: {

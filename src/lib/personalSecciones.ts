@@ -54,6 +54,36 @@ export function plantillaSecciones(): SeccionFicha[] {
         campo("autoTarjetaRed", "Tarjeta en red"),
       ],
     },
+    {
+      id: "rent-car",
+      titulo: "RENT CAR",
+      campos: [
+        campo("rc_empresa", "EMPRESA"),
+        campo("rc_facturacion", "FACTURACION"),
+        campo("rc_vencimiento", "VENCIMIENTO", "date"),
+        campo("rc_prox_vencimiento", "PROX - VENCIMIENTO", "date"),
+      ],
+    },
+    {
+      id: "servis",
+      titulo: "SERVIS",
+      campos: [
+        campo("sv_cada", "CADA"),
+        campo("sv_km_actual", "KM ACTUAL", "number"),
+        campo("sv_realizado", "REALIZADO"),
+        campo("sv_fecha", "FECHA", "date"),
+      ],
+    },
+    {
+      id: "adicionales",
+      titulo: "ADICIONALES",
+      campos: [
+        campo("ad_multas", "MULTAS"),
+        campo("ad_peaje", "PEAJE"),
+        campo("ad_facturas", "FACTURAS"),
+        campo("ad_extras", "EXTRAS"),
+      ],
+    },
   ];
 }
 
