@@ -231,6 +231,8 @@ export const importarEjecutarSchema = z.object({
   defaultEstadoId: cuidOpt(),
   espacioId: cuidOpt(),
   updateExisting: z.boolean().optional(),
+  // Simulación: calcula qué se crearía/actualizaría/omitiría SIN escribir en la base.
+  dryRun: z.boolean().optional(),
 });
 
 // POST /api/facturacion (body opcional)

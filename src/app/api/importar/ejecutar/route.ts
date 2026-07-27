@@ -20,6 +20,7 @@ interface ImportPayload {
   defaultEstadoId?: string;
   espacioId?: string;
   updateExisting?: boolean;
+  dryRun?: boolean;
 }
 
 // Campos del cronograma SF 2026
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const { tipo, mappings, rows, defaultPrioridad, defaultEstadoId, espacioId, updateExisting } = body;
+  const { tipo, mappings, rows, defaultPrioridad, defaultEstadoId, espacioId, updateExisting, dryRun } = body;
 
   const fieldMap = new Map<string, number>();
   const customFieldMap = new Map<string, number>(); // custom:clave → excelColumn
@@ -200,6 +201,8 @@ export async function POST(request: NextRequest) {
   const duplicates: { fila: number; serial: string; nuevo: Record<string, string>; existente: Record<string, string>; iguales: string[]; diferentes: string[]; accion?: "actualizado" | "omitido" }[] = [];
   // Detalle de lo actualizado (qué campos cambiaron) y desglose de motivos de omisión.
   const updates: { fila: number; serial: string | null; id?: string; cambios: { campo: string; antes: string; despues: string }[] }[] = [];
+  // Detalle de lo que se crearía (para la vista previa / simulación).
+  const creates: { fila: number; serial: string | null; nombre: string }[] = [];
   const motivos = { duplicado: 0, idNoEncontrado: 0, desalineado: 0, sinNombre: 0, transitorio: 0, error: 0, filaInvalida: 0 };
 
   try {
@@ -388,11 +391,11 @@ export async function POST(request: NextRequest) {
                 }
               }
             }
-            if (Object.keys(updateData).length > 0) {
+            if (Object.keys(updateData).length > 0 && !dryRun) {
               await prisma.predio.update({ where: { id: existingId }, data: updateData as any });
             }
             const asignadoVal = safeGet(row, fieldMap.get("asignado"));
-            if (asignadoVal) {
+            if (asignadoVal && !dryRun) {
               const userId = matchUser(asignadoVal);
               if (userId) {
                 const exists = await prisma.asignacion.findFirst({ where: { userId, predioId: existingId } });
@@ -432,20 +435,27 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const newPredio = await prisma.predio.create({ data: data as any });
-          if (effectiveCodigo) batchCreatedCodes.set(effectiveCodigo, newPredio.id);
+          let newPredioId: string;
+          if (dryRun) {
+            newPredioId = `dry-${i}`;
+          } else {
+            const newPredio = await prisma.predio.create({ data: data as any });
+            newPredioId = newPredio.id;
+          }
+          if (effectiveCodigo) batchCreatedCodes.set(effectiveCodigo, newPredioId);
           // Match asignado y crear Asignacion tras crear el predio
           const asignadoVal = safeGet(row, fieldMap.get("asignado"));
-          if (asignadoVal) {
+          if (asignadoVal && !dryRun) {
             const userId = matchUser(asignadoVal);
             if (userId) {
-              const exists = await prisma.asignacion.findFirst({ where: { userId, predioId: newPredio.id } });
+              const exists = await prisma.asignacion.findFirst({ where: { userId, predioId: newPredioId } });
               if (!exists) {
-                await prisma.asignacion.create({ data: { tipo: "TECNICO", userId, predioId: newPredio.id } });
+                await prisma.asignacion.create({ data: { tipo: "TECNICO", userId, predioId: newPredioId } });
               }
             }
           }
           created++;
+          creates.push({ fila: i + 2, serial: null, nombre: String((data.nombre as string) || effectiveCodigo || "") });
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Error desconocido";
           if (msg.includes("Unique constraint") && !updateExisting) {
@@ -569,7 +579,8 @@ export async function POST(request: NextRequest) {
           // autocompletado por serial se aplica solo al CREAR (más abajo).
           const fecha = safeGet(row, fieldMap.get("fecha"));
           // Auto-rellenar fecha con hoy si está vacía
-          data.fecha = fecha || fechaHoy;
+          // Vacia NO pisa la fecha existente (el default a hoy se aplica solo al CREAR).
+          if (fecha) data.fecha = fecha;
 
           const cantStr = safeGet(row, fieldMap.get("cantidad"));
           if (cantStr) { const v = parseInt(cantStr); if (!isNaN(v) && v > 0) data.cantidad = v; }
@@ -584,9 +595,10 @@ export async function POST(request: NextRequest) {
               const n = normE(e);
               return n === needle || n.includes(needle) || needle.includes(n);
             });
-            data.estado = match || "DISPONIBLE";
-          } else {
-            data.estado = "DISPONIBLE";
+            // Solo aplicamos el estado si es RECONOCIBLE. Si no matchea, no lo
+            // seteamos: al CREAR se usa DISPONIBLE por defecto (mas abajo) y al
+            // ACTUALIZAR se respeta el estado real (una celda vacia no lo resetea).
+            if (match) data.estado = match;
           }
 
           // Matching de asignado: normalizar (sin acentos, minúsculas) y match parcial
@@ -667,7 +679,7 @@ export async function POST(request: NextRequest) {
             }
 
             const diff = calcularDiff(data, target, asignadoVal);
-            await withRetry(() => prisma.equipo.update({ where: { id: target.id }, data: buildUpdateData(false) as any }));
+            if (!dryRun) await withRetry(() => prisma.equipo.update({ where: { id: target.id }, data: buildUpdateData(false) as any }));
             updated++;
             updates.push({ fila: i + 2, id: target.id, serial: target.numeroSerie || ns || null, cambios: diff.cambios });
             continue;
@@ -679,7 +691,7 @@ export async function POST(request: NextRequest) {
             if (existing) {
               const diff = calcularDiff(data, existing, asignadoVal);
               if (updateExisting) {
-                await withRetry(() => prisma.equipo.update({ where: { id: existing.id }, data: buildUpdateData(true) as any }));
+                if (!dryRun) await withRetry(() => prisma.equipo.update({ where: { id: existing.id }, data: buildUpdateData(true) as any }));
                 updated++;
                 duplicates.push({ fila: i + 2, serial: ns, nuevo: diff.nuevo, existente: diff.existente, iguales: diff.iguales, diferentes: diff.diferentes, accion: "actualizado" });
                 updates.push({ fila: i + 2, serial: ns, cambios: diff.cambios });
@@ -695,12 +707,22 @@ export async function POST(request: NextRequest) {
           // Equipo NUEVO: autocompletar proveedor/marca por serial si la fila no los trajo.
           // Solo acá (nunca en update, para no pisar el proveedor real de un equipo existente).
           const createData: Record<string, unknown> = { ...data };
+          // Defaults SOLO al crear (nunca en update, para no pisar datos reales).
+          if (!createData.estado) createData.estado = "DISPONIBLE";
+          if (!createData.fecha) createData.fecha = fechaHoy;
           if (!createData.proveedor && prefixMatch?.proveedor) createData.proveedor = prefixMatch.proveedor;
           if (!createData.marca && prefixMatch?.marca) createData.marca = prefixMatch.marca;
-          const creado = await withRetry(() => prisma.equipo.create({ data: createData as any, include: equipoInclude }));
           created++;
-          // Registrar en el map para deduplicar repeticiones del mismo serial dentro de la lista.
-          if (ns) existingBySerial.set(ns, creado);
+          creates.push({ fila: i + 2, serial: ns || null, nombre: finalNombre });
+          if (dryRun) {
+            // Simulación: no se crea. Registramos un centinela para que un serial
+            // repetido más abajo en el archivo se trate como update (no doble-cree).
+            if (ns) existingBySerial.set(ns, { id: null, numeroSerie: ns, __simulado: true, asignado: null });
+          } else {
+            const creado = await withRetry(() => prisma.equipo.create({ data: createData as any, include: equipoInclude }));
+            // Registrar en el map para deduplicar repeticiones del mismo serial dentro de la lista.
+            if (ns) existingBySerial.set(ns, creado);
+          }
         } catch (err: unknown) {
           const e = err as { code?: string; message?: string };
           const msg = e?.message || "Error desconocido";
@@ -718,33 +740,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    try {
-      await prisma.actividad.create({
-        data: {
-          accion: "CREAR",
-          descripcion: `Importación masiva: ${created} creados${updated > 0 ? `, ${updated} actualizados` : ""} (${tipo === "PREDIO" ? "predios" : "equipos"})`,
-          entidad: tipo,
-          entidadId: "bulk-import",
-          userId: session.userId,
-          metadata: {
-            tipo,
-            created,
-            updated,
-            skipped,
-            total: rows.length,
-            motivos,
-            errors: errors.slice(0, 50),
-            duplicates: duplicates.slice(0, 50),
-            updateExisting: Boolean(updateExisting),
-            espacioId: espacioId || null,
-            mappingsCount: mappings.length,
+    // En una simulación no se escribe nada, tampoco el log de actividad.
+    if (!dryRun) {
+      try {
+        await prisma.actividad.create({
+          data: {
+            accion: "CREAR",
+            descripcion: `Importación masiva: ${created} creados${updated > 0 ? `, ${updated} actualizados` : ""} (${tipo === "PREDIO" ? "predios" : "equipos"})`,
+            entidad: tipo,
+            entidadId: "bulk-import",
+            userId: session.userId,
+            metadata: {
+              tipo,
+              created,
+              updated,
+              skipped,
+              total: rows.length,
+              motivos,
+              errors: errors.slice(0, 50),
+              duplicates: duplicates.slice(0, 50),
+              updateExisting: Boolean(updateExisting),
+              espacioId: espacioId || null,
+              mappingsCount: mappings.length,
+            },
           },
-        },
-      });
-    } catch { /* no bloquear por log */ }
+        });
+      } catch { /* no bloquear por log */ }
+    }
 
     return NextResponse.json({
       success: true,
+      dryRun: Boolean(dryRun),
       created,
       updated,
       skipped,
@@ -765,6 +791,7 @@ export async function POST(request: NextRequest) {
       errors: errors.slice(0, 300),
       duplicates: duplicates.slice(0, 300),
       updates: updates.slice(0, 300),
+      creates: creates.slice(0, 300),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Error desconocido";

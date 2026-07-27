@@ -29,7 +29,7 @@ const IconX = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
   </svg>
 );
 
-type Step = "upload" | "map" | "result";
+type Step = "upload" | "map" | "preview" | "result";
 type ViewMode = "importar" | "historial";
 
 export default function ImportarPage() {
@@ -293,7 +293,7 @@ export default function ImportarPage() {
     setStep("map");
   }
 
-  async function handleImport() {
+  async function handleImport(dryRun = false) {
     if (!parseResult) return;
     setImporting(true);
     setError("");
@@ -344,6 +344,7 @@ export default function ImportarPage() {
         rows: parseResult.rows.filter((_: string[], i: number) => !excludedRows.has(i)),
         espacioId: espacioId || undefined,
         updateExisting,
+        dryRun,
       }),
     });
 
@@ -352,8 +353,12 @@ export default function ImportarPage() {
 
     if (res.ok) {
       setResult(data);
-      setStep("result");
-      fetchHistory();
+      if (dryRun) {
+        setStep("preview");
+      } else {
+        setStep("result");
+        fetchHistory();
+      }
     } else {
       setError(data.error || "Error al importar");
     }
@@ -860,22 +865,32 @@ export default function ImportarPage() {
               />
               Actualizar existentes (sobreescribir duplicados)
             </label>
-            <button onClick={handleImport} disabled={importing || activeRowsCount === 0 || activeColsCount === 0 || Object.values(mappings).filter((v) => v !== "_skip").length === 0} className="flex-1 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 disabled:opacity-50 transition-colors">
-              {importing ? "Importando..." : `Importar ${activeRowsCount} filas × ${activeColsCount} columnas`}
+            <button onClick={() => handleImport(true)} disabled={importing || activeRowsCount === 0 || activeColsCount === 0 || Object.values(mappings).filter((v) => v !== "_skip").length === 0} className="flex-1 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700 disabled:opacity-50 transition-colors">
+              {importing ? "Simulando..." : `Vista previa de ${activeRowsCount} filas (simular sin guardar)`}
             </button>
           </div>
         </div>
       )}
 
-      {/* Paso 3: Resultado */}
-      {viewMode === "importar" && step === "result" && result && (
+      {/* Paso 3: Vista previa (simulación) o Resultado */}
+      {viewMode === "importar" && (step === "preview" || step === "result") && result && (
         <div className="bg-white rounded-lg border border-surface-200 p-6 text-center">
-          <svg className="w-10 h-10 mx-auto mb-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          <h2 className="text-base font-semibold text-surface-800 mb-2">Importación completada</h2>
+          {result.dryRun ? (
+            <>
+              <svg className="w-10 h-10 mx-auto mb-3 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              <h2 className="text-base font-semibold text-surface-800 mb-1">Vista previa — todavía no se guardó nada</h2>
+              <p className="text-xs text-surface-500 mb-3">Esto es una simulación. Revisá qué se crearía y qué se actualizaría; si está bien, confirmá abajo.</p>
+            </>
+          ) : (
+            <>
+              <svg className="w-10 h-10 mx-auto mb-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <h2 className="text-base font-semibold text-surface-800 mb-2">Importación completada</h2>
+            </>
+          )}
           <div className="flex justify-center gap-8 text-sm mb-4">
-            <div><span className="text-2xl font-bold text-green-600">{result.created}</span><p className="text-surface-500">Creados</p></div>
-            {result.updated > 0 && <div><span className="text-2xl font-bold text-blue-600">{result.updated}</span><p className="text-surface-500">Actualizados</p></div>}
-            <div><span className="text-2xl font-bold text-yellow-600">{result.skipped}</span><p className="text-surface-500">Omitidos</p></div>
+            <div><span className="text-2xl font-bold text-green-600">{result.created}</span><p className="text-surface-500">{result.dryRun ? "Se crearán" : "Creados"}</p></div>
+            {result.updated > 0 && <div><span className="text-2xl font-bold text-blue-600">{result.updated}</span><p className="text-surface-500">{result.dryRun ? "Se actualizarán" : "Actualizados"}</p></div>}
+            <div><span className="text-2xl font-bold text-yellow-600">{result.skipped}</span><p className="text-surface-500">{result.dryRun ? "Se omitirán" : "Omitidos"}</p></div>
             <div><span className="text-2xl font-bold text-surface-400">{result.total}</span><p className="text-surface-500">Total</p></div>
           </div>
           {result.resumen && result.skipped > 0 && (
@@ -889,6 +904,19 @@ export default function ImportarPage() {
                 {result.resumen.filaInvalida > 0 && <li>• {result.resumen.filaInvalida} fila(s) vacías o inválidas</li>}
                 {result.resumen.falladoOtro > 0 && <li className="text-red-600">• {result.resumen.falladoOtro} con error de datos (ver lista de errores)</li>}
                 {result.resumen.falladoTransitorio > 0 && <li className="text-red-700 font-semibold">⚠ {result.resumen.falladoTransitorio} por error transitorio de base de datos — volvé a importar la MISMA lista; esas filas se completan sin duplicar nada</li>}
+              </ul>
+            </div>
+          )}
+          {result.creates?.length > 0 && (
+            <div className="text-left bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-4 max-h-52 overflow-y-auto">
+              <p className="text-sm font-semibold text-emerald-800 mb-2">{result.created} {result.dryRun ? "se crearán" : "creados"} (nuevos)</p>
+              <ul className="space-y-0.5">
+                {result.creates.map((c: any, i: number) => (
+                  <li key={i} className="text-xs text-surface-700">
+                    <span className="font-mono text-surface-500">Fila {c.fila}:</span> {c.nombre}{c.serial ? <span className="font-mono text-surface-500"> · {c.serial}</span> : <span className="text-amber-600"> · sin serie</span>}
+                  </li>
+                ))}
+                {result.created > result.creates.length && <li className="text-xs text-surface-400">…y {result.created - result.creates.length} más</li>}
               </ul>
             </div>
           )}
@@ -981,7 +1009,20 @@ export default function ImportarPage() {
               )}
             </div>
           )}
-          <button onClick={reset} className="px-6 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700">Nueva importación</button>
+          {result.dryRun ? (
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              <button onClick={() => setStep("map")} className="px-4 py-2 text-xs text-surface-600 border border-surface-200 rounded-md hover:bg-surface-50">← Ajustar mapeo</button>
+              <button
+                onClick={() => handleImport(false)}
+                disabled={importing || (result.created === 0 && result.updated === 0)}
+                className="px-6 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+              >
+                {importing ? "Importando..." : `Confirmar e importar (${result.created} nuevos · ${result.updated} cambios)`}
+              </button>
+            </div>
+          ) : (
+            <button onClick={reset} className="px-6 py-2 bg-surface-800 text-white rounded-md text-xs font-medium hover:bg-surface-700">Nueva importación</button>
+          )}
         </div>
       )}
     </div>
