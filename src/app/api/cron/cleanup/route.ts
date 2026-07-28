@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyCronAuth } from "@/lib/cronAuth";
 import { avisarAdminsFallo } from "@/lib/alertasAdmin";
+import { readdir, stat, rm } from "fs/promises";
+import path from "path";
 
 /**
  * GET /api/cron/cleanup
@@ -44,11 +46,26 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    // Cache de evidencias descomprimidas > 7 días (se re-genera al abrir el ZIP del chat).
+    let cacheEvidenciasBorrados = 0;
+    try {
+      const cacheBase = path.resolve(process.cwd(), "uploads", "evidencias-cache");
+      const hace7dias = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const dirs = await readdir(cacheBase, { withFileTypes: true }).catch(() => []);
+      for (const d of dirs) {
+        if (!d.isDirectory()) continue;
+        const p = path.join(cacheBase, d.name);
+        const s = await stat(p).catch(() => null);
+        if (s && s.mtime < hace7dias) { await rm(p, { recursive: true, force: true }).catch(() => {}); cacheEvidenciasBorrados++; }
+      }
+    } catch { /* ignorar */ }
+
     const resumen = {
       notificacionesLeidas: notifLeidas.count,
       notificacionesAntiguas: notifAntiguas.count,
       actividadAntigua: actividadAntigua.count,
       monitoreosViejos: monitoreosViejos.count,
+      cacheEvidenciasBorrados,
       totalEliminados:
         notifLeidas.count + notifAntiguas.count + actividadAntigua.count + monitoreosViejos.count,
     };

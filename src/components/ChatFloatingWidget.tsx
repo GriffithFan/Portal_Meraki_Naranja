@@ -80,14 +80,24 @@ function ChatArchivo({ msg, onOpenMedia }: { msg: any; onOpenMedia: (msg: any) =
     );
   }
   // zip u otros
+  const esZip = /\.zip$/i.test(msg.archivoNombre || "");
   return (
-    <button type="button" onClick={() => onOpenMedia(msg)} className="mt-1 flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition text-xs text-left">
-      <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-      </svg>
-      <span className="truncate">{msg.archivoNombre}</span>
-      <span className="text-[10px] opacity-60 flex-shrink-0">{formatFileSize(msg.archivoTamanio)}</span>
-    </button>
+    <div className="mt-1">
+      <button type="button" onClick={() => onOpenMedia(msg)} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 transition text-xs text-left w-full">
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+        <span className="truncate">{msg.archivoNombre}</span>
+        <span className="text-[10px] opacity-60 flex-shrink-0">{formatFileSize(msg.archivoTamanio)}</span>
+      </button>
+      {esZip && (
+        <button type="button" onClick={() => window.open(`/dashboard/evidencias/${msg.id}`, "_blank", "noopener")}
+          className="inline-flex items-center gap-1 mt-1 px-2 py-1 rounded bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 transition text-[11px] font-medium">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          Ver evidencias por punto
+        </button>
+      )}
+    </div>
   );
 }
 
