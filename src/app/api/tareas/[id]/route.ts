@@ -4,6 +4,7 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, tareaUpdateSchema } from "@/lib/validation";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 import { getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { lanzarPredioEnSalesforce } from "@/lib/salesforce/lanzarPredio";
 
 async function delegatedUserIds(userId: string): Promise<string[]> {
   const delegaciones = await prisma.delegacion.findMany({
@@ -477,6 +478,19 @@ export async function PATCH(
     if (body.estadoId !== undefined && body.estadoId !== existing.estadoId) {
       iniciarMonitoreoSiCambioEstado(id, session.userId, existing.estadoId, body.estadoId || null)
         .catch((e) => console.error("Error creando monitoreo:", e));
+    }
+
+    // Auto-lanzar en Salesforce al pasar a EN PROGRESO — SOLO admin/mesa.
+    // Para el técnico común, cambiar de estado no lanza nada. Fire-and-forget:
+    // no bloquea el cambio de estado; notifica al actor el resultado.
+    if (
+      isModOrAdmin(session.rol) &&
+      body.estadoId !== undefined &&
+      body.estadoId !== existing.estadoId &&
+      updated.estado?.clave === "en_progreso"
+    ) {
+      lanzarPredioEnSalesforce({ predioId: id, actorId: session.userId })
+        .catch((e) => console.error("Error auto-lanzando en Salesforce:", e));
     }
 
     return NextResponse.json(updated);
