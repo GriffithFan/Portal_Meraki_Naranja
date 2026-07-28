@@ -6,7 +6,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const DIAS_ALERTA_VENCIMIENTO = 30;
+export const DIAS_ALERTA_VENCIMIENTO = 7;
 
 export type EstadoVenc = "vencido" | "proximo" | "ok";
 
