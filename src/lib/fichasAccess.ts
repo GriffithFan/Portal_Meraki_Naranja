@@ -9,7 +9,7 @@
  * de usuarios no permite cambiarlo), por lo que una cuenta nueva no puede tomar
  * estos emails. Para cambiar quién entra hay que editar esta lista y desplegar.
  */
-export const FICHAS_EMAILS = ["griffith@thnet.com", "fernando@thnet.com", "leonel@thnet.com", "andrea@thnet.com"] as const;
+export const FICHAS_EMAILS = ["griffith@thnet.com", "fernando@thnet.com", "leonel@thnet.com", "andrea@thnet.com", "enzo@thnet.com"] as const;
 
 export function tieneAccesoFichas(email?: string | null): boolean {
   return !!email && (FICHAS_EMAILS as readonly string[]).includes(email.trim().toLowerCase());
