@@ -30,6 +30,7 @@ model User {
   rol           Role     @default(TECNICO)
   esMesa    Boolean  @default(false) // Rol secundario: puede atender consultas en Mesa de Ayuda
   activo    Boolean  @default(true)
+  salesforceUser String? // Usuario de Salesforce/Mined (ej "THNET C08") para auto-lanzar predios
   telefono  String?
   twoFactorEnabled Boolean @default(false) // 2FA (TOTP) activado
   twoFactorSecret  String?                 // Secret TOTP (base32); null si no configurado
