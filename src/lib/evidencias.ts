@@ -9,26 +9,65 @@ import path from "path";
  * cada foto a su PUNTO (campo RPTn / la foto geolocalizada de portada).
  */
 
-// Leyenda RPT/campo -> nombre de punto (mismo mapeo que la herramienta local).
-export const LEYENDA_PUNTOS: Record<string, string> = {
-  "a01Qn00000RQMfAIAX": "1 — Frente / Portada (geolocalizada)",
-  "1": "2.1 — RACK LIMPIO, rotulado y cableado emprolijado (puerta ABIERTA)",
-  "2": "2.2 — RACK LIMPIO, rotulado y cableado emprolijado (puerta CERRADA)",
-  "4": "2.3 — MODEM del ISP dentro del RACK / 4G / Starlink",
-  "5": "2.4 — Protector ETHERNET",
-  "6": "2.5 — Protector FILTRO de TENSIÓN",
-  "8": "3.1 — AP: instalación + canalización + rotulado (caja cerrada)",
-  "9": "3.2 — AP: funcionamiento + roseta (caja abierta)",
-  "13": "4.1 — GABINETE SECUNDARIO (puerta abierta y cerrada)",
-  "14": "4.2 — CANALIZACIONES",
-  "17": "5.1 — TOPOLOGÍA",
-  "19": "5.2 — AP's conectados en GIGA",
-  "21": "6.1 — COBERTURA: irradiación con MAC",
-  "35": "6.2 — COBERTURA: navegación WiFi (todos los SSID)",
-  "44": "7.1 — EVIDENCIAS",
-  "45": "8.1 — ACTA de RELEVAMIENTO DE RED LOCAL",
-  "60": "8.2 — ACTA DETALLE RED LOCAL",
-  "61": "8.3 — ACTA de CONECTIVIDAD",
+// Leyenda RPT/campo -> nombre de punto, POR TIPO DE FORMULARIO (sfNetType).
+// Cada tipo (USAP/GSAP/GAP) asigna sus propios puntos a los mismos RPT.
+export const LEYENDAS_POR_TIPO: Record<string, Record<string, string>> = {
+  USAP: {
+    "a01Qn00000RQMfAIAX": "1 — Frente / Portada (geolocalizada)",
+    "1": "2.1 — RACK LIMPIO, rotulado y cableado emprolijado (puerta ABIERTA)",
+    "2": "2.2 — RACK LIMPIO, rotulado y cableado emprolijado (puerta CERRADA)",
+    "4": "2.3 — MODEM del ISP dentro del RACK / 4G / Starlink",
+    "5": "2.4 — Protector ETHERNET",
+    "6": "2.5 — Protector FILTRO de TENSIÓN",
+    "8": "3.1 — AP: instalación + canalización + rotulado (caja cerrada)",
+    "9": "3.2 — AP: funcionamiento + roseta (caja abierta)",
+    "13": "4.1 — GABINETE SECUNDARIO (puerta abierta y cerrada)",
+    "14": "4.2 — CANALIZACIONES",
+    "17": "5.1 — TOPOLOGÍA",
+    "19": "5.2 — AP's conectados en GIGA",
+    "21": "6.1 — COBERTURA: irradiación con MAC",
+    "35": "6.2 — COBERTURA: navegación WiFi (todos los SSID)",
+    "44": "7.1 — EVIDENCIAS",
+    "45": "8.1 — ACTA de RELEVAMIENTO DE RED LOCAL",
+    "60": "8.2 — ACTA DETALLE RED LOCAL",
+    "61": "8.3 — ACTA de CONECTIVIDAD",
+  },
+  GSAP: {
+    "1": "2.1 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta ABIERTA)",
+    "2": "2.2 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta CERRADA)",
+    "4": "2.3 — MODEM del ISP correspondiente / 4G / Starlink",
+    "5": "2.4 — Protector ETHERNET",
+    "6": "2.5 — Protector FILTRO de TENSIÓN",
+    "8": "3.1 — AP: instalación + canalización + rotulado (caja cerrada)",
+    "9": "3.2 — AP: funcionamiento + roseta (caja abierta)",
+    "13": "4.1 — TOPOLOGÍA",
+    "14": "4.2 — AP's conectados en GIGA",
+    "17": "5.1 — COBERTURA: irradiación con MAC",
+    "19": "5.2 — COBERTURA: navegación WiFi (todos los SSID)",
+    "21": "6.1 — EVIDENCIAS",
+    "35": "7.1 — ACTA de RELEVAMIENTO DE RED LOCAL",
+    "44": "7.2 — ACTA DETALLE RED LOCAL",
+    "45": "7.3 — ACTA de CONECTIVIDAD",
+    "61": "7.4 — ACTA de UNIFICACIÓN (si corresponde)",
+  },
+  // GAP: INFERIDO (los campos de GAP son un subconjunto de GSAP: sin Evidencias
+  // ni Unificación). A confirmar con la captura de puntos de un GAP.
+  GAP: {
+    "1": "2.1 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta ABIERTA)",
+    "2": "2.2 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta CERRADA)",
+    "4": "2.3 — MODEM del ISP correspondiente / 4G / Starlink",
+    "5": "2.4 — Protector ETHERNET",
+    "6": "2.5 — Protector FILTRO de TENSIÓN",
+    "8": "3.1 — AP: instalación + canalización + rotulado (caja cerrada)",
+    "9": "3.2 — AP: funcionamiento + roseta (caja abierta)",
+    "13": "4.1 — TOPOLOGÍA",
+    "14": "4.2 — AP's conectados en GIGA",
+    "17": "5.1 — COBERTURA: irradiación con MAC",
+    "19": "5.2 — COBERTURA: navegación WiFi (todos los SSID)",
+    "35": "6.1 — ACTA de RELEVAMIENTO DE RED LOCAL",
+    "44": "6.2 — ACTA DETALLE RED LOCAL",
+    "45": "6.3 — ACTA de CONECTIVIDAD",
+  },
 };
 
 export interface FotoEv { rel: string; hora: string }
@@ -52,8 +91,9 @@ function horaDe(archivo: string): string {
   return `${p(m[1])}:${p(m[2])}:${p(m[3])}`;
 }
 
-function labelDeClave(clave: string): string {
-  if (LEYENDA_PUNTOS[clave]) return LEYENDA_PUNTOS[clave];
+function labelDeClave(clave: string, tipo: string): string {
+  const ley = LEYENDAS_POR_TIPO[tipo] || {};
+  if (ley[clave]) return ley[clave];
   if (/^\d+$/.test(clave)) return `Punto ${clave}`;
   return "Frente / Portada";
 }
@@ -65,9 +105,10 @@ function metaValor(texto: string, campo: string): string {
 
 /** Parsea un submission.xml: metadata + fotos agrupadas por punto (en orden del formulario). */
 export function parsearSubmission(texto: string, carpetaRel: string): { meta: any; puntos: PuntoEv[]; fechaOrden: number } {
+  const tipoRed = metaValor(texto, "sfNetType");
   const meta = {
     tecnico: metaValor(texto, "sfUserId"),
-    cron: `${metaValor(texto, "sfCronType")}/${metaValor(texto, "sfNetType")}`.replace(/^\/$/, ""),
+    cron: `${metaValor(texto, "sfCronType")}/${tipoRed}`.replace(/^\/$/, ""),
     start: metaValor(texto, "start"),
     end: metaValor(texto, "end"),
     today: metaValor(texto, "today"),
@@ -88,7 +129,7 @@ export function parsearSubmission(texto: string, carpetaRel: string): { meta: an
   }
 
   const puntos: PuntoEv[] = Array.from(grupos.entries())
-    .map(([clave, g]) => ({ clave, label: labelDeClave(clave), orden: g.orden, fotos: g.fotos.sort((a, b) => a.hora.localeCompare(b.hora)) }))
+    .map(([clave, g]) => ({ clave, label: labelDeClave(clave, tipoRed), orden: g.orden, fotos: g.fotos.sort((a, b) => a.hora.localeCompare(b.hora)) }))
     .sort((a, b) => a.orden - b.orden);
 
   // Fecha para ordenar (más nuevo primero).
