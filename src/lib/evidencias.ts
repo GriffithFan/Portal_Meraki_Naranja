@@ -11,6 +11,27 @@ import path from "path";
 
 // Leyenda RPT/campo -> nombre de punto, POR TIPO DE FORMULARIO (sfNetType).
 // Cada tipo (USAP/GSAP/GAP) asigna sus propios puntos a los mismos RPT.
+
+// Formulario de predios PM (lo usan GSAP y GAP; sin foto de portada).
+const LEYENDA_PM: Record<string, string> = {
+  "1": "2.1 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta ABIERTA)",
+  "2": "2.2 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta CERRADA)",
+  "4": "2.3 — MODEM del ISP correspondiente / 4G / Starlink",
+  "5": "2.4 — Protector ETHERNET",
+  "6": "2.5 — Protector FILTRO de TENSIÓN",
+  "8": "3.1 — AP: instalación + canalización + rotulado (caja cerrada)",
+  "9": "3.2 — AP: funcionamiento + roseta (caja abierta)",
+  "13": "4.1 — TOPOLOGÍA",
+  "14": "4.2 — AP's conectados en GIGA",
+  "17": "5.1 — COBERTURA: irradiación con MAC",
+  "19": "5.2 — COBERTURA: navegación WiFi (todos los SSID)",
+  "21": "6.1 — EVIDENCIAS",
+  "35": "7.1 — ACTA de RELEVAMIENTO DE RED LOCAL",
+  "44": "7.2 — ACTA DETALLE RED LOCAL",
+  "45": "7.3 — ACTA de CONECTIVIDAD",
+  "61": "7.4 — ACTA de UNIFICACIÓN (si corresponde)",
+};
+
 export const LEYENDAS_POR_TIPO: Record<string, Record<string, string>> = {
   USAP: {
     "a01Qn00000RQMfAIAX": "1 — Frente / Portada (geolocalizada)",
@@ -32,42 +53,10 @@ export const LEYENDAS_POR_TIPO: Record<string, Record<string, string>> = {
     "60": "8.2 — ACTA DETALLE RED LOCAL",
     "61": "8.3 — ACTA de CONECTIVIDAD",
   },
-  GSAP: {
-    "1": "2.1 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta ABIERTA)",
-    "2": "2.2 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta CERRADA)",
-    "4": "2.3 — MODEM del ISP correspondiente / 4G / Starlink",
-    "5": "2.4 — Protector ETHERNET",
-    "6": "2.5 — Protector FILTRO de TENSIÓN",
-    "8": "3.1 — AP: instalación + canalización + rotulado (caja cerrada)",
-    "9": "3.2 — AP: funcionamiento + roseta (caja abierta)",
-    "13": "4.1 — TOPOLOGÍA",
-    "14": "4.2 — AP's conectados en GIGA",
-    "17": "5.1 — COBERTURA: irradiación con MAC",
-    "19": "5.2 — COBERTURA: navegación WiFi (todos los SSID)",
-    "21": "6.1 — EVIDENCIAS",
-    "35": "7.1 — ACTA de RELEVAMIENTO DE RED LOCAL",
-    "44": "7.2 — ACTA DETALLE RED LOCAL",
-    "45": "7.3 — ACTA de CONECTIVIDAD",
-    "61": "7.4 — ACTA de UNIFICACIÓN (si corresponde)",
-  },
-  // GAP: INFERIDO (los campos de GAP son un subconjunto de GSAP: sin Evidencias
-  // ni Unificación). A confirmar con la captura de puntos de un GAP.
-  GAP: {
-    "1": "2.1 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta ABIERTA)",
-    "2": "2.2 — GABINETE LIMPIO, rotulado y cableado emprolijado (puerta CERRADA)",
-    "4": "2.3 — MODEM del ISP correspondiente / 4G / Starlink",
-    "5": "2.4 — Protector ETHERNET",
-    "6": "2.5 — Protector FILTRO de TENSIÓN",
-    "8": "3.1 — AP: instalación + canalización + rotulado (caja cerrada)",
-    "9": "3.2 — AP: funcionamiento + roseta (caja abierta)",
-    "13": "4.1 — TOPOLOGÍA",
-    "14": "4.2 — AP's conectados en GIGA",
-    "17": "5.1 — COBERTURA: irradiación con MAC",
-    "19": "5.2 — COBERTURA: navegación WiFi (todos los SSID)",
-    "35": "6.1 — ACTA de RELEVAMIENTO DE RED LOCAL",
-    "44": "6.2 — ACTA DETALLE RED LOCAL",
-    "45": "6.3 — ACTA de CONECTIVIDAD",
-  },
+  // GSAP y GAP comparten el MISMO formulario/puntos (verificado con capturas). Un
+  // envío GAP puede tener menos fotos, pero el RPT→punto es el mismo.
+  GSAP: LEYENDA_PM,
+  GAP: LEYENDA_PM,
 };
 
 export interface FotoEv { rel: string; hora: string }
