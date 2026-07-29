@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { isSomeoneTyping, clearTyping } from "@/lib/chatTyping";
 import { publicarCambioChat } from "@/lib/chatBus";
+import { expandirComandoChat } from "@/lib/chatComandos";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -187,9 +188,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
     }
 
+    // Slash-commands de Mesa (ej "/auditar"): solo del lado Mesa/agente.
+    let contenidoFinal = mensaje.trim();
+    if (esMesaUser || esAgente) {
+      const expandido = expandirComandoChat(contenidoFinal);
+      if (expandido) contenidoFinal = expandido;
+    }
+
     const nuevoMensaje = await prisma.chatMensaje.create({
       data: {
-        contenido: mensaje.trim().slice(0, 2000),
+        contenido: contenidoFinal.slice(0, 2000),
         conversacionId: id,
         autorId: session.userId,
         replyToId: replyToId || null,

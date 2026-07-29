@@ -9,6 +9,7 @@ import { useChatReminders } from "@/hooks/useChatReminders";
 import { Badge } from "@/components/ui/badge";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
 import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload, intervaloPollingAdaptativo } from "@/lib/chatUpload";
+import { CHAT_COMANDOS } from "@/lib/chatComandos";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import clsx from "clsx";
@@ -273,6 +274,14 @@ export default function ChatPage() {
   // soloLectura se calcula por conversación: MOD puede escribir en las suyas
   const esMiConversacion = seleccionada?.creadorId === session?.userId;
   const soloLectura = seleccionada ? !(esMiConversacion || isMesa) : false;
+
+  // Slash-commands (solo Mesa): sugerencias cuando el texto arranca con "/".
+  const comandosSugeridos = (() => {
+    if (!isMesa) return [];
+    const t = nuevoMensaje.trim().toLowerCase();
+    if (!t.startsWith("/")) return [];
+    return CHAT_COMANDOS.filter((c) => t === "/" || c.nombre.startsWith(t));
+  })();
 
   // Avisar "escribiendo…" a la otra parte (throttle 2.5s). No persiste nada.
   const pingTyping = useCallback(() => {
@@ -1307,6 +1316,24 @@ export default function ChatPage() {
                             </button>
                           ))}
                         </div>
+
+                        {comandosSugeridos.length > 0 && (
+                          <div className="overflow-hidden rounded-lg border border-blue-200 bg-white shadow-sm dark:border-blue-800/60 dark:bg-surface-700">
+                            <p className="border-b border-surface-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-surface-400 dark:border-surface-600">Comandos</p>
+                            {comandosSugeridos.map((c) => (
+                              <button
+                                key={c.nombre}
+                                type="button"
+                                onClick={() => enviarTextoConversacion(c.nombre)}
+                                disabled={enviando}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-blue-50 disabled:opacity-50 dark:hover:bg-blue-900/30"
+                              >
+                                <span className="text-xs font-semibold text-blue-600 dark:text-blue-300">{c.nombre}</span>
+                                <span className="truncate text-[11px] text-surface-400">{c.descripcion}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         <div className="flex items-end gap-2">
                           {/* Adjuntar archivo */}
