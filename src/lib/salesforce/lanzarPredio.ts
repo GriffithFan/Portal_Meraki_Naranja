@@ -12,11 +12,22 @@ const EXTRACTOR_PYTHON = process.env.EXTRACTOR_PYTHON || path.join(EXTRACTOR_DIR
 const SCRIPT = path.join(EXTRACTOR_DIR, "lanzar_predio_ni.py");
 const CREDS = ["SALESFORCE_URL_BASE", "SALESFORCE_USERNAME", "SALESFORCE_PASSWORD"] as const;
 
-// FAIL-SAFE: solo escribe en Salesforce si el .env del server tiene
-// SALESFORCE_AUTOLANZAR=REAL. Sin esa variable, corre en modo SIMULACIÓN
-// (dry-run): resuelve y avisa qué lanzaría, pero NO toca Mined.
+// FAIL-SAFE: solo escribe en Salesforce si el server tiene
+// SALESFORCE_AUTOLANZAR=REAL. Sin eso, corre en modo SIMULACIÓN (dry-run):
+// resuelve y avisa qué lanzaría, pero NO toca Mined. Lee process.env y, si no
+// está, el .env del server como respaldo (Next no siempre carga el .env).
+function leerConfigServer(clave: string): string {
+  if (process.env[clave]) return String(process.env[clave]);
+  try {
+    const envPath = path.join(process.env.APP_DIR || "/var/www/carrot", ".env");
+    const m = readFileSync(envPath, "utf8").match(new RegExp(`^${clave}=(.*)$`, "m"));
+    if (m) return m[1].trim().replace(/^["']|["']$/g, "");
+  } catch { /* no existe / no legible */ }
+  return "";
+}
+
 function modoReal(): boolean {
-  return (process.env.SALESFORCE_AUTOLANZAR || "").trim().toUpperCase() === "REAL";
+  return leerConfigServer("SALESFORCE_AUTOLANZAR").trim().toUpperCase() === "REAL";
 }
 
 function envConCredenciales(): NodeJS.ProcessEnv | null {
