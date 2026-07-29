@@ -1363,9 +1363,7 @@ export default function TareasPage() {
           ) : null}
           <span className="text-surface-800 font-medium truncate">{displayCode}</span>
           {esTipoIncidenciaEspecial(t.tipoIncidencia) && (
-            <span title={`Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}`} className="shrink-0 inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-100 px-1 py-px text-[9px] font-bold uppercase leading-none text-amber-800 max-w-[130px]">
-              <span aria-hidden>⚠</span><span className="truncate">{t.tipoIncidencia}</span>
-            </span>
+            <span title={`Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}`} className="shrink-0 text-amber-500" aria-label="Tarea especial">⚠</span>
           )}
           <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} tieneAdjuntos={t.tieneAdjuntos} />
           <CopyBtn text={t.codigo || ""} />
@@ -1733,6 +1731,14 @@ export default function TareasPage() {
               {item.label}
             </button>
           ))}
+          {/* Tareas especiales (tipo de incidencia ≠ Mantenimiento / Reparación) */}
+          <button
+            onClick={() => setFilterTipo((v) => (v === "__especiales__" ? "todos" : "__especiales__"))}
+            title="Mostrar solo tareas con tipo de incidencia especial (Reingeniería, Migración, etc.)"
+            className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${filterTipo === "__especiales__" ? "bg-amber-500 border-amber-500 text-white" : "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100"}`}
+          >
+            ⚠ Especiales
+          </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
           <select
@@ -2246,7 +2252,12 @@ export default function TareasPage() {
                               <tr
                                 key={t.id}
                                 onClick={() => openDetail(t)}
-                                className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
+                                title={esTipoIncidenciaEspecial(t.tipoIncidencia) ? `Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}` : undefined}
+                                className={`cursor-pointer transition-colors ${
+                                  esTipoIncidenciaEspecial(t.tipoIncidencia)
+                                    ? "bg-amber-50 hover:bg-amber-100 shadow-[inset_4px_0_0_0_#f59e0b]"
+                                    : `hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`
+                                }`}
                               >
                               {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center gap-1">
