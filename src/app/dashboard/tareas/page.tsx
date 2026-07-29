@@ -2255,7 +2255,7 @@ export default function TareasPage() {
                                 title={esTipoIncidenciaEspecial(t.tipoIncidencia) ? `Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}` : undefined}
                                 className={`cursor-pointer transition-colors ${
                                   esTipoIncidenciaEspecial(t.tipoIncidencia)
-                                    ? "bg-amber-50 hover:bg-amber-100 shadow-[inset_4px_0_0_0_#f59e0b]"
+                                    ? "bg-amber-100/80 hover:bg-amber-200/80 shadow-[inset_4px_0_0_0_#f59e0b]"
                                     : `hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`
                                 }`}
                               >
