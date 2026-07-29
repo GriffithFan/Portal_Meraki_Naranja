@@ -82,15 +82,27 @@ export interface EnvioEv {
  * el "local name". Lo extraemos de ahí como confirmación (5-7 dígitos aislados,
  * así no confunde con el año/hora de la fecha).
  */
+const RE_PREDIO = /(?<!\d)(\d{5,7})(?!\d)/;
+
 function extraerPredio(carpetaRel: string, nombreLocal: string): { predio: string; fuente: string } {
-  const reNum = /(?<!\d)(\d{5,7})(?!\d)/;
   for (const seg of carpetaRel.split("/").filter(Boolean).reverse()) {
-    const m = seg.match(reNum);
+    const m = seg.match(RE_PREDIO);
     if (m) return { predio: m[1], fuente: "carpeta" };
   }
-  const m2 = (nombreLocal || "").match(reNum);
+  const m2 = (nombreLocal || "").match(RE_PREDIO);
   if (m2) return { predio: m2[1], fuente: "nombre" };
   return { predio: "", fuente: "" };
+}
+
+/**
+ * Fallback del nº de predio desde el nombre del paquete (nombre del .zip del chat):
+ * solo si hay UN único envío sin predio, para no atribuir mal cuando el ZIP trae
+ * varias carpetas de predios distintos.
+ */
+export function completarPredioDesdePaquete(envios: EnvioEv[], nombrePaquete: string): void {
+  if (envios.length !== 1 || envios[0].predio) return;
+  const m = (nombrePaquete || "").match(RE_PREDIO);
+  if (m) { envios[0].predio = m[1]; envios[0].predioFuente = "paquete"; }
 }
 
 function horaDe(archivo: string): string {

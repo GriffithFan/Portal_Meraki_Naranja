@@ -76,7 +76,7 @@ export default function EvidenciasPage() {
             <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100">{env.nombre}</h2>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${env.draft ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{env.draft ? "BORRADOR" : "ENVIADO"}</span>
             {env.predio && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-100 text-primary-700" title={`Nº de predio identificado del ${env.predioFuente === "carpeta" ? "nombre de la carpeta" : "nombre del envío"} (el XML no lo incluye)`}>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-100 text-primary-700" title={`Nº de predio identificado del ${env.predioFuente === "carpeta" ? "nombre de la carpeta" : env.predioFuente === "paquete" ? "nombre del ZIP" : "nombre del envío"} (el XML no lo incluye)`}>
                 PREDIO {env.predio}
               </span>
             )}

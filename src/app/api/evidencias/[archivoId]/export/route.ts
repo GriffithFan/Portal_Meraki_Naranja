@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { analizarPaquete } from "@/lib/evidencias";
+import { analizarPaquete, completarPredioDesdePaquete } from "@/lib/evidencias";
 import { autorizarArchivoChat, asegurarCacheEvidencias, resolverFotoEvidencia } from "@/lib/evidenciasCache";
 import AdmZip from "adm-zip";
 import path from "path";
@@ -35,6 +35,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   try {
     const cacheDir = await asegurarCacheEvidencias(archivoId, info.zipPath);
     const envios = await analizarPaquete(cacheDir);
+    completarPredioDesdePaquete(envios, info.nombre);
 
     const zip = new AdmZip();
     const resumen: string[] = [
@@ -55,8 +56,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         ` · Técnico: ${env.tecnico || "—"} · ${env.cron || "—"} · Fecha: ${env.fecha || "—"} · ${env.total} foto(s)`
       );
 
+      // Todas las fotos del LAC en UNA sola carpeta; el punto va en el nombre del
+      // archivo (así ordenan por punto sin abrir 17 subcarpetas).
       for (const p of env.puntos) {
-        const carpetaPunto = sanitizar(p.label);
         resumen.push(`     • ${p.label} — ${p.fotos.length} foto(s)`);
         p.fotos.forEach((f, j) => {
           const abs = resolverFotoEvidencia(archivoId, f.rel);
@@ -66,7 +68,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             `${p.label} - ${String(j + 1).padStart(2, "0")}${f.hora ? ` - ${f.hora.replace(/:/g, "-")}` : ""}`
           ) + ext;
           try {
-            zip.addLocalFile(abs, `${carpetaEnvio}/${carpetaPunto}`, nombreFoto);
+            zip.addLocalFile(abs, carpetaEnvio, nombreFoto);
           } catch { /* foto ilegible: se omite */ }
         });
       }

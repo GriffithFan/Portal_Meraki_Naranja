@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { analizarPaquete } from "@/lib/evidencias";
+import { analizarPaquete, completarPredioDesdePaquete } from "@/lib/evidencias";
 import { autorizarArchivoChat, asegurarCacheEvidencias } from "@/lib/evidenciasCache";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   try {
     const cacheDir = await asegurarCacheEvidencias(archivoId, info.zipPath);
     const envios = await analizarPaquete(cacheDir);
+    completarPredioDesdePaquete(envios, info.nombre);
     return NextResponse.json({ nombre: info.nombre, envios }, { headers: { "Cache-Control": "private, max-age=300" } });
   } catch (e) {
     console.error("[evidencias] error:", (e as Error).message);
