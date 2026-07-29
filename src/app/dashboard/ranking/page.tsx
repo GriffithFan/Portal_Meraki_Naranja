@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSession } from "@/hooks/useSession";
 
 type RankingRow = {
   tecnicoId: string;
@@ -40,6 +41,21 @@ type EvolucionData = {
   tecnicos: SerieTecnico[];
 };
 
+// Métricas internas (solo admin): NC/conformes por transición real.
+type MatrizTecnico = {
+  tecnicoId: string; nombre: string; equipoKey: string;
+  conformesPorSemana: number[]; ncPorSemana: number[];
+  conformesSemana: number; ncSemana: number;
+  conformesHistorico: number; ncHistorico: number;
+  promedioConformes: number; tasaConformidad: number; estrellas: number;
+};
+type MatrizData = {
+  objetivo: number;
+  semanas: { label: string; desde: string }[];
+  global: { conformesPorSemana: number[]; ncPorSemana: number[]; conformesSemana: number; ncSemana: number; conformesHistorico: number; ncHistorico: number };
+  tecnicos: MatrizTecnico[];
+};
+
 const CrownIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 18.75h15m-13.5 0L4.5 7.5l5.25 4.5L12 5.25 14.25 12l5.25-4.5-1.5 11.25" />
@@ -53,8 +69,10 @@ const RefreshIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 );
 
 export default function RankingTecnicosPage() {
+  const { isAdmin } = useSession();
   const [data, setData] = useState<RankingData | null>(null);
   const [evolucion, setEvolucion] = useState<EvolucionData | null>(null);
+  const [matriz, setMatriz] = useState<MatrizData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +101,14 @@ export default function RankingTecnicosPage() {
     } catch { /* la evolución es opcional; no rompe la vista */ }
   }, []);
 
+  // Métricas internas: SOLO admin. Los técnicos nunca la piden ni la ven.
+  const fetchMatriz = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/ranking-tecnicos/metricas-admin?semanas=8`, { credentials: "include", cache: "no-store" });
+      if (res.ok) setMatriz(await res.json());
+    } catch { /* opcional */ }
+  }, []);
+
   useEffect(() => {
     fetchData();
     // Auto-refresco solo en la semana actual (las pasadas ya están cerradas).
@@ -92,6 +118,7 @@ export default function RankingTecnicosPage() {
   }, [fetchData, offset]);
 
   useEffect(() => { fetchEvolucion(); }, [fetchEvolucion]);
+  useEffect(() => { if (isAdmin) fetchMatriz(); }, [isAdmin, fetchMatriz]);
 
   // Series de evolución indexadas por técnico (mismo tecnicoId que el ranking).
   const seriePorTecnico = useMemo(() => {
@@ -201,7 +228,128 @@ export default function RankingTecnicosPage() {
           ))}
         </div>
       )}
+
+      {isAdmin && matriz && matriz.tecnicos.length > 0 && <MatrizAdmin data={matriz} />}
     </div>
+  );
+}
+
+// ── Métricas internas (solo admin) ──────────────────────────────
+function EstrellasIcono({ n }: { n: number }) {
+  return (
+    <span className="inline-flex" title={`${n} de 5 estrellas`}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <svg key={i} className={`h-3.5 w-3.5 ${i <= n ? "text-amber-400" : "text-surface-200"}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+          <path d="M10 1.6l2.6 5.27 5.82.85-4.21 4.1.99 5.79L10 14.88l-5.2 2.73.99-5.79L1.58 7.72l5.82-.85L10 1.6z" />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
+// Sparkline con línea de objetivo (7) punteada.
+function SparkObjetivo({ values, objetivo, width = 100, height = 26 }: { values: number[]; objetivo: number; width?: number; height?: number }) {
+  if (!values || values.length === 0) return null;
+  const max = Math.max(...values, objetivo, 1);
+  const stepX = values.length > 1 ? width / (values.length - 1) : 0;
+  const y = (v: number) => height - 2 - (v / max) * (height - 4);
+  const pts = values.map((v, i) => `${(i * stepX).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const yObj = y(objetivo);
+  const lastX = (values.length - 1) * stepX;
+  const lastY = y(values[values.length - 1] || 0);
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible" aria-hidden>
+      <line x1={0} y1={yObj} x2={width} y2={yObj} stroke="#f59e0b" strokeWidth={1} strokeDasharray="3 2" opacity={0.6} />
+      <polyline points={pts} fill="none" stroke="#10b981" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lastX} cy={lastY} r={2.2} fill="#10b981" />
+    </svg>
+  );
+}
+
+function MiniStat({ label, value, tone }: { label: string; value: number; tone?: "success" | "danger" }) {
+  const color = tone === "success" ? "text-emerald-600" : tone === "danger" ? "text-red-600" : "text-surface-700";
+  return (
+    <div className="rounded-md bg-surface-50 px-2.5 py-1.5 text-center">
+      <p className={`text-base font-semibold leading-none tabular-nums ${color}`}>{value}</p>
+      <p className="mt-0.5 text-[9px] uppercase tracking-wide text-surface-400">{label}</p>
+    </div>
+  );
+}
+
+function MatrizAdmin({ data }: { data: MatrizData }) {
+  return (
+    <section className="rounded-lg border border-surface-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-100 px-4 py-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-surface-800">
+            Métricas internas
+            <span className="rounded bg-surface-100 px-1.5 py-0.5 text-[10px] font-medium text-surface-500">solo admin</span>
+          </h2>
+          <p className="text-[11px] text-surface-400">
+            Conformes y NC por semana (transiciones reales) · objetivo {data.objetivo} conformes/sem · tendencia últimas {data.semanas.length} sem.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <MiniStat label="Conf. sem" value={data.global.conformesSemana} tone="success" />
+          <MiniStat label="NC sem" value={data.global.ncSemana} tone="danger" />
+          <MiniStat label="Hist. conf" value={data.global.conformesHistorico} />
+          <MiniStat label="Hist. NC" value={data.global.ncHistorico} tone="danger" />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[660px] text-sm">
+          <thead>
+            <tr className="border-b border-surface-100 text-[10px] uppercase tracking-wide text-surface-400">
+              <th className="px-3 py-2 text-left font-semibold">Técnico</th>
+              <th className="px-2 py-2 text-center font-semibold">Clasif.</th>
+              <th className="px-2 py-2 text-center font-semibold">Conf. sem</th>
+              <th className="px-2 py-2 text-center font-semibold">NC sem</th>
+              <th className="px-2 py-2 text-center font-semibold">Tendencia (conf.)</th>
+              <th className="px-2 py-2 text-center font-semibold">Histórico</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.tecnicos.map((t) => {
+              const cumple = t.conformesSemana >= data.objetivo;
+              return (
+                <tr key={t.tecnicoId} className="border-b border-surface-50 last:border-0 hover:bg-surface-50/50">
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-surface-800">{t.nombre}</div>
+                    <div className="text-[10px] text-surface-400">prom. {t.promedioConformes}/sem · {t.tasaConformidad}% conformidad</div>
+                  </td>
+                  <td className="px-2 py-2 text-center"><EstrellasIcono n={t.estrellas} /></td>
+                  <td className="px-2 py-2 text-center">
+                    <span className={`font-semibold tabular-nums ${cumple ? "text-emerald-600" : "text-surface-700"}`}>{t.conformesSemana}</span>
+                    {cumple && <span className="ml-0.5 text-emerald-500" title="Cumple el objetivo semanal">✓</span>}
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <span className={`font-semibold tabular-nums ${t.ncSemana > 0 ? "text-red-600" : "text-surface-300"}`}>{t.ncSemana}</span>
+                  </td>
+                  <td className="px-2 py-2">
+                    <div className="flex justify-center"><SparkObjetivo values={t.conformesPorSemana} objetivo={data.objetivo} /></div>
+                  </td>
+                  <td className="px-2 py-2 text-center text-[11px] tabular-nums text-surface-500">
+                    <span className="font-semibold text-emerald-600">{t.conformesHistorico}</span>
+                    <span className="text-surface-300"> / </span>
+                    <span className="font-semibold text-red-500">{t.ncHistorico}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-surface-100 px-4 py-2.5 text-[10px] text-surface-400">
+        <span><b className="text-amber-500">★★★★★</b> 15+ conf/sem y ≥85%</span>
+        <span><b className="text-amber-500">★★★★</b> 10+ y ≥75%</span>
+        <span><b className="text-amber-500">★★★</b> 7+ (objetivo) y ≥60%</span>
+        <span><b className="text-amber-500">★★</b> 4+</span>
+        <span><b className="text-amber-500">★</b> menos</span>
+        <span className="text-surface-300">· sobre el promedio de las últimas semanas completas · NC = pasó a NO CONFORME de Lun a Vie desde En progreso/Instalado/Auditar (no cuenta el LAC no→sí) · la línea punteada es el objetivo de {data.objetivo}</span>
+      </div>
+    </section>
   );
 }
 
