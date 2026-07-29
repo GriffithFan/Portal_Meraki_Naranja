@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } f
 import { IconX, IconChevron, IconCheck, IconClock, IconEdit, IconTrash } from "@/components/ui/Icons";
 import { dedupeUsersByName, normalizeAssigneeName } from "@/utils/asignacionUtils";
 import { hasTaskFieldConfig, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
 import { toast } from "sonner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -855,6 +856,16 @@ export default function TareaDetalleModal({
             <IconX className="w-4 h-4 text-surface-400" />
           </button>
         </div>
+
+        {!loading && tarea && esTipoIncidenciaEspecial(tarea.tipoIncidencia) && (
+          <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 sm:mx-5 shrink-0">
+            <span className="text-base leading-none text-amber-600">⚠</span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Tarea especial</p>
+              <p className="truncate text-sm text-amber-900">Tipo de incidencia: <b>{tarea.tipoIncidencia}</b></p>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-16">

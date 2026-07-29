@@ -49,6 +49,7 @@ const CAMPO_LABELS: Record<string, string> = {
   fechaDesde: "Fecha DESDE", fechaHasta: "Fecha HASTA",
   aps: "Cant. APs", utm: "Cant. UTM", switch: "Cant. Switch", z3: "Cant. Z3",
   notas: "Notas / comentarios", lacRSi: "LAC-R → SI", lacRNo: "LAC-R → NO",
+  tipoIncidencia: "Tipo de incidencia",
 };
 
 export default function EnriquecimientoPage() {

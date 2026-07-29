@@ -17,6 +17,7 @@ import { dedupeUsersByName, getDuplicatedAssigneeNames, assigneeLabel } from "@/
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
+import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useConfirm } from "@/contexts/ConfirmContext";
 
@@ -1582,6 +1583,11 @@ export default function TareasPage() {
             {t.lacR && (
               <span className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${t.lacR?.toUpperCase() === "SI" ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-red-50 text-red-500 border border-red-200"}`}>
                 LAC-R: {t.lacR}
+              </span>
+            )}
+            {esTipoIncidenciaEspecial(t.tipoIncidencia) && (
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-300" title={`Tipo de incidencia especial (no es Mantenimiento / Reparación): ${t.tipoIncidencia}`}>
+                ⚠ {t.tipoIncidencia}
               </span>
             )}
             {t.asignaciones?.length > 0 && (

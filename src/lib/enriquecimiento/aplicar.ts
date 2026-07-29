@@ -36,6 +36,7 @@ export interface PredioActual {
   fechaHasta: Date | null;
   lacR: string | null;
   notas: string | null;
+  tipoIncidencia: string | null;
   camposExtra: Record<string, any> | null;
 }
 
@@ -201,7 +202,7 @@ export function planificarEnriquecimiento(
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
     ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
-    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0,
+    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0,
   };
   // ── Regla LAC-R según el TILDE "Activo" REAL del último cronograma ──
   // El tilde manda en todo: Activo ✓ → "SI", sin tilde (o sin cronograma) → "NO".
@@ -269,6 +270,16 @@ export function planificarEnriquecimiento(
     rellenar("cuePredio", primero(fila, ["Predio_CUE_Predio", "CUE_Reporte"]), "cuePredio");
     rellenar("telefono", g(fila, "Predio_Telefono"), "telefono");
     rellenar("ambito", g(fila, "Predio_Ambito"), "ambito");
+
+    // Tipo de Incidencia (de SF): se actualiza al valor real. Lo normal es
+    // "Mantenimiento / Reparacion"; cualquier otro (ej. "Reingeniería Red Local")
+    // queda marcado con un badge en la tarea/predio.
+    const tipoRep = g(fila, "Incidencia_Tipo_de_Incidencia");
+    if (tipoRep && tipoRep !== cur("tipoIncidencia")) {
+      upd.tipoIncidencia = tipoRep;
+      previos.tipoIncidencia = p.tipoIncidencia ?? null;
+      stats.tipoIncidencia++;
+    }
 
     // lab: rellenar si vacío o reemplazar placeholder ("Sin-Adjudicar")
     const labRep = primero(fila, ["Incidencia_Proveedor_LAB", "Predio_Proveedor_LAB"]);
