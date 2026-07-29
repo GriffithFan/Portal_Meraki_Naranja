@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 
 interface Foto { rel: string; hora: string }
 interface Punto { clave: string; label: string; fotos: Foto[] }
-interface Envio { carpetaRel: string; nombre: string; draft: boolean | null; tecnico: string; cron: string; fecha: string; total: number; puntos: Punto[] }
+interface Envio { carpetaRel: string; nombre: string; draft: boolean | null; tecnico: string; cron: string; fecha: string; total: number; predio: string; predioFuente: string; puntos: Punto[] }
 
 export default function EvidenciasPage() {
   const { archivoId } = useParams<{ archivoId: string }>();
@@ -41,9 +41,21 @@ export default function EvidenciasPage() {
 
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up pb-16">
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold text-surface-800 dark:text-surface-100">Evidencias por punto</h1>
-        <p className="text-xs text-surface-400 mt-0.5">{data.nombre} · {envios.length} tarea(s) · {totalFotos} foto(s) · más recientes primero</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-surface-800 dark:text-surface-100">Evidencias por punto</h1>
+          <p className="text-xs text-surface-400 mt-0.5">{data.nombre} · {envios.length} tarea(s) · {totalFotos} foto(s) · más recientes primero</p>
+        </div>
+        {totalFotos > 0 && (
+          <a
+            href={`/api/evidencias/${archivoId}/export`}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+            title="Descarga un ZIP con las fotos ordenadas por punto (una carpeta por LAC y por punto) + un LEEME con el resumen"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            Descargar ZIP traducido
+          </a>
+        )}
       </div>
 
       {/* Índice */}
@@ -63,6 +75,11 @@ export default function EvidenciasPage() {
           <div className="px-4 py-3 border-b border-surface-100 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-700/30 flex flex-wrap items-center gap-x-3 gap-y-1">
             <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100">{env.nombre}</h2>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${env.draft ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{env.draft ? "BORRADOR" : "ENVIADO"}</span>
+            {env.predio && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-100 text-primary-700" title={`Nº de predio identificado del ${env.predioFuente === "carpeta" ? "nombre de la carpeta" : "nombre del envío"} (el XML no lo incluye)`}>
+                PREDIO {env.predio}
+              </span>
+            )}
             <span className="text-[11px] text-surface-400">{env.total} fotos · Téc: {env.tecnico || "—"} · {env.cron} · {env.fecha}</span>
           </div>
           {env.puntos.length === 0 ? (

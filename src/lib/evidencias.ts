@@ -70,7 +70,27 @@ export interface EnvioEv {
   fecha: string;
   fechaOrden: number; // epoch ms para ordenar
   total: number;
+  predio: string;       // nº de predio si se pudo identificar (del nombre de carpeta/envío)
+  predioFuente: string; // "carpeta" | "nombre" | "" — de dónde salió el nº
   puntos: PuntoEv[];
+}
+
+/**
+ * El submission.xml NO trae el nº de predio (solo sfTaskId/sfUserId/sfCronType/
+ * sfNetType). Cuando el técnico nombra el envío con el predio, éste queda como
+ * prefijo numérico en el nombre de la carpeta (ej "612876-LAC_M_USAP_...") o en
+ * el "local name". Lo extraemos de ahí como confirmación (5-7 dígitos aislados,
+ * así no confunde con el año/hora de la fecha).
+ */
+function extraerPredio(carpetaRel: string, nombreLocal: string): { predio: string; fuente: string } {
+  const reNum = /(?<!\d)(\d{5,7})(?!\d)/;
+  for (const seg of carpetaRel.split("/").filter(Boolean).reverse()) {
+    const m = seg.match(reNum);
+    if (m) return { predio: m[1], fuente: "carpeta" };
+  }
+  const m2 = (nombreLocal || "").match(reNum);
+  if (m2) return { predio: m2[1], fuente: "nombre" };
+  return { predio: "", fuente: "" };
 }
 
 function horaDe(archivo: string): string {
@@ -171,6 +191,7 @@ export async function analizarPaquete(cacheDir: string): Promise<EnvioEv[]> {
     try { texto = await readFile(xmlPath, "utf8"); } catch { continue; }
     const { meta, puntos, fechaOrden } = parsearSubmission(texto, carpetaRel);
     const ln = await nombreLocal(carpeta);
+    const pr = extraerPredio(carpetaRel, ln.nombre);
     // Descartar fotos cuyo archivo no exista en el paquete.
     for (const p of puntos) {
       const fotosOk: FotoEv[] = [];
@@ -188,7 +209,8 @@ export async function analizarPaquete(cacheDir: string): Promise<EnvioEv[]> {
     }
     envios.push({
       carpetaRel, nombre: ln.nombre, draft: ln.draft, tecnico: meta.tecnico, cron: meta.cron,
-      fecha: meta.today || (meta.start ? meta.start.slice(0, 10) : ""), fechaOrden: fechaOrd, total, puntos: puntosConFotos,
+      fecha: meta.today || (meta.start ? meta.start.slice(0, 10) : ""), fechaOrden: fechaOrd, total,
+      predio: pr.predio, predioFuente: pr.fuente, puntos: puntosConFotos,
     });
   }
   return envios.sort((a, b) => b.fechaOrden - a.fechaOrden);
