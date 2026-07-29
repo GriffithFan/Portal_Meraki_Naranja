@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
   const espacioId = searchParams.get("espacioId");
   const provincia = sanitizeSearch(searchParams.get("provincia"));
   const prioridad = searchParams.get("prioridad");
+  const tipo = searchParams.get("tipo"); // "__especiales__" | valor exacto de tipoIncidencia
   const quick = normalizeTaskQuickFilter(searchParams.get("quick"));
   const groupBy = searchParams.get("groupBy") || "estado";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
@@ -216,6 +217,21 @@ export async function GET(request: NextRequest) {
   if (asignadoId) where.asignaciones = { some: { userId: asignadoId } };
   if (provincia) where.provincia = { contains: provincia, mode: "insensitive" };
   if (prioridad && ["BAJA", "MEDIA", "ALTA", "URGENTE"].includes(prioridad)) where.prioridad = prioridad;
+  // Tipo de incidencia: "__especiales__" = cargado y distinto de "Mantenimiento / Reparación";
+  // cualquier otro valor = match exacto (ej "Reingeniería Red Local").
+  if (tipo && tipo !== "todos") {
+    if (tipo === "__especiales__") {
+      const especialWhere = {
+        AND: [
+          { tipoIncidencia: { not: null } },
+          { NOT: { tipoIncidencia: { contains: "mantenimiento", mode: "insensitive" } } },
+        ],
+      };
+      where.AND = where.AND ? [...where.AND, especialWhere] : [especialWhere];
+    } else {
+      where.tipoIncidencia = { equals: tipo };
+    }
+  }
   if (buscar) {
     const camposExtraMatches = await prisma.$queryRaw<{ id: string }[]>`
       SELECT "id"

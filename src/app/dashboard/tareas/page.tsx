@@ -193,6 +193,7 @@ export default function TareasPage() {
   const [filterProvincia, setFilterProvincia] = useState("");
   const [filterPrioridad, setFilterPrioridad] = useState("todas");
   const [filterAsignado, setFilterAsignado] = useState("todos");
+  const [filterTipo, setFilterTipo] = useState("todos"); // "todos" | "__especiales__" | valor exacto (ej "Reingeniería Red Local")
   const [quickFilter, setQuickFilter] = useState("todos");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -469,6 +470,7 @@ export default function TareasPage() {
     if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
     if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
     if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
+    if (filterTipo !== "todos") params.set("tipo", filterTipo);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
     params.set("groupBy", groupBy);
     try {
@@ -515,7 +517,7 @@ export default function TareasPage() {
         else setLoading(false);
       }
     }
-  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, groupBy, quickFilter, serverSearch]);
+  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, groupBy, quickFilter, serverSearch]);
 
   useEffect(() => {
     fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
@@ -1360,6 +1362,11 @@ export default function TareasPage() {
             </span>
           ) : null}
           <span className="text-surface-800 font-medium truncate">{displayCode}</span>
+          {esTipoIncidenciaEspecial(t.tipoIncidencia) && (
+            <span title={`Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}`} className="shrink-0 inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-100 px-1 py-px text-[9px] font-bold uppercase leading-none text-amber-800 max-w-[130px]">
+              <span aria-hidden>⚠</span><span className="truncate">{t.tipoIncidencia}</span>
+            </span>
+          )}
           <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} tieneAdjuntos={t.tieneAdjuntos} />
           <CopyBtn text={t.codigo || ""} />
         </span>
@@ -1402,7 +1409,7 @@ export default function TareasPage() {
     });
   }, [columns, tareas]);
 
-  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || quickFilter !== "todos");
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
     setServerSearch("");
@@ -1410,8 +1417,19 @@ export default function TareasPage() {
     setFilterProvincia("");
     setFilterPrioridad("todas");
     setFilterAsignado("todos");
+    setFilterTipo("todos");
     setQuickFilter("todos");
   };
+
+  // Tipos de incidencia especiales presentes en los datos cargados (para el select).
+  const tiposEspeciales = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tareas) {
+      if (esTipoIncidenciaEspecial((t as any).tipoIncidencia)) set.add((t as any).tipoIncidencia);
+    }
+    if (filterTipo !== "todos" && filterTipo !== "__especiales__") set.add(filterTipo);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+  }, [tareas, filterTipo]);
 
   const activeView = useMemo(() => savedViews.find((view) => view.id === activeViewId) || null, [activeViewId, savedViews]);
 
@@ -1716,7 +1734,7 @@ export default function TareasPage() {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
           <select
             value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
@@ -1724,6 +1742,16 @@ export default function TareasPage() {
           >
             <option value="todos">Todos los estados</option>
             {estados.map(e => <option key={e.id} value={e.clave}>{e.nombre}</option>)}
+          </select>
+          <select
+            value={filterTipo}
+            onChange={(e) => setFilterTipo(e.target.value)}
+            title="Tipo de incidencia"
+            className="px-3 py-2 text-xs border border-surface-200 rounded-md bg-white focus:outline-none focus:border-surface-400"
+          >
+            <option value="todos">Todos los tipos</option>
+            <option value="__especiales__">⚠ Especiales (no Mant./Rep.)</option>
+            {tiposEspeciales.map(tp => <option key={tp} value={tp}>{tp}</option>)}
           </select>
           <input
             value={filterProvincia}
