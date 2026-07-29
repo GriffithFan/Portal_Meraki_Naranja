@@ -18,6 +18,7 @@ import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfig
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
 import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
+import { estadoVentana } from "@/lib/cronogramaVentana";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useConfirm } from "@/contexts/ConfirmContext";
 
@@ -194,6 +195,7 @@ export default function TareasPage() {
   const [filterPrioridad, setFilterPrioridad] = useState("todas");
   const [filterAsignado, setFilterAsignado] = useState("todos");
   const [filterTipo, setFilterTipo] = useState("todos"); // "todos" | "__especiales__" | valor exacto (ej "Reingeniería Red Local")
+  const [filterVentana, setFilterVentana] = useState("todos"); // todos | en_ventana | por_vencer | vencido | futuro | sin_fechas
   const [quickFilter, setQuickFilter] = useState("todos");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -471,6 +473,7 @@ export default function TareasPage() {
     if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
     if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
     if (filterTipo !== "todos") params.set("tipo", filterTipo);
+    if (filterVentana !== "todos") params.set("ventana", filterVentana);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
     params.set("groupBy", groupBy);
     try {
@@ -517,7 +520,7 @@ export default function TareasPage() {
         else setLoading(false);
       }
     }
-  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, groupBy, quickFilter, serverSearch]);
+  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, filterVentana, groupBy, quickFilter, serverSearch]);
 
   useEffect(() => {
     fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
@@ -1354,8 +1357,12 @@ export default function TareasPage() {
     // Para la columna "codigoPredio", mostrar icono estado + codigo + indicador notas
     if (col.id === "codigoPredio") {
       const displayCode = t.codigo || "\u2014";
+      const vent = estadoVentana(t.fechaDesde, t.fechaHasta).estado;
+      const ventColor = vent === "en_ventana" ? "bg-emerald-500" : vent === "por_vencer" ? "bg-amber-400" : vent === "vencido" ? "bg-red-500" : vent === "futuro" ? "bg-blue-400" : "";
+      const ventLabel: Record<string, string> = { en_ventana: "En ventana (visitable)", por_vencer: "Por vencer", vencido: "Vencido (fuera de ventana)", futuro: "Futuro (a\u00fan no abre)", sin_fechas: "" };
       return (
         <span className="flex items-center gap-1 group/cell">
+          {ventColor && <span className={`shrink-0 h-2 w-2 rounded-full ${ventColor}`} title={`Cronograma: ${ventLabel[vent]}`} />}
           {t.estado ? (
             <span className="cursor-pointer hover:opacity-70 transition-opacity" onClick={(e) => abrirInlineEstado(e, t.id)}>
               <StatusIcon clave={t.estado.clave} icono={t.estado.icono} color={t.estado.color} size={14} />
@@ -1407,7 +1414,7 @@ export default function TareasPage() {
     });
   }, [columns, tareas]);
 
-  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || quickFilter !== "todos");
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || filterVentana !== "todos" || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
     setServerSearch("");
@@ -1416,6 +1423,7 @@ export default function TareasPage() {
     setFilterPrioridad("todas");
     setFilterAsignado("todos");
     setFilterTipo("todos");
+    setFilterVentana("todos");
     setQuickFilter("todos");
   };
 
@@ -1739,6 +1747,22 @@ export default function TareasPage() {
           >
             ⚠ Especiales
           </button>
+          {/* Ventana del cronograma (por fechas DESDE–HASTA) */}
+          <span className="mx-1 self-center text-surface-200">|</span>
+          {[
+            { key: "en_ventana", label: "🟢 En ventana", on: "bg-emerald-600 border-emerald-600 text-white", off: "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100" },
+            { key: "por_vencer", label: "🟡 Por vencer", on: "bg-amber-500 border-amber-500 text-white", off: "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100" },
+            { key: "vencido", label: "🔴 Vencidos", on: "bg-red-600 border-red-600 text-white", off: "border-red-300 text-red-600 bg-red-50 hover:bg-red-100" },
+          ].map((w) => (
+            <button
+              key={w.key}
+              onClick={() => setFilterVentana((v) => (v === w.key ? "todos" : w.key))}
+              title="Filtrar por ventana del cronograma (DESDE–HASTA)"
+              className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${filterVentana === w.key ? w.on : w.off}`}
+            >
+              {w.label}
+            </button>
+          ))}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
           <select

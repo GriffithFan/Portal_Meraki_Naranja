@@ -136,6 +136,7 @@ export async function GET(request: NextRequest) {
   const provincia = sanitizeSearch(searchParams.get("provincia"));
   const prioridad = searchParams.get("prioridad");
   const tipo = searchParams.get("tipo"); // "__especiales__" | valor exacto de tipoIncidencia
+  const ventana = searchParams.get("ventana"); // en_ventana | por_vencer | vencido | futuro | sin_fechas
   const quick = normalizeTaskQuickFilter(searchParams.get("quick"));
   const groupBy = searchParams.get("groupBy") || "estado";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
@@ -231,6 +232,22 @@ export async function GET(request: NextRequest) {
     } else {
       where.tipoIncidencia = { equals: tipo };
     }
+  }
+
+  // Ventana del cronograma (por fechas DESDE/HASTA vs hoy).
+  if (ventana && ventana !== "todos") {
+    const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0);
+    const hoy24 = new Date(hoy0); hoy24.setHours(23, 59, 59, 999);
+    const en3 = new Date(hoy0); en3.setDate(hoy0.getDate() + 3); en3.setHours(23, 59, 59, 999);
+    const clausesVentana: Record<string, any> = {
+      en_ventana: { fechaDesde: { lte: hoy24 }, fechaHasta: { gte: hoy0 } },
+      por_vencer: { fechaDesde: { lte: hoy24 }, fechaHasta: { gte: hoy0, lte: en3 } },
+      vencido: { fechaHasta: { lt: hoy0 } },
+      futuro: { fechaDesde: { gt: hoy24 } },
+      sin_fechas: { OR: [{ fechaDesde: null }, { fechaHasta: null }] },
+    };
+    const cv = clausesVentana[ventana];
+    if (cv) where.AND = where.AND ? [...where.AND, cv] : [cv];
   }
   if (buscar) {
     const camposExtraMatches = await prisma.$queryRaw<{ id: string }[]>`
