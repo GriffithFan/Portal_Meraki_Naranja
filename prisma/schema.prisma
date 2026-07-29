@@ -30,6 +30,8 @@ model User {
   rol           Role     @default(TECNICO)
   esMesa    Boolean  @default(false) // Rol secundario: puede atender consultas en Mesa de Ayuda
   activo    Boolean  @default(true)
+  tecnicoActivo Boolean @default(false) // Marca de técnico que TRABAJA hoy (los ~12 activos); los demás se conservan por estadística
+  tecnicoDesde  DateTime?               // Fecha de inicio productivo (para técnicos nuevos: evaluar ramp 6+/7+)
   salesforceUser String? // Usuario de Salesforce/Mined (ej "THNET C08") para auto-lanzar predios
   telefono  String?
   twoFactorEnabled Boolean @default(false) // 2FA (TOTP) activado
