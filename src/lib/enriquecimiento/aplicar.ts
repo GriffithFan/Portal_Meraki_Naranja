@@ -319,9 +319,12 @@ export function planificarEnriquecimiento(
     }
 
     // ── LAC-R por el tilde "Activo" real del último cronograma ──
-    // CONFORME nunca se toca; NO CONFORME se saltea siempre.
+    // CONFORME nunca se toca. NO CONFORME SÍ se actualiza (pedido del usuario):
+    // cuando un predio NO CONFORME recibe un cronograma nuevo y activo, su LAC-R
+    // debe pasar a SI (la fecha del cronograma ya se actualiza arriba). El cron
+    // diario de las 16hs se apoya en esto.
     const estadoUp = (p.estadoNombre || "").trim().toUpperCase();
-    if (estadoUp !== "CONFORME" && estadoUp !== "NO CONFORME") {
+    if (estadoUp !== "CONFORME") {
       const activoReal = g(fila, "Cronograma_Ultimo_Activo_Real").toUpperCase(); // "SI" | "NO" | ""
       const tieneCrono = g(fila, "Tiene_Cronograma").toUpperCase();             // "SI" | "NO"
       let objetivo: "SI" | "NO" | null = null;
