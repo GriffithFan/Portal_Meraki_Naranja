@@ -10,29 +10,36 @@ export const DEFAULT_WAN_INTERFACE_MAP: Record<string, number> = {
 };
 
 export const MODEL_PORT_LAYOUTS: Record<string, any> = {
+  // MX84: Management (dedicado) + Internet/WAN 1-2 + LAN GbE 3-10 + LAN SFP 11-12.
   MX84: {
-    management: [{ number: "mgmt", displayNumber: "MGMT", overrides: { role: "management", type: "management" } }],
+    management: [],
     columns: [
-      { label: "Internet", kind: "wan", top: { number: 1, overrides: { role: "wan", type: "wan", enabled: true } }, bottom: { number: 2, overrides: { role: "wan", type: "wan", enabled: true } } },
-      { label: "", kind: "lan", top: 3, bottom: 4 },
-      { label: "", kind: "lan", top: 5, bottom: 6 },
-      { label: "", kind: "lan", top: 7, bottom: 8 },
-      { label: "", kind: "lan", top: 9, bottom: 10 },
-      { label: "", kind: "sfp", top: { number: 11, overrides: { formFactor: "sfp", type: "sfp" } }, bottom: { number: 12, overrides: { formFactor: "sfp", type: "sfp" } } },
+      { label: "Management", kind: "management", top: { number: "management", overrides: { role: "management", type: "management", enabled: true, hideNumber: true } } },
+      { label: "Internet", kind: "wan", top: { number: 1 }, bottom: { number: 2 } },
+      { label: "LAN GbE", kind: "lan", top: { number: 3 }, bottom: { number: 4 } },
+      { label: "", kind: "lan", top: { number: 5 }, bottom: { number: 6 } },
+      { label: "", kind: "lan", top: { number: 7 }, bottom: { number: 8 } },
+      { label: "", kind: "lan", top: { number: 9 }, bottom: { number: 10 } },
+      { label: "LAN SFP", kind: "lan", top: { number: 11, overrides: { formFactor: "sfp" } }, bottom: { number: 12, overrides: { formFactor: "sfp" } } },
     ],
-    interfaceToPort: { wan1: 1, wan2: 2 },
+    interfaceToPort: { wan: 1, wan1: 1, internet: 1, internet1: 1, primary: 1, wan2: 2, internet2: 2, secondary: 2 },
   },
+  // MX85: USB + Management + WAN SFP 1-2 + WAN GbE 3-4 + LAN GbE 5-12 + LAN SFP 13-14.
+  // wan1/wan2 lógicos usan los conectores de cobre GbE 3/4 cuando la API no trae puerto físico.
   MX85: {
-    management: [{ number: "mgmt", displayNumber: "MGMT", overrides: { role: "management", type: "management" } }],
+    management: [],
     columns: [
-      { label: "Internet", kind: "wan", top: { number: 1, overrides: { role: "wan", type: "wan", enabled: true } }, bottom: { number: 2, overrides: { role: "wan", type: "wan", enabled: true } } },
-      { label: "", kind: "lan", top: 3, bottom: 4 },
-      { label: "", kind: "lan", top: 5, bottom: 6 },
-      { label: "", kind: "lan", top: 7, bottom: 8 },
-      { label: "", kind: "lan", top: 9, bottom: 10 },
-      { label: "", kind: "sfp", top: { number: 11, overrides: { formFactor: "sfp", type: "sfp" } }, bottom: { number: 12, overrides: { formFactor: "sfp", type: "sfp" } } },
+      { label: "USB", kind: "utility", top: { number: "usb", overrides: { role: "utility", type: "usb", formFactor: "usb", enabled: true, hideNumber: true } } },
+      { label: "Management", kind: "management", top: { number: "management", overrides: { role: "management", type: "management", enabled: true, hideNumber: true } } },
+      { label: "WAN SFP", kind: "wan", top: { number: 1, overrides: { formFactor: "sfp" } }, bottom: { number: 2, overrides: { formFactor: "sfp" } } },
+      { label: "WAN GbE", kind: "wan", top: { number: 3 }, bottom: { number: 4 } },
+      { label: "LAN GbE", kind: "lan", top: { number: 5 }, bottom: { number: 6 } },
+      { label: "", kind: "lan", top: { number: 7 }, bottom: { number: 8 } },
+      { label: "", kind: "lan", top: { number: 9 }, bottom: { number: 10 } },
+      { label: "", kind: "lan", top: { number: 11 }, bottom: { number: 12 } },
+      { label: "LAN SFP", kind: "lan", top: { number: 13, overrides: { formFactor: "sfp" } }, bottom: { number: 14, overrides: { formFactor: "sfp" } } },
     ],
-    interfaceToPort: { wan1: 1, wan2: 2 },
+    interfaceToPort: { wan: 3, wan1: 3, internet: 3, internet1: 3, primary: 3, wan2: 4, internet2: 4, secondary: 4 },
   },
   MX67: {
     management: [],
@@ -178,6 +185,14 @@ export const formatSpeed = (speed: any): string | null => {
   return `${mbps} Mbps`;
 };
 
+// Un override de topología (connectedOverrides) solo puede marcar conectado un
+// puerto cuya telemetría es inconclusa (unknown/enabled); nunca sobre uno que la
+// config confirma deshabilitado o la API reporta desconectado.
+export const canInferConnectedFromTopology = (port: any = {}): boolean => {
+  const status = normalizeReachability(port.statusNormalized || port.status);
+  return status === "unknown" || status === "enabled";
+};
+
 export const buildPortClassName = (port: any, { rotated }: { rotated?: boolean } = {}) => {
   const classes = ["NodePort"];
   const typeText = [port?.formFactor, port?.medium, port?.type].map((i) => (i || "").toString().toLowerCase()).find((i) => i);
@@ -185,16 +200,21 @@ export const buildPortClassName = (port: any, { rotated }: { rotated?: boolean }
   else if (typeText && /usb/.test(typeText)) classes.push("usb");
   else classes.push("rj45");
   if (rotated) classes.push("rotated");
-  if (port?.enabled === false) { classes.push("disabled"); }
-  else {
-    const normalized = normalizeReachability(port?.statusNormalized || port?.status);
-    if (normalized === "warning") { classes.push("warning"); return classes.join(" "); }
-    const hasCarrier = port?.hasCarrier === true || normalizeReachability(port?.uplink?.statusNormalized || port?.uplink?.status) === "connected" || normalized === "connected" || /up|ready|active/.test(normalized || "") || (typeof port?.speed === "number" && port.speed > 0) || Boolean(port?.speedLabel);
-    if (hasCarrier) classes.push("has_carrier");
-    else if (normalized === "disabled") classes.push("disabled");
-    else if (/alert|warn|degrad|loss/.test(normalized || "")) classes.push("warning");
-    else classes.push("passthrough");
-  }
+  // La evidencia POSITIVA de enlace (hasCarrier) gana sobre enabled===false:
+  // un puerto confirmado conectado por LLDP/uplink no debe quedar gris (bug conocido).
+  const normalized = normalizeReachability(port?.statusNormalized || port?.status);
+  const canInferCarrier = normalized === "unknown" || normalized === "enabled";
+  const hasCarrier = normalized === "connected"
+    || port?.hasCarrier === true
+    || (canInferCarrier && (
+      normalizeReachability(port?.uplink?.statusNormalized || port?.uplink?.status) === "connected"
+      || (typeof port?.speed === "number" && port.speed > 0)
+      || Boolean(port?.speedLabel)
+    ));
+  if (hasCarrier) classes.push("has_carrier");
+  else if (port?.enabled === false || normalized === "disabled") classes.push("disabled");
+  else if (normalized === "warning" || /alert|warn|degrad|loss/.test(normalized || "")) classes.push("warning");
+  else classes.push("passthrough");
   return classes.join(" ");
 };
 
@@ -217,16 +237,26 @@ export const buildColumns = (ports: any[] = [], model: string, uplinks: any[] = 
   const portByNumber = new Map<number, any>();
   const managementCandidates: any[] = [];
   const connectedSet = new Set((Array.isArray(connectedOverrides) ? connectedOverrides : []).map(Number).filter(Number.isFinite));
+  const interfaceToPort = { ...DEFAULT_WAN_INTERFACE_MAP, ...(layout?.interfaceToPort || {}) };
 
   ports.forEach((port) => {
     const copy = { ...port };
-    const number = parsePortNumber(copy.number);
+    // Un portId no numérico (ej "wan1") se mapea al puerto físico del modelo (MX85: wan1→3).
+    const portIdText = copy.portId == null ? "" : copy.portId.toString().trim();
+    const hasInterfacePortId = portIdText && !/^\d+$/.test(portIdText);
+    const rawNumber = layout && hasInterfacePortId ? copy.portId : (copy.number ?? copy.portId ?? copy.port ?? copy.portNumber);
+    const rawText = rawNumber == null ? "" : rawNumber.toString().trim();
+    const interfaceKey = rawText.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const number = /^\d+$/.test(rawText)
+      ? parsePortNumber(rawText)
+      : (layout && interfaceToPort[interfaceKey] !== undefined ? interfaceToPort[interfaceKey] : parsePortNumber(rawNumber));
+    if (number !== null && rawText && !/^\d+$/.test(rawText) && interfaceToPort[interfaceKey] !== undefined) copy.number = number;
     if (number !== null) portByNumber.set(number, copy);
     const tokens = collectTokens(copy);
-    if (tokens.some((t) => /manage|mgmt|admin|console/.test(t))) managementCandidates.push(copy);
+    // Con layout de modelo, management viene de la columna definida (no se detecta del port).
+    if (!layout && tokens.some((t) => /manage|mgmt|admin|console/.test(t))) managementCandidates.push(copy);
   });
 
-  const interfaceToPort = { ...DEFAULT_WAN_INTERFACE_MAP, ...(layout?.interfaceToPort || {}) };
   const uplinkByPort = new Map<number, any>();
   uplinks.forEach((uplink) => {
     if (!uplink) return;
@@ -255,12 +285,12 @@ export const buildColumns = (ports: any[] = [], model: string, uplinks: any[] = 
     if (!resolved.displayNumber && config.displayNumber) resolved.displayNumber = config.displayNumber;
     const applied = applyUplinkStatus(resolved, parsePortNumber(resolved.number ?? config.number), uplinkByPort);
     const numeric = parsePortNumber(applied.number);
-    if (numeric !== null && connectedSet.has(numeric)) return { ...applied, status: applied.status || "connected", statusNormalized: "connected", hasCarrier: true };
+    if (numeric !== null && connectedSet.has(numeric) && canInferConnectedFromTopology(applied)) return { ...applied, status: applied.status || "connected", statusNormalized: "connected", hasCarrier: true };
     return applied;
   };
 
   let management = managementCandidates.map((p) => applyUplinkStatus(p, parsePortNumber(p.number), uplinkByPort));
-  management = management.map((p) => { const n = parsePortNumber(p.number); if (n !== null && connectedSet.has(n)) return { ...p, status: p.status || "connected", statusNormalized: "connected", hasCarrier: true }; return p; });
+  management = management.map((p) => { const n = parsePortNumber(p.number); if (n !== null && connectedSet.has(n) && canInferConnectedFromTopology(p)) return { ...p, status: p.status || "connected", statusNormalized: "connected", hasCarrier: true }; return p; });
   if (!management.length && layout?.management?.length) management = layout.management.map((d: any) => resolveDescriptor(d, "management")).filter(Boolean);
   managementCandidates.forEach((p) => { const n = parsePortNumber(p.number); if (n !== null) portByNumber.delete(n); });
 
@@ -268,7 +298,7 @@ export const buildColumns = (ports: any[] = [], model: string, uplinks: any[] = 
   if (layout) {
     columns = layout.columns.map((col: any) => {
       const kind = col.kind || col.group || "lan";
-      return { group: kind === "wan" ? "wan" : "lan", label: col.label || "", kind, top: resolveDescriptor(col.top, kind), bottom: resolveDescriptor(col.bottom, kind) };
+      return { group: kind === "wan" || kind === "lan" ? kind : "utility", label: col.label || "", kind, top: resolveDescriptor(col.top, kind), bottom: resolveDescriptor(col.bottom, kind) };
     });
   } else {
     const managementNumbers = new Set(managementCandidates.map((p) => p.number?.toString()));

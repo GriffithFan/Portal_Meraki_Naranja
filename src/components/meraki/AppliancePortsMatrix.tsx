@@ -170,9 +170,12 @@ export default function AppliancePortsMatrix({ ports = [], model = "", uplinks =
 
   const formatVisiblePortNumber = (port: any, group: string) => {
     if (!port) return "";
+    if (port.hideNumber) return ""; // USB / Management: sin número impreso
     const isUSAP = (networkName && networkName.toUpperCase().includes("USAP")) || (deviceCount.aps > 3 && deviceCount.hasMX);
     const isMX = model && model.toUpperCase().startsWith("MX");
-    if (isUSAP && isMX && group === "wan") { const alias = getPortAlias(port, networkName, model, group, deviceCount) || ""; if (alias.startsWith("Wan")) return alias; }
+    // Solo sustituir "Wan1/Wan2" cuando NO hay layout de modelo (fallback). Con layout
+    // (MX84/MX85) se muestran los números físicos del chasis, igual que Cisco.
+    if (isUSAP && isMX && group === "wan" && !getModelLayout(model)) { const alias = getPortAlias(port, networkName, model, group, deviceCount) || ""; if (alias.startsWith("Wan")) return alias; }
     const numeric = parsePortNumber(port.number ?? port.displayNumber);
     if (numeric !== null) return numeric;
     if (group === "wan") { const alias = getPortAlias(port, networkName, model, group, deviceCount) || ""; const m = alias.toString().match(/(\d+)$/); if (m) return Number(m[1]); }

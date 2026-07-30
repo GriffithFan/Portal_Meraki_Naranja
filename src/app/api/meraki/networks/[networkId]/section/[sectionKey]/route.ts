@@ -761,6 +761,18 @@ async function buildAccessPointsSection(
   return result;
 }
 
+// MX85: LLDP/CDP reporta los LAN como índice interno 0-9, pero el chasis los
+// numera 5-14. Traducción: puerto físico = índice + 5 (solo cuando la descripción
+// indica "lan port" y el modelo empieza con MX85). Otros modelos: sin cambio.
+function physicalAppliancePort(model: string | undefined, rawPort: string): string | null {
+  const m = (rawPort || "").match(/(\d+)/);
+  if (!m) return null;
+  let n = parseInt(m[1], 10);
+  if (!Number.isFinite(n)) return null;
+  if (/^mx85/i.test(model || "") && /lan\s*port/i.test(rawPort || "")) n += 5;
+  return String(n);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Appliance Status
 // ═══════════════════════════════════════════════════════════════
@@ -805,18 +817,18 @@ async function buildApplianceSection(
               if (!lldpInfo) continue;
               const remoteName = lldpInfo.deviceId || lldpInfo.systemName || "";
               const remotePort = lldpInfo.portId || lldpInfo.portDescription || "";
-              const isAppliance = appliances.some(
+              const matchedAppliance = appliances.find(
                 (a) =>
                   remoteName.includes(a.serial) ||
                   remoteName.includes(a.name) ||
                   (a.model && remoteName.includes(a.model))
               );
-              if (isAppliance) {
-                const portMatch = remotePort.match(/(\d+)/);
+              if (matchedAppliance) {
+                // Traducir el puerto del appliance a su número físico (MX85: LAN +5).
                 switchLldpMap[sw.serial] = {
                   name: sw.name || sw.model || sw.serial,
                   serial: sw.serial,
-                  uplinkPortOnRemote: portMatch ? portMatch[1] : null,
+                  uplinkPortOnRemote: physicalAppliancePort(matchedAppliance.model, remotePort),
                 };
                 break;
               }
