@@ -50,6 +50,7 @@ const CAMPO_LABELS: Record<string, string> = {
   aps: "Cant. APs", utm: "Cant. UTM", switch: "Cant. Switch", z3: "Cant. Z3",
   notas: "Notas / comentarios", lacRSi: "LAC-R → SI", lacRNo: "LAC-R → NO",
   tipoIncidencia: "Tipo de incidencia", cantidadCronogramas: "Cantidad de cronogramas",
+  conforme: "→ CONFORME (incidencia Cerrado)",
 };
 
 export default function EnriquecimientoPage() {

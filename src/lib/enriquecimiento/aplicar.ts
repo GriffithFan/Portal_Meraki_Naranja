@@ -21,6 +21,7 @@ export interface PredioActual {
   id: string;
   codigo: string | null;
   estadoNombre: string | null;
+  estadoId: string | null;
   yaEnriquecido: boolean;
   ciudad: string | null;
   direccion: string | null;
@@ -55,11 +56,17 @@ export interface PlanCambio {
   upd: Record<string, any>;
   extra: Record<string, string>;
   cambiosPrevios: Record<string, any>;
+  // Si la corrida pasa el predio a CONFORME (INSTALADO/AUDITAR con incidencia
+  // "Cerrado"), se registra la transición para auditarla y contarla.
+  transicionEstado?: { de: string; a: string };
 }
 
 export interface OpcionesPlan {
   excluirConforme: boolean;
   excluirYaEnriquecidos: boolean;
+  // Id del estado CONFORME: habilita pasar INSTALADO/AUDITAR → CONFORME cuando la
+  // incidencia está "Cerrado". Sin esto, el estado nunca se toca (comportamiento previo).
+  conformeEstadoId?: string | null;
 }
 
 export interface ResultadoPlan {
@@ -205,7 +212,7 @@ export function planificarEnriquecimiento(
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
     ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
-    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0, cantidadCronogramas: 0,
+    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0, cantidadCronogramas: 0, conforme: 0,
   };
   // ── Regla LAC-R según el TILDE "Activo" REAL del último cronograma ──
   // El tilde manda en todo: Activo ✓ → "SI", sin tilde (o sin cronograma) → "NO".
@@ -377,8 +384,22 @@ export function planificarEnriquecimiento(
       upd.notas = notas; previos.notas = p.notas ?? null; stats.notas++;
     }
 
+    // ── Transición a CONFORME (SOLO INSTALADO/AUDITAR con incidencia "Cerrado") ──
+    // Único caso en que el enriquecimiento toca el estado. Cualquier otro estado de
+    // incidencia (o predio) NO cambia el estado; se hace solo lo de siempre.
+    let transicionEstado: { de: string; a: string } | undefined;
+    if (opciones.conformeEstadoId && (estadoUp === "INSTALADO" || estadoUp === "AUDITAR")) {
+      const incEstado = g(fila, "Incidencia_Estado").trim().toLowerCase();
+      if (incEstado === "cerrado" && p.estadoId && p.estadoId !== opciones.conformeEstadoId) {
+        upd.estadoId = opciones.conformeEstadoId;
+        previos.estadoId = p.estadoId;
+        stats.conforme++;
+        transicionEstado = { de: p.estadoNombre || estadoUp, a: "CONFORME" };
+      }
+    }
+
     if (Object.keys(upd).length > 0 || Object.keys(extra).length > 0) {
-      cambios.push({ predioId: p.id, codigo, upd, extra, cambiosPrevios: previos });
+      cambios.push({ predioId: p.id, codigo, upd, extra, cambiosPrevios: previos, transicionEstado });
     }
   }
 

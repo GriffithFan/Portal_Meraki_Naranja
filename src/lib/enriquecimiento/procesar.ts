@@ -1,5 +1,5 @@
 import { parsearExcelExtractor, type ErrorExtraccion } from "./parseExcel";
-import { cargarPrediosPorCodigo } from "./cargar";
+import { cargarPrediosPorCodigo, resolverConformeEstadoId } from "./cargar";
 import { planificarEnriquecimiento, type ResultadoPlan } from "./aplicar";
 import type { AlcanceSpec } from "./alcance";
 
@@ -22,6 +22,7 @@ export async function procesarSubida(
   const idsSnapshot = pares.map((p) => p.predioId);
   const codigosSnapshot = new Set(pares.map((p) => String(p.codigo)));
   const prediosPorCodigo = await cargarPrediosPorCodigo(idsSnapshot);
+  const conformeEstadoId = await resolverConformeEstadoId();
 
   // Solo filas cuyo predio está en el snapshot del job (respeta el alcance).
   const filasEnAlcance = filas.filter((f) => codigosSnapshot.has(String(f["Numero_Predio"] || "").trim()));
@@ -29,6 +30,7 @@ export async function procesarSubida(
   const plan = planificarEnriquecimiento(filasEnAlcance, prediosPorCodigo, comentariosPorCodigo, {
     excluirConforme: alcance.excluirConforme !== false, // default seguro: excluir CONFORME
     excluirYaEnriquecidos: Boolean(alcance.excluirYaEnriquecidos),
+    conformeEstadoId,
   });
 
   return { plan, prediosPorCodigo, errores };

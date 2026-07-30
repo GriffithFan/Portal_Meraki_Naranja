@@ -53,6 +53,29 @@ export async function aplicarCambiosEnDB(
     }
   }, { timeout: 180000 });
 
+  // Auditar las transiciones de estado (INSTALADO/AUDITAR → CONFORME) con el mismo
+  // formato "Estado: X -> Y" que usa el resto del sistema, para trazarlas y que
+  // cuenten en las métricas de conformes por transición.
+  const conTransicion = cambios.filter((c) => c.transicionEstado);
+  if (conTransicion.length > 0) {
+    const job = await prisma.enriquecimientoJob.findUnique({ where: { id: jobId }, select: { creadoPorId: true } });
+    const userId = job?.creadoPorId;
+    if (userId) {
+      for (const c of conTransicion) {
+        await prisma.actividad.create({
+          data: {
+            accion: "EDITAR",
+            descripcion: `Estado: ${c.transicionEstado!.de} -> ${c.transicionEstado!.a}`,
+            entidad: "PREDIO",
+            entidadId: c.predioId,
+            userId,
+            metadata: { origen: "enriquecimiento", jobId } as any,
+          },
+        }).catch(() => { /* el log no debe romper la corrida */ });
+      }
+    }
+  }
+
   return { aplicados: cambios.length, cambiosPrevios };
 }
 
