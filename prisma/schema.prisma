@@ -154,6 +154,7 @@ model Predio {
   // ── Campos del Cronograma (estilo ClickUp) ──
   incidencias       String?   // Código de incidencias (NI-000135...)
   tipoIncidencia    String?   // "Tipo de Incidencia" de Salesforce (normal "Mantenimiento / Reparacion"; otros = tarea especial → badge)
+  cantidadCronogramas Int?    // Cronogramas originados de la incidencia (del enriquecimiento). +3 en SIN ASIGNAR = crítico
   lacR              String?   // SI/NO
   cue               String?   // CUE (código único establecimiento)
   fechaDesde        DateTime? // Fecha inicio

@@ -867,6 +867,16 @@ export default function TareaDetalleModal({
           </div>
         )}
 
+        {!loading && tarea && typeof tarea.cantidadCronogramas === "number" && (
+          <div className={`mx-4 mt-3 flex items-center gap-2 rounded-lg border px-3 py-2 sm:mx-5 shrink-0 ${tarea.cantidadCronogramas >= 3 ? "border-purple-300 bg-purple-50" : "border-surface-200 bg-surface-50"}`}>
+            <span className={`text-base leading-none ${tarea.cantidadCronogramas >= 3 ? "text-purple-600" : "text-surface-400"}`}>🗓️</span>
+            <p className={`text-sm ${tarea.cantidadCronogramas >= 3 ? "text-purple-900" : "text-surface-600"}`}>
+              Cronogramas originados: <b>{tarea.cantidadCronogramas}</b>
+              {tarea.cantidadCronogramas >= 3 && <span className="ml-1 text-[11px] font-medium text-purple-600">· varios (revisar por qué venció)</span>}
+            </p>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="w-5 h-5 border-2 border-surface-200 border-t-surface-500 rounded-full animate-spin" />

@@ -39,6 +39,7 @@ export interface PredioActual {
   lacR: string | null;
   notas: string | null;
   tipoIncidencia: string | null;
+  cantidadCronogramas: number | null;
   camposExtra: Record<string, any> | null;
 }
 
@@ -204,7 +205,7 @@ export function planificarEnriquecimiento(
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
     ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
-    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0,
+    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0, cantidadCronogramas: 0,
   };
   // ── Regla LAC-R según el TILDE "Activo" REAL del último cronograma ──
   // El tilde manda en todo: Activo ✓ → "SI", sin tilde (o sin cronograma) → "NO".
@@ -281,6 +282,18 @@ export function planificarEnriquecimiento(
       upd.tipoIncidencia = tipoRep;
       previos.tipoIncidencia = p.tipoIncidencia ?? null;
       stats.tipoIncidencia++;
+    }
+
+    // Cantidad de cronogramas originados de la incidencia (del extractor). Crítico
+    // en SIN ASIGNAR: predios nunca visitados a los que se les dieron varios y venció.
+    const cronoTxt = g(fila, "Cronogramas_Originados_Cantidad");
+    if (cronoTxt !== "") {
+      const cronoN = parseInt(cronoTxt.replace(/[^0-9]/g, ""), 10);
+      if (Number.isFinite(cronoN) && cronoN !== (p.cantidadCronogramas ?? -1)) {
+        upd.cantidadCronogramas = cronoN;
+        previos.cantidadCronogramas = p.cantidadCronogramas ?? null;
+        stats.cantidadCronogramas++;
+      }
     }
 
     // lab: rellenar si vacío o reemplazar placeholder ("Sin-Adjudicar")

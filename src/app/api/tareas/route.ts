@@ -137,6 +137,7 @@ export async function GET(request: NextRequest) {
   const prioridad = searchParams.get("prioridad");
   const tipo = searchParams.get("tipo"); // "__especiales__" | valor exacto de tipoIncidencia
   const ventana = searchParams.get("ventana"); // en_ventana | por_vencer | vencido | futuro | sin_fechas
+  const cronogramas = searchParams.get("cronogramas"); // "min3" = predios con 3+ cronogramas originados
   const quick = normalizeTaskQuickFilter(searchParams.get("quick"));
   const groupBy = searchParams.get("groupBy") || "estado";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
@@ -248,6 +249,11 @@ export async function GET(request: NextRequest) {
     };
     const cv = clausesVentana[ventana];
     if (cv) where.AND = where.AND ? [...where.AND, cv] : [cv];
+  }
+
+  // Predios con 3+ cronogramas originados (crítico en SIN ASIGNAR nunca visitados).
+  if (cronogramas === "min3") {
+    where.cantidadCronogramas = { gte: 3 };
   }
   if (buscar) {
     const camposExtraMatches = await prisma.$queryRaw<{ id: string }[]>`

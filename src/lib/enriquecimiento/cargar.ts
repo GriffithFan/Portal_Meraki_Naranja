@@ -11,7 +11,7 @@ export async function cargarPrediosPorCodigo(predioIds: string[]): Promise<Map<s
       id: true, codigo: true, ciudad: true, direccion: true, cue: true, cuePredio: true,
       gpsPredio: true, latitud: true, longitud: true, telefono: true, lab: true,
       nombreInstitucion: true, ambito: true, provincia: true, fechaDesde: true, fechaHasta: true,
-      lacR: true, notas: true, camposExtra: true, ultimoEnriquecimiento: true, tipoIncidencia: true,
+      lacR: true, notas: true, camposExtra: true, ultimoEnriquecimiento: true, tipoIncidencia: true, cantidadCronogramas: true,
       estado: { select: { nombre: true } },
     },
   });
@@ -40,6 +40,7 @@ export async function cargarPrediosPorCodigo(predioIds: string[]): Promise<Map<s
       lacR: p.lacR,
       notas: p.notas,
       tipoIncidencia: p.tipoIncidencia,
+      cantidadCronogramas: p.cantidadCronogramas ?? null,
       camposExtra: (p.camposExtra as Record<string, any> | null) ?? null,
     });
   }

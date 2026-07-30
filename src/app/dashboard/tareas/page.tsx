@@ -196,6 +196,7 @@ export default function TareasPage() {
   const [filterAsignado, setFilterAsignado] = useState("todos");
   const [filterTipo, setFilterTipo] = useState("todos"); // "todos" | "__especiales__" | valor exacto (ej "Reingeniería Red Local")
   const [filterVentana, setFilterVentana] = useState("todos"); // todos | en_ventana | por_vencer | vencido | futuro | sin_fechas
+  const [filterCronogramas, setFilterCronogramas] = useState("todos"); // todos | min3 (3+ cronogramas)
   const [quickFilter, setQuickFilter] = useState("todos");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -474,6 +475,7 @@ export default function TareasPage() {
     if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
     if (filterTipo !== "todos") params.set("tipo", filterTipo);
     if (filterVentana !== "todos") params.set("ventana", filterVentana);
+    if (filterCronogramas !== "todos") params.set("cronogramas", filterCronogramas);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
     params.set("groupBy", groupBy);
     try {
@@ -520,7 +522,7 @@ export default function TareasPage() {
         else setLoading(false);
       }
     }
-  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, filterVentana, groupBy, quickFilter, serverSearch]);
+  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, filterVentana, filterCronogramas, groupBy, quickFilter, serverSearch]);
 
   useEffect(() => {
     fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
@@ -1372,6 +1374,9 @@ export default function TareasPage() {
           {esTipoIncidenciaEspecial(t.tipoIncidencia) && (
             <span title={`Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}`} className="shrink-0 text-amber-500" aria-label="Tarea especial">⚠</span>
           )}
+          {typeof t.cantidadCronogramas === "number" && t.cantidadCronogramas >= 3 && (
+            <span title={`${t.cantidadCronogramas} cronogramas originados`} className="shrink-0 rounded bg-purple-100 border border-purple-300 px-1 text-[9px] font-bold leading-[1.4] text-purple-700">{t.cantidadCronogramas}c</span>
+          )}
           <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} tieneAdjuntos={t.tieneAdjuntos} />
           <CopyBtn text={t.codigo || ""} />
         </span>
@@ -1414,7 +1419,7 @@ export default function TareasPage() {
     });
   }, [columns, tareas]);
 
-  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || filterVentana !== "todos" || quickFilter !== "todos");
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || filterVentana !== "todos" || filterCronogramas !== "todos" || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
     setServerSearch("");
@@ -1424,6 +1429,7 @@ export default function TareasPage() {
     setFilterAsignado("todos");
     setFilterTipo("todos");
     setFilterVentana("todos");
+    setFilterCronogramas("todos");
     setQuickFilter("todos");
   };
 
@@ -1763,6 +1769,15 @@ export default function TareasPage() {
               {w.label}
             </button>
           ))}
+          {/* Predios con 3+ cronogramas originados (crítico en SIN ASIGNAR) */}
+          <span className="mx-1 self-center text-surface-200">|</span>
+          <button
+            onClick={() => setFilterCronogramas((v) => (v === "min3" ? "todos" : "min3"))}
+            title="Predios con 3 o más cronogramas originados (nunca visitados y ya vencidos varios)"
+            className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${filterCronogramas === "min3" ? "bg-purple-600 border-purple-600 text-white" : "border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100"}`}
+          >
+            ≥3 cronogramas
+          </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
           <select
