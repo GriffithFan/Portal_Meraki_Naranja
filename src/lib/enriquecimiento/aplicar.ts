@@ -13,6 +13,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { estadoVentana } from "@/lib/cronogramaVentana";
+
 export type FilaReporte = Record<string, string>;
 
 export interface PredioActual {
@@ -318,20 +320,25 @@ export function planificarEnriquecimiento(
       if (curH !== df.toISOString().slice(0, 10)) { upd.fechaHasta = df; previos.fechaHasta = p.fechaHasta; stats.fechaHasta++; }
     }
 
-    // ── LAC-R por el tilde "Activo" real del último cronograma ──
-    // CONFORME nunca se toca. NO CONFORME SÍ se actualiza (pedido del usuario):
-    // cuando un predio NO CONFORME recibe un cronograma nuevo y activo, su LAC-R
-    // debe pasar a SI (la fecha del cronograma ya se actualiza arriba). El cron
-    // diario de las 16hs se apoya en esto.
+    // ── LAC-R: NUEVA NORMA (2026-07-30) ──
+    // SI solo si el cronograma está ACTIVO (tilde real) **Y** está EN FECHA hoy
+    // (hoy dentro de DESDE–HASTA). Un cronograma activo pero fuera de ventana → NO.
+    // CONFORME nunca se toca. El cron diario de las 6am refresca esto para no
+    // quedar nunca desactualizado.
     const estadoUp = (p.estadoNombre || "").trim().toUpperCase();
     if (estadoUp !== "CONFORME") {
       const activoReal = g(fila, "Cronograma_Ultimo_Activo_Real").toUpperCase(); // "SI" | "NO" | ""
       const tieneCrono = g(fila, "Tiene_Cronograma").toUpperCase();             // "SI" | "NO"
+      // "En fecha" = hoy dentro de [DESDE, HASTA]. Usa las fechas del reporte (di/df)
+      // y, si el reporte no las trajo, las que ya tiene el predio.
+      const ventEstado = estadoVentana(di || p.fechaDesde, df || p.fechaHasta).estado;
+      const enFecha = ventEstado === "en_ventana" || ventEstado === "por_vencer";
       let objetivo: "SI" | "NO" | null = null;
-      if (activoReal === "SI") objetivo = "SI";
+      if (activoReal === "SI" && enFecha) objetivo = "SI";       // activo Y en fecha → SI
+      else if (activoReal === "SI" && !enFecha) objetivo = "NO"; // activo pero fuera de ventana → NO
       else if (activoReal === "NO") objetivo = "NO";
       else if (tieneCrono === "NO") objetivo = "NO"; // sin cronograma → NO
-      // activoReal vacío CON cronograma = no se pudo leer el tilde → no se toca (seguro).
+      // activoReal vacío CON cronograma = tilde ilegible → no se toca (seguro).
       if (objetivo && cur("lacR").toUpperCase() !== objetivo) {
         upd.lacR = objetivo;
         previos.lacR = p.lacR ?? null;

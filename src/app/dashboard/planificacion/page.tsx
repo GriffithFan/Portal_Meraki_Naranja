@@ -12,15 +12,18 @@ interface Provincia extends Ventana { clave: string; nombre: string; corto: stri
 interface Tecnico {
   id: string; nombre: string; tecnicoActivo: boolean; tecnicoDesde: string | null;
   provincia: string; provinciaNombre: string; objetivo: number; esNuevo: boolean; semanaRamp: number | null;
-  conformesSemana: number; ncSemana: number; conformesPorSemana: number[]; predios: number; semaforo: string;
+  conformesSemana: number; ncSemana: number; conformidadPct: number | null; maxSemana: number;
+  conformesPorSemana: number[]; predios: number; semaforo: string;
 }
+interface Ciudad { ciudad: string; provinciaCorto: string; en_ventana: number; por_vencer: number; vencido: number; futuro: number; sin_fechas: number; total: number }
 interface TodosTec { id: string; nombre: string; email: string; activo: boolean; tecnicoActivo: boolean; tecnicoDesde: string | null }
 interface Data {
   objetivoConformes: number; conformidadPct: number; conformesSemanaGlobal: number;
   ventanaGlobal: Ventana; porVencerHoyMan: number;
   provincias: Provincia[];
-  capacidad: { tecnicosActivos: number; capacidadSemanal: number; objetivo: number; gap: number };
-  pedidos: { conformidadPct: number; visitasNecesarias: number; enPipeline: number; bufferObjetivo: number; pedirEstaSemana: number; enVentana: number; porVencer: number; vencidos: number };
+  capacidad: { tecnicosActivos: number; capacidadSemanal: number; mejorMaxSemana: number; objetivo: number; gap: number };
+  pedidos: { conformidadPct: number; metaSemanal: number; visitasSemana: number; visitas2Semanas: number; enPipeline: number; pedir2Semanas: number; pedirEstaSemana: number; enVentana: number; porVencer: number; vencidos: number };
+  ciudades: Ciudad[];
   tecnicos: Tecnico[];
   todosTecnicos: TodosTec[];
 }
@@ -99,6 +102,7 @@ export default function PlanificacionPage() {
           <div className="mt-3 space-y-2 text-sm">
             <Row k="Técnicos activos" val={cap.tecnicosActivos} />
             <Row k="Capacidad estimada / semana" val={`~${cap.capacidadSemanal}`} sub="suma de objetivos por zona" />
+            <Row k="Pico del mejor técnico" val={cap.mejorMaxSemana || "—"} sub="máx conformes en una semana" />
             <Row k="Objetivo" val={cap.objetivo} />
             <div className="mt-2 border-t border-surface-100 pt-2">
               <Row k={cap.gap > 0 ? "Falta para el objetivo" : "Sobre el objetivo"} val={`${cap.gap > 0 ? "" : "+"}${Math.abs(cap.gap)}`} tone={cap.gap > 0 ? "red" : "emerald"} />
@@ -107,13 +111,14 @@ export default function PlanificacionPage() {
         </section>
 
         <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-          <h2 className="text-sm font-semibold text-surface-800">¿Cuántos cronogramas pedir esta semana?</h2>
-          <p className="mt-2 text-3xl font-bold text-amber-700 tabular-nums">≈ {p.pedirEstaSemana}</p>
+          <h2 className="text-sm font-semibold text-surface-800">¿Cuántos cronogramas pedir? <span className="text-[11px] font-normal text-surface-500">(tanda para 2 semanas)</span></h2>
+          <p className="mt-2 text-3xl font-bold text-amber-700 tabular-nums">≈ {p.pedir2Semanas}</p>
           <p className="mt-1 text-[11px] text-surface-500">
-            Para {data.objetivoConformes} conformes hacen falta ~{p.visitasNecesarias} visitas/sem (a {p.conformidadPct}%). Buffer objetivo ~{p.bufferObjetivo} · ya en pipeline (en ventana + por vencer + futuro): <b>{p.enPipeline}</b>.
+            Los cronogramas nuevos tardan ~14 días, por eso se pide en <b>tandas para 2 semanas</b>. 2 sem de producción = ~{p.metaSemanal * 2} conformes → ~{p.visitas2Semanas} visitas (a {p.conformidadPct}% de conformidad) − ya en pipeline <b>{p.enPipeline}</b>.
           </p>
-          {p.pedirEstaSemana === 0 && (
-            <p className="mt-2 rounded-md bg-white/70 px-2 py-1.5 text-[11px] text-amber-800">Tenés pipeline de sobra: no pidas en masa, enfocá en <b>visitar por HASTA</b> antes de que venzan.</p>
+          <p className="mt-1 text-[11px] text-surface-400">Reposición semanal aproximada: ≈ {p.pedirEstaSemana}.</p>
+          {p.pedir2Semanas === 0 && (
+            <p className="mt-2 rounded-md bg-white/70 px-2 py-1.5 text-[11px] text-amber-800">Tenés pipeline de sobra para 2 semanas: no pidas en masa, enfocá en <b>visitar por HASTA</b> antes de que venzan.</p>
           )}
         </section>
       </div>
@@ -153,6 +158,45 @@ export default function PlanificacionPage() {
         </div>
       </section>
 
+      {/* Por ciudad / zona (para organizar los pedidos por recorrido) */}
+      {data.ciudades && data.ciudades.length > 0 && (
+        <section className="rounded-xl border border-surface-200 bg-white overflow-hidden">
+          <div className="border-b border-surface-100 px-4 py-3">
+            <h2 className="text-sm font-semibold text-surface-800">Por ciudad / zona <span className="text-surface-400 font-normal">(top {data.ciudades.length}, para ordenar los pedidos por recorrido)</span></h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-sm">
+              <thead>
+                <tr className="border-b border-surface-100 text-[10px] uppercase tracking-wide text-surface-400">
+                  <th className="px-4 py-2 text-left font-semibold">Ciudad</th>
+                  <th className="px-2 py-2 text-center font-semibold">Prov.</th>
+                  <th className="px-2 py-2 text-center font-semibold text-emerald-600">En ventana</th>
+                  <th className="px-2 py-2 text-center font-semibold text-amber-600">Por vencer</th>
+                  <th className="px-2 py-2 text-center font-semibold text-red-500">Vencidos</th>
+                  <th className="px-2 py-2 text-center font-semibold text-blue-500">Futuro</th>
+                  <th className="px-2 py-2 text-center font-semibold text-surface-400">Sin fechas</th>
+                  <th className="px-2 py-2 text-center font-semibold">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.ciudades.map((c) => (
+                  <tr key={c.ciudad} className="border-b border-surface-50 last:border-0 hover:bg-surface-50/50">
+                    <td className="px-4 py-2 font-medium text-surface-800 truncate max-w-[220px]">{c.ciudad}</td>
+                    <td className="px-2 py-2 text-center text-surface-400">{c.provinciaCorto}</td>
+                    <td className="px-2 py-2 text-center font-semibold tabular-nums text-emerald-600">{c.en_ventana || ""}</td>
+                    <td className="px-2 py-2 text-center font-semibold tabular-nums text-amber-600">{c.por_vencer || ""}</td>
+                    <td className="px-2 py-2 text-center font-semibold tabular-nums text-red-500">{c.vencido || ""}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-blue-500">{c.futuro || ""}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-surface-400">{c.sin_fechas || ""}</td>
+                    <td className="px-2 py-2 text-center tabular-nums font-semibold text-surface-700">{c.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {/* Técnicos activos */}
       <section className="rounded-xl border border-surface-200 bg-white overflow-hidden">
         <div className="flex items-center justify-between border-b border-surface-100 px-4 py-3">
@@ -168,6 +212,8 @@ export default function PlanificacionPage() {
                 <th className="px-2 py-2 text-center font-semibold">Objetivo</th>
                 <th className="px-2 py-2 text-center font-semibold">Conf. sem</th>
                 <th className="px-2 py-2 text-center font-semibold">NC</th>
+                <th className="px-2 py-2 text-center font-semibold">% Conf</th>
+                <th className="px-2 py-2 text-center font-semibold">Máx</th>
                 <th className="px-2 py-2 text-center font-semibold">Tendencia</th>
                 <th className="px-2 py-2 text-center font-semibold">Estado</th>
               </tr>
@@ -185,12 +231,14 @@ export default function PlanificacionPage() {
                   <td className="px-2 py-2 text-center tabular-nums text-surface-600">{t.objetivo}</td>
                   <td className="px-2 py-2 text-center"><span className={`font-semibold tabular-nums ${t.conformesSemana >= t.objetivo ? "text-emerald-600" : "text-surface-700"}`}>{t.conformesSemana}</span></td>
                   <td className="px-2 py-2 text-center tabular-nums text-red-500">{t.ncSemana || ""}</td>
+                  <td className="px-2 py-2 text-center tabular-nums"><span className={t.conformidadPct == null ? "text-surface-300" : t.conformidadPct >= 85 ? "text-emerald-600" : t.conformidadPct >= 70 ? "text-amber-600" : "text-red-500"}>{t.conformidadPct == null ? "—" : `${t.conformidadPct}%`}</span></td>
+                  <td className="px-2 py-2 text-center tabular-nums text-surface-500">{t.maxSemana || "—"}</td>
                   <td className="px-2 py-2"><div className="flex justify-center"><Spark values={t.conformesPorSemana} /></div></td>
                   <td className="px-2 py-2"><div className="flex justify-center"><span className={`h-3 w-3 rounded-full ${SEMAFORO[t.semaforo]}`} title={t.semaforo} /></div></td>
                 </tr>
               ))}
               {data.tecnicos.filter((t) => t.tecnicoActivo).length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-xs text-surface-400">No hay técnicos marcados como activos. Usá &quot;Gestionar técnicos&quot;.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-6 text-center text-xs text-surface-400">No hay técnicos marcados como activos. Usá &quot;Gestionar técnicos&quot;.</td></tr>
               )}
             </tbody>
           </table>

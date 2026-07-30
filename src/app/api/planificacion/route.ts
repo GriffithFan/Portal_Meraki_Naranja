@@ -47,13 +47,14 @@ export async function GET(request: Request) {
   // ── 1) Predios NO conformes (pipeline) → ventana × provincia ──
   const predios = await prisma.predio.findMany({
     where: { NOT: { estado: { nombre: { equals: "CONFORME", mode: "insensitive" } } } },
-    select: { codigo: true, fechaDesde: true, fechaHasta: true },
+    select: { codigo: true, fechaDesde: true, fechaHasta: true, ciudad: true },
     take: 20000,
   });
 
   const ventanaGlobal = bucketVacio();
   const porProvincia = new Map<ProvinciaClave, VentanaBucket>();
   for (const p of PROVINCIAS_ORDEN) porProvincia.set(p, bucketVacio());
+  const porCiudad = new Map<string, VentanaBucket & { provincia: ProvinciaClave }>();
   // "por vencer" detalle: los que vencen en <=3 días (para priorizar)
   let porVencerHoyMan = 0; // vencen hoy o mañana
 
@@ -63,6 +64,10 @@ export async function GET(request: Request) {
     ventanaGlobal[info.estado] += 1;
     porProvincia.get(prov)![info.estado] += 1;
     if (info.estado === "por_vencer" && (info.diasRestantes ?? 99) <= 1) porVencerHoyMan += 1;
+    // Desglose por ciudad (para organizar los pedidos por zona/recorrido).
+    const ciudad = (p.ciudad || "").trim() || "(sin ciudad)";
+    if (!porCiudad.has(ciudad)) porCiudad.set(ciudad, { ...bucketVacio(), provincia: prov });
+    porCiudad.get(ciudad)![info.estado] += 1;
   }
 
   // ── 2) Técnicos activos / onboarding ──
@@ -152,13 +157,17 @@ export async function GET(request: Request) {
     const objetivo = rampTarget != null ? Math.min(rampTarget, meta.objetivo) : meta.objetivo;
     const conformesSemana = prod.conformes[idxActual] || 0;
     const ncSemana = prod.nc[idxActual] || 0;
+    // % de conformidad y máximo semanal sobre las semanas COMPLETAS (excluye la actual en curso).
+    let cSum = 0, ncSum = 0, maxSemana = 0;
+    for (let i = 0; i < idxActual; i++) { cSum += prod.conformes[i]; ncSum += prod.nc[i]; if (prod.conformes[i] > maxSemana) maxSemana = prod.conformes[i]; }
+    const conformidadPct = cSum + ncSum > 0 ? Math.round((cSum / (cSum + ncSum)) * 100) : null;
     const semaforo = conformesSemana >= objetivo ? "verde" : conformesSemana >= objetivo * 0.6 ? "amarillo" : "rojo";
     return {
       id: t.id, nombre: t.nombre, tecnicoActivo: t.tecnicoActivo,
       tecnicoDesde: t.tecnicoDesde ? new Date(t.tecnicoDesde).toISOString() : null,
       provincia: prov, provinciaNombre: meta.corto, objetivo,
       esNuevo, semanaRamp,
-      conformesSemana, ncSemana,
+      conformesSemana, ncSemana, conformidadPct, maxSemana,
       conformesPorSemana: prod.conformes,
       predios: t.asignaciones.length,
       semaforo,
@@ -175,10 +184,17 @@ export async function GET(request: Request) {
 
   const activos = tecnicos.filter((t) => t.tecnicoActivo);
   const capacidadSemanal = Math.round(activos.reduce((s, t) => s + t.objetivo, 0));
-  const visitasNecesarias = Math.ceil(OBJETIVO_CONFORMES / conformidad);
+  const mejorMaxSemana = activos.reduce((m, t) => Math.max(m, t.maxSemana || 0), 0); // pico del mejor técnico
+  // Producción semanal que podemos sostener: la capacidad (si aún no hay técnicos
+  // marcados, cae al objetivo 150 como referencia).
+  const metaSemanal = capacidadSemanal > 0 ? capacidadSemanal : OBJETIVO_CONFORMES;
   const enPipeline = ventanaGlobal.en_ventana + ventanaGlobal.por_vencer + ventanaGlobal.futuro;
-  const bufferObjetivo = Math.round(visitasNecesarias * 2); // ~2 semanas de trabajo en ventana/pipeline
-  const pedirEstaSemana = Math.max(0, bufferObjetivo - enPipeline);
+  // Los cronogramas nuevos tardan ~14 días → se pide EN TANDAS PARA 2 SEMANAS.
+  // Predios a pedir = 2 semanas de producción / % conformidad (por los que caen en NC) − lo ya pedido.
+  const visitasSemana = Math.ceil(metaSemanal / conformidad);
+  const visitas2Semanas = visitasSemana * 2;
+  const pedir2Semanas = Math.max(0, visitas2Semanas - enPipeline);
+  const pedirEstaSemana = Math.max(0, visitasSemana - Math.max(0, enPipeline - visitasSemana)); // reposición semanal aprox.
 
   return NextResponse.json({
     generatedAt: now.toISOString(),
@@ -195,19 +211,27 @@ export async function GET(request: Request) {
     capacidad: {
       tecnicosActivos: activos.length,
       capacidadSemanal,
+      mejorMaxSemana,
       objetivo: OBJETIVO_CONFORMES,
       gap: OBJETIVO_CONFORMES - capacidadSemanal,
     },
     pedidos: {
       conformidadPct: Math.round(conformidad * 100),
-      visitasNecesarias,
+      metaSemanal,
+      visitasSemana,
+      visitas2Semanas,
       enPipeline,
-      bufferObjetivo,
+      pedir2Semanas,
       pedirEstaSemana,
       enVentana: ventanaGlobal.en_ventana,
       porVencer: ventanaGlobal.por_vencer,
       vencidos: ventanaGlobal.vencido,
     },
+    // Desglose por ciudad (top 25 por total) para organizar los pedidos por zona.
+    ciudades: Array.from(porCiudad.entries())
+      .map(([ciudad, b]) => ({ ciudad, provincia: b.provincia, provinciaCorto: PROVINCIAS_META[b.provincia].corto, en_ventana: b.en_ventana, por_vencer: b.por_vencer, vencido: b.vencido, futuro: b.futuro, sin_fechas: b.sin_fechas, total: b.en_ventana + b.por_vencer + b.vencido + b.futuro + b.sin_fechas }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 25),
     tecnicos,
     todosTecnicos,
   }, { headers: { "Cache-Control": "no-store" } });
