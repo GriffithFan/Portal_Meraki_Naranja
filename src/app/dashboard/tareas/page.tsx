@@ -1770,6 +1770,7 @@ export default function TareasPage() {
                 { key: "en_ventana", label: "🟢 En ventana", on: "bg-emerald-600 border-emerald-600 text-white", off: "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100" },
                 { key: "por_vencer", label: "🟡 Por vencer", on: "bg-amber-500 border-amber-500 text-white", off: "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100" },
                 { key: "vencido", label: "🔴 Vencidos", on: "bg-red-600 border-red-600 text-white", off: "border-red-300 text-red-600 bg-red-50 hover:bg-red-100" },
+                { key: "futuro", label: "🔵 Pronto", on: "bg-blue-600 border-blue-600 text-white", off: "border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100" },
               ].map((w) => (
                 <button
                   key={w.key}
