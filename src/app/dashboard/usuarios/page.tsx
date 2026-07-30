@@ -9,7 +9,7 @@ interface Usuario {
   id: string;
   nombre: string;
   email: string;
-  rol: "ADMIN" | "MODERADOR" | "TECNICO";
+  rol: "ADMIN" | "MODERADOR" | "TECNICO" | "USUARIO";
   esMesa?: boolean;
   twoFactorEnabled?: boolean;
 }
@@ -50,9 +50,10 @@ const ROL_CONFIG: Record<string, { color: string; bg: string; label: string }> =
   ADMIN: { color: "bg-primary-600", bg: "bg-primary-50 text-primary-700 border-primary-200", label: "Admin" },
   MODERADOR: { color: "bg-amber-500", bg: "bg-amber-50 text-amber-700 border-amber-200", label: "Moderador" },
   TECNICO: { color: "bg-teal-500", bg: "bg-teal-50 text-teal-700 border-teal-200", label: "Técnico" },
+  USUARIO: { color: "bg-surface-400", bg: "bg-surface-100 text-surface-500 border-surface-200", label: "Usuario" },
 };
 
-const ROLES: Usuario["rol"][] = ["ADMIN", "MODERADOR", "TECNICO"];
+const ROLES: Usuario["rol"][] = ["ADMIN", "MODERADOR", "TECNICO", "USUARIO"];
 
 function getIniciales(nombre: string) {
   return nombre.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase();
@@ -859,6 +860,7 @@ export default function UsuariosPage() {
                             {rol === "ADMIN" && "Acceso total al sistema"}
                             {rol === "MODERADOR" && "Gestión sin configuración"}
                             {rol === "TECNICO" && "Operaciones de campo"}
+                            {rol === "USUARIO" && "Solo login, sin acceso (preventivo)"}
                           </div>
                         </div>
                         {selected && (

@@ -12,6 +12,7 @@ enum Role {
   ADMIN
   MODERADOR
   TECNICO
+  USUARIO // Puede loguear pero sin acceso a nada (preventivo, hasta que se le dé TECNICO)
 }
 
 enum Prioridad {

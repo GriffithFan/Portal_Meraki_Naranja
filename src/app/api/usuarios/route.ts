@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         nombre: nombre.trim(),
         email: email.trim().toLowerCase(),
         password: hash,
-        rol: ["ADMIN", "MODERADOR", "TECNICO"].includes(rol) ? rol : "TECNICO",
+        rol: ["ADMIN", "MODERADOR", "TECNICO", "USUARIO"].includes(rol) ? rol : "TECNICO",
         esMesa: esMesa === true,
       },
       select: { id: true, nombre: true, email: true, rol: true, esMesa: true },
@@ -98,7 +98,7 @@ export async function PATCH(req: NextRequest) {
 
     const data: any = {};
 
-    if (rol && ["ADMIN", "MODERADOR", "TECNICO"].includes(rol)) {
+    if (rol && ["ADMIN", "MODERADOR", "TECNICO", "USUARIO"].includes(rol)) {
       data.rol = rol;
     }
 

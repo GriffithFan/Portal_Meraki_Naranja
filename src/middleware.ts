@@ -172,6 +172,19 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
+    // ── Rol USUARIO: puede loguear pero NO acceder a nada (preventivo, hasta que
+    //    se le dé TECNICO). Solo ve la página "/pendiente"; el resto se bloquea.
+    //    (/api/auth/* ya pasó por publicAuthRoutes, así que puede cerrar sesión.) ──
+    if (rol === "USUARIO") {
+      if (pathname.startsWith("/api")) {
+        return NextResponse.json({ error: "Cuenta sin permisos" }, { status: 403 });
+      }
+      if (pathname !== "/pendiente" && pathname !== "/login") {
+        return NextResponse.redirect(new URL("/pendiente", request.url));
+      }
+      return NextResponse.next();
+    }
+
     // ── Candado de la base de Personal: solo cuentas fijadas en código ──
     if (pathname.startsWith("/dashboard/personal") || pathname.startsWith("/api/personal")) {
       if (!tieneAccesoFichas(email)) {
