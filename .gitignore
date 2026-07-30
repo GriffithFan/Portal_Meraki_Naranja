@@ -53,3 +53,6 @@ tmp_deploy.sh
 
 # Extractor de Salesforce (Python venv + cache, vive en el VPS)
 /extractor/
+
+# Generador de actas (scripts Python + template Word con credenciales, vive en el VPS)
+/actas-gen/

@@ -98,6 +98,12 @@ export default function ActasPage() {
   const [visibleCount, setVisibleCount] = useState(60);
   const [dragOver, setDragOver] = useState(false);
 
+  // Generar acta desde Salesforce por N° de predio (solo ADMIN)
+  const [showGenerar, setShowGenerar] = useState(false);
+  const [generarPredio, setGenerarPredio] = useState("");
+  const [generando, setGenerando] = useState(false);
+  const [generarDup, setGenerarDup] = useState<any | null>(null);
+
   const fetchActas = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -285,6 +291,47 @@ export default function ActasPage() {
     }
   }
 
+  // Generar un acta desde Salesforce con solo el número de predio (ADMIN).
+  async function handleGenerar(overwrite = false) {
+    const predio = generarPredio.replace(/\D/g, "");
+    if (!predio) {
+      toast.error("Ingresá un número de predio");
+      return;
+    }
+    setGenerando(true);
+    setGenerarDup(null);
+    try {
+      const res = await fetch("/api/actas/generar", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ predio, overwrite }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        setGenerarDup(data.duplicado || { nombre: predio });
+        return;
+      }
+      if (res.ok) {
+        setShowGenerar(false);
+        setGenerarPredio("");
+        setGenerarDup(null);
+        const est = data?.meta?.establecimiento ? ` · ${data.meta.establecimiento}` : "";
+        toast.success(`Acta ${predio} generada${est}`);
+        if (data?.meta && data.meta.predioEnCarrot === false) {
+          toast.warning(`El predio ${predio} no está en Carrot: el acta se generó sin número de incidencia`);
+        }
+        fetchActas();
+      } else {
+        toast.error(data?.error || "No se pudo generar el acta");
+      }
+    } catch {
+      toast.error("No se pudo generar el acta");
+    } finally {
+      setGenerando(false);
+    }
+  }
+
   function downloadActa(acta: any) {
     window.open(`/api/actas/${acta.id}`, "_blank");
   }
@@ -460,6 +507,12 @@ export default function ActasPage() {
           <p className="text-xs text-surface-400">Documentos y actas del proyecto · {total} total</p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button onClick={() => { setShowGenerar(true); setGenerarDup(null); }} className="px-3 py-1.5 bg-accent-600 text-white rounded-md text-xs font-medium hover:bg-accent-700 transition-colors flex items-center gap-1.5" title="Generar un acta desde Salesforce con solo el número de predio">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" /></svg>
+              Generar acta
+            </button>
+          )}
           {canEdit && (
             <>
               <button onClick={() => setShowBulk(true)} className="px-3 py-1.5 bg-surface-100 text-surface-700 rounded-md text-xs font-medium hover:bg-surface-200 transition-colors flex items-center gap-1.5 border border-surface-200">
@@ -676,6 +729,63 @@ export default function ActasPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal generar acta desde Salesforce (ADMIN) */}
+      {showGenerar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-surface-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4 animate-fade-in-up">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-full bg-accent-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-accent-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-surface-800 dark:text-surface-100">Generar acta desde Salesforce</h2>
+                <p className="text-xs text-surface-400 mt-0.5">Ingresá el número de predio. Se extraen los datos de Salesforce y se arma el acta en Word automáticamente.</p>
+              </div>
+            </div>
+
+            {!generarDup ? (
+              <>
+                <input
+                  autoFocus
+                  value={generarPredio}
+                  onChange={(e) => setGenerarPredio(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !generando) handleGenerar(false); }}
+                  placeholder="N° de predio (ej: 822395)"
+                  inputMode="numeric"
+                  disabled={generando}
+                  className="w-full px-3 py-2 border border-surface-200 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 rounded-md text-sm focus:outline-none focus:border-accent-400 disabled:opacity-60"
+                />
+                {generando && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-surface-500">
+                    <svg className="w-4 h-4 animate-spin text-accent-500" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    Generando el acta… (puede tardar hasta un minuto)
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 mt-5">
+                  <button type="button" onClick={() => { setShowGenerar(false); setGenerarPredio(""); }} disabled={generando} className="px-4 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md disabled:opacity-50">Cancelar</button>
+                  <button type="button" onClick={() => handleGenerar(false)} disabled={generando || !generarPredio} className="px-4 py-2 text-xs bg-accent-600 text-white rounded-md hover:bg-accent-700 font-medium disabled:opacity-50">
+                    {generando ? "Generando…" : "Generar acta"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                  <p className="text-xs font-semibold text-amber-800">Ya existe un acta para el predio {generarDup.nombre}</p>
+                  <p className="text-[10px] text-amber-600 mt-1">Si generás de nuevo, se reemplaza el archivo y sube la versión (v{(generarDup.version || 1) + 1}).</p>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setGenerarDup(null)} disabled={generando} className="px-4 py-2 text-xs text-surface-600 hover:bg-surface-100 rounded-md disabled:opacity-50">Volver</button>
+                  <button type="button" onClick={() => handleGenerar(true)} disabled={generando} className="px-4 py-2 text-xs bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium disabled:opacity-50">
+                    {generando ? "Regenerando…" : "Regenerar y sobreescribir"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
