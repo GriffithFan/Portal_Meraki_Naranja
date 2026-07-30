@@ -92,6 +92,8 @@ export async function GET(request: NextRequest) {
       ambito: true,
       nombreInstitucion: true,
       espacioId: true,
+      fechaDesde: true,
+      fechaHasta: true,
       estado: { select: { id: true, nombre: true, color: true } },
       asignaciones: { include: { usuario: { select: { id: true, nombre: true } } } },
     },

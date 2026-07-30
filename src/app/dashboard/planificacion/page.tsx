@@ -83,7 +83,13 @@ export default function PlanificacionPage() {
           <h1 className="text-xl font-semibold text-surface-800">Planificación de cronogramas</h1>
           <p className="text-xs text-surface-400">Ventana DESDE–HASTA · objetivo {data.objetivoConformes} conformes/sem · conformidad ~{data.conformidadPct}% · {data.conformesSemanaGlobal} conformes esta semana</p>
         </div>
-        <button onClick={cargar} className="rounded-md border border-surface-200 bg-white px-3 py-2 text-xs font-medium text-surface-600 hover:bg-surface-50">Actualizar</button>
+        <div className="flex items-center gap-2">
+          <a href="/dashboard/planificacion/mapa" className="inline-flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700 hover:bg-primary-100">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" /></svg>
+            Ver mapa
+          </a>
+          <button onClick={cargar} className="rounded-md border border-surface-200 bg-white px-3 py-2 text-xs font-medium text-surface-600 hover:bg-surface-50">Actualizar</button>
+        </div>
       </div>
 
       {/* Ventana global */}

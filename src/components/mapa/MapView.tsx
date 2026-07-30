@@ -4,6 +4,16 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
+import { estadoVentana, type VentanaEstado } from "@/lib/cronogramaVentana";
+
+// Colores por estado de ventana del cronograma (mismos que el resto del planning).
+const VENTANA_COLORS: Record<VentanaEstado, string> = {
+  en_ventana: "#10b981", // verde
+  por_vencer: "#f59e0b", // ámbar
+  vencido:    "#ef4444", // rojo
+  futuro:     "#3b82f6", // azul
+  sin_fechas: "#94a3b8", // gris
+};
 
 interface PredioMapa {
   id: string;
@@ -20,6 +30,8 @@ interface PredioMapa {
   nombreInstitucion: string | null;
   espacioId: string | null;
   estado: { id: string; nombre: string; color: string } | null;
+  fechaDesde?: string | null;
+  fechaHasta?: string | null;
 }
 
 // Colores por provincia — cada una tiene un color distinguible
@@ -96,7 +108,7 @@ function createMarkerIcon(color: string, label?: string) {
 
 interface MapViewProps {
   predios: PredioMapa[];
-  colorBy: "provincia" | "estado" | "tecnico";
+  colorBy: "provincia" | "estado" | "tecnico" | "ventana";
 }
 
 export default function MapView({ predios, colorBy }: MapViewProps) {
@@ -190,10 +202,13 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
       const prov = obtenerProvincia(p.provincia, p.codigo) || null;
       const asignados = getAsignados(p);
       const primaryAsignado = asignados[0] || "";
+      const ventEstado: VentanaEstado = estadoVentana(p.fechaDesde, p.fechaHasta).estado;
       const color = colorBy === "provincia"
         ? getProvinciaColor(prov)
         : colorBy === "tecnico"
         ? getTecnicoColor(primaryAsignado, tecnicoColorMap)
+        : colorBy === "ventana"
+        ? VENTANA_COLORS[ventEstado]
         : (p.estado?.color || DEFAULT_PROVINCIA_COLOR);
 
       // Label inside marker depends on colorBy mode
