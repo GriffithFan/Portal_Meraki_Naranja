@@ -761,15 +761,18 @@ async function buildAccessPointsSection(
   return result;
 }
 
-// MX85: LLDP/CDP reporta los LAN como índice interno 0-9, pero el chasis los
-// numera 5-14. Traducción: puerto físico = índice + 5 (solo cuando la descripción
-// indica "lan port" y el modelo empieza con MX85). Otros modelos: sin cambio.
-function physicalAppliancePort(model: string | undefined, rawPort: string): string | null {
-  const m = (rawPort || "").match(/(\d+)/);
-  if (!m) return null;
+// MX85: el LLDP/CDP del vecino reporta los LAN como índice interno 0-9, pero el
+// chasis los numera 5-14. El número sale del portId; el "+5" se aplica solo si la
+// portDescription dice "lan port" y el modelo es MX85 (verificado: switch reporta
+// portId="7" / portDescription="lan port 7" = puerto físico 12). Otros: sin cambio.
+function physicalAppliancePort(model: string | undefined, discovery: any): string | null {
+  const portId = (discovery?.portId ?? discovery?.portDescription ?? "").toString();
+  const portDescription = (discovery?.portDescription ?? "").toString();
+  const m = portId.match(/(\d+)/);
+  if (!m) return portId || null;
   let n = parseInt(m[1], 10);
-  if (!Number.isFinite(n)) return null;
-  if (/^mx85/i.test(model || "") && /lan\s*port/i.test(rawPort || "")) n += 5;
+  if (!Number.isFinite(n)) return portId || null;
+  if (/^mx85/i.test((model || "").trim()) && /lan\s*port/i.test(portDescription)) n += 5;
   return String(n);
 }
 
@@ -816,7 +819,6 @@ async function buildApplianceSection(
               const lldpInfo = portData.lldp || portData.cdp;
               if (!lldpInfo) continue;
               const remoteName = lldpInfo.deviceId || lldpInfo.systemName || "";
-              const remotePort = lldpInfo.portId || lldpInfo.portDescription || "";
               const matchedAppliance = appliances.find(
                 (a) =>
                   remoteName.includes(a.serial) ||
@@ -825,10 +827,11 @@ async function buildApplianceSection(
               );
               if (matchedAppliance) {
                 // Traducir el puerto del appliance a su número físico (MX85: LAN +5).
+                // Se pasa lldpInfo completo para leer portDescription ("lan port N").
                 switchLldpMap[sw.serial] = {
                   name: sw.name || sw.model || sw.serial,
                   serial: sw.serial,
-                  uplinkPortOnRemote: physicalAppliancePort(matchedAppliance.model, remotePort),
+                  uplinkPortOnRemote: physicalAppliancePort(matchedAppliance.model, lldpInfo),
                 };
                 break;
               }
