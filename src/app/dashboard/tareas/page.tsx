@@ -1323,6 +1323,15 @@ export default function TareasPage() {
     if (col.type === "date") return formatDate(t[col.field]);
     if (col.type === "badge" && col.id === "lacR") {
       const val = t[col.field]?.toUpperCase() || "";
+      // "PRONTO" (solo ADMIN): cronograma futuro (azul) todavía sin entrar en fecha.
+      // Derivado de la ventana, NO se guarda. El técnico ve el LAC-R real (NO).
+      if (session?.rol === "ADMIN" && (val === "NO" || val === "") && estadoVentana(t.fechaDesde, t.fechaHasta).estado === "futuro") {
+        return (
+          <span title="Cronograma próximo (aún no en fecha) — pasará a LAC-R SI cuando entre en ventana" className="px-1.5 py-px rounded text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">
+            PRONTO
+          </span>
+        );
+      }
       if (isModOrAdmin) {
         return (
           <select
@@ -1364,7 +1373,7 @@ export default function TareasPage() {
       const ventLabel: Record<string, string> = { en_ventana: "En ventana (visitable)", por_vencer: "Por vencer", vencido: "Vencido (fuera de ventana)", futuro: "Futuro (a\u00fan no abre)", sin_fechas: "" };
       return (
         <span className="flex items-center gap-1 group/cell">
-          {ventColor && <span className={`shrink-0 h-2 w-2 rounded-full ${ventColor}`} title={`Cronograma: ${ventLabel[vent]}`} />}
+          {session?.rol === "ADMIN" && ventColor && <span className={`shrink-0 h-2 w-2 rounded-full ${ventColor}`} title={`Cronograma: ${ventLabel[vent]}`} />}
           {t.estado ? (
             <span className="cursor-pointer hover:opacity-70 transition-opacity" onClick={(e) => abrirInlineEstado(e, t.id)}>
               <StatusIcon clave={t.estado.clave} icono={t.estado.icono} color={t.estado.color} size={14} />
@@ -1374,7 +1383,7 @@ export default function TareasPage() {
           {esTipoIncidenciaEspecial(t.tipoIncidencia) && (
             <span title={`Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}`} className="shrink-0 text-amber-500" aria-label="Tarea especial">⚠</span>
           )}
-          {typeof t.cantidadCronogramas === "number" && t.cantidadCronogramas >= 3 && (
+          {session?.rol === "ADMIN" && typeof t.cantidadCronogramas === "number" && t.cantidadCronogramas >= 3 && (
             <span title={`${t.cantidadCronogramas} cronogramas originados`} className="shrink-0 rounded bg-purple-100 border border-purple-300 px-1 text-[9px] font-bold leading-[1.4] text-purple-700">{t.cantidadCronogramas}c</span>
           )}
           <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} tieneAdjuntos={t.tieneAdjuntos} />
@@ -1753,31 +1762,34 @@ export default function TareasPage() {
           >
             ⚠ Especiales
           </button>
-          {/* Ventana del cronograma (por fechas DESDE–HASTA) */}
-          <span className="mx-1 self-center text-surface-200">|</span>
-          {[
-            { key: "en_ventana", label: "🟢 En ventana", on: "bg-emerald-600 border-emerald-600 text-white", off: "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100" },
-            { key: "por_vencer", label: "🟡 Por vencer", on: "bg-amber-500 border-amber-500 text-white", off: "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100" },
-            { key: "vencido", label: "🔴 Vencidos", on: "bg-red-600 border-red-600 text-white", off: "border-red-300 text-red-600 bg-red-50 hover:bg-red-100" },
-          ].map((w) => (
-            <button
-              key={w.key}
-              onClick={() => setFilterVentana((v) => (v === w.key ? "todos" : w.key))}
-              title="Filtrar por ventana del cronograma (DESDE–HASTA)"
-              className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${filterVentana === w.key ? w.on : w.off}`}
-            >
-              {w.label}
-            </button>
-          ))}
-          {/* Predios con 3+ cronogramas originados (crítico en SIN ASIGNAR) */}
-          <span className="mx-1 self-center text-surface-200">|</span>
-          <button
-            onClick={() => setFilterCronogramas((v) => (v === "min3" ? "todos" : "min3"))}
-            title="Predios con 3 o más cronogramas originados (nunca visitados y ya vencidos varios)"
-            className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${filterCronogramas === "min3" ? "bg-purple-600 border-purple-600 text-white" : "border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100"}`}
-          >
-            ≥3 cronogramas
-          </button>
+          {/* Ventana del cronograma + cronogramas: sistema de planificación SOLO ADMIN */}
+          {session?.rol === "ADMIN" && (
+            <>
+              <span className="mx-1 self-center text-surface-200">|</span>
+              {[
+                { key: "en_ventana", label: "🟢 En ventana", on: "bg-emerald-600 border-emerald-600 text-white", off: "border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100" },
+                { key: "por_vencer", label: "🟡 Por vencer", on: "bg-amber-500 border-amber-500 text-white", off: "border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100" },
+                { key: "vencido", label: "🔴 Vencidos", on: "bg-red-600 border-red-600 text-white", off: "border-red-300 text-red-600 bg-red-50 hover:bg-red-100" },
+              ].map((w) => (
+                <button
+                  key={w.key}
+                  onClick={() => setFilterVentana((v) => (v === w.key ? "todos" : w.key))}
+                  title="Filtrar por ventana del cronograma (DESDE–HASTA)"
+                  className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${filterVentana === w.key ? w.on : w.off}`}
+                >
+                  {w.label}
+                </button>
+              ))}
+              <span className="mx-1 self-center text-surface-200">|</span>
+              <button
+                onClick={() => setFilterCronogramas((v) => (v === "min3" ? "todos" : "min3"))}
+                title="Predios con 3 o más cronogramas originados (nunca visitados y ya vencidos varios)"
+                className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${filterCronogramas === "min3" ? "bg-purple-600 border-purple-600 text-white" : "border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100"}`}
+              >
+                ≥3 cronogramas
+              </button>
+            </>
+          )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
           <select
