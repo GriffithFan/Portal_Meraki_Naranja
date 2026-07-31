@@ -6,7 +6,11 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/carrot}"
 BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/backups}"
-KEEP_DAYS="${KEEP_DAYS:-14}"
+# Retención separada: la base (crítica y liviana, ~8MB) se conserva muchos días;
+# el tar de uploads es enorme (GBs) y casi no cambia, así que se conserva pocos.
+# Esto evita que los backups de uploads llenen el disco (eran ~38GB con 14 copias).
+KEEP_DAYS_DB="${KEEP_DAYS_DB:-${KEEP_DAYS:-21}}"
+KEEP_DAYS_UPLOADS="${KEEP_DAYS_UPLOADS:-3}"
 DB_ONLY="${DB_ONLY:-0}"   # 1 = solo dump de la base (rápido), sin tar de uploads
 TS="$(date +%Y%m%d-%H%M%S)"
 
@@ -40,8 +44,15 @@ else
   echo "No existe carpeta uploads; se omite backup de archivos."
 fi
 
-echo "Limpiando backups con mas de $KEEP_DAYS dias..."
-find "$BACKUP_DIR" -type f \( -name 'db-*.sql.gz' -o -name 'uploads-*.tar.gz' \) -mtime "+$KEEP_DAYS" -delete
+echo "Limpiando backups DB (>$KEEP_DAYS_DB dias) y uploads (>$KEEP_DAYS_UPLOADS dias)..."
+find "$BACKUP_DIR" -type f -name 'db-*.sql.gz' -mtime "+$KEEP_DAYS_DB" -delete
+find "$BACKUP_DIR" -type f -name 'uploads-*.tar.gz' -mtime "+$KEEP_DAYS_UPLOADS" -delete
 
 echo "Backups creados en $BACKUP_DIR"
 ls -lh "$BACKUP_DIR"/*"$TS"* || true
+
+# Aviso si el disco quedó por encima del 80% (para no repetir el llenado silencioso).
+USO_DISCO="$(df -P "$BACKUP_DIR" | awk 'NR==2 {gsub("%","",$5); print $5}')"
+if [ -n "${USO_DISCO:-}" ] && [ "$USO_DISCO" -ge 80 ]; then
+  echo "AVISO: el disco está al ${USO_DISCO}% después del backup. Revisar espacio." >&2
+fi
