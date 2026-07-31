@@ -16,7 +16,7 @@ type Pm2Process = {
   monit?: { memory?: number; cpu?: number };
 };
 
-export async function GET(request: Request) {
+export async function GET() {
   const session = await getSession();
   if (!session || !isModOrAdmin(session.rol)) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     getRuntimeSummary(),
     getDiskSummary(),
     getLogSummary(),
-    getHttpChecks(request),
+    getHttpChecks(),
     getPm2Summary(),
     getCronSummary(),
   ]);
@@ -214,7 +214,7 @@ async function getLogSummary() {
   return results;
 }
 
-async function getHttpChecks(_request: Request) {
+async function getHttpChecks() {
   // Self-checks contra el loopback interno (127.0.0.1:PORT), NO contra el origin
   // de la request: detrás del proxy el origin sale como http:// y nginx redirige
   // TODO http->https (301), lo que hacía fallar los tres checks con un falso ERR.
