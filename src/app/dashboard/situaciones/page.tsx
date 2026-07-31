@@ -24,6 +24,10 @@ export default function SituacionesPage() {
   const [chatSel, setChatSel] = useState("");
   const [generando, setGenerando] = useState(false);
 
+  // Analítica de huecos / revisión
+  const [analitica, setAnalitica] = useState<any | null>(null);
+  const [tabRev, setTabRev] = useState<"huecos" | "malas">("huecos");
+
   const fetchItems = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/situaciones", { credentials: "include" });
@@ -31,7 +35,17 @@ export default function SituacionesPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { if (isAdmin) fetchItems(); }, [isAdmin, fetchItems]);
+  const fetchAnalitica = useCallback(async () => {
+    const res = await fetch("/api/asistente/analitica", { credentials: "include" });
+    if (res.ok) setAnalitica(await res.json());
+  }, []);
+
+  useEffect(() => { if (isAdmin) { fetchItems(); fetchAnalitica(); } }, [isAdmin, fetchItems, fetchAnalitica]);
+
+  function crearDesde(pregunta: string, respuesta?: string) {
+    setForm({ ...FORM_VACIO, pregunta: pregunta || "", respuesta: respuesta || "" });
+    setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
+  }
 
   async function guardar() {
     if (!form) return;
@@ -45,6 +59,7 @@ export default function SituacionesPage() {
         toast.success(form.id ? "Situación actualizada" : "Situación creada");
         setForm(null);
         fetchItems();
+        fetchAnalitica();
       } else {
         const d = await res.json().catch(() => ({}));
         toast.error(d?.error || "No se pudo guardar");
@@ -105,6 +120,62 @@ export default function SituacionesPage() {
           </button>
         </div>
       </div>
+
+      {/* Analítica de huecos / revisión */}
+      {analitica && analitica.totales.total > 0 && (
+        <div className="mb-5 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <div className="text-center">
+              <div className="text-lg font-semibold text-surface-800 dark:text-surface-100">{analitica.totales.total}</div>
+              <div className="text-[10px] text-surface-400 uppercase tracking-wide">Consultas</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-amber-600">{analitica.totales.huecos}</div>
+              <div className="text-[10px] text-surface-400 uppercase tracking-wide">Sin respuesta</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-emerald-600">{analitica.totales.positivos}</div>
+              <div className="text-[10px] text-surface-400 uppercase tracking-wide">👍 buenas</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold text-red-600">{analitica.totales.negativos}</div>
+              <div className="text-[10px] text-surface-400 uppercase tracking-wide">👎 malas</div>
+            </div>
+          </div>
+
+          {(analitica.recientesHuecos.length > 0 || analitica.recientesNegativos.length > 0) && (
+            <>
+              <div className="flex items-center gap-1 mb-2 border-b border-surface-100 dark:border-surface-700">
+                <button onClick={() => setTabRev("huecos")} className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px ${tabRev === "huecos" ? "border-accent-500 text-accent-600" : "border-transparent text-surface-500 hover:text-surface-700"}`}>
+                  Huecos ({analitica.recientesHuecos.length})
+                </button>
+                <button onClick={() => setTabRev("malas")} className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px ${tabRev === "malas" ? "border-accent-500 text-accent-600" : "border-transparent text-surface-500 hover:text-surface-700"}`}>
+                  Respuestas 👎 ({analitica.recientesNegativos.length})
+                </button>
+              </div>
+              <p className="text-[10px] text-surface-400 mb-2">
+                {tabRev === "huecos" ? "Consultas que el bot no supo responder. Creá una situación para cubrirlas." : "Respuestas marcadas como malas. Corregilas creando una situación."}
+              </p>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {(tabRev === "huecos" ? analitica.recientesHuecos : analitica.recientesNegativos).map((r: any) => (
+                  <div key={r.id} className="flex items-start gap-2 text-xs bg-surface-50 dark:bg-surface-900/40 rounded-md px-2.5 py-1.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-surface-700 dark:text-surface-200 font-medium">{r.pregunta}</p>
+                      {tabRev === "malas" && r.respuesta && <p className="text-surface-400 mt-0.5 line-clamp-2">↳ {r.respuesta}</p>}
+                    </div>
+                    <button onClick={() => crearDesde(r.pregunta, tabRev === "malas" ? r.respuesta : "")} className="flex-shrink-0 text-[10px] text-accent-600 hover:bg-accent-50 px-2 py-1 rounded-md font-medium whitespace-nowrap">
+                      → situación
+                    </button>
+                  </div>
+                ))}
+                {(tabRev === "huecos" ? analitica.recientesHuecos : analitica.recientesNegativos).length === 0 && (
+                  <p className="text-xs text-surface-400 text-center py-3">Nada por acá 🎉</p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="py-16 text-center text-sm text-surface-400">Cargando…</div>
