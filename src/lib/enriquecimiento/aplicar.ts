@@ -13,7 +13,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { estadoVentana } from "@/lib/cronogramaVentana";
+import { estadoVentana, arrancaProximoDiaHabil } from "@/lib/cronogramaVentana";
 
 export type FilaReporte = Record<string, string>;
 
@@ -340,24 +340,32 @@ export function planificarEnriquecimiento(
       if (curH !== df.toISOString().slice(0, 10)) { upd.fechaHasta = df; previos.fechaHasta = p.fechaHasta; stats.fechaHasta++; }
     }
 
-    // ── LAC-R: NUEVA NORMA (2026-07-30) ──
-    // SI solo si el cronograma está ACTIVO (tilde real) **Y** está EN FECHA hoy
-    // (hoy dentro de DESDE–HASTA). Un cronograma activo pero fuera de ventana → NO.
-    // CONFORME nunca se toca. El cron diario de las 6am refresca esto para no
-    // quedar nunca desactualizado.
+    // ── LAC-R: NORMA (revertida 2026-07-31) ──
+    // ACTIVO manda: si el tilde real del último cronograma está ACTIVO → SI, AUNQUE
+    // la fecha ya haya pasado (vencido). Única excepción: un cronograma FUTURO que
+    // arranca más allá del próximo día hábil queda NO (se muestra "PRONTO"/azul);
+    // pero si arranca a más tardar el próximo día hábil (ej. hoy viernes y abre el
+    // lunes) → SI directo, porque arrancaría igual. CONFORME nunca se toca. El cron
+    // diario de las 6am refresca esto para no quedar nunca desactualizado.
     const estadoUp = (p.estadoNombre || "").trim().toUpperCase();
     if (estadoUp !== "CONFORME") {
       const activoReal = g(fila, "Cronograma_Ultimo_Activo_Real").toUpperCase(); // "SI" | "NO" | ""
       const tieneCrono = g(fila, "Tiene_Cronograma").toUpperCase();             // "SI" | "NO"
-      // "En fecha" = hoy dentro de [DESDE, HASTA]. Usa las fechas del reporte (di/df)
-      // y, si el reporte no las trajo, las que ya tiene el predio.
-      const ventEstado = estadoVentana(di || p.fechaDesde, df || p.fechaHasta).estado;
-      const enFecha = ventEstado === "en_ventana" || ventEstado === "por_vencer";
+      // Fechas efectivas: las del reporte (di/df) y, si no vinieron, las del predio.
+      const desdeEff = di || p.fechaDesde;
+      const hastaEff = df || p.fechaHasta;
+      const ventEstado = estadoVentana(desdeEff, hastaEff).estado;
       let objetivo: "SI" | "NO" | null = null;
-      if (activoReal === "SI" && enFecha) objetivo = "SI";       // activo Y en fecha → SI
-      else if (activoReal === "SI" && !enFecha) objetivo = "NO"; // activo pero fuera de ventana → NO
-      else if (activoReal === "NO") objetivo = "NO";
-      else if (tieneCrono === "NO") objetivo = "NO"; // sin cronograma → NO
+      if (activoReal === "SI") {
+        // Activo → SI en todos los casos (incluye vencido/pasado y sin fechas), salvo
+        // futuro NO inminente, que queda NO (azul/PRONTO) hasta acercarse la fecha.
+        if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
+        else objetivo = "SI";
+      } else if (activoReal === "NO") {
+        objetivo = "NO";
+      } else if (tieneCrono === "NO") {
+        objetivo = "NO"; // sin cronograma → NO
+      }
       // activoReal vacío CON cronograma = tilde ilegible → no se toca (seguro).
       if (objetivo && cur("lacR").toUpperCase() !== objetivo) {
         upd.lacR = objetivo;

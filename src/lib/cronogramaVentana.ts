@@ -49,3 +49,26 @@ export function estadoVentana(
   const estado: VentanaEstado = aHasta <= umbralPorVencer ? "por_vencer" : "en_ventana";
   return { estado, diasRestantes: aHasta, diasParaAbrir: null };
 }
+
+/** El próximo día hábil (lun-vie) a partir de hoy: vie→lun, sáb→lun, dom→lun, resto→mañana. */
+export function proximoDiaHabil(hoy: Date = new Date()): Date {
+  const d = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
+  const dow = d.getUTCDay(); // 0=Dom … 6=Sáb
+  const add = dow === 5 ? 3 : dow === 6 ? 2 : 1; // vie→lun, sáb→lun, dom/lun-jue→+1
+  d.setUTCDate(d.getUTCDate() + add);
+  return d;
+}
+
+/**
+ * True si el cronograma arranca a más tardar el próximo día hábil (a fines prácticos
+ * "arranca ya": ej. hoy viernes y DESDE es el lunes → arrancaría el lunes igual).
+ * Sirve para marcar LAC-R SI a cronogramas futuros inminentes.
+ */
+export function arrancaProximoDiaHabil(
+  desde: Date | string | null | undefined,
+  hoy: Date = new Date()
+): boolean {
+  const d = desde ? new Date(desde) : null;
+  if (!d || isNaN(d.getTime())) return false;
+  return diasEntre(d, proximoDiaHabil(hoy)) >= 0; // proximoDiaHabil - d >= 0  ⇔  d <= proximoDiaHabil
+}
