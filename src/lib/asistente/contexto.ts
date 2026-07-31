@@ -69,13 +69,30 @@ export function cargarBaseConocimiento(): string {
 }
 
 // ─── Límites de contexto (acotan tokens/costo; sobra para Haiku 200k) ───
-const MAX_CONVERSACIONES = 40;
+const MAX_CONVERSACIONES = 70;
 const MAX_MENSAJES_POR_CONV = 16;
 const MAX_NC = 120;
 
 function recortar(s: string | null | undefined, n: number): string {
   const t = (s || "").replace(/\s+/g, " ").trim();
   return t.length > n ? `${t.slice(0, n)}…` : t;
+}
+
+// Ruido de chat que no aporta al conocimiento: adjuntos (nombre de archivo) y
+// acks/saludos sueltos. Se filtran para que entren consultas con sustancia.
+const EXT_ARCHIVO = /\.(jpe?g|png|gif|webp|bmp|heic|mp4|mov|avi|webm|mp3|ogg|wav|m4a|pdf|zip|rar|docx?|xlsx?|pptx?)$/i;
+const ACKS = new Set([
+  "dale", "dale dale", "ok", "oka", "okey", "okok", "listo", "gracias", "graciass", "gracias!", "buenas",
+  "buen dia", "buenos dias", "hola", "si", "sisi", "sii", "no", "nn", "va", "vale", "joya", "genial",
+  "perfecto", "bien", "ah", "aja", "ya", "yap", "ahi", "ahi va", "de una", "barbaro", "tal cual", "👍", "👌",
+]);
+
+function esMensajeUtil(contenido: string | null | undefined): boolean {
+  const t = (contenido || "").replace(/\s+/g, " ").trim();
+  if (t.length < 3) return false;
+  if (EXT_ARCHIVO.test(t)) return false;
+  if (ACKS.has(t.toLowerCase())) return false;
+  return true;
 }
 
 /** Consultas reales de los chats de Mesa (preguntas de técnicos y su resolución). */
@@ -97,17 +114,38 @@ async function contextoChats(): Promise<string> {
 
   const bloques: string[] = [];
   for (const conv of convs) {
-    const msgs = conv.mensajes.filter((m) => (m.contenido || "").trim());
-    if (msgs.length === 0) continue;
+    const msgs = conv.mensajes.filter((m) => esMensajeUtil(m.contenido));
+    // Solo conversaciones con ida y vuelta con sustancia (pregunta del técnico + respuesta de Mesa).
+    const hayTecnico = msgs.some((m) => m.autorId === conv.creadorId);
+    const hayMesa = msgs.some((m) => m.autorId !== conv.creadorId);
+    if (msgs.length < 2 || !hayTecnico || !hayMesa) continue;
     const lineas = msgs.map((m) => {
       const quien = m.autorId === conv.creadorId ? "Técnico" : "Mesa";
       return `${quien}: ${recortar(m.contenido, 500)}`;
     });
     bloques.push(`### Consulta${conv.asunto ? `: ${recortar(conv.asunto, 120)}` : ""}\n${lineas.join("\n")}`);
+    if (bloques.length >= 50) break; // tope de conversaciones útiles incluidas
   }
 
   if (bloques.length === 0) return "";
-  return `# CONSULTAS REALES DE LOS CHATS (Mesa de Ayuda)\nEjemplos reales de preguntas de técnicos y cómo se resolvieron. Usalos como referencia de casos frecuentes y de cómo responde Mesa. No copies datos puntuales (predios, seriales) de estos ejemplos a otras respuestas.\n\n${bloques.join("\n\n")}`;
+  return `# CONSULTAS REALES DE LOS CHATS (Mesa de Ayuda)\nEjemplos reales de preguntas de técnicos y cómo se resolvieron. Usalos como referencia de casos frecuentes y de cómo responde Mesa (tono y largo). No copies datos puntuales (predios, seriales) de estos ejemplos a otras respuestas.\n\n${bloques.join("\n\n")}`;
+}
+
+/** Instructivos cargados en Carrot (conocimiento oficial curado). */
+async function contextoInstructivos(): Promise<string> {
+  const instructivos = await prisma.instructivo.findMany({
+    where: { activo: true },
+    orderBy: { categoria: "asc" },
+    select: { titulo: true, descripcion: true, contenido: true, categoria: true },
+  });
+  const bloques: string[] = [];
+  for (const i of instructivos) {
+    const cuerpo = (i.contenido || i.descripcion || "").trim();
+    if (!cuerpo) continue;
+    bloques.push(`### [${i.categoria}] ${i.titulo}\n${recortar(cuerpo, 2500)}`);
+  }
+  if (bloques.length === 0) return "";
+  return `# INSTRUCTIVOS DE THNET (conocimiento oficial)\n\n${bloques.join("\n\n")}`;
 }
 
 /** Motivos de no conformidades registrados (notas/comentarios de predios NO CONFORME). */
@@ -216,11 +254,12 @@ export async function contextoPrediosMencionados(codigos: string[]): Promise<str
   return `# DATOS REALES DE PREDIOS MENCIONADOS (de Carrot / tareas)\nUsá estos datos para responder sobre el predio (estado, LAC-R, y si es NO CONFORME el motivo = el último comentario). No adivines.\n\n${bloques.join("\n\n")}`;
 }
 
-/** Junta el contexto dinámico (chats + NC). Best-effort: si algo falla, no rompe. */
+/** Junta el contexto dinámico (instructivos + chats + NC). Best-effort: si algo falla, no rompe. */
 export async function construirContextoDinamico(): Promise<string> {
-  const [chats, nc] = await Promise.all([
+  const [instructivos, chats, nc] = await Promise.all([
+    contextoInstructivos().catch(() => ""),
     contextoChats().catch(() => ""),
     contextoNoConformidades().catch(() => ""),
   ]);
-  return [chats, nc].filter(Boolean).join("\n\n---\n\n");
+  return [instructivos, chats, nc].filter(Boolean).join("\n\n---\n\n");
 }
