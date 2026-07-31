@@ -26,6 +26,15 @@ REGLAS:
 - Seguridad primero: si hay riesgo eléctrico o algo fuera del alcance del técnico, decile que pare y escale — también corto.
 - No pidas ni reveles contraseñas, tokens ni secretos.
 
+DATOS DEL PREDIO (cuando el técnico menciona un número de predio):
+- Te paso un bloque "DATOS DEL PREDIO …" con la info REAL de Carrot (estado, LAC-R, último comentario, incidencia, etc.). Usá ESOS datos, NO adivines ni inventes.
+- Si te preguntan si el predio "tiene LAC" o "LAC-R", respondé según el campo LAC-R: si dice SI, tiene; si dice NO, no tiene. No lo confundas con las evidencias/actas.
+- Si el predio está NO CONFORME, el motivo es el ÚLTIMO comentario (el de fecha más reciente): decilo puntual y ayudá a resolver justo eso, no todo el checklist.
+- Si NO te paso datos de ese predio (no aparece en Carrot), decilo y pedí que verifique el número; no inventes su estado.
+
+REGLA FIJA DE THNET (tiene prioridad sobre cualquier otra cosa):
+- Al recargar o levantar un predio NO CONFORME, SIEMPRE, sin excepción: se completan/actualizan las ACTAS, se informa en el acta el trabajo realizado para levantar el no conforme (qué se corrigió) y se toma FOTO DEL FRENTE del predio. Esto va aunque el rechazo haya sido por una sola evidencia (por ej. solo faltaba el PDU). Nunca digas que "las actas ya están y no hace falta tocarlas".
+
 Ejemplos del tono buscado (así de corto):
 
 Técnico: "tengo un AP en amarillo a 100mb, ¿cómo lo arreglo?"
@@ -132,6 +141,79 @@ async function contextoNoConformidades(): Promise<string> {
 
   if (lineas.length === 0) return "";
   return `# MOTIVOS DE NO CONFORMIDADES (registrados en el sistema)\nMotivos reales por los que se rechazaron predios. Sirven para explicar por qué se rechaza y cómo prevenirlo. (Ver también la estadística de NC frecuentes en la base de conocimiento.)\n\n${lineas.join("\n")}`;
+}
+
+function fechaAR(d: Date | null | undefined): string {
+  if (!d) return "";
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+}
+
+/** Extrae códigos de predio (6-8 dígitos) mencionados por el técnico en el chat. */
+export function extraerCodigosPredio(mensajes: { role: string; content: string }[]): string[] {
+  const set = new Set<string>();
+  for (const m of mensajes) {
+    if (m.role !== "user") continue;
+    const matches = (m.content || "").match(/\b\d{6,8}\b/g);
+    if (matches) for (const c of matches) set.add(c);
+  }
+  return Array.from(set).slice(0, 5);
+}
+
+/**
+ * Datos REALES de los predios mencionados (de Carrot / tareas): estado, LAC-R,
+ * ubicación, incidencia, cronograma y los últimos comentarios (el más reciente
+ * es el "motivo" cuando está NO CONFORME). Así el bot responde con datos, no adivina.
+ */
+export async function contextoPrediosMencionados(codigos: string[]): Promise<string> {
+  if (!codigos || codigos.length === 0) return "";
+
+  const predios = await prisma.predio.findMany({
+    where: { codigo: { in: codigos } },
+    select: {
+      codigo: true, nombre: true, nombreInstitucion: true,
+      estado: { select: { nombre: true } },
+      lacR: true, ambito: true, ciudad: true, provincia: true,
+      incidencias: true, tipoIncidencia: true, notas: true, notasTecnico: true,
+      fechaDesde: true, fechaHasta: true,
+      comentarios: {
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: { contenido: true, createdAt: true, usuario: { select: { nombre: true } } },
+      },
+    },
+  });
+
+  const encontrados = new Set(predios.map((p) => p.codigo));
+  const bloques: string[] = [];
+
+  for (const p of predios) {
+    const lac = (p.lacR || "").trim().toUpperCase();
+    const lacTxt = lac === "SI" ? "SI (tiene LAC-R)" : lac === "NO" ? "NO (no tiene LAC-R)" : "sin dato";
+    const lineas = [`- Estado: ${p.estado?.nombre || "sin estado"}`, `- LAC-R: ${lacTxt}`];
+    if (p.nombreInstitucion || p.nombre) lineas.push(`- Institución: ${p.nombreInstitucion || p.nombre}`);
+    const ubic = [p.ambito, p.ciudad, p.provincia].filter(Boolean).join(" · ");
+    if (ubic) lineas.push(`- Ubicación: ${ubic}`);
+    if (p.incidencias) lineas.push(`- Incidencia: ${p.incidencias}${p.tipoIncidencia ? ` (${p.tipoIncidencia})` : ""}`);
+    if (p.fechaDesde || p.fechaHasta) lineas.push(`- Cronograma: ${fechaAR(p.fechaDesde)} a ${fechaAR(p.fechaHasta)}`);
+
+    const comentarios = p.comentarios.filter((c) => (c.contenido || "").trim());
+    if (comentarios.length > 0) {
+      const u = comentarios[0];
+      lineas.push(`- Último comentario / motivo (${fechaAR(u.createdAt)}${u.usuario?.nombre ? `, ${u.usuario.nombre}` : ""}): ${recortar(u.contenido, 400)}`);
+      for (const c of comentarios.slice(1)) {
+        lineas.push(`  · Comentario previo (${fechaAR(c.createdAt)}): ${recortar(c.contenido, 200)}`);
+      }
+    }
+    if (p.notas?.trim()) lineas.push(`- Notas: ${recortar(p.notas, 300)}`);
+    bloques.push(`## DATOS DEL PREDIO ${p.codigo}\n${lineas.join("\n")}`);
+  }
+
+  for (const c of codigos.filter((x) => !encontrados.has(x))) {
+    bloques.push(`## DATOS DEL PREDIO ${c}\n- No aparece en Carrot con ese número. Pedile al técnico que verifique el número; no inventes su estado.`);
+  }
+
+  if (bloques.length === 0) return "";
+  return `# DATOS REALES DE PREDIOS MENCIONADOS (de Carrot / tareas)\nUsá estos datos para responder sobre el predio (estado, LAC-R, y si es NO CONFORME el motivo = el último comentario). No adivines.\n\n${bloques.join("\n\n")}`;
 }
 
 /** Junta el contexto dinámico (chats + NC). Best-effort: si algo falla, no rompe. */

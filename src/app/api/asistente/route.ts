@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { responderConsulta, type MensajeChat } from "@/lib/asistente/claude";
-import { PERSONA_ASISTENTE, cargarBaseConocimiento, construirContextoDinamico } from "@/lib/asistente/contexto";
+import { PERSONA_ASISTENTE, cargarBaseConocimiento, construirContextoDinamico, extraerCodigosPredio, contextoPrediosMencionados } from "@/lib/asistente/contexto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -39,7 +39,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const baseConocimiento = cargarBaseConocimiento();
-    const contextoDinamico = await construirContextoDinamico();
+    // Datos reales de los predios que el técnico mencionó (van primero, por relevancia).
+    const codigos = extraerCodigosPredio(mensajes);
+    const [datosPredios, contextoBase] = await Promise.all([
+      contextoPrediosMencionados(codigos).catch(() => ""),
+      construirContextoDinamico(),
+    ]);
+    const contextoDinamico = [datosPredios, contextoBase].filter(Boolean).join("\n\n---\n\n");
 
     const { texto, uso } = await responderConsulta({
       persona: PERSONA_ASISTENTE,
