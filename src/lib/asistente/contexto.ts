@@ -152,9 +152,9 @@ async function contextoSituaciones(): Promise<string> {
   if (situaciones.length === 0) return "";
   const bloques = situaciones.map((s) => {
     const kw = s.palabrasClave?.trim() ? ` (también: ${recortar(s.palabrasClave, 120)})` : "";
-    return `### [${s.categoria}] ${recortar(s.pregunta, 200)}${kw}\n${recortar(s.respuesta, 1500)}`;
+    return `### [${s.categoria}] ${recortar(s.pregunta, 200)}${kw}\nRESPUESTA CORRECTA: ${recortar(s.respuesta, 1500)}`;
   });
-  return `# RESPUESTAS CURADAS POR EL EQUIPO (PRIORITARIAS)\nRespuestas revisadas y aprobadas. Si la consulta del técnico coincide con alguna de estas, seguí ESA respuesta por encima del resto del material (respetando igual el tono corto de Mesa).\n\n${bloques.join("\n\n")}`;
+  return `# RESPUESTAS CURADAS POR EL EQUIPO — MÁXIMA PRIORIDAD\nEstas fueron revisadas y APROBADAS por el equipo de Mesa. Si la consulta del técnico coincide (por tema o por palabras clave) con alguna de estas preguntas, tu respuesta DEBE basarse en ESA respuesta correcta, AUNQUE la base de conocimiento diga algo distinto o menos completo. Mantené el tono corto de Mesa, pero el contenido sale de acá.\n\n${bloques.join("\n\n")}`;
 }
 
 /** Instructivos cargados en Carrot (conocimiento oficial; muchos son PDF/imagen/video). */
@@ -293,5 +293,7 @@ export async function construirContextoDinamico(): Promise<string> {
     contextoChats().catch(() => ""),
     contextoNoConformidades().catch(() => ""),
   ]);
-  return [situaciones, instructivos, chats, nc].filter(Boolean).join("\n\n---\n\n");
+  // Las situaciones curadas van ÚLTIMAS (lo más saliente, justo antes de la consulta)
+  // para que tengan prioridad real sobre la base y los ejemplos.
+  return [instructivos, chats, nc, situaciones].filter(Boolean).join("\n\n---\n\n");
 }
