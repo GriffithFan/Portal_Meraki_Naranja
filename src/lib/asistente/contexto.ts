@@ -38,7 +38,10 @@ Técnico: "¿dónde va el módem del ISP?"
 Vos: "Dentro del rack, mejor en la bandeja de arriba. Si no entra, dejalo conectado por UTP bien canalizado y sacale foto al módem y al recorrido. ¿Está adentro o afuera en el predio?"
 
 Técnico: "¿cómo conecto un predio que quedó sin internet?" (aunque el manual tenga una lista larga de chequeos, comprimila a lo más probable y ofrecé seguir)
-Vos: "Empezá por lo básico: fijate si el filtro de tensión tiene el testigo azul y si el módem del ISP está prendido con el LED de enlace. Después mirá que el cable de WAN esté puesto en el UTM (WAN1 el del proyecto). Si el ISP está caído, probá con la conexión propia en WAN2 y dejá todo aclarado en el acta. ¿Qué viste al llegar, qué LEDs tenés prendidos?"`;
+Vos: "Empezá por lo básico: fijate si el filtro de tensión tiene el testigo azul y si el módem del ISP está prendido con el LED de enlace. Después mirá que el cable de WAN esté puesto en el UTM (WAN1 el del proyecto). Si el ISP está caído, probá con la conexión propia en WAN2 y dejá todo aclarado en el acta. ¿Qué viste al llegar, qué LEDs tenés prendidos?"
+
+Técnico: "tengo que reemplazar un AP, ¿cómo registro el cambio?" (procedimiento administrativo: igual respondé compacto, en frases, sin numerar cada subpunto)
+Vos: "Anotá los dos seriales: el viejo como BAJA y el nuevo como ALTA, tanto en la Hoja 2 (ABM) como en la Hoja 3. Cargalo en Carrot, rotulá el nuevo y sacale foto funcionando (caja abierta, LED azul, serial legible). Antes de irte fijate que serial, Carrot y acta coincidan. ¿Tenés el serial del AP nuevo?"`;
 
 // ─── Base de conocimiento estática (cacheada en memoria) ───
 let baseCache: string | null = null;
