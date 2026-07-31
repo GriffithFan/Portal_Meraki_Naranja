@@ -142,6 +142,21 @@ async function contextoChats(): Promise<string> {
   return `# CONSULTAS REALES DE LOS CHATS (Mesa de Ayuda)\nEjemplos reales de preguntas de técnicos y cómo se resolvieron. Usalos como referencia de casos frecuentes y de cómo responde Mesa (tono y largo). No copies datos puntuales (predios, seriales) de estos ejemplos a otras respuestas.\n\n${bloques.join("\n\n")}`;
 }
 
+/** Situaciones curadas por admins (pregunta típica → respuesta correcta). Prioritarias. */
+async function contextoSituaciones(): Promise<string> {
+  const situaciones = await prisma.situacion.findMany({
+    where: { activo: true },
+    orderBy: [{ categoria: "asc" }, { orden: "asc" }],
+    select: { pregunta: true, respuesta: true, categoria: true, palabrasClave: true },
+  });
+  if (situaciones.length === 0) return "";
+  const bloques = situaciones.map((s) => {
+    const kw = s.palabrasClave?.trim() ? ` (también: ${recortar(s.palabrasClave, 120)})` : "";
+    return `### [${s.categoria}] ${recortar(s.pregunta, 200)}${kw}\n${recortar(s.respuesta, 1500)}`;
+  });
+  return `# RESPUESTAS CURADAS POR EL EQUIPO (PRIORITARIAS)\nRespuestas revisadas y aprobadas. Si la consulta del técnico coincide con alguna de estas, seguí ESA respuesta por encima del resto del material (respetando igual el tono corto de Mesa).\n\n${bloques.join("\n\n")}`;
+}
+
 /** Instructivos cargados en Carrot (conocimiento oficial; muchos son PDF/imagen/video). */
 async function contextoInstructivos(): Promise<string> {
   const instructivos = await prisma.instructivo.findMany({
@@ -270,12 +285,13 @@ export async function contextoPrediosMencionados(codigos: string[]): Promise<str
   return `# DATOS REALES DE PREDIOS MENCIONADOS (de Carrot / tareas)\nUsá estos datos para responder sobre el predio (estado, LAC-R, y si es NO CONFORME el motivo = el último comentario). No adivines.\n\n${bloques.join("\n\n")}`;
 }
 
-/** Junta el contexto dinámico (instructivos + chats + NC). Best-effort: si algo falla, no rompe. */
+/** Junta el contexto dinámico (situaciones + instructivos + chats + NC). Best-effort. */
 export async function construirContextoDinamico(): Promise<string> {
-  const [instructivos, chats, nc] = await Promise.all([
+  const [situaciones, instructivos, chats, nc] = await Promise.all([
+    contextoSituaciones().catch(() => ""),
     contextoInstructivos().catch(() => ""),
     contextoChats().catch(() => ""),
     contextoNoConformidades().catch(() => ""),
   ]);
-  return [instructivos, chats, nc].filter(Boolean).join("\n\n---\n\n");
+  return [situaciones, instructivos, chats, nc].filter(Boolean).join("\n\n---\n\n");
 }

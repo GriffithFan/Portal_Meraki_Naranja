@@ -56,6 +56,7 @@ model User {
   delegacionesRecibidas Delegacion[] @relation("DelegadoUser")
   facturas             ReporteFacturacion[] @relation("GeneradorReporte")
   feedbackAsistente    AsistenteFeedback[] @relation("FeedbackAsistente")
+  situacionesCreadas   Situacion[]        @relation("CreadorSituacion")
   papeleraItems        PapeleraItem[] @relation("EliminadorPapelera")
   chatsCreados         ChatConversacion[] @relation("CreadorChat")
   chatsAtendidos       ChatConversacion[] @relation("AgenteChat")
@@ -947,4 +948,25 @@ model AsistenteFeedback {
   @@index([createdAt])
   @@index([revisado])
   @@index([tuvoRespuesta])
+}
+
+/// Situaciones: base de conocimiento CURADA por admins (pregunta típica → respuesta
+/// correcta). El asistente las prioriza sobre el resto del material. Se pueden crear
+/// a mano o generar un borrador desde un chat de Mesa resuelto.
+model Situacion {
+  id            String   @id @default(cuid())
+  pregunta      String   @db.Text
+  respuesta     String   @db.Text
+  categoria     String   @default("General")
+  palabrasClave String?           // sinónimos/variantes para mejorar el match (opcional)
+  activo        Boolean  @default(true)
+  orden         Int      @default(0)
+  origenChatId  String?           // si se generó desde "convertir chat en situación"
+  creadoPorId   String
+  creador       User     @relation("CreadorSituacion", fields: [creadoPorId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([activo])
+  @@index([categoria])
 }
