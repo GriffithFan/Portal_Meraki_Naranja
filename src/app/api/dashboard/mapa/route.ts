@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
       gpsPredio: true,
       tipo: true,
       ambito: true,
+      lacR: true,
       nombreInstitucion: true,
       espacioId: true,
       fechaDesde: true,

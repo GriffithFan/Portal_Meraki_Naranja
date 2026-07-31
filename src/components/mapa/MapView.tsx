@@ -27,6 +27,7 @@ interface PredioMapa {
   tipo: string | null;
   asignaciones?: { usuario: { id?: string; nombre: string | null } }[];
   ambito: string | null;
+  lacR?: string | null;
   nombreInstitucion: string | null;
   espacioId: string | null;
   estado: { id: string; nombre: string; color: string } | null;
@@ -224,6 +225,12 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
         ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.estado.color};margin-right:4px"></span>${p.estado.nombre}`
         : "Sin estado";
 
+      // LAC-R: verde = SI (listo), rojo = NO. Indicador rápido para el técnico en campo.
+      const lacRSi = (p.lacR || "").trim().toUpperCase() === "SI";
+      const lacRColor = lacRSi ? "#10b981" : "#ef4444";
+      const lacRLabel = lacRSi ? "SI" : "NO";
+      const lacRRow = `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">LAC-R</td><td><span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;color:${lacRColor}"><span style="width:9px;height:9px;border-radius:50%;background:${lacRColor};box-shadow:0 0 0 2px ${lacRColor}33"></span>${lacRLabel}</span></td></tr>`;
+
       const provColor = getProvinciaColor(prov);
 
       marker.bindPopup(
@@ -234,6 +241,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
           ${p.nombreInstitucion ? `<div style="font-size:11px;margin-bottom:6px"><span style="color:#94a3b8;font-weight:600">Colegio</span> <span style="color:#475569">${escapeHtml(p.nombreInstitucion)}</span></div>` : ""}
           <table style="width:100%;border-collapse:collapse">
             <tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Estado</td><td>${estadoLabel}</td></tr>
+            ${lacRRow}
             ${asignados.length > 0 ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Asignados</td><td>${escapeHtml(asignados.join(", "))}</td></tr>` : ""}
             ${p.ciudad ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Ciudad</td><td>${escapeHtml(p.ciudad)}</td></tr>` : ""}
             ${p.direccion ? `<tr><td style="color:#94a3b8;padding:2px 8px 2px 0">Dirección</td><td style="display:flex;align-items:center;gap:4px"><span>${escapeHtml(p.direccion)}</span><button onclick="navigator.clipboard.writeText('${escapeHtml(p.direccion).replace(/'/g, "\\'")  }');this.textContent='✓';setTimeout(()=>this.textContent='📋',1200)" style="background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:11px;padding:1px 4px;line-height:1;flex-shrink:0" title="Copiar dirección">📋</button></td></tr>` : ""}
