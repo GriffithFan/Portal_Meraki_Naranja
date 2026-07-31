@@ -902,8 +902,9 @@ async function buildApplianceSection(
       } catch (e) {
         const status = (e as any)?.response?.status ?? (e as any)?.status;
         if (status === 404) {
-          // Dispositivo sin appliance ports (comportamiento normal de la API Meraki): se usa el fallback de config.
-          console.warn(`[Section:appliance] getDeviceAppliancePortsStatuses(${dev.serial}): 404 sin port statuses, usando config`);
+          // Dispositivo sin appliance ports (comportamiento normal de la API Meraki): se usa el
+          // fallback de config. Va a stdout (console.log), no al error-log, porque no es un error.
+          console.log(`[Section:appliance] getDeviceAppliancePortsStatuses(${dev.serial}): 404 sin port statuses, usando config`);
         } else {
           console.error(`[Section:appliance] getDeviceAppliancePortsStatuses(${dev.serial}):`, e);
         }

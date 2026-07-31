@@ -214,12 +214,17 @@ async function getLogSummary() {
   return results;
 }
 
-async function getHttpChecks(request: Request) {
-  const origin = new URL(request.url).origin;
+async function getHttpChecks(_request: Request) {
+  // Self-checks contra el loopback interno (127.0.0.1:PORT), NO contra el origin
+  // de la request: detrás del proxy el origin sale como http:// y nginx redirige
+  // TODO http->https (301), lo que hacía fallar los tres checks con un falso ERR.
+  // El loopback evita proxy/redirect/DNS/TLS y devuelve el estado real de la app.
+  const port = process.env.PORT || "3000";
+  const base = `http://127.0.0.1:${port}`;
   const checks = [
-    { name: "Health", url: `${origin}/api/health`, expected: [200] },
-    { name: "Login", url: `${origin}/login`, expected: [200] },
-    { name: "Cron protegido", url: `${origin}/api/cron/reportes?tipo=diario&dryRun=true`, expected: [401] },
+    { name: "Health", url: `${base}/api/health`, expected: [200] },
+    { name: "Login", url: `${base}/login`, expected: [200] },
+    { name: "Cron protegido", url: `${base}/api/cron/reportes?tipo=diario&dryRun=true`, expected: [401] },
   ];
 
   return Promise.all(checks.map(runHttpCheck));
