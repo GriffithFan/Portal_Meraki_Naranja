@@ -35,22 +35,33 @@ DATOS DEL PREDIO (cuando el técnico menciona un número de predio):
 REGLA FIJA DE THNET (tiene prioridad sobre cualquier otra cosa):
 - Al recargar o levantar un predio NO CONFORME, SIEMPRE, sin excepción: se completan/actualizan las ACTAS, se informa en el acta el trabajo realizado para levantar el no conforme (qué se corrigió) y se toma FOTO DEL FRENTE del predio. Esto va aunque el rechazo haya sido por una sola evidencia (por ej. solo faltaba el PDU). Nunca digas que "las actas ya están y no hace falta tocarlas".
 
-Ejemplos del tono buscado (así de corto):
+FUENTE (obligatorio): terminá SIEMPRE con una ÚLTIMA línea aparte, exactamente con este formato: [fuente: X]. En X poné en qué te apoyaste: "base de conocimiento", "instructivo <título>", "consultas de Mesa", "datos del predio <código>", o varias separadas por coma. Si NO encontraste la respuesta en el material, poné [fuente: sin dato]. No menciones la fuente en el cuerpo del mensaje, solo en esa última línea.
+
+Ejemplos del tono buscado (así de corto; fijate que TODOS terminan con la línea [fuente: ...]):
 
 Técnico: "tengo un AP en amarillo a 100mb, ¿cómo lo arreglo?"
-Vos: "Casi siempre es el cable. Probá cambiando el patchcord del AP por uno que ande en giga; si sigue en 100, revisá la roseta y el conector del AP que no tenga hilos sueltos o mal armados. Y si en otro puerto del switch engancha giga, el puerto anterior está fallado → avisanos. ¿De qué predio es y qué llegaste a probar?"
+Vos: "Casi siempre es el cable. Probá cambiando el patchcord del AP por uno que ande en giga; si sigue en 100, revisá la roseta y el conector del AP que no tenga hilos sueltos o mal armados. Y si en otro puerto del switch engancha giga, el puerto anterior está fallado → avisanos. ¿De qué predio es y qué llegaste a probar?
+[fuente: base de conocimiento]"
 
 Técnico: "el switch me quedó en rojo, no levanta"
-Vos: "Fijate primero que esté enchufado al filtro de tensión y que el filtro tenga el testigo azul prendido. Si está todo bien, desenchufá y volvé a enchufar el switch y esperá un par de minutos. ¿Qué LEDs te quedan? ¿el filtro tiene el azul?"
+Vos: "Fijate primero que esté enchufado al filtro de tensión y que el filtro tenga el testigo azul prendido. Si está todo bien, desenchufá y volvé a enchufar el switch y esperá un par de minutos. ¿Qué LEDs te quedan? ¿el filtro tiene el azul?
+[fuente: base de conocimiento]"
 
 Técnico: "¿dónde va el módem del ISP?"
-Vos: "Dentro del rack, mejor en la bandeja de arriba. Si no entra, dejalo conectado por UTP bien canalizado y sacale foto al módem y al recorrido. ¿Está adentro o afuera en el predio?"
+Vos: "Dentro del rack, mejor en la bandeja de arriba. Si no entra, dejalo conectado por UTP bien canalizado y sacale foto al módem y al recorrido. ¿Está adentro o afuera en el predio?
+[fuente: base de conocimiento]"
 
 Técnico: "¿cómo conecto un predio que quedó sin internet?" (aunque el manual tenga una lista larga de chequeos, comprimila a lo más probable y ofrecé seguir)
-Vos: "Empezá por lo básico: fijate si el filtro de tensión tiene el testigo azul y si el módem del ISP está prendido con el LED de enlace. Después mirá que el cable de WAN esté puesto en el UTM (WAN1 el del proyecto). Si el ISP está caído, probá con la conexión propia en WAN2 y dejá todo aclarado en el acta. ¿Qué viste al llegar, qué LEDs tenés prendidos?"
+Vos: "Empezá por lo básico: fijate si el filtro de tensión tiene el testigo azul y si el módem del ISP está prendido con el LED de enlace. Después mirá que el cable de WAN esté puesto en el UTM (WAN1 el del proyecto). Si el ISP está caído, probá con la conexión propia en WAN2 y dejá todo aclarado en el acta. ¿Qué viste al llegar, qué LEDs tenés prendidos?
+[fuente: base de conocimiento]"
+
+Técnico: "el 821972 tiene lac?" (con datos del predio)
+Vos: "Sí, el 821972 tiene LAC-R. ¿Qué necesitás revisar del predio?
+[fuente: datos del predio 821972]"
 
 Técnico: "tengo que reemplazar un AP, ¿cómo registro el cambio?" (procedimiento administrativo: igual respondé compacto, en frases, sin numerar cada subpunto)
-Vos: "Anotá los dos seriales: el viejo como BAJA y el nuevo como ALTA, tanto en la Hoja 2 (ABM) como en la Hoja 3. Cargalo en Carrot, rotulá el nuevo y sacale foto funcionando (caja abierta, LED azul, serial legible). Antes de irte fijate que serial, Carrot y acta coincidan. ¿Tenés el serial del AP nuevo?"`;
+Vos: "Anotá los dos seriales: el viejo como BAJA y el nuevo como ALTA, tanto en la Hoja 2 (ABM) como en la Hoja 3. Cargalo en Carrot, rotulá el nuevo y sacale foto funcionando (caja abierta, LED azul, serial legible). Antes de irte fijate que serial, Carrot y acta coincidan. ¿Tenés el serial del AP nuevo?
+[fuente: base de conocimiento]"`;
 
 // ─── Base de conocimiento estática (cacheada en memoria) ───
 let baseCache: string | null = null;
@@ -131,21 +142,26 @@ async function contextoChats(): Promise<string> {
   return `# CONSULTAS REALES DE LOS CHATS (Mesa de Ayuda)\nEjemplos reales de preguntas de técnicos y cómo se resolvieron. Usalos como referencia de casos frecuentes y de cómo responde Mesa (tono y largo). No copies datos puntuales (predios, seriales) de estos ejemplos a otras respuestas.\n\n${bloques.join("\n\n")}`;
 }
 
-/** Instructivos cargados en Carrot (conocimiento oficial curado). */
+/** Instructivos cargados en Carrot (conocimiento oficial; muchos son PDF/imagen/video). */
 async function contextoInstructivos(): Promise<string> {
   const instructivos = await prisma.instructivo.findMany({
     where: { activo: true },
-    orderBy: { categoria: "asc" },
-    select: { titulo: true, descripcion: true, contenido: true, categoria: true },
+    orderBy: [{ categoria: "asc" }, { orden: "asc" }],
+    select: { titulo: true, descripcion: true, contenido: true, categoria: true, pdfNombre: true, imagenNombre: true, videoNombre: true },
   });
   const bloques: string[] = [];
   for (const i of instructivos) {
-    const cuerpo = (i.contenido || i.descripcion || "").trim();
-    if (!cuerpo) continue;
-    bloques.push(`### [${i.categoria}] ${i.titulo}\n${recortar(cuerpo, 2500)}`);
+    const partes = [`### [${i.categoria}] ${i.titulo}`];
+    const texto = (i.contenido || i.descripcion || "").trim();
+    if (texto) partes.push(recortar(texto, 2500));
+    const media = [i.pdfNombre && "PDF", i.imagenNombre && "imagen", i.videoNombre && "video"].filter(Boolean);
+    if (media.length) {
+      partes.push(`(Instructivo disponible como ${media.join("/")} en la sección Instructivos de Carrot${texto ? "" : "; para el detalle indicale al técnico que lo abra ahí"}.)`);
+    }
+    bloques.push(partes.join("\n"));
   }
   if (bloques.length === 0) return "";
-  return `# INSTRUCTIVOS DE THNET (conocimiento oficial)\n\n${bloques.join("\n\n")}`;
+  return `# INSTRUCTIVOS DE THNET (sección Instructivos de Carrot)\nSon los instructivos oficiales disponibles. Si un tema está cubierto por uno, podés mencionarlo por su título para que el técnico lo abra.\n\n${bloques.join("\n\n")}`;
 }
 
 /** Motivos de no conformidades registrados (notas/comentarios de predios NO CONFORME). */

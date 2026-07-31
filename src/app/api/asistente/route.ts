@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { responderConsulta, type MensajeChat } from "@/lib/asistente/claude";
 import { PERSONA_ASISTENTE, cargarBaseConocimiento, construirContextoDinamico, extraerCodigosPredio, contextoPrediosMencionados } from "@/lib/asistente/contexto";
@@ -54,8 +55,39 @@ export async function POST(request: NextRequest) {
       mensajes,
     });
 
+    // Separar la etiqueta [fuente: ...] de la última línea (para el chip y la analítica).
+    let respuesta = texto;
+    let fuente: string | null = null;
+    const mFuente = respuesta.match(/\n?\s*\[fuente:\s*([^\]]+)\]\s*$/i);
+    if (mFuente && typeof mFuente.index === "number") {
+      fuente = mFuente[1].trim();
+      respuesta = respuesta.slice(0, mFuente.index).trim();
+    }
+    const tuvoRespuesta = !(fuente && /sin dato/i.test(fuente));
+
+    // Registrar la consulta (voto 0) para revisión y analítica de huecos.
+    let feedbackId: string | null = null;
+    try {
+      const fb = await prisma.asistenteFeedback.create({
+        data: {
+          pregunta: mensajes[mensajes.length - 1].content.slice(0, 4000),
+          respuesta: respuesta.slice(0, 8000),
+          fuente: fuente ? fuente.slice(0, 500) : null,
+          codigosPredio: codigos.length ? codigos.join(",") : null,
+          tuvoRespuesta,
+          userId: session.userId,
+        },
+        select: { id: true },
+      });
+      feedbackId = fb.id;
+    } catch (e) {
+      console.error("[asistente] no se pudo registrar feedback:", (e as Error).message);
+    }
+
     return NextResponse.json({
-      respuesta: texto,
+      respuesta,
+      fuente,
+      feedbackId,
       uso: uso
         ? {
             input: uso.input_tokens,

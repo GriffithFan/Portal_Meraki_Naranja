@@ -55,6 +55,7 @@ model User {
   delegacionesDadas   Delegacion[] @relation("DelegadorUser")
   delegacionesRecibidas Delegacion[] @relation("DelegadoUser")
   facturas             ReporteFacturacion[] @relation("GeneradorReporte")
+  feedbackAsistente    AsistenteFeedback[] @relation("FeedbackAsistente")
   papeleraItems        PapeleraItem[] @relation("EliminadorPapelera")
   chatsCreados         ChatConversacion[] @relation("CreadorChat")
   chatsAtendidos       ChatConversacion[] @relation("AgenteChat")
@@ -925,4 +926,25 @@ model ErrorLog {
   @@index([createdAt])
   @@index([nivel, createdAt])
   @@index([origen, createdAt])
+}
+
+/// Registro de cada consulta al Asistente IA (solo pruebas ADMIN) + feedback 👍/👎.
+/// Sirve como cola de revisión y como base de la analítica de huecos.
+model AsistenteFeedback {
+  id            String   @id @default(cuid())
+  pregunta      String   @db.Text
+  respuesta     String   @db.Text
+  fuente        String?           // qué material citó el bot (base / instructivo / chats / predio)
+  codigosPredio String?           // predios mencionados en la consulta (csv)
+  tuvoRespuesta Boolean  @default(true) // false si el bot dijo que no lo tiene documentado
+  voto          Int      @default(0)    // 1 = 👍, -1 = 👎, 0 = sin voto
+  revisado      Boolean  @default(false) // marcado por un admin como revisado
+  userId        String
+  usuario       User     @relation("FeedbackAsistente", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@index([voto])
+  @@index([createdAt])
+  @@index([revisado])
+  @@index([tuvoRespuesta])
 }
