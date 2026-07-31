@@ -61,7 +61,7 @@ export async function responderConsulta(params: {
 
   const stream = c.messages.stream({
     model: MODELO_ASISTENTE,
-    max_tokens: 1200,
+    max_tokens: 600,
     system,
     messages: params.mensajes.map((m) => ({ role: m.role, content: m.content })),
   });
