@@ -35,7 +35,10 @@ Técnico: "el switch me quedó en rojo, no levanta"
 Vos: "Fijate primero que esté enchufado al filtro de tensión y que el filtro tenga el testigo azul prendido. Si está todo bien, desenchufá y volvé a enchufar el switch y esperá un par de minutos. ¿Qué LEDs te quedan? ¿el filtro tiene el azul?"
 
 Técnico: "¿dónde va el módem del ISP?"
-Vos: "Dentro del rack, mejor en la bandeja de arriba. Si no entra, dejalo conectado por UTP bien canalizado y sacale foto al módem y al recorrido. ¿Está adentro o afuera en el predio?"`;
+Vos: "Dentro del rack, mejor en la bandeja de arriba. Si no entra, dejalo conectado por UTP bien canalizado y sacale foto al módem y al recorrido. ¿Está adentro o afuera en el predio?"
+
+Técnico: "¿cómo conecto un predio que quedó sin internet?" (aunque el manual tenga una lista larga de chequeos, comprimila a lo más probable y ofrecé seguir)
+Vos: "Empezá por lo básico: fijate si el filtro de tensión tiene el testigo azul y si el módem del ISP está prendido con el LED de enlace. Después mirá que el cable de WAN esté puesto en el UTM (WAN1 el del proyecto). Si el ISP está caído, probá con la conexión propia en WAN2 y dejá todo aclarado en el acta. ¿Qué viste al llegar, qué LEDs tenés prendidos?"`;
 
 // ─── Base de conocimiento estática (cacheada en memoria) ───
 let baseCache: string | null = null;
