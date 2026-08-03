@@ -42,7 +42,7 @@ export const SECCIONES_RESTRINGIDAS = ["permisos", "auditoria", "papelera"];
 // Defaults de TÉCNICO.
 export const TECNICO_VER_DEFAULT = [
   "tareas", "mis-tareas", "calendario", "bandeja", "instructivo",
-  "predios", "chat", "hospedajes", "actas", "anuncios",
+  "predios", "chat", "hospedajes", "actas", "anuncios", "mi-progreso",
 ];
 export const TECNICO_EDIT_DEFAULT = ["tareas", "calendario"];
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "@/hooks/useSession";
+import { usePermisos } from "@/hooks/usePermisos";
 
 type RankingRow = {
   tecnicoId: string;
@@ -70,6 +71,7 @@ const RefreshIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
 
 export default function RankingTecnicosPage() {
   const { isAdmin } = useSession();
+  const { puedeVer, loading: permLoading } = usePermisos();
   const [data, setData] = useState<RankingData | null>(null);
   const [evolucion, setEvolucion] = useState<EvolucionData | null>(null);
   const [matriz, setMatriz] = useState<MatrizData | null>(null);
@@ -134,7 +136,13 @@ export default function RankingTecnicosPage() {
     return `${new Date(data.desde).toLocaleDateString("es-AR", options)} - ${new Date(data.hasta).toLocaleDateString("es-AR", options)}`;
   }, [data]);
 
-  if (loading) {
+  // Solo quien tenga permiso de ver "ranking" (por rol o matriz de Permisos) accede.
+  // Los técnicos, por defecto, NO lo ven.
+  if (!permLoading && !puedeVer("ranking")) {
+    return <div className="py-24 text-center text-sm text-surface-400">No tenés acceso a esta sección.</div>;
+  }
+
+  if (loading || permLoading) {
     return (
       <div className="mx-auto max-w-6xl animate-fade-in-up space-y-4">
         <div className="h-7 w-52 rounded bg-surface-200 animate-pulse" />
