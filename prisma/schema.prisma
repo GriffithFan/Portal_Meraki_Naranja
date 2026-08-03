@@ -57,6 +57,7 @@ model User {
   facturas             ReporteFacturacion[] @relation("GeneradorReporte")
   feedbackAsistente    AsistenteFeedback[] @relation("FeedbackAsistente")
   situacionesCreadas   Situacion[]        @relation("CreadorSituacion")
+  conversacionesAsistente AsistenteConversacion[] @relation("ConversacionesAsistente")
   papeleraItems        PapeleraItem[] @relation("EliminadorPapelera")
   chatsCreados         ChatConversacion[] @relation("CreadorChat")
   chatsAtendidos       ChatConversacion[] @relation("AgenteChat")
@@ -969,4 +970,36 @@ model Situacion {
 
   @@index([activo])
   @@index([categoria])
+}
+
+/// Conversación persistida del Asistente IA (historial, solo pruebas ADMIN).
+model AsistenteConversacion {
+  id        String   @id @default(cuid())
+  titulo    String?          // auto-generado del primer mensaje; renombrable
+  userId    String
+  usuario   User     @relation("ConversacionesAsistente", fields: [userId], references: [id], onDelete: Cascade)
+  mensajes  AsistenteMensaje[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+/// Mensaje de una conversación del asistente (usuario o bot). Soporta responder
+/// a un mensaje específico (replyToId) y linkear el feedback 👍/👎.
+model AsistenteMensaje {
+  id             String   @id @default(cuid())
+  conversacionId String
+  conversacion   AsistenteConversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+  rol            String   // "user" | "assistant"
+  contenido      String   @db.Text
+  fuente         String?           // en respuestas del bot: en qué se basó
+  feedbackId     String?           // link al AsistenteFeedback (voto 👍/👎)
+  replyToId      String?
+  replyTo        AsistenteMensaje? @relation("AsistenteReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        AsistenteMensaje[] @relation("AsistenteReply")
+  createdAt      DateTime @default(now())
+
+  @@index([conversacionId, createdAt])
+  @@index([replyToId])
 }
