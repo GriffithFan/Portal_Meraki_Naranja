@@ -232,11 +232,38 @@ async function applyTaskFilters(where: any, request: NextRequest) {
   const prioridad = searchParams.get("prioridad");
   const quick = normalizeTaskQuickFilter(searchParams.get("quick"));
   const regionesSel = parseRegionesParam(searchParams.get("regiones"));
+  const tipo = searchParams.get("tipo");
+  const ventana = searchParams.get("ventana");
+  const cronogramas = searchParams.get("cronogramas");
 
   if (estado) where.estado = { clave: estado };
   if (asignadoId) where.asignaciones = { some: { userId: asignadoId } };
   if (provincia) where.provincia = { contains: provincia, mode: "insensitive" };
   if (prioridad && ["BAJA", "MEDIA", "ALTA", "URGENTE"].includes(prioridad)) where.prioridad = prioridad;
+  // Paridad con /api/tareas: tipo de incidencia, ventana de cronograma y 3+ cronogramas.
+  if (tipo && tipo !== "todos") {
+    if (tipo === "__especiales__") {
+      const especialWhere = { AND: [{ tipoIncidencia: { not: null } }, { NOT: { tipoIncidencia: { contains: "mantenimiento", mode: "insensitive" } } }] };
+      where.AND = where.AND ? [...where.AND, especialWhere] : [especialWhere];
+    } else {
+      where.tipoIncidencia = { equals: tipo };
+    }
+  }
+  if (ventana && ventana !== "todos") {
+    const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0);
+    const hoy24 = new Date(hoy0); hoy24.setHours(23, 59, 59, 999);
+    const en3 = new Date(hoy0); en3.setDate(hoy0.getDate() + 3); en3.setHours(23, 59, 59, 999);
+    const clausesVentana: Record<string, any> = {
+      en_ventana: { fechaDesde: { lte: hoy24 }, fechaHasta: { gte: hoy0 } },
+      por_vencer: { fechaDesde: { lte: hoy24 }, fechaHasta: { gte: hoy0, lte: en3 } },
+      vencido: { fechaHasta: { lt: hoy0 } },
+      futuro: { fechaDesde: { gt: hoy24 } },
+      sin_fechas: { OR: [{ fechaDesde: null }, { fechaHasta: null }] },
+    };
+    const cv = clausesVentana[ventana];
+    if (cv) where.AND = where.AND ? [...where.AND, cv] : [cv];
+  }
+  if (cronogramas === "min3") where.cantidadCronogramas = { gte: 3 };
   if (regionesSel.length) {
     const partidos = await partidosDeRegiones(regionesSel);
     where.AND = where.AND ? [...where.AND, { ciudad: { in: partidos }, codigo: { startsWith: "6" } }] : [{ ciudad: { in: partidos }, codigo: { startsWith: "6" } }];
@@ -269,6 +296,8 @@ async function applyTaskFilters(where: any, request: NextRequest) {
     where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
   } else if (quick === "sin-estado") {
     where.estadoId = null;
+  } else if (quick === "sin-espacio") {
+    where.espacioId = null;
   } else if (quick === "sin-asignar") {
     const quickWhere = { asignaciones: { none: {} } };
     where.AND = where.AND ? [...where.AND, quickWhere] : [quickWhere];
@@ -290,7 +319,10 @@ export async function GET(request: NextRequest) {
   const includeSubspaces = searchParams.get("includeSubspaces") !== "false";
   const includeAllFields = searchParams.get("includeAllFields") === "true";
   const asignadoId = searchParams.get("asignadoId") || "";
-  if (!espacioId) return NextResponse.json({ error: "espacioId requerido" }, { status: 400 });
+  // Modo global (sin espacioId): exporta TODOS los predios visibles según los filtros
+  // (para no-admin, la cláusula de visibilidad limita a los asignados). Con espacioId:
+  // se acota a ese espacio (+ subcarpetas).
+  const globalMode = !espacioId;
 
   const espacios = await prisma.espacioTrabajo.findMany({
     where: { activo: true },
@@ -298,13 +330,31 @@ export async function GET(request: NextRequest) {
     orderBy: [{ orden: "asc" }, { nombre: "asc" }],
   });
   const targetSpace = espacios.find((espacio) => espacio.id === espacioId);
-  if (!targetSpace) return NextResponse.json({ error: "Espacio no encontrado" }, { status: 404 });
+  if (!globalMode && !targetSpace) return NextResponse.json({ error: "Espacio no encontrado" }, { status: 404 });
 
-  const requestedSpaceIds = includeSubspaces ? collectDescendants(espacioId, espacios) : [espacioId];
   const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
   const hiddenEstadoIds = await getHiddenEstadoIdsForSession(session);
-  const scopedSpaceIds = restrictedSpaceIds ? requestedSpaceIds.filter((id) => restrictedSpaceIds.includes(id)) : requestedSpaceIds;
-  if (scopedSpaceIds.length === 0) return NextResponse.json({ error: "Sin acceso a este espacio" }, { status: 403 });
+
+  // scopedSpaceIds: para reunir las columnas de los espacios en juego.
+  // whereEspacio: la restricción por espacio en la query (undefined = sin restricción,
+  // así se incluyen también los predios sin espacio; la visibilidad los sigue acotando).
+  let scopedSpaceIds: string[];
+  let whereEspacio: { in: string[] } | undefined;
+  if (globalMode) {
+    if (restrictedSpaceIds) {
+      scopedSpaceIds = restrictedSpaceIds;
+      whereEspacio = { in: restrictedSpaceIds };
+    } else {
+      scopedSpaceIds = espacios.map((e) => e.id);
+      whereEspacio = undefined;
+    }
+  } else {
+    const requestedSpaceIds = includeSubspaces ? collectDescendants(espacioId, espacios) : [espacioId];
+    scopedSpaceIds = restrictedSpaceIds ? requestedSpaceIds.filter((id) => restrictedSpaceIds.includes(id)) : requestedSpaceIds;
+    if (scopedSpaceIds.length === 0) return NextResponse.json({ error: "Sin acceso a este espacio" }, { status: 403 });
+    whereEspacio = { in: scopedSpaceIds };
+  }
+  const scopeName = targetSpace?.nombre || "Mis predios";
 
   const selectedSpaces = espacios.filter((espacio) => scopedSpaceIds.includes(espacio.id));
   const globalCampos = await prisma.campoPersonalizado.findMany({
@@ -339,7 +389,7 @@ export async function GET(request: NextRequest) {
   });
   const candidateColumns = uniqueColumns([...CORE_COLUMNS, ...columnsBySpace]);
 
-  const where: any = { espacioId: { in: scopedSpaceIds } };
+  const where: any = whereEspacio ? { espacioId: whereEspacio } : {};
   await applyTaskFilters(where, request);
   appendVisibleEstadosClause(where, hiddenEstadoIds);
 
@@ -391,7 +441,7 @@ export async function GET(request: NextRequest) {
 
   const tareasSheet = XLSX.utils.json_to_sheet(tareasRows.length > 0 ? tareasRows : [emptyRow], { skipHeader: false });
   tareasSheet["!cols"] = columns.map((column) => ({ wch: Math.max(12, Math.min(35, column.label.length + 6)) }));
-  XLSX.utils.book_append_sheet(workbook, tareasSheet, buildUniqueSheetName(targetSpace.nombre || "Tareas", sheetNames));
+  XLSX.utils.book_append_sheet(workbook, tareasSheet, buildUniqueSheetName(scopeName || "Tareas", sheetNames));
 
   // Hoja por asignado (sin reemplazar la hoja general).
   const rowsByAssignee = new Map<string, Array<Record<string, unknown>>>();
@@ -422,8 +472,8 @@ export async function GET(request: NextRequest) {
   XLSX.utils.book_append_sheet(workbook, camposSheet, buildUniqueSheetName("Campos activos", sheetNames));
 
   const resumenSheet = XLSX.utils.json_to_sheet([
-    { Dato: "Espacio", Valor: targetSpace.nombre },
-    { Dato: "Incluye subcarpetas", Valor: includeSubspaces ? "Si" : "No" },
+    { Dato: "Alcance", Valor: globalMode ? "Todos mis predios (filtros aplicados)" : scopeName },
+    { Dato: "Incluye subcarpetas", Valor: globalMode ? "—" : (includeSubspaces ? "Si" : "No") },
     { Dato: "Filtro por asignado", Valor: asignadoId ? `Si (${asignadoId})` : "No" },
     { Dato: "Campos incluidos", Valor: "Todas las columnas con datos (incluye ocultas en la UI)" },
     { Dato: "Hojas por asignado", Valor: `${sortedAssignees.length}` },
@@ -434,15 +484,15 @@ export async function GET(request: NextRequest) {
 
   const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" }) as Buffer;
   const today = new Date().toISOString().slice(0, 10);
-  const filename = `${safeFilename(targetSpace.nombre)}-tareas-${today}.xlsx`;
+  const filename = `${safeFilename(scopeName)}-tareas-${today}.xlsx`;
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
   prisma.registroAcceso.create({
     data: {
       userId: session.userId,
       accion: "EXPORT_TAREAS_ESPACIO",
-      detalle: `${predios.length} tareas exportadas de ${targetSpace.nombre}`,
+      detalle: `${predios.length} tareas exportadas de ${scopeName}`,
       ip,
-      metadata: { espacioId, includeSubspaces, includeAllFields, asignadoId: asignadoId || null, total: predios.length, formato: "xlsx", scopedSpaceIds: scopedSpaceIds.length },
+      metadata: { espacioId: espacioId || null, globalMode, includeSubspaces, includeAllFields, asignadoId: asignadoId || null, total: predios.length, formato: "xlsx", scopedSpaceIds: scopedSpaceIds.length },
     },
   }).catch(() => {});
 

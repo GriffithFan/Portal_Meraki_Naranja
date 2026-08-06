@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
-import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash } from "@/components/ui/Icons";
+import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash, IconDownload } from "@/components/ui/Icons";
 import StatusIcon, { ESTADO_FORMAS } from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
@@ -1448,6 +1448,28 @@ export default function TareasPage() {
     setQuickFilter("todos");
   };
 
+  // Descarga un Excel con los predios VISIBLES (para técnicos, sus asignados) aplicando
+  // EXACTAMENTE los filtros activos. Sin espacioId → modo global (todos los espacios).
+  const downloadExcel = () => {
+    const params = new URLSearchParams();
+    if (serverSearch) params.set("buscar", serverSearch);
+    if (filterEstado !== "todos") params.set("estado", filterEstado);
+    if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
+    if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
+    if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
+    if (filterTipo !== "todos") params.set("tipo", filterTipo);
+    if (filterVentana !== "todos") params.set("ventana", filterVentana);
+    if (filterCronogramas !== "todos") params.set("cronogramas", filterCronogramas);
+    if (filterRegiones.length) params.set("regiones", filterRegiones.join(","));
+    if (quickFilter !== "todos") params.set("quick", quickFilter);
+    params.set("includeAllFields", "true");
+    const a = document.createElement("a");
+    a.href = `/api/tareas/exports/espacio?${params.toString()}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   // Tipos de incidencia especiales presentes en los datos cargados (para el select).
   const tiposEspeciales = useMemo(() => {
     const set = new Set<string>();
@@ -1692,6 +1714,14 @@ export default function TareasPage() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+          <button
+            onClick={downloadExcel}
+            className="px-2.5 py-1.5 border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-md text-xs font-medium hover:bg-emerald-100 transition-colors flex items-center gap-1 shrink-0"
+            title="Descargar un Excel con tus predios respetando los filtros aplicados"
+          >
+            <IconDownload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Excel</span>
+          </button>
           {isModOrAdmin && (
             <button
               onClick={() => setShowColumnConfig(!showColumnConfig)}
