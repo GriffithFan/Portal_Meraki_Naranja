@@ -7,6 +7,7 @@ import { obtenerProvincia } from "@/utils/provinciaUtils";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 import { hasTaskFieldConfig, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { parseRegionesParam, partidosDeRegiones } from "@/lib/regionFiltro";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -222,7 +223,7 @@ function safeFilename(value: string) {
     .slice(0, 80) || "tareas";
 }
 
-function applyTaskFilters(where: any, request: NextRequest) {
+async function applyTaskFilters(where: any, request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const buscar = sanitizeSearch(searchParams.get("buscar"));
   const estado = searchParams.get("estado");
@@ -230,11 +231,16 @@ function applyTaskFilters(where: any, request: NextRequest) {
   const provincia = sanitizeSearch(searchParams.get("provincia"));
   const prioridad = searchParams.get("prioridad");
   const quick = normalizeTaskQuickFilter(searchParams.get("quick"));
+  const regionesSel = parseRegionesParam(searchParams.get("regiones"));
 
   if (estado) where.estado = { clave: estado };
   if (asignadoId) where.asignaciones = { some: { userId: asignadoId } };
   if (provincia) where.provincia = { contains: provincia, mode: "insensitive" };
   if (prioridad && ["BAJA", "MEDIA", "ALTA", "URGENTE"].includes(prioridad)) where.prioridad = prioridad;
+  if (regionesSel.length) {
+    const partidos = await partidosDeRegiones(regionesSel);
+    where.AND = where.AND ? [...where.AND, { ciudad: { in: partidos }, codigo: { startsWith: "6" } }] : [{ ciudad: { in: partidos }, codigo: { startsWith: "6" } }];
+  }
   if (buscar) {
     const searchWhere = {
       OR: [
@@ -334,7 +340,7 @@ export async function GET(request: NextRequest) {
   const candidateColumns = uniqueColumns([...CORE_COLUMNS, ...columnsBySpace]);
 
   const where: any = { espacioId: { in: scopedSpaceIds } };
-  applyTaskFilters(where, request);
+  await applyTaskFilters(where, request);
   appendVisibleEstadosClause(where, hiddenEstadoIds);
 
   if (!isModOrAdmin(session.rol)) {

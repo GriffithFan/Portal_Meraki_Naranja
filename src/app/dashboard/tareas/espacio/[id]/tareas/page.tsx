@@ -13,6 +13,7 @@ import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/compone
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
+import RegionFilter from "@/components/tareas/RegionFilter";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
 import { IconDownload, IconPlus } from "@/components/ui/Icons";
 import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
@@ -140,6 +141,7 @@ interface TareasSavedView {
     filterProvincia: string;
     filterPrioridad: string;
     filterAsignado?: string;
+    filterRegiones?: number[];
     quickFilter: string;
     groupBy: string;
     includeSubspaces?: boolean;
@@ -226,6 +228,7 @@ export default function EspacioTareasPage() {
   const [filterProvincia, setFilterProvincia] = useState("");
   const [filterPrioridad, setFilterPrioridad] = useState("todas");
   const [filterAsignado, setFilterAsignado] = useState("todos");
+  const [filterRegiones, setFilterRegiones] = useState<number[]>([]); // regiones educativas BA (1-25); vacío = todas
   const [quickFilter, setQuickFilter] = useState("todos");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [search, setSearch] = useState(() => urlParamsRef.current?.get("search") || "");
@@ -351,6 +354,7 @@ export default function EspacioTareasPage() {
       setFilterEstado("todos");
       setFilterProvincia("");
       setFilterPrioridad("todas");
+      setFilterRegiones([]);
       setQuickFilter("todos");
     }
   }, [headerSearch, espacioId]);
@@ -599,6 +603,7 @@ export default function EspacioTareasPage() {
       if (filterPrioridad !== "todas") gParams.set("prioridad", filterPrioridad);
       if (filterAsignado !== "todos") gParams.set("asignadoId", filterAsignado);
       if (quickFilter !== "todos") gParams.set("quick", quickFilter);
+      if (filterRegiones.length) gParams.set("regiones", filterRegiones.join(","));
       if (sortConfig?.field && !sortConfig.field.startsWith("_custom_") && sortConfig.field !== "asignaciones" && sortConfig.field !== "etiquetas") {
         gParams.set("sortBy", sortConfig.field);
         gParams.set("sortDir", sortConfig.dir);
@@ -617,7 +622,7 @@ export default function EspacioTareasPage() {
     } catch {
       setGroupLoadState(prev => ({ ...prev, [groupKey]: "idle" }));
     }
-  }, [espacioId, includeSubspaces, serverSearch, filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter, sortConfig]);
+  }, [espacioId, includeSubspaces, serverSearch, filterEstado, filterProvincia, filterPrioridad, filterAsignado, filterRegiones, quickFilter, sortConfig]);
 
   const fetchData = useCallback(async (options?: { page?: number; append?: boolean }) => {
     const pageToLoad = options?.page || 1;
@@ -653,6 +658,7 @@ export default function EspacioTareasPage() {
     if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
     if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
     if (quickFilter !== "todos") params.set("quick", quickFilter);
+    if (filterRegiones.length) params.set("regiones", filterRegiones.join(","));
     if (sortConfig?.field && !sortConfig.field.startsWith("_custom_") && sortConfig.field !== "asignaciones" && sortConfig.field !== "etiquetas") {
       params.set("sortBy", sortConfig.field);
       params.set("sortDir", sortConfig.dir);
@@ -660,7 +666,7 @@ export default function EspacioTareasPage() {
 
     // Lazy mode: solo cuando groupBy=estado, sin búsqueda activa y no es append ni ?open=
     const lazyMode = groupBy === "estado" && !serverSearch && !append && !openTargetRef.current;
-    const lazyKey = `${filterEstado}|${filterProvincia}|${filterPrioridad}|${filterAsignado}|${quickFilter}|${includeSubspaces}|${espacioId}`;
+    const lazyKey = `${filterEstado}|${filterProvincia}|${filterPrioridad}|${filterAsignado}|${quickFilter}|${filterRegiones.join(",")}|${includeSubspaces}|${espacioId}`;
 
     const countsParams = new URLSearchParams({ espacioId, countOnly: "true", groupBy: "estado" });
     if (includeSubspaces) countsParams.set("includeSubspaces", "true");
@@ -668,6 +674,7 @@ export default function EspacioTareasPage() {
     if (filterPrioridad !== "todas") countsParams.set("prioridad", filterPrioridad);
     if (filterAsignado !== "todos") countsParams.set("asignadoId", filterAsignado);
     if (quickFilter !== "todos") countsParams.set("quick", quickFilter);
+    if (filterRegiones.length) countsParams.set("regiones", filterRegiones.join(","));
     if (serverSearch) countsParams.set("buscar", serverSearch);
 
     try {
@@ -808,7 +815,7 @@ export default function EspacioTareasPage() {
         else setLoading(false);
       }
     }
-  }, [COL_CONFIG_KEY, applySavedColumnConfig, espacioId, filterAsignado, filterEstado, filterPrioridad, filterProvincia, groupBy, includeSubspaces, quickFilter, serverSearch, sortConfig, fetchGroupTareas]);
+  }, [COL_CONFIG_KEY, applySavedColumnConfig, espacioId, filterAsignado, filterEstado, filterPrioridad, filterProvincia, filterRegiones, groupBy, includeSubspaces, quickFilter, serverSearch, sortConfig, fetchGroupTareas]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
@@ -868,6 +875,7 @@ export default function EspacioTareasPage() {
           setFilterProvincia(cfg.filterProvincia || "");
           setFilterPrioridad(cfg.filterPrioridad || "todas");
           setFilterAsignado(cfg.filterAsignado || "todos");
+          setFilterRegiones(Array.isArray(cfg.filterRegiones) ? cfg.filterRegiones.filter((n: unknown): n is number => typeof n === "number") : []);
           setQuickFilter(normalizeTaskQuickFilter(cfg.quickFilter));
           setGroupBy(normalizeTaskGroupBy(cfg.groupBy));
           if (cfg.sortConfig !== undefined) setSortConfig(cfg.sortConfig);
@@ -886,11 +894,11 @@ export default function EspacioTareasPage() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter, groupBy, sortConfig }),
+        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, filterAsignado, filterRegiones, quickFilter, groupBy, sortConfig }),
       }).catch(() => {});
     }, 900);
     return () => { if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current); };
-  }, [espacioId, filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter, groupBy, sortConfig]);
+  }, [espacioId, filterEstado, filterProvincia, filterPrioridad, filterAsignado, filterRegiones, quickFilter, groupBy, sortConfig]);
 
   // Recargar tareas cuando el sidebar reporta un drop exitoso
   useEffect(() => {
@@ -1603,7 +1611,7 @@ export default function EspacioTareasPage() {
     return sanitizeTaskFieldConfigs(columns).filter(c => ALWAYS_VISIBLE.has(c.id) || c.visible);
   }, [columns, ALWAYS_VISIBLE]);
 
-  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || quickFilter !== "todos");
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterRegiones.length > 0 || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
     setServerSearch("");
@@ -1611,6 +1619,7 @@ export default function EspacioTareasPage() {
     setFilterProvincia("");
     setFilterPrioridad("todas");
     setFilterAsignado("todos");
+    setFilterRegiones([]);
     setQuickFilter("todos");
   };
 
@@ -1629,11 +1638,11 @@ export default function EspacioTareasPage() {
     id: id || `tareas-view-${Date.now()}`,
     name: name.trim().slice(0, 60) || "Vista del espacio",
     search,
-    filters: { filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter: normalizeTaskQuickFilter(quickFilter), groupBy: normalizeTaskGroupBy(groupBy), includeSubspaces },
+    filters: { filterEstado, filterProvincia, filterPrioridad, filterAsignado, filterRegiones, quickFilter: normalizeTaskQuickFilter(quickFilter), groupBy: normalizeTaskGroupBy(groupBy), includeSubspaces },
     sortConfig,
     columns: sanitizeTaskFieldConfigs(columns).map((col, index) => ({ id: col.id, visible: col.visible, order: index, width: col.width })),
     updatedAt: new Date().toISOString(),
-  }), [columns, filterAsignado, filterEstado, filterPrioridad, filterProvincia, groupBy, includeSubspaces, quickFilter, search, sortConfig]);
+  }), [columns, filterAsignado, filterEstado, filterPrioridad, filterProvincia, filterRegiones, groupBy, includeSubspaces, quickFilter, search, sortConfig]);
 
   const persistSavedViews = useCallback(async (nextViews: TareasSavedView[]) => {
     setSavingView(true);
@@ -1687,6 +1696,7 @@ export default function EspacioTareasPage() {
     setFilterProvincia(filters.filterProvincia || "");
     setFilterPrioridad(filters.filterPrioridad || "todas");
     setFilterAsignado(filters.filterAsignado || "todos");
+    setFilterRegiones(Array.isArray(filters.filterRegiones) ? filters.filterRegiones : []);
     setQuickFilter(normalizeTaskQuickFilter(filters.quickFilter));
     setGroupBy(normalizeTaskGroupBy(filters.groupBy));
     setIncludeSubspaces(filters.includeSubspaces !== false);
@@ -1726,7 +1736,7 @@ export default function EspacioTareasPage() {
 
   const getSavedViewSummary = useCallback((view: TareasSavedView) => {
     const filters = view.filters || {} as TareasSavedView["filters"];
-    const count = [filters.filterEstado !== "todos", Boolean(filters.filterProvincia), filters.filterPrioridad !== "todas", filters.filterAsignado !== "todos", filters.quickFilter !== "todos", filters.includeSubspaces === false].filter(Boolean).length;
+    const count = [filters.filterEstado !== "todos", Boolean(filters.filterProvincia), filters.filterPrioridad !== "todas", filters.filterAsignado !== "todos", Boolean(filters.filterRegiones?.length), filters.quickFilter !== "todos", filters.includeSubspaces === false].filter(Boolean).length;
     return `${count} filtros · ${filters.groupBy ? `agrupa por ${filters.groupBy}` : "sin agrupacion"} · ${view.search ? `busca ${view.search}` : "sin busqueda"}`;
   }, []);
 
@@ -1771,6 +1781,7 @@ export default function EspacioTareasPage() {
       params.set("includeAllFields", "true");
     }
     if (quickFilter !== "todos") params.set("quick", quickFilter);
+    if (filterRegiones.length) params.set("regiones", filterRegiones.join(","));
 
     const anchor = document.createElement("a");
     anchor.href = `/api/tareas/exports/espacio?${params.toString()}`;
@@ -2166,7 +2177,7 @@ export default function EspacioTareasPage() {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
           <select
             value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
@@ -2204,6 +2215,7 @@ export default function EspacioTareasPage() {
             <option value="todos">Todos los asignados</option>
             {allUsers.map((user) => <option key={user.id} value={user.id}>{assigneeLabel(user, dupAssigneeNames)}</option>)}
           </select>
+          <RegionFilter value={filterRegiones} onChange={setFilterRegiones} />
           <button
             onClick={clearServerFilters}
             disabled={!hasServerFilters}

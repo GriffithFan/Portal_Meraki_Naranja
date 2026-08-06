@@ -8,6 +8,7 @@ import { detectarProvincia } from "@/utils/provinciaUtils";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 import { isLegacyEquipoField, normalizeTaskQuickFilter } from "@/utils/taskFieldConfig";
 import { appendAndClause, appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
+import { parseRegionesParam, partidosDeRegiones } from "@/lib/regionFiltro";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -138,6 +139,8 @@ export async function GET(request: NextRequest) {
   const tipo = searchParams.get("tipo"); // "__especiales__" | valor exacto de tipoIncidencia
   const ventana = searchParams.get("ventana"); // en_ventana | por_vencer | vencido | futuro | sin_fechas
   const cronogramas = searchParams.get("cronogramas"); // "min3" = predios con 3+ cronogramas originados
+  // Regiones educativas de BA (1-25) por las que filtrar (coma-separadas).
+  const regionesSel = parseRegionesParam(searchParams.get("regiones"));
   const quick = normalizeTaskQuickFilter(searchParams.get("quick"));
   const groupBy = searchParams.get("groupBy") || "estado";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
@@ -254,6 +257,14 @@ export async function GET(request: NextRequest) {
   // Predios con 3+ cronogramas originados (crítico en SIN ASIGNAR nunca visitados).
   if (cronogramas === "min3") {
     where.cantidadCronogramas = { gte: 3 };
+  }
+
+  // Filtro por región educativa de BA: se resuelven los partidos reales (ciudad)
+  // que caen en las regiones elegidas y se filtra por ellos (solo predios BA). Si
+  // ninguna ciudad matchea, `in: []` no devuelve resultados (comportamiento correcto).
+  if (regionesSel.length) {
+    const partidos = await partidosDeRegiones(regionesSel);
+    appendAndClause(where, { ciudad: { in: partidos }, codigo: { startsWith: "6" } });
   }
   if (buscar) {
     const camposExtraMatches = await prisma.$queryRaw<{ id: string }[]>`

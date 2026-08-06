@@ -11,6 +11,7 @@ import TareaDetalleModal from "@/components/TareaDetalleModal";
 import FloatingHScrollbar from "@/components/tareas/FloatingHScrollbar";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
+import RegionFilter from "@/components/tareas/RegionFilter";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
 import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName, getDuplicatedAssigneeNames, assigneeLabel } from "@/utils/asignacionUtils";
@@ -197,6 +198,7 @@ export default function TareasPage() {
   const [filterTipo, setFilterTipo] = useState("todos"); // "todos" | "__especiales__" | valor exacto (ej "Reingeniería Red Local")
   const [filterVentana, setFilterVentana] = useState("todos"); // todos | en_ventana | por_vencer | vencido | futuro | sin_fechas
   const [filterCronogramas, setFilterCronogramas] = useState("todos"); // todos | min3 (3+ cronogramas)
+  const [filterRegiones, setFilterRegiones] = useState<number[]>([]); // regiones educativas BA (1-25); vacío = todas
   const [quickFilter, setQuickFilter] = useState("todos");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -221,6 +223,7 @@ export default function TareasPage() {
       setFilterProvincia("");
       setFilterPrioridad("todas");
       setFilterAsignado("todos");
+      setFilterRegiones([]);
       setQuickFilter("todos");
     }
   }, [headerSearch]);
@@ -476,6 +479,7 @@ export default function TareasPage() {
     if (filterTipo !== "todos") params.set("tipo", filterTipo);
     if (filterVentana !== "todos") params.set("ventana", filterVentana);
     if (filterCronogramas !== "todos") params.set("cronogramas", filterCronogramas);
+    if (filterRegiones.length) params.set("regiones", filterRegiones.join(","));
     if (quickFilter !== "todos") params.set("quick", quickFilter);
     params.set("groupBy", groupBy);
     try {
@@ -522,7 +526,7 @@ export default function TareasPage() {
         else setLoading(false);
       }
     }
-  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, filterVentana, filterCronogramas, groupBy, quickFilter, serverSearch]);
+  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, filterVentana, filterCronogramas, filterRegiones, groupBy, quickFilter, serverSearch]);
 
   useEffect(() => {
     fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
@@ -534,6 +538,7 @@ export default function TareasPage() {
         setFilterProvincia(cfg.filterProvincia || "");
         setFilterPrioridad(cfg.filterPrioridad || "todas");
         setFilterAsignado(cfg.filterAsignado || "todos");
+        setFilterRegiones(Array.isArray(cfg.filterRegiones) ? cfg.filterRegiones.filter((n: unknown): n is number => typeof n === "number") : []);
         setQuickFilter(normalizeTaskQuickFilter(cfg.quickFilter));
         setGroupBy(normalizeTaskGroupBy(cfg.groupBy));
         if (cfg.sortConfig !== undefined) setSortConfig(cfg.sortConfig);
@@ -557,11 +562,11 @@ export default function TareasPage() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, filterAsignado, quickFilter, groupBy, sortConfig }),
+        body: JSON.stringify({ filterEstado, filterProvincia, filterPrioridad, filterAsignado, filterRegiones, quickFilter, groupBy, sortConfig }),
       }).catch(() => {});
     }, 900);
     return () => { if (filterSaveTimerRef.current) clearTimeout(filterSaveTimerRef.current); };
-  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, groupBy, quickFilter, sortConfig]);
+  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterRegiones, groupBy, quickFilter, sortConfig]);
 
   const loadMoreTareas = useCallback(() => {
     if (loadingMore || !pagination.hasMore) return;
@@ -1428,7 +1433,7 @@ export default function TareasPage() {
     });
   }, [columns, tareas]);
 
-  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || filterVentana !== "todos" || filterCronogramas !== "todos" || quickFilter !== "todos");
+  const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || filterVentana !== "todos" || filterCronogramas !== "todos" || filterRegiones.length > 0 || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
     setServerSearch("");
@@ -1439,6 +1444,7 @@ export default function TareasPage() {
     setFilterTipo("todos");
     setFilterVentana("todos");
     setFilterCronogramas("todos");
+    setFilterRegiones([]);
     setQuickFilter("todos");
   };
 
@@ -1792,7 +1798,7 @@ export default function TareasPage() {
             </>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
           <select
             value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
@@ -1840,6 +1846,7 @@ export default function TareasPage() {
             <option value="todos">Todos los asignados</option>
             {allUsers.map(u => <option key={u.id} value={u.id}>{assigneeLabel(u, dupAssigneeNames)}</option>)}
           </select>
+          <RegionFilter value={filterRegiones} onChange={setFilterRegiones} />
           <button
             onClick={clearServerFilters}
             disabled={!hasServerFilters}
