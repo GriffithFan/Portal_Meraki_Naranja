@@ -59,7 +59,7 @@ export const LEYENDAS_POR_TIPO: Record<string, Record<string, string>> = {
   GAP: LEYENDA_PM,
 };
 
-export interface FotoEv { rel: string; hora: string }
+export interface FotoEv { rel: string; hora: string; comentario?: string }
 export interface PuntoEv { clave: string; label: string; orden: number; fotos: FotoEv[] }
 export interface EnvioEv {
   carpetaRel: string;
@@ -124,6 +124,17 @@ function metaValor(texto: string, campo: string): string {
   return m ? m[1] : "";
 }
 
+/** Decodifica entidades XML básicas y normaliza espacios del comentario del técnico. */
+function limpiarTexto(s: string): string {
+  return (s || "")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Parsea un submission.xml: metadata + fotos agrupadas por punto (en orden del formulario). */
 export function parsearSubmission(texto: string, carpetaRel: string): { meta: any; puntos: PuntoEv[]; fechaOrden: number } {
   const tipoRed = metaValor(texto, "sfNetType");
@@ -135,18 +146,36 @@ export function parsearSubmission(texto: string, carpetaRel: string): { meta: an
     today: metaValor(texto, "today"),
   };
 
-  const grupos = new Map<string, { orden: number; fotos: FotoEv[] }>();
-  let i = 0;
+  // Primero ubicamos todas las fotos (type="file") con su posición, para poder
+  // acotar el tramo de cada envío y sacar el comentario que le corresponde.
   const re = /<([A-Za-z0-9_]+)\s+type="file">\s*([^<]+?\.(?:jpe?g|png|heic))\s*</gi;
+  const archivos: { campo: string; arch: string; start: number; end: number }[] = [];
   let mm: RegExpExecArray | null;
   while ((mm = re.exec(texto)) !== null) {
-    i++;
-    const campo = mm[1];
-    const arch = mm[2].trim();
+    archivos.push({ campo: mm[1], arch: mm[2].trim(), start: mm.index, end: re.lastIndex });
+  }
+
+  const grupos = new Map<string, { orden: number; fotos: FotoEv[] }>();
+  for (let k = 0; k < archivos.length; k++) {
+    const { campo, arch, end } = archivos[k];
     const rpt = campo.match(/^RPT(\d+)_/);
     const clave = rpt ? rpt[1] : campo;
-    if (!grupos.has(clave)) grupos.set(clave, { orden: i, fotos: [] });
-    grupos.get(clave)!.fotos.push({ rel: `${carpetaRel}/${arch}`.replace(/\\/g, "/"), hora: horaDe(arch) });
+    // Comentario del técnico: en ODK cada foto (RPTn_...Kb) tiene un campo de texto
+    // hermano (RPTn_...Kc, mismo RPTn, SIN type) dentro del mismo repeat. Se busca
+    // en el tramo hasta la próxima foto (así cada repeat conserva su propio texto).
+    let comentario = "";
+    if (rpt) {
+      const sliceEnd = k + 1 < archivos.length ? archivos[k + 1].start : texto.length;
+      const slice = texto.slice(end, sliceEnd);
+      const cm = slice.match(new RegExp(`<RPT${rpt[1]}_[A-Za-z0-9]+>([^<]*)</RPT${rpt[1]}_[A-Za-z0-9]+>`));
+      if (cm) comentario = limpiarTexto(cm[1]);
+    }
+    if (!grupos.has(clave)) grupos.set(clave, { orden: k + 1, fotos: [] });
+    grupos.get(clave)!.fotos.push({
+      rel: `${carpetaRel}/${arch}`.replace(/\\/g, "/"),
+      hora: horaDe(arch),
+      ...(comentario ? { comentario } : {}),
+    });
   }
 
   const puntos: PuntoEv[] = Array.from(grupos.entries())

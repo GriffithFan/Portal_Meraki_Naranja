@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 
 /* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-img-element */
 
-interface Foto { rel: string; hora: string }
+interface Foto { rel: string; hora: string; comentario?: string }
 interface Punto { clave: string; label: string; fotos: Foto[] }
 interface Envio { carpetaRel: string; nombre: string; draft: boolean | null; tecnico: string; cron: string; fecha: string; total: number; predio: string; predioFuente: string; puntos: Punto[] }
 
@@ -14,7 +14,7 @@ export default function EvidenciasPage() {
   const [data, setData] = useState<{ nombre: string; envios: Envio[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [full, setFull] = useState<{ rel: string; label: string } | null>(null);
+  const [full, setFull] = useState<{ rel: string; label: string; comentario?: string } | null>(null);
 
   const fotoUrl = useCallback((rel: string) => `/api/evidencias/${archivoId}/foto?e=${encodeURIComponent(rel)}`, [archivoId]);
 
@@ -91,9 +91,12 @@ export default function EvidenciasPage() {
               </h3>
               <div className="flex flex-wrap gap-2.5">
                 {p.fotos.map((f, j) => (
-                  <button key={j} onClick={() => setFull({ rel: f.rel, label: p.label })} className="w-[180px] rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden bg-surface-50 dark:bg-surface-700/40 hover:border-primary-300 transition-colors" title={p.label}>
+                  <button key={j} onClick={() => setFull({ rel: f.rel, label: p.label, comentario: f.comentario })} className="w-[180px] rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden bg-surface-50 dark:bg-surface-700/40 hover:border-primary-300 transition-colors flex flex-col text-left" title={f.comentario ? `${p.label}\n\n“${f.comentario}”` : p.label}>
                     <img loading="lazy" src={fotoUrl(f.rel)} alt={p.label} className="w-full h-[150px] object-cover block bg-surface-100" />
-                    <div className="px-2 py-1 text-[10px] text-surface-400 text-left">{f.hora}</div>
+                    <div className="px-2 py-1 flex-1 flex flex-col">
+                      {f.comentario && <div className="text-[11px] leading-snug text-surface-700 dark:text-surface-200 line-clamp-3">{f.comentario}</div>}
+                      <div className={`text-[10px] text-surface-400 ${f.comentario ? "mt-0.5" : ""}`}>{f.hora}</div>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -106,7 +109,8 @@ export default function EvidenciasPage() {
       {full && (
         <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4" onClick={() => setFull(null)}>
           <div className="mb-2 text-white text-xs font-medium max-w-[90vw] text-center">{full.label}</div>
-          <img src={fotoUrl(full.rel)} alt={full.label} className="max-h-[82vh] max-w-[92vw] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
+          {full.comentario && <div className="mb-2 max-w-[90vw] text-center text-sm text-white/90 italic">“{full.comentario}”</div>}
+          <img src={fotoUrl(full.rel)} alt={full.label} className="max-h-[78vh] max-w-[92vw] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
           <div className="mt-3 flex gap-2">
             <a href={fotoUrl(full.rel)} download onClick={(e) => e.stopPropagation()} className="px-3 py-1.5 text-xs font-medium rounded-md bg-white/90 text-surface-800 hover:bg-white">Descargar</a>
             <button onClick={() => setFull(null)} className="px-3 py-1.5 text-xs font-medium rounded-md bg-white/20 text-white hover:bg-white/30">Cerrar</button>

@@ -64,9 +64,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
           const abs = resolverFotoEvidencia(archivoId, f.rel);
           if (!abs) return;
           const ext = path.extname(f.rel) || ".jpg";
+          const nn = String(j + 1).padStart(2, "0");
+          const com = (f.comentario || "").trim();
+          // El comentario del técnico va en el nombre del archivo (recortado por
+          // sanitizar) y completo en el LEEME.
           const nombreFoto = sanitizar(
-            `${p.label} - ${String(j + 1).padStart(2, "0")}${f.hora ? ` - ${f.hora.replace(/:/g, "-")}` : ""}`
+            `${p.label} - ${nn}${com ? ` - ${com}` : ""}${f.hora ? ` - ${f.hora.replace(/:/g, "-")}` : ""}`
           ) + ext;
+          if (com) resumen.push(`         · ${nn} [${f.hora || "—"}] ${com}`);
           try {
             zip.addLocalFile(abs, carpetaEnvio, nombreFoto);
           } catch { /* foto ilegible: se omite */ }
