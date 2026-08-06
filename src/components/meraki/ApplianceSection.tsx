@@ -16,7 +16,7 @@ interface ApplianceSectionProps {
   summaryData: any;
   loadedSections: Set<string>;
   sectionLoading: string | null;
-  loadSection: (key: string) => Promise<void>;
+  loadSection: (key: string, opts?: { force?: boolean }) => Promise<void>;
 }
 
 export default function ApplianceSection({ networkId, summaryData, loadedSections, sectionLoading, loadSection }: ApplianceSectionProps) {
@@ -24,6 +24,10 @@ export default function ApplianceSection({ networkId, summaryData, loadedSection
   useEffect(() => {
     if (!loadedSections.has("appliance_status")) loadSection("appliance_status");
   }, [loadedSections, loadSection]);
+
+  // Fuerza datos frescos: bustea las 4 capas de cache (frontend + sección server +
+  // sub-caches). Útil tras un cambio físico para evitar quedarse con datos viejos.
+  const refrescar = () => loadSection("appliance_status", { force: true });
 
   if (sectionLoading === "appliance_status" || !loadedSections.has("appliance_status")) return <LoadingSpinner section="appliance_status" />;
 
@@ -53,6 +57,18 @@ export default function ApplianceSection({ networkId, summaryData, loadedSection
 
   return (
     <div>
+      {/* Barra: refrescar datos frescos (bustea cache) para evitar falsos positivos por dato viejo */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "12px" }}>
+        <button
+          onClick={refrescar}
+          title="Vuelve a consultar Meraki ignorando la caché (útil tras un cambio físico)"
+          style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 14px", fontSize: "13px", fontWeight: 600, color: "#0f172a", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "8px", cursor: "pointer" }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6M1 20v-6h6" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></svg>
+          Actualizar
+        </button>
+      </div>
+
       {/* Dispositivos con detalle */}
       {devices.map((device: any) => {
         const rawPorts = device.ports || [];

@@ -795,6 +795,17 @@ async function buildApplianceSection(
     return true;
   });
 
+  // Anti-LLDP-viejo: el LLDP es pegajoso (un equipo desenchufado sigue figurando un
+  // rato). Si el vecino es un equipo CONOCIDO de esta red que está offline/dormant,
+  // su entrada LLDP es vieja → no marcamos el puerto como conectado por ese peer.
+  // Vecino desconocido o sin estado: no se bloquea (no hay con qué verificar).
+  const conocidos = new Set(devices.map((d) => d.serial));
+  const peerConocidoOffline = (serial?: string | null): boolean => {
+    if (!serial || !conocidos.has(serial)) return false;
+    const st = (statusMap.get(serial)?.status || "").toLowerCase();
+    return st === "offline" || st === "dormant";
+  };
+
   // Uplink statuses de la organización filtrado por esta red
   let uplinks: any[] = [];
   if (orgId) {
@@ -974,7 +985,7 @@ async function buildApplianceSection(
         const matchedSwitch = Object.values(switchLldpMap).find(
           (s) => s.uplinkPortOnRemote === portNumber
         );
-        if (matchedSwitch && !portIsPhysicallyDown) {
+        if (matchedSwitch && !portIsPhysicallyDown && !peerConocidoOffline(matchedSwitch.serial)) {
           return {
             ...port,
             connectedTo: matchedSwitch.name,
@@ -997,7 +1008,7 @@ async function buildApplianceSection(
         // 2) Check appliance's own LLDP: the appliance sees what's connected to each port
         // Only trust LLDP if port isn't physically disconnected (avoid ghost devices)
         const lldpPeer = applianceLldpMap[portNumber];
-        if (lldpPeer && !portIsPhysicallyDown) {
+        if (lldpPeer && !portIsPhysicallyDown && !peerConocidoOffline(lldpPeer.deviceSerial)) {
           return {
             ...port,
             connectedTo: lldpPeer.deviceName,
@@ -1021,10 +1032,12 @@ async function buildApplianceSection(
         return port;
       });
 
-      // Detect APs connected directly to appliance (Z3 + AP on PoE port 5)
-      // Also applies when LLDP didn't already detect the connection
+      // Detect APs connected directly to appliance (Z3 + AP on PoE port 5).
+      // SOLO en la config GAP real: Z3 sin switches y EXACTAMENTE 1 AP (mismo criterio
+      // que la corrección de la sección de APs). Con switches o varios APs, el AP puede
+      // estar en un switch o ser mesh → forzar el puerto 5 daba falsos positivos.
       const isZ3 = (dev.model || "").toUpperCase().startsWith("Z3");
-      if (isZ3 && accessPoints.length > 0) {
+      if (isZ3 && switches.length === 0 && accessPoints.length === 1) {
         for (const ap of accessPoints) {
           const apStatus = statusMap.get(ap.serial)?.status || ap.status || "";
           const apIsOnline = /online|active/i.test(apStatus);
