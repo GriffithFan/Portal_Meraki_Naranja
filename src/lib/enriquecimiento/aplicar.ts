@@ -14,6 +14,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { estadoVentana, arrancaProximoDiaHabil } from "@/lib/cronogramaVentana";
+import { regionDePartido } from "@/lib/regionesBA";
+import { provinciaDeCodigo } from "@/lib/provincias";
 
 export type FilaReporte = Record<string, string>;
 
@@ -67,6 +69,10 @@ export interface OpcionesPlan {
   // Id del estado CONFORME: habilita pasar INSTALADO/AUDITAR → CONFORME cuando la
   // incidencia está "Cerrado". Sin esto, el estado nunca se toca (comportamiento previo).
   conformeEstadoId?: string | null;
+  // Regiones educativas de BA (1-25) con LAC-R estricto por ventana: en ellas el
+  // SI exige estar DENTRO del cronograma (desde-hasta), no basta con "Activo".
+  // Default de negocio {14,15} (lo resuelve el caller). Vacío/undefined = regla normal.
+  regionesEstrictas?: number[];
 }
 
 export interface ResultadoPlan {
@@ -359,13 +365,28 @@ export function planificarEnriquecimiento(
       const desdeEff = di || p.fechaDesde;
       const hastaEff = df || p.fechaHasta;
       const ventEstado = estadoVentana(desdeEff, hastaEff).estado;
+      // ── Restricción por región (BA): en regiones "estrictas" (config, default
+      //    {14,15}) el SI exige estar DENTRO de la ventana (no basta con Activo).
+      //    La región sale del partido (Predio.ciudad); si se está rellenando la
+      //    ciudad en esta misma corrida, se usa ese valor. Solo aplica a BA.
+      const ciudadEff = (typeof upd.ciudad === "string" && upd.ciudad) || p.ciudad;
+      const regionPredio = provinciaDeCodigo(p.codigo) === "BA" ? regionDePartido(ciudadEff) : null;
+      const estrictoVentana = regionPredio != null && (opciones.regionesEstrictas || []).includes(regionPredio);
       let objetivo: "SI" | "NO" | null = null;
       if (activoReal === "SI") {
         if (ordenDisponible) {
-          // Regla de oro cumplida → ACTIVO manda (SI aunque vencido/sin fechas), salvo
-          // futuro NO inminente, que queda NO (azul/PRONTO) hasta acercarse la fecha.
-          if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
-          else objetivo = "SI";
+          if (estrictoVentana) {
+            // Región con restricción: SI SOLO dentro de la ventana (desde-hasta).
+            // Vencido o sin fechas → NO (aunque Activo). Futuro inminente sigue SI.
+            if (ventEstado === "en_ventana" || ventEstado === "por_vencer") objetivo = "SI";
+            else if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
+            else objetivo = "NO"; // vencido | sin_fechas
+          } else {
+            // Regla de oro cumplida → ACTIVO manda (SI aunque vencido/sin fechas), salvo
+            // futuro NO inminente, que queda NO (azul/PRONTO) hasta acercarse la fecha.
+            if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
+            else objetivo = "SI";
+          }
         } else if (ordenTrabajo) {
           // Orden de Trabajo NO disponible (Finalizada, etc.) → NO, aunque el tilde diga SÍ.
           objetivo = "NO";

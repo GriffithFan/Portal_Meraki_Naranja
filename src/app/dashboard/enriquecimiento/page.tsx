@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useConfirm } from "@/contexts/ConfirmContext";
+import RegionesEstrictasPanel from "@/components/enriquecimiento/RegionesEstrictasPanel";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -378,6 +379,8 @@ export default function EnriquecimientoPage() {
       </div>
 
       {error && <div className="mb-3 px-3 py-2 rounded-md bg-red-50 text-red-700 text-sm flex items-center gap-2"><span>⚠</span>{error}</div>}
+
+      <RegionesEstrictasPanel />
 
       {/* Paso 1: alcance */}
       <div className="bg-white rounded-xl border border-surface-200 shadow-sm p-4 sm:p-5 mb-4">

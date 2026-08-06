@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { parsearExcelExtractor } from "./parseExcel";
 import { cargarPrediosPorCodigo, resolverConformeEstadoId } from "./cargar";
 import { planificarEnriquecimiento } from "./aplicar";
+import { obtenerRegionesEstrictas } from "./regionesEstrictas";
 import { aplicarCambiosEnDB, backupBestEffort, filasEntradaDesdePredios } from "./persistir";
 import { resumenDePlan, type ParSnapshot } from "./procesar";
 import type { AlcanceSpec, PredioAlcance } from "./alcance";
@@ -159,10 +160,12 @@ export async function ejecutarExtraccion(
     const { filas, comentariosPorCodigo, errores } = parsearExcelExtractor(buf);
     const prediosPorCodigo = await cargarPrediosPorCodigo(pares.map((p) => p.predioId));
     const conformeEstadoId = await resolverConformeEstadoId();
+    const regionesEstrictas = await obtenerRegionesEstrictas();
     const plan = planificarEnriquecimiento(filas, prediosPorCodigo, comentariosPorCodigo, {
       excluirConforme: alcance.excluirConforme !== false,
       excluirYaEnriquecidos: Boolean(alcance.excluirYaEnriquecidos),
       conformeEstadoId,
+      regionesEstrictas,
     });
     const resumen = resumenDePlan(plan, errores);
 
