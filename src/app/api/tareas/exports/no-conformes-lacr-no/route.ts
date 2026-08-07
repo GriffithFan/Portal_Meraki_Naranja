@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import AdmZip from "adm-zip";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 function normalizeText(value?: string | null) {
   return (value || "")
@@ -222,30 +224,57 @@ export async function GET(request: NextRequest) {
   }
 
   const today = new Date();
-  const csv = buildCsv(exportData.predios, exportData.extraDays ?? 0);
-  const filename = `${exportData.filenamePrefix} ${formatFilenameDate(today)}.csv`;
-
+  const extra = exportData.extraDays ?? 0;
+  const baseName = `${exportData.filenamePrefix} ${formatFilenameDate(today)}`;
+  const total = exportData.predios.length;
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+
+  // Las listas de asignados no pueden exceder 40 predios por archivo → se parten en
+  // CSVs de a 40 y se empaquetan en un ZIP cuando hay más de 40 (una sola descarga).
+  const chunkSize = tipo === "asignados-sin-cronograma" || tipo === "asignados-vencidos" ? 40 : 0;
+
+  if (chunkSize > 0 && total > chunkSize) {
+    const partes = Math.ceil(total / chunkSize);
+    const zip = new AdmZip();
+    for (let i = 0; i < partes; i++) {
+      const trozo = exportData.predios.slice(i * chunkSize, (i + 1) * chunkSize);
+      zip.addFile(`${baseName} - parte ${i + 1} de ${partes}.csv`, Buffer.from(buildCsv(trozo, extra), "utf8"));
+    }
+    const buffer = zip.toBuffer();
+    prisma.registroAcceso.create({
+      data: {
+        userId: session.userId,
+        accion: "EXPORT_TAREAS_LACR_NO",
+        detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix}, ${partes} partes de ${chunkSize})`,
+        ip,
+        metadata: { total, formato: "zip", tipo, espacioId, includeSubspaces, partes },
+      },
+    }).catch(() => {});
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${baseName}.zip"`,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  const csv = buildCsv(exportData.predios, extra);
   prisma.registroAcceso.create({
     data: {
       userId: session.userId,
       accion: "EXPORT_TAREAS_LACR_NO",
-      detalle: `${exportData.predios.length} registros en ${targetSpace.nombre} (${exportData.filenamePrefix})`,
+      detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix})`,
       ip,
-      metadata: {
-        total: exportData.predios.length,
-        formato: "csv",
-        tipo,
-        espacioId,
-        includeSubspaces,
-      },
+      metadata: { total, formato: "csv", tipo, espacioId, includeSubspaces },
     },
   }).catch(() => {});
 
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${baseName}.csv"`,
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
     },
