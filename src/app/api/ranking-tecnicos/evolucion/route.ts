@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
+import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +84,7 @@ export async function GET(request: Request) {
           estado: { select: { nombre: true, clave: true } },
           asignaciones: {
             where: { tipo: { in: ["TAREA", "TECNICO"] } },
-            select: { usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
+            select: { createdAt: true, usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
           },
         },
       })
@@ -102,30 +102,19 @@ export async function GET(request: Request) {
     const weekIndex = Math.floor((mondayOf(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
     if (weekIndex < 0 || weekIndex >= semanas) continue;
 
-    const assignedUsers = predio.asignaciones
-      .map((a) => a.usuario)
-      .filter((u) => !!u && u.activo !== false && u.rol === "TECNICO");
-
-    const uniqueTargets = new Map<string, { tecnicoId: string; nombre: string; equipoKey: string }>();
-    for (const usuario of assignedUsers) {
-      const resolvedKey = resolveEquipoKey(usuario!.nombre);
-      const mergeKey = resolvedKey || normalizeAssigneeName(usuario!.nombre) || usuario!.id;
-      if (!mergeKey || uniqueTargets.has(mergeKey)) continue;
-      const equipoKey = resolvedKey || usuario!.nombre;
-      uniqueTargets.set(mergeKey, { tecnicoId: mergeKey, nombre: getEquipoDisplayName(equipoKey), equipoKey });
-    }
-
-    for (const target of Array.from(uniqueTargets.values())) {
-      let serie = series.get(target.tecnicoId);
+    // Se acredita a UN SOLO técnico (el último asignado) para no duplicar el predio.
+    const elegido = elegirTecnicoAcreditado(predio.asignaciones);
+    if (elegido) {
+      let serie = series.get(elegido.mergeKey);
       if (!serie) {
         serie = {
-          tecnicoId: target.tecnicoId,
-          nombre: target.nombre,
-          equipoKey: target.equipoKey,
+          tecnicoId: elegido.mergeKey,
+          nombre: elegido.displayName,
+          equipoKey: elegido.equipoKey,
           conformesPorSemana: new Array(semanas).fill(0),
           totalPorSemana: new Array(semanas).fill(0),
         };
-        series.set(target.tecnicoId, serie);
+        series.set(elegido.mergeKey, serie);
       }
       serie.totalPorSemana[weekIndex] += 1;
       if (bucket === "conformes") serie.conformesPorSemana[weekIndex] += 1;

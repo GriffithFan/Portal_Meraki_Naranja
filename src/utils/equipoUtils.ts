@@ -109,6 +109,27 @@ export function getEquipoDisplayName(name: string): string {
 }
 
 /**
+ * Elige el ÚNICO técnico al que se le acredita un predio en el ranking, para NO
+ * duplicar cuando intervinieron varios: se toma el ÚLTIMO asignado (por fecha de
+ * asignación) entre los técnicos activos. Devuelve las claves ya resueltas
+ * (equipo) o null si no hay técnico válido.
+ */
+export function elegirTecnicoAcreditado(
+  asignaciones: { createdAt: Date | string; usuario: { id: string; nombre: string | null; rol: string | null; activo: boolean | null } | null }[]
+): { mergeKey: string; equipoKey: string; displayName: string } | null {
+  const validas = asignaciones
+    .filter((a) => a.usuario && a.usuario.activo !== false && a.usuario.rol === "TECNICO")
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  if (validas.length === 0) return null;
+  const u = validas[validas.length - 1].usuario!;
+  const nombre = u.nombre ?? "";
+  const resolvedKey = resolveEquipoKey(nombre);
+  const mergeKey = resolvedKey || normalizeAssigneeName(nombre) || u.id;
+  const equipoKey = resolvedKey || nombre || u.id;
+  return { mergeKey, equipoKey, displayName: getEquipoDisplayName(equipoKey) };
+}
+
+/**
  * Construye el filtro Prisma `where` para equipoAsignado dado un nombre.
  * Si se reconoce, devuelve `{ in: [...], mode: "insensitive" }`.
  * Si no, devuelve `{ equals: name, mode: "insensitive" }`.

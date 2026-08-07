@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
+import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
           estado: { select: { nombre: true, clave: true } },
           asignaciones: {
             where: { tipo: { in: ["TAREA", "TECNICO"] } },
-            select: { usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
+            select: { createdAt: true, usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
           },
         },
       })
@@ -113,36 +113,22 @@ export async function GET(request: Request) {
     const bucket = getStateBucket(predio.estado);
     if (!bucket) continue;
 
-    const assignedUsers = predio.asignaciones
-      .map((asignacion) => asignacion.usuario)
-      .filter((usuario) => !!usuario && usuario.activo !== false && usuario.rol === "TECNICO");
+    // Se acredita a UN SOLO técnico (el último asignado) para no duplicar el predio
+    // cuando intervinieron varios. Así el total coincide con predios únicos.
+    const elegido = elegirTecnicoAcreditado(predio.asignaciones);
+    if (!elegido) continue;
 
-    const uniqueTargets = new Map<string, { tecnicoId: string; tecnicoNombre: string; equipoKey: string }>();
-    for (const usuario of assignedUsers) {
-      const resolvedKey = resolveEquipoKey(usuario.nombre);
-      const mergeKey = resolvedKey || normalizeAssigneeName(usuario.nombre) || usuario.id;
-      if (!mergeKey || uniqueTargets.has(mergeKey)) continue;
-      const equipoKey = resolvedKey || usuario.nombre;
-      uniqueTargets.set(mergeKey, {
-        tecnicoId: mergeKey,
-        tecnicoNombre: getEquipoDisplayName(equipoKey),
-        equipoKey,
-      });
-    }
-
-    for (const target of Array.from(uniqueTargets.values())) {
-      const current = ranking.get(target.tecnicoId) || {
-        tecnicoId: target.tecnicoId,
-        tecnicoNombre: target.tecnicoNombre,
-        equipoKey: target.equipoKey,
-        instaladosAuditar: 0,
-        conformes: 0,
-        noConformes: 0,
-        total: 0,
-      };
-      addMetric(current, bucket);
-      ranking.set(target.tecnicoId, current);
-    }
+    const current = ranking.get(elegido.mergeKey) || {
+      tecnicoId: elegido.mergeKey,
+      tecnicoNombre: elegido.displayName,
+      equipoKey: elegido.equipoKey,
+      instaladosAuditar: 0,
+      conformes: 0,
+      noConformes: 0,
+      total: 0,
+    };
+    addMetric(current, bucket);
+    ranking.set(elegido.mergeKey, current);
   }
 
   const rows = Array.from(ranking.values())
