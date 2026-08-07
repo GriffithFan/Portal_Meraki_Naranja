@@ -4,7 +4,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { verifyCronAuth } from "@/lib/cronAuth";
 import { avisarAdminsFallo } from "@/lib/alertasAdmin";
-import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
+import { filasFacturacion, csvFacturacion, xlsxBufferFacturacion, resumenPorTecnico } from "@/lib/facturacion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -59,17 +59,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Estado CONFORME no configurado" }, { status: 404 });
     }
 
+    // Excluir predios ya en "Facturado" (igual que la generación manual)
+    const espacioFacturado = await prisma.espacioTrabajo.findFirst({ where: { nombre: "Facturado", parentId: null }, select: { id: true } });
+
     // Buscar predios en CONFORME actualizados esta semana
     const prediosConforme = await prisma.predio.findMany({
       where: {
         estadoId: estadoConforme.id,
         fechaActualizacion: { gte: desde, lte: hasta },
+        ...(espacioFacturado ? { espacioId: { not: espacioFacturado.id } } : {}),
       },
       select: {
         id: true,
         nombre: true,
         codigo: true,
         provincia: true,
+        incidencias: true,
         fechaActualizacion: true,
         camposExtra: true,
         asignaciones: {
@@ -79,71 +84,18 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Agrupar por técnico
-    const porTecnico: Record<string, {
-      tecnicoId: string;
-      tecnicoNombre: string;
-      cantidad: number;
-      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; mas20Ap: boolean }[];
-    }> = {};
-
-    for (const predio of prediosConforme) {
-      const mas20Ap = String((predio.camposExtra as any)?.tieneMas20Ap || "").trim().toUpperCase() === "SI";
-      const uniqueTechnicians = new Map<string, { id: string; nombre: string }>();
-      for (const asignacion of predio.asignaciones) {
-        const tecnico = asignacion.usuario;
-        const resolvedKey = resolveEquipoKey(tecnico.nombre);
-        const mergeKey = resolvedKey || normalizeAssigneeName(tecnico.nombre) || tecnico.id;
-        if (!mergeKey || uniqueTechnicians.has(mergeKey)) continue;
-        uniqueTechnicians.set(mergeKey, {
-          id: mergeKey,
-          nombre: getEquipoDisplayName(resolvedKey || tecnico.nombre),
-        });
-      }
-
-      if (uniqueTechnicians.size === 0) {
-        const key = "SIN_ASIGNAR";
-        if (!porTecnico[key]) {
-          porTecnico[key] = { tecnicoId: "SIN_ASIGNAR", tecnicoNombre: "Sin asignar", cantidad: 0, tareas: [] };
-        }
-        porTecnico[key].cantidad++;
-        porTecnico[key].tareas.push({ id: predio.id, nombre: predio.nombre, codigo: predio.codigo, provincia: predio.provincia, mas20Ap });
-      } else {
-        for (const tec of Array.from(uniqueTechnicians.values())) {
-          if (!porTecnico[tec.id]) {
-            porTecnico[tec.id] = { tecnicoId: tec.id, tecnicoNombre: tec.nombre, cantidad: 0, tareas: [] };
-          }
-          porTecnico[tec.id].cantidad++;
-          porTecnico[tec.id].tareas.push({ id: predio.id, nombre: predio.nombre, codigo: predio.codigo, provincia: predio.provincia, mas20Ap });
-        }
-      }
-    }
-
-    const resumen = Object.values(porTecnico);
+    // Generación compartida con /api/facturacion: una fila por predio, con
+    // "Técnico (resolvió)" (último asignado) + "Técnico anterior".
+    const resumen = resumenPorTecnico(prediosConforme);
     const totalTareas = prediosConforme.length;
+    const filas = filasFacturacion(prediosConforme);
+    const totalMas20 = filas.filter((f) => f.mas20Ap).length;
 
-    const totalMas20 = resumen.reduce((acc, g) => acc + g.tareas.filter((t) => t.mas20Ap).length, 0);
-
-    // Generar CSV
-    const csvLines = [
-      "Tecnico,Cantidad Tareas,Codigo Tarea,Nombre Tarea,Provincia,Más de 20 AP",
-    ];
-    for (const grupo of resumen) {
-      for (const t of grupo.tareas) {
-        csvLines.push(
-          `"${grupo.tecnicoNombre}",${grupo.cantidad},"${t.codigo || ""}","${t.nombre.replace(/"/g, '""')}","${t.provincia || ""}","${t.mas20Ap ? "Sí" : ""}"`
-        );
-      }
-    }
-    csvLines.push("");
-    csvLines.push(`"TOTAL",${totalTareas},"","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
-
-    const csvContent = csvLines.join("\n");
     const csvDir = path.join(process.cwd(), "uploads", "reportes");
     await mkdir(csvDir, { recursive: true });
     const csvFileName = `reporte-${semana}.csv`;
-    const csvPath = path.join(csvDir, csvFileName);
-    await writeFile(csvPath, csvContent, "utf-8");
+    await writeFile(path.join(csvDir, csvFileName), csvFacturacion(filas, totalTareas, totalMas20), "utf-8");
+    await writeFile(path.join(csvDir, `reporte-${semana}.xlsx`), xlsxBufferFacturacion(filas, totalTareas, totalMas20));
 
     // Buscar admins para asociar el reporte y notificar (una sola query)
     const admins = await prisma.user.findMany({

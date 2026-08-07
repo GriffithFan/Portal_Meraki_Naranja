@@ -108,25 +108,52 @@ export function getEquipoDisplayName(name: string): string {
   return entry?.display ?? name;
 }
 
+export interface TecnicoAcreditado { mergeKey: string; equipoKey: string; displayName: string }
+type AsignacionParaOrden = {
+  createdAt: Date | string;
+  usuario: { id: string; nombre: string | null; rol?: string | null; activo?: boolean | null } | null;
+};
+
 /**
- * Elige el ÚNICO técnico al que se le acredita un predio en el ranking, para NO
- * duplicar cuando intervinieron varios: se toma el ÚLTIMO asignado (por fecha de
- * asignación) entre los técnicos activos. Devuelve las claves ya resueltas
- * (equipo) o null si no hay técnico válido.
+ * Ordena los técnicos de un predio por fecha de asignación (PRIMERO → ÚLTIMO),
+ * deduplicados por equipo. `opts.soloTecnicos` filtra a técnicos activos (para el
+ * ranking); sin eso incluye a todos los asignados (para facturación).
+ * Devuelve [primero(s)…, último] — el último es quien lo resolvió.
  */
-export function elegirTecnicoAcreditado(
-  asignaciones: { createdAt: Date | string; usuario: { id: string; nombre: string | null; rol: string | null; activo: boolean | null } | null }[]
-): { mergeKey: string; equipoKey: string; displayName: string } | null {
+export function ordenarTecnicosAsignados(
+  asignaciones: AsignacionParaOrden[],
+  opts: { soloTecnicos?: boolean } = {}
+): TecnicoAcreditado[] {
   const validas = asignaciones
-    .filter((a) => a.usuario && a.usuario.activo !== false && a.usuario.rol === "TECNICO")
+    .filter((a) => {
+      const u = a.usuario;
+      if (!u) return false;
+      if (opts.soloTecnicos) return u.activo !== false && u.rol === "TECNICO";
+      return true;
+    })
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  if (validas.length === 0) return null;
-  const u = validas[validas.length - 1].usuario!;
-  const nombre = u.nombre ?? "";
-  const resolvedKey = resolveEquipoKey(nombre);
-  const mergeKey = resolvedKey || normalizeAssigneeName(nombre) || u.id;
-  const equipoKey = resolvedKey || nombre || u.id;
-  return { mergeKey, equipoKey, displayName: getEquipoDisplayName(equipoKey) };
+  const seen = new Set<string>();
+  const out: TecnicoAcreditado[] = [];
+  for (const a of validas) {
+    const u = a.usuario!;
+    const nombre = u.nombre ?? "";
+    const resolvedKey = resolveEquipoKey(nombre);
+    const mergeKey = resolvedKey || normalizeAssigneeName(nombre) || u.id;
+    if (seen.has(mergeKey)) continue;
+    seen.add(mergeKey);
+    const equipoKey = resolvedKey || nombre || u.id;
+    out.push({ mergeKey, equipoKey, displayName: getEquipoDisplayName(equipoKey) });
+  }
+  return out;
+}
+
+/**
+ * Elige el ÚNICO técnico al que se le acredita un predio en el ranking (para NO
+ * duplicar): el ÚLTIMO asignado entre los técnicos activos, o null si no hay.
+ */
+export function elegirTecnicoAcreditado(asignaciones: AsignacionParaOrden[]): TecnicoAcreditado | null {
+  const ordenados = ordenarTecnicosAsignados(asignaciones, { soloTecnicos: true });
+  return ordenados.length ? ordenados[ordenados.length - 1] : null;
 }
 
 /**

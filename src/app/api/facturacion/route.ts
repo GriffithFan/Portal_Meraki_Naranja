@@ -3,8 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import * as XLSX from "xlsx";
-import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
+import { filasFacturacion, csvFacturacion, xlsxBufferFacturacion, resumenPorTecnico } from "@/lib/facturacion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -120,134 +119,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Agrupar por técnico
-    const porTecnico: Record<string, {
-      tecnicoId: string;
-      tecnicoNombre: string;
-      cantidad: number;
-      tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia: string | null; fecha: string | null; mas20Ap: boolean }[];
-    }> = {};
-
-    // Filas del archivo: UNA por predio, con TODOS sus técnicos juntos ("A + B").
-    const prediosExport: { codigo: string | null; incidencia: string | null; provincia: string | null; fecha: string | null; mas20Ap: boolean; tecnicos: string }[] = [];
-
-    for (const predio of prediosConforme) {
-      const tareaData = {
-        id: predio.id,
-        nombre: predio.nombre,
-        codigo: predio.codigo,
-        provincia: predio.provincia,
-        incidencia: predio.incidencias,
-        fecha: predio.fechaActualizacion ? predio.fechaActualizacion.toISOString() : null,
-        mas20Ap: String((predio.camposExtra as any)?.tieneMas20Ap || "").trim().toUpperCase() === "SI",
-      };
-
-      const uniqueTechnicians = new Map<string, { id: string; nombre: string }>();
-      for (const asignacion of predio.asignaciones) {
-        const tecnico = asignacion.usuario;
-        const resolvedKey = resolveEquipoKey(tecnico.nombre);
-        const mergeKey = resolvedKey || normalizeAssigneeName(tecnico.nombre) || tecnico.id;
-        if (!mergeKey || uniqueTechnicians.has(mergeKey)) continue;
-        uniqueTechnicians.set(mergeKey, {
-          id: mergeKey,
-          nombre: getEquipoDisplayName(resolvedKey || tecnico.nombre),
-        });
-      }
-
-      if (uniqueTechnicians.size === 0) {
-        const key = "SIN_ASIGNAR";
-        const label = "Sin asignar";
-        if (!porTecnico[key]) {
-          porTecnico[key] = { tecnicoId: key, tecnicoNombre: label, cantidad: 0, tareas: [] };
-        }
-        porTecnico[key].cantidad++;
-        porTecnico[key].tareas.push(tareaData);
-      } else {
-        for (const tec of Array.from(uniqueTechnicians.values())) {
-          if (!porTecnico[tec.id]) {
-            porTecnico[tec.id] = { tecnicoId: tec.id, tecnicoNombre: tec.nombre, cantidad: 0, tareas: [] };
-          }
-          porTecnico[tec.id].cantidad++;
-          porTecnico[tec.id].tareas.push(tareaData);
-        }
-      }
-
-      // Fila única del predio con todos los técnicos ("A + B"), o "Sin asignar".
-      const nombresTecnicos = Array.from(uniqueTechnicians.values()).map((t) => t.nombre);
-      prediosExport.push({
-        codigo: tareaData.codigo,
-        incidencia: tareaData.incidencia,
-        provincia: tareaData.provincia,
-        fecha: tareaData.fecha,
-        mas20Ap: tareaData.mas20Ap,
-        tecnicos: nombresTecnicos.length ? nombresTecnicos.join(" + ") : "Sin asignar",
-      });
-    }
-
-    // Ordenar por técnico(s) y luego por código (agrupa el trabajo de cada técnico).
-    prediosExport.sort((a, b) =>
-      a.tecnicos.localeCompare(b.tecnicos, "es") || String(a.codigo || "").localeCompare(String(b.codigo || ""), "es")
-    );
-
-    const resumen = Object.values(porTecnico);
+    // Generación compartida: una fila por predio, con "Técnico (resolvió)" + "Técnico anterior".
+    const resumen = resumenPorTecnico(prediosConforme);
     const totalTareas = prediosConforme.length;
+    const filas = filasFacturacion(prediosConforme);
+    const totalMas20 = filas.filter((f) => f.mas20Ap).length;
 
-    const escapeCsv = (value: string) => value.replace(/"/g, '""');
-
-    const totalMas20 = prediosExport.filter((t) => t.mas20Ap).length;
-
-    // ── Generar CSV ──
-    const csvLines = [
-      "Predio,Incidencia,Técnico,Fecha,Provincia,Más de 20 AP",
-    ];
-    for (const t of prediosExport) {
-      const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "";
-      csvLines.push(
-        `"${escapeCsv(t.codigo || "")}","${escapeCsv(t.incidencia || "")}","${escapeCsv(t.tecnicos)}","${escapeCsv(fecha)}","${escapeCsv(t.provincia || "")}","${t.mas20Ap ? "Sí" : ""}"`
-      );
-    }
-    csvLines.push("");
-    csvLines.push(`"TOTAL: ${totalTareas} predios","","","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
-
-    const csvContent = csvLines.join("\n");
     const reportDir = path.join(process.cwd(), "uploads", "reportes");
     await mkdir(reportDir, { recursive: true });
     const csvFileName = `reporte-${semana}.csv`;
-    const csvPath = path.join(reportDir, csvFileName);
-    await writeFile(csvPath, csvContent, "utf-8");
-
-    // ── Generar XLSX ──
-    const xlsxRows: any[] = [];
-    for (const t of prediosExport) {
-      xlsxRows.push({
-        Predio: t.codigo || "",
-        Incidencia: t.incidencia || "",
-        "Técnico asignado": t.tecnicos,
-        Fecha: t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "",
-        Provincia: t.provincia || "",
-        "Más de 20 AP": t.mas20Ap ? "Sí" : "",
-      });
-    }
-    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "" });
-
-    const ws = XLSX.utils.json_to_sheet(xlsxRows);
-    // Auto-width columns
-    const colWidths = [
-      { wch: 30 }, // Predio
-      { wch: 18 }, // Incidencia
-      { wch: 20 }, // Técnico
-      { wch: 14 }, // Fecha
-      { wch: 18 }, // Provincia
-      { wch: 14 }, // Más de 20 AP
-    ];
-    ws["!cols"] = colWidths;
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Facturación");
-    const xlsxFileName = `reporte-${semana}.xlsx`;
-    const xlsxPath = path.join(reportDir, xlsxFileName);
-    const xlsxBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-    await writeFile(xlsxPath, xlsxBuffer);
+    await writeFile(path.join(reportDir, csvFileName), csvFacturacion(filas, totalTareas, totalMas20), "utf-8");
+    await writeFile(path.join(reportDir, `reporte-${semana}.xlsx`), xlsxBufferFacturacion(filas, totalTareas, totalMas20));
 
     // Crear reporte
     const reporte = await prisma.reporteFacturacion.create({
