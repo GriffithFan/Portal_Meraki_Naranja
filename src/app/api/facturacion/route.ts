@@ -128,6 +128,9 @@ export async function POST(request: NextRequest) {
       tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia: string | null; fecha: string | null; mas20Ap: boolean }[];
     }> = {};
 
+    // Filas del archivo: UNA por predio, con TODOS sus técnicos juntos ("A + B").
+    const prediosExport: { codigo: string | null; incidencia: string | null; provincia: string | null; fecha: string | null; mas20Ap: boolean; tecnicos: string }[] = [];
+
     for (const predio of prediosConforme) {
       const tareaData = {
         id: predio.id,
@@ -168,27 +171,40 @@ export async function POST(request: NextRequest) {
           porTecnico[tec.id].tareas.push(tareaData);
         }
       }
+
+      // Fila única del predio con todos los técnicos ("A + B"), o "Sin asignar".
+      const nombresTecnicos = Array.from(uniqueTechnicians.values()).map((t) => t.nombre);
+      prediosExport.push({
+        codigo: tareaData.codigo,
+        incidencia: tareaData.incidencia,
+        provincia: tareaData.provincia,
+        fecha: tareaData.fecha,
+        mas20Ap: tareaData.mas20Ap,
+        tecnicos: nombresTecnicos.length ? nombresTecnicos.join(" + ") : "Sin asignar",
+      });
     }
+
+    // Ordenar por técnico(s) y luego por código (agrupa el trabajo de cada técnico).
+    prediosExport.sort((a, b) =>
+      a.tecnicos.localeCompare(b.tecnicos, "es") || String(a.codigo || "").localeCompare(String(b.codigo || ""), "es")
+    );
 
     const resumen = Object.values(porTecnico);
     const totalTareas = prediosConforme.length;
 
     const escapeCsv = (value: string) => value.replace(/"/g, '""');
 
-    const totalMas20 = resumen.reduce((acc, g) => acc + g.tareas.filter((t) => t.mas20Ap).length, 0);
+    const totalMas20 = prediosExport.filter((t) => t.mas20Ap).length;
 
     // ── Generar CSV ──
     const csvLines = [
       "Predio,Incidencia,Técnico,Fecha,Provincia,Más de 20 AP",
     ];
-    for (const grupo of resumen) {
-      for (const t of grupo.tareas) {
-        const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "";
-        const predioCodigo = t.codigo || "";
-        csvLines.push(
-          `"${escapeCsv(predioCodigo)}","${escapeCsv(t.incidencia || "")}","${escapeCsv(grupo.tecnicoNombre)}","${escapeCsv(fecha)}","${escapeCsv(t.provincia || "")}","${t.mas20Ap ? "Sí" : ""}"`
-        );
-      }
+    for (const t of prediosExport) {
+      const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "";
+      csvLines.push(
+        `"${escapeCsv(t.codigo || "")}","${escapeCsv(t.incidencia || "")}","${escapeCsv(t.tecnicos)}","${escapeCsv(fecha)}","${escapeCsv(t.provincia || "")}","${t.mas20Ap ? "Sí" : ""}"`
+      );
     }
     csvLines.push("");
     csvLines.push(`"TOTAL: ${totalTareas} predios","","","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
@@ -202,17 +218,15 @@ export async function POST(request: NextRequest) {
 
     // ── Generar XLSX ──
     const xlsxRows: any[] = [];
-    for (const grupo of resumen) {
-      for (const t of grupo.tareas) {
-        xlsxRows.push({
-          Predio: t.codigo || "",
-          Incidencia: t.incidencia || "",
-          "Técnico asignado": grupo.tecnicoNombre,
-          Fecha: t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "",
-          Provincia: t.provincia || "",
-          "Más de 20 AP": t.mas20Ap ? "Sí" : "",
-        });
-      }
+    for (const t of prediosExport) {
+      xlsxRows.push({
+        Predio: t.codigo || "",
+        Incidencia: t.incidencia || "",
+        "Técnico asignado": t.tecnicos,
+        Fecha: t.fecha ? new Date(t.fecha).toLocaleDateString("es-AR") : "",
+        Provincia: t.provincia || "",
+        "Más de 20 AP": t.mas20Ap ? "Sí" : "",
+      });
     }
     xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "" });
 
