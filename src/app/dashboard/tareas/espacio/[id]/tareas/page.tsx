@@ -1753,18 +1753,21 @@ export default function EspacioTareasPage() {
   }, [allEspacios, espacio, espacioId]);
 
   const downloadLacRNo = () => {
+    // 5 archivos: nc/cronogramas/ocp (CSV) + asignados-sin-cronograma/vencidos (XLSX con
+    // hojas de a 40). Se disparan con <a> espaciados; el navegador puede pedir permiso
+    // para "descargar varios archivos" la primera vez — hay que permitirlo.
     const tipos = ["nc", "cronogramas", "ocp", "asignados-sin-cronograma", "asignados-vencidos"];
     tipos.forEach((tipo, index) => {
       const params = new URLSearchParams({ espacioId, tipo });
       if (includeSubspaces) params.set("includeSubspaces", "true");
       window.setTimeout(() => {
-        const iframe = document.createElement("iframe");
-        iframe.src = `/api/tareas/exports/no-conformes-lacr-no?${params.toString()}`;
-        iframe.style.display = "none";
-        iframe.setAttribute("aria-hidden", "true");
-        document.body.appendChild(iframe);
-        window.setTimeout(() => iframe.remove(), 30000);
-      }, index * 350);
+        const a = document.createElement("a");
+        a.href = `/api/tareas/exports/no-conformes-lacr-no?${params.toString()}`;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }, index * 600);
     });
   };
 

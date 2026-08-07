@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import AdmZip from "adm-zip";
+import * as XLSX from "xlsx";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -121,6 +121,25 @@ function buildCsv(predios: ExportPredio[], extraDays = 0) {
   return `\uFEFF${rows.join("\r\n")}\r\n`;
 }
 
+const CABECERA = ["PREDIO", "DESDE", "HASTA", "DNI", "NI"];
+
+/** Excel con una HOJA por bloque de 40 predios (SF no acepta m\u00E1s de 40 por carga). */
+function buildXlsxPartes(predios: ExportPredio[], extraDays = 0): Buffer {
+  const today = new Date();
+  const desde = formatExcelDate(addDays(today, 2 + extraDays));
+  const hasta = formatExcelDate(addDays(today, 16 + extraDays));
+  const wb = XLSX.utils.book_new();
+  const partes = Math.max(1, Math.ceil(predios.length / 40));
+  for (let i = 0; i < partes; i++) {
+    const trozo = predios.slice(i * 40, (i + 1) * 40);
+    const filas = trozo.map((p) => [p.codigo || "", desde, hasta, "TH01", p.incidencias || p.nombre || ""]);
+    const ws = XLSX.utils.aoa_to_sheet([CABECERA, ...filas]);
+    ws["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws, `Parte ${i + 1} de ${partes}`);
+  }
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
 type ExportKind = "nc" | "cronogramas" | "ocp" | "asignados-sin-cronograma" | "asignados-vencidos";
 
 type ExportPredio = {
@@ -229,31 +248,26 @@ export async function GET(request: NextRequest) {
   const total = exportData.predios.length;
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
 
-  // Las listas de asignados no pueden exceder 40 predios por archivo → se parten en
-  // CSVs de a 40 y se empaquetan en un ZIP cuando hay más de 40 (una sola descarga).
-  const chunkSize = tipo === "asignados-sin-cronograma" || tipo === "asignados-vencidos" ? 40 : 0;
+  // Las listas de asignados se entregan como UN Excel con HOJAS de a 40 predios
+  // (Salesforce no acepta más de 40 por carga). nc/cronogramas/ocp siguen como CSV.
+  const esAsignados = tipo === "asignados-sin-cronograma" || tipo === "asignados-vencidos";
 
-  if (chunkSize > 0 && total > chunkSize) {
-    const partes = Math.ceil(total / chunkSize);
-    const zip = new AdmZip();
-    for (let i = 0; i < partes; i++) {
-      const trozo = exportData.predios.slice(i * chunkSize, (i + 1) * chunkSize);
-      zip.addFile(`${baseName} - parte ${i + 1} de ${partes}.csv`, Buffer.from(buildCsv(trozo, extra), "utf8"));
-    }
-    const buffer = zip.toBuffer();
+  if (esAsignados) {
+    const partes = Math.max(1, Math.ceil(total / 40));
+    const buffer = buildXlsxPartes(exportData.predios, extra);
     prisma.registroAcceso.create({
       data: {
         userId: session.userId,
         accion: "EXPORT_TAREAS_LACR_NO",
-        detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix}, ${partes} partes de ${chunkSize})`,
+        detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix}, ${partes} hoja(s) de 40)`,
         ip,
-        metadata: { total, formato: "zip", tipo, espacioId, includeSubspaces, partes },
+        metadata: { total, formato: "xlsx", tipo, espacioId, includeSubspaces, partes },
       },
     }).catch(() => {});
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${baseName}.zip"`,
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${baseName}.xlsx"`,
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
       },
