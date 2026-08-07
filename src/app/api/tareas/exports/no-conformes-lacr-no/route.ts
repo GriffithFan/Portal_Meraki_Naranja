@@ -34,6 +34,12 @@ function isConformeState(estado?: { nombre?: string | null; clave?: string | nul
   return nombre === "conforme" || clave === "conforme";
 }
 
+function isSinAsignarState(estado?: { nombre?: string | null; clave?: string | null } | null) {
+  const nombre = compactState(estado?.nombre);
+  const clave = compactState(estado?.clave);
+  return nombre === "sinasignar" || clave === "sinasignar";
+}
+
 function collectDescendants(espacioId: string, espacios: { id: string; parentId: string | null }[]) {
   const byParent = new Map<string, string[]>();
   for (const espacio of espacios) {
@@ -113,7 +119,7 @@ function buildCsv(predios: ExportPredio[]) {
   return `\uFEFF${rows.join("\r\n")}\r\n`;
 }
 
-type ExportKind = "nc" | "cronogramas" | "ocp";
+type ExportKind = "nc" | "cronogramas" | "ocp" | "asignados-sin-asignar";
 
 type ExportPredio = {
   codigo: string | null;
@@ -138,7 +144,7 @@ export async function GET(request: NextRequest) {
   const espacioId = searchParams.get("espacioId") || "";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
   const tipo = (searchParams.get("tipo") || "nc").toLowerCase() as ExportKind;
-  if (!["nc", "cronogramas", "ocp"].includes(tipo)) {
+  if (!["nc", "cronogramas", "ocp", "asignados-sin-asignar"].includes(tipo)) {
     return NextResponse.json({ error: "tipo invalido" }, { status: 400 });
   }
   if (!espacioId) {
@@ -158,46 +164,52 @@ export async function GET(request: NextRequest) {
 
   const scopedSpaceIds = includeSubspaces ? collectDescendants(espacioId, espacios) : [espacioId];
 
-  const lacNoPredios = await prisma.predio.findMany({
-    where: {
-      lacR: { equals: "NO", mode: "insensitive" },
-      espacioId: { in: scopedSpaceIds },
-    },
-    select: {
-      codigo: true,
-      nombre: true,
-      incidencias: true,
-      lacR: true,
-      provincia: true,
-      updatedAt: true,
-      estado: { select: { nombre: true, clave: true } },
-      asignaciones: { select: { usuario: { select: { nombre: true } } } },
-      espacio: {
-        select: {
-          id: true,
-          nombre: true,
-          parentId: true,
-        },
-      },
-    },
-    orderBy: [
-      { espacioId: "asc" },
-      { codigo: "asc" },
-      { incidencias: "asc" },
-    ],
-  });
-
-  const predios = lacNoPredios.filter((predio) => !isBlockedState(predio.estado) && !isConformeState(predio.estado));
-  const ocpPredios = predios.filter((predio) => belongsToFolder(predio.espacio?.id, "OCP", espacios));
-  const nonOcpPredios = predios.filter((predio) => !belongsToFolder(predio.espacio?.id, "OCP", espacios));
-  const noConformes = nonOcpPredios.filter((predio) => isNoConformeState(predio.estado));
-  const otrosEstados = nonOcpPredios.filter((predio) => !isNoConformeState(predio.estado));
-  const exportMap: Record<ExportKind, { filenamePrefix: string; predios: typeof predios }> = {
-    nc: { filenamePrefix: "NC", predios: noConformes },
-    cronogramas: { filenamePrefix: "Cronogramas", predios: otrosEstados },
-    ocp: { filenamePrefix: "OCP", predios: ocpPredios },
+  const PREDIO_SELECT = {
+    codigo: true,
+    nombre: true,
+    incidencias: true,
+    lacR: true,
+    provincia: true,
+    updatedAt: true,
+    estado: { select: { nombre: true, clave: true } },
+    asignaciones: { select: { usuario: { select: { nombre: true } } } },
+    espacio: { select: { id: true, nombre: true, parentId: true } },
   };
-  const exportData = exportMap[tipo];
+  const PREDIO_ORDER = [{ espacioId: "asc" as const }, { codigo: "asc" as const }, { incidencias: "asc" as const }];
+
+  let exportData: { filenamePrefix: string; predios: ExportPredio[] };
+
+  if (tipo === "asignados-sin-asignar") {
+    // Predios en estado SIN ASIGNAR que SÍ tienen un técnico asignado (inconsistencia:
+    // el estado dice "sin asignar" pero hay un técnico). Sirven para crearles cronograma.
+    const rows = await prisma.predio.findMany({
+      where: {
+        espacioId: { in: scopedSpaceIds },
+        asignaciones: { some: { tipo: { in: ["TAREA", "TECNICO"] } } },
+      },
+      select: PREDIO_SELECT,
+      orderBy: PREDIO_ORDER,
+    }) as unknown as ExportPredio[];
+    const predios = rows.filter((predio) => isSinAsignarState(predio.estado));
+    exportData = { filenamePrefix: "Asignados sin cronograma", predios };
+  } else {
+    const lacNoPredios = await prisma.predio.findMany({
+      where: { lacR: { equals: "NO", mode: "insensitive" }, espacioId: { in: scopedSpaceIds } },
+      select: PREDIO_SELECT,
+      orderBy: PREDIO_ORDER,
+    }) as unknown as ExportPredio[];
+    const predios = lacNoPredios.filter((predio) => !isBlockedState(predio.estado) && !isConformeState(predio.estado));
+    const ocpPredios = predios.filter((predio) => belongsToFolder(predio.espacio?.id, "OCP", espacios));
+    const nonOcpPredios = predios.filter((predio) => !belongsToFolder(predio.espacio?.id, "OCP", espacios));
+    const noConformes = nonOcpPredios.filter((predio) => isNoConformeState(predio.estado));
+    const otrosEstados = nonOcpPredios.filter((predio) => !isNoConformeState(predio.estado));
+    const exportMap = {
+      nc: { filenamePrefix: "NC", predios: noConformes },
+      cronogramas: { filenamePrefix: "Cronogramas", predios: otrosEstados },
+      ocp: { filenamePrefix: "OCP", predios: ocpPredios },
+    };
+    exportData = exportMap[tipo as "nc" | "cronogramas" | "ocp"];
+  }
 
   const today = new Date();
   const csv = buildCsv(exportData.predios);
@@ -216,10 +228,6 @@ export async function GET(request: NextRequest) {
         tipo,
         espacioId,
         includeSubspaces,
-        noConformes: noConformes.length,
-        otrosEstados: otrosEstados.length,
-        ocp: ocpPredios.length,
-        excludedBlockedOrConforme: lacNoPredios.length - predios.length,
       },
     },
   }).catch(() => {});

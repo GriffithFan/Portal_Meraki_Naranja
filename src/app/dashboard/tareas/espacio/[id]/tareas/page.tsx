@@ -1753,7 +1753,7 @@ export default function EspacioTareasPage() {
   }, [allEspacios, espacio, espacioId]);
 
   const downloadLacRNo = () => {
-    const tipos = ["nc", "cronogramas", "ocp"];
+    const tipos = ["nc", "cronogramas", "ocp", "asignados-sin-asignar"];
     tipos.forEach((tipo, index) => {
       const params = new URLSearchParams({ espacioId, tipo });
       if (includeSubspaces) params.set("includeSubspaces", "true");
@@ -2065,7 +2065,7 @@ export default function EspacioTareasPage() {
             <button
               onClick={downloadLacRNo}
               className="px-2.5 py-1.5 border border-red-200 bg-red-50 text-red-700 rounded-md text-xs font-medium hover:bg-red-100 transition-colors flex items-center gap-1"
-              title="Descargar CSV LAC-R NO: NC, Cronogramas y OCP"
+              title="Descargar CSV LAC-R NO: NC, Cronogramas, OCP y Asignados sin cronograma (estado SIN ASIGNAR con técnico)"
             >
               <IconDownload className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">LAC-R NO</span>
