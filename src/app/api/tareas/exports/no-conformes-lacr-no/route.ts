@@ -108,10 +108,10 @@ function formatFilenameDate(date: Date) {
   return formatExcelDate(date).replace(/\//g, "-");
 }
 
-function buildCsv(predios: ExportPredio[]) {
+function buildCsv(predios: ExportPredio[], extraDays = 0) {
   const today = new Date();
-  const desde = formatExcelDate(addDays(today, 2));
-  const hasta = formatExcelDate(addDays(today, 16));
+  const desde = formatExcelDate(addDays(today, 2 + extraDays));
+  const hasta = formatExcelDate(addDays(today, 16 + extraDays));
   const rows = [
     csvRow(["PREDIO", "DESDE", "HASTA", "DNI", "NI"]),
     ...predios.map((predio) => csvRow([predio.codigo || "", desde, hasta, "TH01", predio.incidencias || predio.nombre || ""])),
@@ -119,7 +119,7 @@ function buildCsv(predios: ExportPredio[]) {
   return `\uFEFF${rows.join("\r\n")}\r\n`;
 }
 
-type ExportKind = "nc" | "cronogramas" | "ocp" | "asignados-sin-asignar";
+type ExportKind = "nc" | "cronogramas" | "ocp" | "asignados-sin-cronograma" | "asignados-vencidos";
 
 type ExportPredio = {
   codigo: string | null;
@@ -128,6 +128,8 @@ type ExportPredio = {
   lacR: string | null;
   provincia: string | null;
   updatedAt: Date;
+  fechaDesde: Date | null;
+  fechaHasta: Date | null;
   estado: { nombre: string | null; clave: string | null } | null;
   asignaciones: { usuario: { nombre: string | null } | null }[];
   espacio: { id: string; nombre: string; parentId: string | null } | null;
@@ -144,7 +146,7 @@ export async function GET(request: NextRequest) {
   const espacioId = searchParams.get("espacioId") || "";
   const includeSubspaces = searchParams.get("includeSubspaces") === "true";
   const tipo = (searchParams.get("tipo") || "nc").toLowerCase() as ExportKind;
-  if (!["nc", "cronogramas", "ocp", "asignados-sin-asignar"].includes(tipo)) {
+  if (!["nc", "cronogramas", "ocp", "asignados-sin-cronograma", "asignados-vencidos"].includes(tipo)) {
     return NextResponse.json({ error: "tipo invalido" }, { status: 400 });
   }
   if (!espacioId) {
@@ -171,17 +173,20 @@ export async function GET(request: NextRequest) {
     lacR: true,
     provincia: true,
     updatedAt: true,
+    fechaDesde: true,
+    fechaHasta: true,
     estado: { select: { nombre: true, clave: true } },
     asignaciones: { select: { usuario: { select: { nombre: true } } } },
     espacio: { select: { id: true, nombre: true, parentId: true } },
   };
   const PREDIO_ORDER = [{ espacioId: "asc" as const }, { codigo: "asc" as const }, { incidencias: "asc" as const }];
 
-  let exportData: { filenamePrefix: string; predios: ExportPredio[] };
+  let exportData: { filenamePrefix: string; predios: ExportPredio[]; extraDays?: number };
 
-  if (tipo === "asignados-sin-asignar") {
-    // Predios en estado SIN ASIGNAR que SÍ tienen un técnico asignado (inconsistencia:
-    // el estado dice "sin asignar" pero hay un técnico). Sirven para crearles cronograma.
+  if (tipo === "asignados-sin-cronograma" || tipo === "asignados-vencidos") {
+    // Predios en estado SIN ASIGNAR que SÍ tienen un técnico asignado. Se parten en dos:
+    //  - sin-cronograma: sin fechas DESDE-HASTA → el CSV usa fechas +14 días (extraDays)
+    //  - vencidos: con fechas DESDE-HASTA → fechas normales del CSV
     const rows = await prisma.predio.findMany({
       where: {
         espacioId: { in: scopedSpaceIds },
@@ -190,8 +195,13 @@ export async function GET(request: NextRequest) {
       select: PREDIO_SELECT,
       orderBy: PREDIO_ORDER,
     }) as unknown as ExportPredio[];
-    const predios = rows.filter((predio) => isSinAsignarState(predio.estado));
-    exportData = { filenamePrefix: "Asignados sin cronograma", predios };
+    const sinAsignar = rows.filter((predio) => isSinAsignarState(predio.estado));
+    const sinFechas = (predio: ExportPredio) => predio.fechaDesde == null && predio.fechaHasta == null;
+    if (tipo === "asignados-sin-cronograma") {
+      exportData = { filenamePrefix: "Asignados sin cronograma", predios: sinAsignar.filter(sinFechas), extraDays: 14 };
+    } else {
+      exportData = { filenamePrefix: "Asignados vencidos", predios: sinAsignar.filter((predio) => !sinFechas(predio)) };
+    }
   } else {
     const lacNoPredios = await prisma.predio.findMany({
       where: { lacR: { equals: "NO", mode: "insensitive" }, espacioId: { in: scopedSpaceIds } },
@@ -212,7 +222,7 @@ export async function GET(request: NextRequest) {
   }
 
   const today = new Date();
-  const csv = buildCsv(exportData.predios);
+  const csv = buildCsv(exportData.predios, exportData.extraDays ?? 0);
   const filename = `${exportData.filenamePrefix} ${formatFilenameDate(today)}.csv`;
 
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
