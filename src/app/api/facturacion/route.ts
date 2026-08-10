@@ -51,18 +51,8 @@ export async function POST(request: NextRequest) {
   } catch { /* sin cuerpo */ }
 
   try {
-    // Calcular período: lunes 00:00 de esta semana hasta ahora
     const ahora = new Date();
-    const day = ahora.getDay();
-    const diffToMonday = day === 0 ? 6 : day - 1;
-    const desde = new Date(ahora);
-    desde.setDate(ahora.getDate() - diffToMonday);
-    desde.setHours(0, 0, 0, 0);
-    const hasta = new Date(ahora);
-    hasta.setHours(23, 59, 59, 999);
-
-    // Calcular semana ISO
-    const semana = getISOWeek(desde);
+    const semana = getISOWeek(ahora);
 
     // Verificar si ya existe reporte para esta semana
     const existente = await prisma.reporteFacturacion.findUnique({
@@ -79,6 +69,17 @@ export async function POST(request: NextRequest) {
     if (existente && overwrite) {
       await prisma.reporteFacturacion.delete({ where: { id: existente.id } });
     }
+
+    // Período = desde la EMISIÓN del último reporte (de OTRA semana) hasta AHORA.
+    // Al generar la facturación se cierra el período; los conformes que salgan después
+    // se cuentan para la siguiente. Así el corte real es el momento en que se emite.
+    const previo = await prisma.reporteFacturacion.findFirst({
+      where: { semana: { not: semana } },
+      orderBy: { fechaHasta: "desc" },
+      select: { fechaHasta: true },
+    });
+    const desde = previo?.fechaHasta ?? new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const hasta = ahora;
 
     // Buscar el estado "conforme"
     const estadoConforme = await prisma.estadoConfig.findFirst({
@@ -97,11 +98,11 @@ export async function POST(request: NextRequest) {
     });
     const facturadoId = espacioFacturado?.id;
 
-    // Buscar predios CONFORME actualizados esta semana, excluyendo "Facturado"
+    // Predios CONFORME emitidos DESPUÉS del reporte anterior y hasta ahora, excl. "Facturado".
     const prediosConforme = await prisma.predio.findMany({
       where: {
         estadoId: estadoConforme.id,
-        fechaActualizacion: { gte: desde, lte: hasta },
+        fechaActualizacion: { gt: desde, lte: hasta },
         ...(facturadoId ? { espacioId: { not: facturadoId } } : {}),
       },
       select: {

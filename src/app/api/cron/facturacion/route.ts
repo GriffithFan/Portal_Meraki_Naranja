@@ -26,18 +26,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const ahora = new Date();
-
-    // Calcular lunes de esta semana
-    const day = ahora.getDay();
-    const diffToMonday = day === 0 ? 6 : day - 1;
-    const desde = new Date(ahora);
-    desde.setDate(ahora.getDate() - diffToMonday);
-    desde.setHours(0, 0, 0, 0);
-    const hasta = new Date(ahora);
-    hasta.setHours(23, 59, 59, 999);
-
-    // Semana ISO
-    const semana = getISOWeek(desde);
+    const semana = getISOWeek(ahora);
 
     // Si ya existe, no duplicar
     const existente = await prisma.reporteFacturacion.findUnique({
@@ -51,6 +40,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Período = desde la EMISIÓN del último reporte (de otra semana) hasta AHORA.
+    const previo = await prisma.reporteFacturacion.findFirst({
+      where: { semana: { not: semana } },
+      orderBy: { fechaHasta: "desc" },
+      select: { fechaHasta: true },
+    });
+    const desde = previo?.fechaHasta ?? new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const hasta = ahora;
+
     // Buscar estado CONFORME
     const estadoConforme = await prisma.estadoConfig.findFirst({
       where: { clave: "conforme", activo: true },
@@ -62,11 +60,11 @@ export async function GET(request: NextRequest) {
     // Excluir predios ya en "Facturado" (igual que la generación manual)
     const espacioFacturado = await prisma.espacioTrabajo.findFirst({ where: { nombre: "Facturado", parentId: null }, select: { id: true } });
 
-    // Buscar predios en CONFORME actualizados esta semana
+    // Predios CONFORME emitidos DESPUÉS del reporte anterior y hasta ahora, excl. "Facturado".
     const prediosConforme = await prisma.predio.findMany({
       where: {
         estadoId: estadoConforme.id,
-        fechaActualizacion: { gte: desde, lte: hasta },
+        fechaActualizacion: { gt: desde, lte: hasta },
         ...(espacioFacturado ? { espacioId: { not: espacioFacturado.id } } : {}),
       },
       select: {
