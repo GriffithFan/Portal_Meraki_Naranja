@@ -12,6 +12,12 @@ interface Usuario {
   rol: "ADMIN" | "MODERADOR" | "TECNICO" | "USUARIO";
   esMesa?: boolean;
   twoFactorEnabled?: boolean;
+  thNumero?: number | null;
+}
+
+/** Formatea el identificador TH: 5 → "TH05". */
+function formatTh(n?: number | null) {
+  return n && n >= 1 && n <= 30 ? `TH${String(n).padStart(2, "0")}` : "";
 }
 
 /** Genera una contraseña aleatoria fuerte (sin caracteres ambiguos). */
@@ -83,6 +89,7 @@ export default function UsuariosPage() {
   const [editPassword, setEditPassword] = useState("");
   const [editEsMesa, setEditEsMesa] = useState(false);
   const [editNombre, setEditNombre] = useState("");
+  const [editThNumero, setEditThNumero] = useState("");
 
   // Delegaciones
   const [delegaciones, setDelegaciones] = useState<Delegacion[]>([]);
@@ -156,6 +163,7 @@ export default function UsuariosPage() {
     setEditPassword("");
     setEditEsMesa(u.esMesa || false);
     setEditNombre(u.nombre);
+    setEditThNumero(u.thNumero ? String(u.thNumero) : "");
     setError(null);
   };
 
@@ -169,6 +177,8 @@ export default function UsuariosPage() {
       if (editEsMesa !== (editando.esMesa || false)) body.esMesa = editEsMesa;
       if (editNombre.trim() && editNombre.trim() !== editando.nombre) body.nombre = editNombre.trim();
       if (editPassword.trim()) body.password = editPassword.trim();
+      const nuevoTh = editThNumero ? Number(editThNumero) : null;
+      if (nuevoTh !== (editando.thNumero ?? null)) body.thNumero = nuevoTh;
 
       const res = await fetch("/api/usuarios", {
         method: "PATCH",
@@ -379,6 +389,7 @@ export default function UsuariosPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium text-surface-800 truncate">{u.nombre}</span>
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${cfg.bg}`}>{u.rol}</span>
+                          {u.thNumero && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 bg-orange-50 text-orange-700 border-orange-200 tabular-nums">{formatTh(u.thNumero)}</span>}
                           {u.esMesa && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
                           {esMiUsuario && <span className="text-[10px] text-surface-400">(tú)</span>}
                         </div>
@@ -415,6 +426,7 @@ export default function UsuariosPage() {
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Usuario</th>
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Email</th>
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Rol</th>
+                    <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">ID (TH)</th>
                     {isAdmin && <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">2FA</th>}
                     <th className="text-left px-2.5 py-2 uppercase text-[10px] tracking-wider text-surface-400 font-medium">Acciones</th>
                   </tr>
@@ -440,6 +452,13 @@ export default function UsuariosPage() {
                         <td className="px-2.5 py-2.5">
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${cfg.bg}`}>{u.rol}</span>
                           {u.esMesa && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
+                        </td>
+                        <td className="px-2.5 py-2.5">
+                          {u.thNumero ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-orange-50 text-orange-700 border-orange-200 tabular-nums">{formatTh(u.thNumero)}</span>
+                          ) : (
+                            <span className="text-xs text-surface-300">—</span>
+                          )}
                         </td>
                         {isAdmin && (
                           <td className="px-2.5 py-2.5">
@@ -879,6 +898,19 @@ export default function UsuariosPage() {
                   className="rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
                 <span className="text-sm text-surface-700">Es Mesa de ayuda</span>
               </label>
+
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">
+                  Identificador TH <span className="text-surface-400 font-normal">(columna DNI de los Excel de cronogramas)</span>
+                </label>
+                <select value={editThNumero} onChange={e => setEditThNumero(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none">
+                  <option value="">Sin identificador</option>
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>TH{String(n).padStart(2, "0")}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {error && (

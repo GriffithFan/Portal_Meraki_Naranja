@@ -110,29 +110,47 @@ function formatFilenameDate(date: Date) {
   return formatExcelDate(date).replace(/\//g, "-");
 }
 
-function buildCsv(predios: ExportPredio[], extraDays = 0) {
+const CABECERA = ["PREDIO", "DESDE", "HASTA", "DNI", "NI"];
+
+/** Identificador TH del t\u00E9cnico (1-30 \u2192 "TH05"), vac\u00EDo si no tiene. */
+function formatTh(n: number | null | undefined): string {
+  return n && n >= 1 && n <= 30 ? `TH${String(n).padStart(2, "0")}` : "";
+}
+
+/** DNI del predio = identificador TH del \u00DALTIMO t\u00E9cnico asignado (o vac\u00EDo). */
+function dniDePredio(predio: ExportPredio): string {
+  const asigs = (predio.asignaciones || []).filter((a) => a.usuario);
+  if (!asigs.length) return "";
+  const ult = asigs.slice().sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[asigs.length - 1];
+  return formatTh(ult.usuario?.thNumero);
+}
+
+// Ventana DESDE-HASTA: DESDE = hoy + desdeDias, HASTA = DESDE + 14 (ventana de 14 d\u00EDas).
+function ventana(desdeDias: number) {
   const today = new Date();
-  const desde = formatExcelDate(addDays(today, 2 + extraDays));
-  const hasta = formatExcelDate(addDays(today, 16 + extraDays));
+  return {
+    desde: formatExcelDate(addDays(today, desdeDias)),
+    hasta: formatExcelDate(addDays(today, desdeDias + 14)),
+  };
+}
+
+function buildCsv(predios: ExportPredio[], desdeDias: number) {
+  const { desde, hasta } = ventana(desdeDias);
   const rows = [
-    csvRow(["PREDIO", "DESDE", "HASTA", "DNI", "NI"]),
-    ...predios.map((predio) => csvRow([predio.codigo || "", desde, hasta, "TH01", predio.incidencias || predio.nombre || ""])),
+    csvRow(CABECERA),
+    ...predios.map((predio) => csvRow([predio.codigo || "", desde, hasta, dniDePredio(predio), predio.incidencias || predio.nombre || ""])),
   ];
   return `\uFEFF${rows.join("\r\n")}\r\n`;
 }
 
-const CABECERA = ["PREDIO", "DESDE", "HASTA", "DNI", "NI"];
-
 /** Excel con una HOJA por bloque de 40 predios (SF no acepta m\u00E1s de 40 por carga). */
-function buildXlsxPartes(predios: ExportPredio[], extraDays = 0): Buffer {
-  const today = new Date();
-  const desde = formatExcelDate(addDays(today, 2 + extraDays));
-  const hasta = formatExcelDate(addDays(today, 16 + extraDays));
+function buildXlsxPartes(predios: ExportPredio[], desdeDias: number): Buffer {
+  const { desde, hasta } = ventana(desdeDias);
   const wb = XLSX.utils.book_new();
   const partes = Math.max(1, Math.ceil(predios.length / 40));
   for (let i = 0; i < partes; i++) {
     const trozo = predios.slice(i * 40, (i + 1) * 40);
-    const filas = trozo.map((p) => [p.codigo || "", desde, hasta, "TH01", p.incidencias || p.nombre || ""]);
+    const filas = trozo.map((p) => [p.codigo || "", desde, hasta, dniDePredio(p), p.incidencias || p.nombre || ""]);
     const ws = XLSX.utils.aoa_to_sheet([CABECERA, ...filas]);
     ws["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws, `Parte ${i + 1} de ${partes}`);
@@ -152,7 +170,7 @@ type ExportPredio = {
   fechaDesde: Date | null;
   fechaHasta: Date | null;
   estado: { nombre: string | null; clave: string | null } | null;
-  asignaciones: { usuario: { nombre: string | null } | null }[];
+  asignaciones: { createdAt: Date; usuario: { nombre: string | null; thNumero: number | null } | null }[];
   espacio: { id: string; nombre: string; parentId: string | null } | null;
 };
 
@@ -197,17 +215,17 @@ export async function GET(request: NextRequest) {
     fechaDesde: true,
     fechaHasta: true,
     estado: { select: { nombre: true, clave: true } },
-    asignaciones: { select: { usuario: { select: { nombre: true } } } },
+    asignaciones: { select: { createdAt: true, usuario: { select: { nombre: true, thNumero: true } } } },
     espacio: { select: { id: true, nombre: true, parentId: true } },
   };
   const PREDIO_ORDER = [{ espacioId: "asc" as const }, { codigo: "asc" as const }, { incidencias: "asc" as const }];
 
-  let exportData: { filenamePrefix: string; predios: ExportPredio[]; extraDays?: number };
+  let exportData: { filenamePrefix: string; predios: ExportPredio[] };
 
   if (tipo === "asignados-sin-cronograma" || tipo === "asignados-vencidos") {
     // Predios en estado SIN ASIGNAR que SÍ tienen un técnico asignado. Se parten en dos:
-    //  - sin-cronograma: sin fechas DESDE-HASTA → el CSV usa fechas +14 días (extraDays)
-    //  - vencidos: con fechas DESDE-HASTA → fechas normales del CSV
+    //  - sin-cronograma: sin fechas DESDE-HASTA (nunca tuvieron cronograma)
+    //  - vencidos: con fechas DESDE-HASTA (vencidos)
     const rows = await prisma.predio.findMany({
       where: {
         espacioId: { in: scopedSpaceIds },
@@ -219,7 +237,7 @@ export async function GET(request: NextRequest) {
     const sinAsignar = rows.filter((predio) => isSinAsignarState(predio.estado));
     const sinFechas = (predio: ExportPredio) => predio.fechaDesde == null && predio.fechaHasta == null;
     if (tipo === "asignados-sin-cronograma") {
-      exportData = { filenamePrefix: "Asignados sin cronograma", predios: sinAsignar.filter(sinFechas), extraDays: 14 };
+      exportData = { filenamePrefix: "Asignados sin cronograma", predios: sinAsignar.filter(sinFechas) };
     } else {
       exportData = { filenamePrefix: "Asignados vencidos", predios: sinAsignar.filter((predio) => !sinFechas(predio)) };
     }
@@ -243,7 +261,9 @@ export async function GET(request: NextRequest) {
   }
 
   const today = new Date();
-  const extra = exportData.extraDays ?? 0;
+  // DESDE = hoy + desdeDias (sin contar hoy), HASTA = DESDE + 14. Para cronogramas,
+  // asignados-vencidos y asignados-sin-cronograma → 14 días (hoy+14 a hoy+28). Resto → 2.
+  const desdeDias = tipo === "cronogramas" || tipo === "asignados-vencidos" || tipo === "asignados-sin-cronograma" ? 14 : 2;
   const baseName = `${exportData.filenamePrefix} ${formatFilenameDate(today)}`;
   const total = exportData.predios.length;
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
@@ -254,7 +274,7 @@ export async function GET(request: NextRequest) {
 
   if (esAsignados) {
     const partes = Math.max(1, Math.ceil(total / 40));
-    const buffer = buildXlsxPartes(exportData.predios, extra);
+    const buffer = buildXlsxPartes(exportData.predios, desdeDias);
     prisma.registroAcceso.create({
       data: {
         userId: session.userId,
@@ -274,7 +294,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const csv = buildCsv(exportData.predios, extra);
+  const csv = buildCsv(exportData.predios, desdeDias);
   prisma.registroAcceso.create({
     data: {
       userId: session.userId,

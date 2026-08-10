@@ -34,6 +34,7 @@ model User {
   tecnicoActivo Boolean @default(false) // Marca de técnico que TRABAJA hoy (los ~12 activos); los demás se conservan por estadística
   tecnicoDesde  DateTime?               // Fecha de inicio productivo (para técnicos nuevos: evaluar ramp 6+/7+)
   salesforceUser String? // Usuario de Salesforce/Mined (ej "THNET C08") para auto-lanzar predios
+  thNumero  Int?     @unique // Identificador TH (1-30) → se imprime como "TH01".."TH30" en la columna DNI de los export de cronogramas
   telefono  String?
   twoFactorEnabled Boolean @default(false) // 2FA (TOTP) activado
   twoFactorSecret  String?                 // Secret TOTP (base32); null si no configurado

@@ -20,7 +20,7 @@ export async function GET() {
   const usuarios = await prisma.user.findMany({
     where: { activo: true },
     select: {
-      id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true,
+      id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true, thNumero: true,
     },
     orderBy: { nombre: "asc" },
   });
@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { userId, rol, password, esMesa, nombre } = body;
+    const { userId, rol, password, esMesa, nombre, thNumero } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "userId requerido" }, { status: 400 });
@@ -110,6 +110,26 @@ export async function PATCH(req: NextRequest) {
       data.nombre = nombre.trim();
     }
 
+    // Identificador TH (1-30): null/0/"" limpia; 1-30 asigna (único entre activos).
+    if (thNumero !== undefined) {
+      if (thNumero === null || thNumero === 0 || thNumero === "") {
+        data.thNumero = null;
+      } else {
+        const n = Number(thNumero);
+        if (!Number.isInteger(n) || n < 1 || n > 30) {
+          return NextResponse.json({ error: "El identificador debe ser TH01 a TH30" }, { status: 400 });
+        }
+        const ocupado = await prisma.user.findFirst({
+          where: { thNumero: n, activo: true, NOT: { id: userId } },
+          select: { nombre: true },
+        });
+        if (ocupado) {
+          return NextResponse.json({ error: `TH${String(n).padStart(2, "0")} ya está asignado a ${ocupado.nombre}` }, { status: 409 });
+        }
+        data.thNumero = n;
+      }
+    }
+
     if (password?.trim()) {
       if (password.trim().length < MIN_PASSWORD_LEN) {
         return NextResponse.json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LEN} caracteres` }, { status: 400 });
@@ -124,7 +144,7 @@ export async function PATCH(req: NextRequest) {
     const updated = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true },
+      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true, thNumero: true },
     });
 
     // Refrescar la sesión del usuario afectado (rol/activo/password al instante)
@@ -132,6 +152,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json(updated);
   } catch (e: any) {
+    if (e?.code === "P2002") return NextResponse.json({ error: "Ese identificador TH ya está asignado" }, { status: 409 });
     console.error("[Usuarios] Error actualizando usuario:", e);
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
@@ -160,7 +181,7 @@ export async function DELETE(req: NextRequest) {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { activo: false },
+      data: { activo: false, thNumero: null }, // liberar el identificador TH al desactivar
     });
 
     // Cortar la sesión del usuario desactivado de inmediato
