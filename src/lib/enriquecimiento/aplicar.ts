@@ -13,7 +13,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { estadoVentana, arrancaProximoDiaHabil } from "@/lib/cronogramaVentana";
+import { estadoVentana } from "@/lib/cronogramaVentana";
 import { regionDePartido } from "@/lib/regionesBA";
 import { provinciaDeCodigo } from "@/lib/provincias";
 
@@ -377,11 +377,10 @@ export function planificarEnriquecimiento(
       if (activoReal === "SI") {
         if (ordenDisponible) {
           if (estrictoVentana) {
-            // Región estricta (14/15): SÍ SOLO dentro de la ventana; vencido/sin fechas → NO;
-            // futuro que arranca a más tardar el próximo día hábil → SÍ, si no → NO.
+            // Región estricta (14/15): SÍ SOLO DENTRO de la ventana. Futuro (activo pero
+            // todavía no en fecha) → NO (se muestra "PRONTO"); vencido/sin fechas → NO.
             if (ventEstado === "en_ventana" || ventEstado === "por_vencer") objetivo = "SI";
-            else if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
-            else objetivo = "NO"; // vencido | sin_fechas
+            else objetivo = "NO"; // futuro | vencido | sin_fechas
           } else {
             // Regiones NO estrictas: con estar activo (y orden disponible) basta → SÍ SIEMPRE
             // (aunque esté vencido o futuro; no se mira la fecha).
