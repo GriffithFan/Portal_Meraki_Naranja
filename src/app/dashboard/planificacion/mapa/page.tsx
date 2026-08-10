@@ -5,7 +5,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSession } from "@/hooks/useSession";
 import { provinciaDeCodigo, PROVINCIAS_META, PROVINCIAS_ORDEN, type ProvinciaClave } from "@/lib/provincias";
+import { regionDePartido } from "@/lib/regionesBA";
 import { estadoVentana, type VentanaEstado } from "@/lib/cronogramaVentana";
+import RegionFilter from "@/components/tareas/RegionFilter";
 
 const MapView = dynamic(() => import("@/components/mapa/MapView"), { ssr: false });
 
@@ -39,6 +41,7 @@ export default function PlanificacionMapaPage() {
   const [estadoSel, setEstadoSel] = useState("todos");
   const [asignadoSel, setAsignadoSel] = useState("todos");
   const [lacrSel, setLacrSel] = useState("todos");
+  const [regiones, setRegiones] = useState<number[]>([]); // regiones educativas BA (1-25); vacío = todas
   const [colorBy, setColorBy] = useState<ColorBy>("ventana");
 
   const cargar = useCallback(async () => {
@@ -92,9 +95,13 @@ export default function PlanificacionMapaPage() {
         const l = (p.lacR || "").toUpperCase();
         if (lacrSel === "SI" ? l !== "SI" : l === "SI") return false;
       }
+      if (regiones.length) {
+        const r = provinciaDeCodigo(p.codigo) === "BA" ? regionDePartido(p.ciudad) : null;
+        if (r == null || !regiones.includes(r)) return false;
+      }
       return true;
     });
-  }, [predios, prov, ciudad, ventanas, estadoSel, asignadoSel, lacrSel]);
+  }, [predios, prov, ciudad, ventanas, estadoSel, asignadoSel, lacrSel, regiones]);
 
   const conteos = useMemo(() => {
     const c: Record<string, number> = {};
@@ -102,9 +109,9 @@ export default function PlanificacionMapaPage() {
     return c;
   }, [filtrados]);
 
-  const hayFiltros = prov !== "todas" || ciudad !== "todas" || estadoSel !== "todos" || asignadoSel !== "todos" || lacrSel !== "todos" || ventanas.size !== VENTANA_UI.length;
+  const hayFiltros = prov !== "todas" || ciudad !== "todas" || estadoSel !== "todos" || asignadoSel !== "todos" || lacrSel !== "todos" || regiones.length > 0 || ventanas.size !== VENTANA_UI.length;
   function limpiar() {
-    setProv("todas"); setCiudad("todas"); setEstadoSel("todos"); setAsignadoSel("todos"); setLacrSel("todos");
+    setProv("todas"); setCiudad("todas"); setEstadoSel("todos"); setAsignadoSel("todos"); setLacrSel("todos"); setRegiones([]);
     setVentanas(new Set(VENTANA_UI.map((v) => v.key)));
   }
 
@@ -148,6 +155,7 @@ export default function PlanificacionMapaPage() {
             <option value="SI">LAC-R: Sí</option>
             <option value="NO">LAC-R: No</option>
           </select>
+          <RegionFilter value={regiones} onChange={setRegiones} className="min-w-[140px]" />
           {hayFiltros && (
             <button onClick={limpiar} className="rounded-md px-2.5 py-1.5 text-xs text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700">Limpiar</button>
           )}
