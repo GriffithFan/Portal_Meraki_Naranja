@@ -2,25 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
+import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
 
 export const dynamic = "force-dynamic";
 
-const DIA_MS = 86400000;
-const SEMANA_MS = 7 * DIA_MS;
 const OBJETIVO_SEMANAL = 7; // conformes/semana por técnico
 
 // Estados de origen que sí cuentan como NC "de trabajo" cuando pasan a NO CONFORME.
 // (Excluye actualizar el LAC de NO a SÍ, que no genera esta transición de estado.)
 const ORIGEN_NC = new Set(["enprogreso", "instalado", "auditar"]);
-
-function mondayOf(d: Date): Date {
-  const base = new Date(d);
-  const day = base.getDay();
-  const diffToMonday = day === 0 ? 6 : day - 1;
-  base.setDate(base.getDate() - diffToMonday);
-  base.setHours(0, 0, 0, 0);
-  return base;
-}
 
 function getISOWeek(date: Date) {
   const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -68,7 +58,7 @@ export async function GET(request: Request) {
 
   const semanas = Math.min(Math.max(parseInt(new URL(request.url).searchParams.get("semanas") || "8") || 8, 4), 16);
   const now = new Date();
-  const startMonday = new Date(mondayOf(now).getTime() - (semanas - 1) * SEMANA_MS);
+  const startMonday = new Date(inicioSemana(now).getTime() - (semanas - 1) * SEMANA_MS);
   const idxActual = semanas - 1;
   const semanasMeta = Array.from({ length: semanas }, (_, i) => {
     const desde = new Date(startMonday.getTime() + i * SEMANA_MS);
@@ -142,7 +132,7 @@ export async function GET(request: Request) {
     // NC: solo cuenta de lunes a viernes (getDay 1..5).
     if (esNc) { const dow = fecha.getDay(); if (dow === 0 || dow === 6) continue; }
 
-    const wIdx = Math.floor((mondayOf(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
+    const wIdx = Math.floor((inicioSemana(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
     const enRango = wIdx >= 0 && wIdx < semanas;
 
     // Global (una vez por evento, incluso si el predio no tiene técnico).

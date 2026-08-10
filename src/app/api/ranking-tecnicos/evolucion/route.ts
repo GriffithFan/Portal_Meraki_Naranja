@@ -2,21 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
+import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
 
 export const dynamic = "force-dynamic";
-
-const DIA_MS = 86400000;
-const SEMANA_MS = 7 * DIA_MS;
-
-// Lunes 00:00 de la semana de `d`.
-function mondayOf(d: Date): Date {
-  const base = new Date(d);
-  const day = base.getDay();
-  const diffToMonday = day === 0 ? 6 : day - 1;
-  base.setDate(base.getDate() - diffToMonday);
-  base.setHours(0, 0, 0, 0);
-  return base;
-}
 
 function getISOWeek(date: Date) {
   const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -56,7 +44,7 @@ export async function GET(request: Request) {
 
   const semanas = Math.min(Math.max(parseInt(new URL(request.url).searchParams.get("semanas") || "8") || 8, 4), 16);
   const now = new Date();
-  const startMonday = new Date(mondayOf(now).getTime() - (semanas - 1) * SEMANA_MS);
+  const startMonday = new Date(inicioSemana(now).getTime() - (semanas - 1) * SEMANA_MS);
 
   const semanasMeta = Array.from({ length: semanas }, (_, i) => {
     const desde = new Date(startMonday.getTime() + i * SEMANA_MS);
@@ -99,7 +87,7 @@ export async function GET(request: Request) {
     if (!bucket) continue;
     const fecha = predio.fechaActualizacion || predio.updatedAt;
     if (!fecha) continue;
-    const weekIndex = Math.floor((mondayOf(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
+    const weekIndex = Math.floor((inicioSemana(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
     if (weekIndex < 0 || weekIndex >= semanas) continue;
 
     // Se acredita a UN SOLO técnico (el último asignado) para no duplicar el predio.

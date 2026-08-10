@@ -2,29 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
+import { semanaRango } from "@/lib/semanaRanking";
 
 export const dynamic = "force-dynamic";
-
-function getWeekRange(now = new Date(), offset = 0) {
-  // offset 0 = semana actual; 1 = semana pasada; etc. (lunes 00:00 → domingo 23:59,
-  // salvo la actual que va hasta "ahora").
-  const base = new Date(now);
-  base.setDate(now.getDate() - offset * 7);
-  const day = base.getDay();
-  const diffToMonday = day === 0 ? 6 : day - 1;
-  const desde = new Date(base);
-  desde.setDate(base.getDate() - diffToMonday);
-  desde.setHours(0, 0, 0, 0);
-  let hasta: Date;
-  if (offset <= 0) {
-    hasta = new Date(now);
-  } else {
-    hasta = new Date(desde);
-    hasta.setDate(desde.getDate() + 6);
-    hasta.setHours(23, 59, 59, 999);
-  }
-  return { desde, hasta };
-}
 
 function getISOWeek(date: Date) {
   const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -81,7 +61,7 @@ export async function GET(request: Request) {
   const offset = Math.min(Math.max(parseInt(new URL(request.url).searchParams.get("offset") || "0") || 0, 0), 52);
   const isCurrentWeek = offset === 0;
   const now = new Date();
-  const { desde, hasta } = getWeekRange(now, offset);
+  const { desde, hasta } = semanaRango(now, offset);
   const estados = await prisma.estadoConfig.findMany({
     where: { activo: true },
     select: { id: true, nombre: true, clave: true },
@@ -135,7 +115,7 @@ export async function GET(request: Request) {
     .filter((row) => row.total > 0)
     .sort((left, right) => right.conformes - left.conformes || right.total - left.total || left.tecnicoNombre.localeCompare(right.tecnicoNombre, "es"));
 
-  const isFriday = now.getDay() === 5;
+  const isFriday = now.getUTCDay() === 5;
   const maxConformes = rows[0]?.conformes || 0;
   const rankingRows: RankingRow[] = rows.map((row, index) => ({
     ...row,

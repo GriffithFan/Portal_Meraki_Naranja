@@ -1,23 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
 
 export const dynamic = "force-dynamic";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const SEMANA_MS = 7 * 86400000;
 const OBJETIVO_SEMANAL = 7; // meta de conformidades por semana (roadmap)
 const SEMANAS = 10;
 const MESES = 6;
-
-function mondayOf(d: Date): Date {
-  const base = new Date(d);
-  const day = base.getDay();
-  base.setDate(base.getDate() - (day === 0 ? 6 : day - 1));
-  base.setHours(0, 0, 0, 0);
-  return base;
-}
 
 function normalizeText(value?: string | null) {
   return (value || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[_\s-]+/g, "");
@@ -83,8 +75,8 @@ export async function GET() {
     : [];
 
   // Ventanas de tiempo.
-  const startSemana = mondayOf(now);
-  const startSerie = new Date(mondayOf(now).getTime() - (SEMANAS - 1) * SEMANA_MS);
+  const startSemana = inicioSemana(now);
+  const startSerie = new Date(inicioSemana(now).getTime() - (SEMANAS - 1) * SEMANA_MS);
   const semanasLabels = Array.from({ length: SEMANAS }, (_, i) => {
     const d = new Date(startSerie.getTime() + i * SEMANA_MS);
     return { label: d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }), desde: d.toISOString() };
@@ -115,7 +107,7 @@ export async function GET() {
 
     // Evolución semanal.
     if (fecha) {
-      const wi = Math.floor((mondayOf(fecha).getTime() - startSerie.getTime()) / SEMANA_MS);
+      const wi = Math.floor((inicioSemana(fecha).getTime() - startSerie.getTime()) / SEMANA_MS);
       if (wi >= 0 && wi < SEMANAS) {
         totalSemana[wi] += 1;
         if (bucket === "conformes") conformesSemana[wi] += 1;
