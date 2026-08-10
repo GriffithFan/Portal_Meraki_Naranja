@@ -346,19 +346,22 @@ export function planificarEnriquecimiento(
       if (curH !== df.toISOString().slice(0, 10)) { upd.fechaHasta = df; previos.fechaHasta = p.fechaHasta; stats.fechaHasta++; }
     }
 
-    // ── LAC-R: MANDA EL TILDE "ACTIVO" (2026-08-10) ──
-    // El tilde real "Activo" del último cronograma determina LAC-R: Activo=SI → SI, sin
-    // tilde (Activo=NO) o sin cronograma → NO. La ORDEN DE TRABAJO (Planificada/Lanzada/
-    // Finalizada) YA NO INFLUYE (se sacó la vieja "regla de oro"): el tilde es la fuente
-    // de verdad de si el cronograma está activo, aunque siga tildado tras finalizar.
-    // REGLAS APARTE por REGIÓN (config, default {14,15}): ahí el SI exige estar DENTRO de
-    // la ventana DESDE-HASTA (vencido/sin fechas → NO aunque Activo); las demás regiones
-    // no miran la fecha. Un cronograma FUTURO que arranca más allá del próximo día hábil
-    // queda NO ("PRONTO"/azul) hasta acercarse. CONFORME nunca se toca. El cron de 6am refresca.
+    // ── LAC-R: TILDE Activo + REGLA DE ORO (Orden de Trabajo) + regiones estrictas (2026-08-10) ──
+    // Para LAC-R = SI se necesita: (1) tilde `Activo` = SI, Y (2) Orden de Trabajo del último
+    // cronograma ∈ {Planificada, Lanzada}. Si NO hay tilde (Activo=NO) o no hay cronograma → NO.
+    // Si el tilde está en SI pero la Orden es "Finalizada" (u otra) → NO IGUAL (SF deja el tilde
+    // tildado tras finalizar; la Orden manda para el NO — REGLA DE ORO, confirmada por el usuario).
+    // Cumplidos tilde+orden: en regiones NO estrictas basta con estar activo → SI SIEMPRE (aunque
+    // vencido o FUTURO; por eso Olavarría con cronograma futuro queda SI). En las regiones ESTRICTAS
+    // (config, default {14,15}) además debe estar DENTRO de la ventana DESDE-HASTA (vencido/sin
+    // fechas/futuro lejano → NO; futuro que arranca a más tardar el próximo día hábil → SI).
+    // CONFORME nunca se toca. El cron de 6am refresca esto a diario.
     const estadoUp = (p.estadoNombre || "").trim().toUpperCase();
     if (estadoUp !== "CONFORME") {
       const activoReal = g(fila, "Cronograma_Ultimo_Activo_Real").toUpperCase(); // "SI" | "NO" | ""
       const tieneCrono = g(fila, "Tiene_Cronograma").toUpperCase();             // "SI" | "NO"
+      const ordenTrabajo = g(fila, "Cronograma_Ultimo_Orden_de_Trabajo").trim().toLowerCase(); // planificada | lanzada | finalizada | ...
+      const ordenDisponible = ordenTrabajo === "planificada" || ordenTrabajo === "lanzada";
       // Fechas efectivas: las del reporte (di/df) y, si no vinieron, las del predio.
       const desdeEff = di || p.fechaDesde;
       const hastaEff = df || p.fechaHasta;
@@ -372,18 +375,23 @@ export function planificarEnriquecimiento(
       const estrictoVentana = regionPredio != null && (opciones.regionesEstrictas || []).includes(regionPredio);
       let objetivo: "SI" | "NO" | null = null;
       if (activoReal === "SI") {
-        // El tilde manda: Activo=SÍ → SÍ, sin importar la Orden de Trabajo.
-        if (estrictoVentana) {
-          // Región estricta (14/15): SÍ SOLO dentro de la ventana; vencido/sin fechas → NO.
-          if (ventEstado === "en_ventana" || ventEstado === "por_vencer") objetivo = "SI";
-          else if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
-          else objetivo = "NO"; // vencido | sin_fechas
-        } else {
-          // Regiones no estrictas: Activo manda (SÍ aunque vencido/sin fechas), salvo futuro
-          // NO inminente, que queda NO (azul/PRONTO) hasta acercarse la fecha.
-          if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
-          else objetivo = "SI";
+        if (ordenDisponible) {
+          if (estrictoVentana) {
+            // Región estricta (14/15): SÍ SOLO dentro de la ventana; vencido/sin fechas → NO;
+            // futuro que arranca a más tardar el próximo día hábil → SÍ, si no → NO.
+            if (ventEstado === "en_ventana" || ventEstado === "por_vencer") objetivo = "SI";
+            else if (ventEstado === "futuro") objetivo = arrancaProximoDiaHabil(desdeEff) ? "SI" : "NO";
+            else objetivo = "NO"; // vencido | sin_fechas
+          } else {
+            // Regiones NO estrictas: con estar activo (y orden disponible) basta → SÍ SIEMPRE
+            // (aunque esté vencido o futuro; no se mira la fecha).
+            objetivo = "SI";
+          }
+        } else if (ordenTrabajo) {
+          // Orden Finalizada (u otra ≠ planificada/lanzada) → NO, aunque el tilde diga SÍ (regla de oro).
+          objetivo = "NO";
         }
+        // ordenTrabajo vacío (no se pudo leer) → objetivo null → no se toca (seguro).
       } else if (activoReal === "NO") {
         objetivo = "NO";
       } else if (tieneCrono === "NO") {
