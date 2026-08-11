@@ -58,7 +58,7 @@ function checkLoginRateLimit(ip: string): boolean {
 const MAX_BODY_BYTES = 16 * 1024; // 16 KB
 const LARGE_BODY_PATHS = ["/api/tareas", "/api/stock", "/api/calendario"]; // rutas con payloads más grandes
 const MAX_LARGE_BODY_BYTES = 256 * 1024; // 256 KB
-const UPLOAD_PATHS = ["/api/importar", "/api/actas", "/api/instructivos", "/api/chat/upload", "/api/personal", "/api/comentarios"]; // rutas con archivos
+const UPLOAD_PATHS = ["/api/importar", "/api/actas", "/api/instructivos", "/api/chat/upload", "/api/personal", "/api/comentarios", "/api/enriquecimiento"]; // rutas con archivos (enriquecimiento: subir la salida del extractor en Fase-1)
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 // Comentarios/notas de técnicos: permiten videos grandes (100 MB por archivo + holgura para multipart)
 const MAX_COMENTARIOS_BYTES = 120 * 1024 * 1024;

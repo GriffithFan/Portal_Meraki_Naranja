@@ -18,6 +18,10 @@ import { avisarAdminsFallo } from "@/lib/alertasAdmin";
 const EXTRACTOR_DIR = process.env.EXTRACTOR_DIR || "/var/www/carrot/extractor";
 const EXTRACTOR_PYTHON = process.env.EXTRACTOR_PYTHON || path.join(EXTRACTOR_DIR, ".venv/bin/python");
 const EXTRACTOR_SCRIPT = "extractor_datos_predio_incidencia.py";
+// Concurrencia de fetch del extractor. Con 8 Chrome headless a veces se satura y
+// Chrome crashea al lanzar (job ERROR, stack nativo). 4 es estable; overridable por
+// env para volver a subir sin redeploy. Ver memoria "enriquecer-workers-crash".
+const EXTRACTOR_WORKERS = process.env.ENRIQUECER_WORKERS || "4";
 const CREDS = ["SALESFORCE_URL_BASE", "SALESFORCE_USERNAME", "SALESFORCE_PASSWORD"] as const;
 
 // Los Excel de entrada/salida se conservan por corrida (auditoría + descarga).
@@ -114,7 +118,7 @@ export async function ejecutarExtraccion(
           "--output", outPath,
           "--predio-col", "Predio",
           "--incidencia-col", "Incidencia",
-          "--workers", "8",
+          "--workers", EXTRACTOR_WORKERS,
           "--no-page-cache",
         ],
         { cwd: EXTRACTOR_DIR, env }
