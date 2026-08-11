@@ -17,6 +17,7 @@ export interface TokenPayload {
   rol: string;
   nombre: string;
   esMesa?: boolean;
+  esCoordinador?: boolean;
 }
 
 // Sesión larga (30 días): los técnicos en campo usan la app de a ratos y se
@@ -54,7 +55,7 @@ export async function verifyToken(
  * (proceso único PM2). `invalidateSessionCache` lo refresca al instante.
  */
 const SESSION_CACHE_TTL = 30_000;
-type FreshUser = { activo: boolean; rol: string; nombre: string; esMesa: boolean };
+type FreshUser = { activo: boolean; rol: string; nombre: string; esMesa: boolean; esCoordinador: boolean };
 const sessionCache = new Map<string, { data: FreshUser; expiresAt: number }>();
 
 export function invalidateSessionCache(userId: string) {
@@ -68,13 +69,13 @@ async function getFreshUser(userId: string): Promise<FreshUser | null> {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { activo: true, rol: true, nombre: true, esMesa: true },
+    select: { activo: true, rol: true, nombre: true, esMesa: true, esCoordinador: true },
   });
   if (!user) {
     sessionCache.delete(userId);
     return null;
   }
-  const data: FreshUser = { activo: user.activo, rol: user.rol, nombre: user.nombre, esMesa: user.esMesa };
+  const data: FreshUser = { activo: user.activo, rol: user.rol, nombre: user.nombre, esMesa: user.esMesa, esCoordinador: user.esCoordinador };
   sessionCache.set(userId, { data, expiresAt: now + SESSION_CACHE_TTL });
   return data;
 }
@@ -93,7 +94,7 @@ export async function getSession(): Promise<TokenPayload | null> {
     // rol/esMesa/nombre autoritativos desde la BD (refleja cambios de rol al instante)
     // Atribuir las modificaciones de este request al usuario (auditoría automática).
     setAuditActor({ userId: payload.userId, nombre: fresh.nombre, rol: fresh.rol });
-    return { ...payload, rol: fresh.rol, esMesa: fresh.esMesa, nombre: fresh.nombre };
+    return { ...payload, rol: fresh.rol, esMesa: fresh.esMesa, esCoordinador: fresh.esCoordinador, nombre: fresh.nombre };
   } catch {
     // Ante un error transitorio de BD, no desloguear a todos: usar el token.
     setAuditActor({ userId: payload.userId, nombre: payload.nombre, rol: payload.rol });

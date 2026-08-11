@@ -20,12 +20,30 @@ export async function GET() {
   const usuarios = await prisma.user.findMany({
     where: { activo: true },
     select: {
-      id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true, thNumero: true,
+      id: true, nombre: true, email: true, rol: true, esMesa: true, esCoordinador: true, coordinadorId: true, twoFactorEnabled: true, thNumero: true,
     },
     orderBy: { nombre: "asc" },
   });
 
   return NextResponse.json(usuarios);
+}
+
+/**
+ * Valida un coordinadorId propuesto para un técnico: debe ser un usuario ACTIVO
+ * marcado como coordinador (`esCoordinador`) y no puede ser el propio usuario.
+ * Devuelve un mensaje de error o null si es válido. `""`/null = limpiar (válido).
+ */
+async function validarCoordinador(coordinadorId: unknown, selfId?: string): Promise<string | null> {
+  if (coordinadorId === undefined) return null;      // no se toca
+  if (coordinadorId === null || coordinadorId === "") return null; // limpiar
+  if (typeof coordinadorId !== "string") return "Coordinador inválido";
+  if (selfId && coordinadorId === selfId) return "Un usuario no puede ser su propio coordinador";
+  const coord = await prisma.user.findFirst({
+    where: { id: coordinadorId, activo: true, esCoordinador: true },
+    select: { id: true },
+  });
+  if (!coord) return "El coordinador elegido no existe o no está marcado como coordinador";
+  return null;
 }
 
 /**
@@ -39,11 +57,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { nombre, email, password, rol, esMesa } = body;
+    const { nombre, email, password, rol, esMesa, esCoordinador, coordinadorId } = body;
 
     if (!nombre?.trim() || !email?.trim() || !password?.trim()) {
       return NextResponse.json({ error: "Nombre, email y contraseña son obligatorios" }, { status: 400 });
     }
+
+    const errCoord = await validarCoordinador(coordinadorId);
+    if (errCoord) return NextResponse.json({ error: errCoord }, { status: 400 });
 
     if (password.trim().length < MIN_PASSWORD_LEN) {
       return NextResponse.json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LEN} caracteres` }, { status: 400 });
@@ -64,8 +85,10 @@ export async function POST(req: NextRequest) {
         password: hash,
         rol: ["ADMIN", "MODERADOR", "TECNICO", "USUARIO"].includes(rol) ? rol : "TECNICO",
         esMesa: esMesa === true,
+        esCoordinador: esCoordinador === true,
+        coordinadorId: typeof coordinadorId === "string" && coordinadorId ? coordinadorId : null,
       },
-      select: { id: true, nombre: true, email: true, rol: true, esMesa: true },
+      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, esCoordinador: true, coordinadorId: true },
     });
 
     return NextResponse.json(usuario, { status: 201 });
@@ -86,7 +109,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { userId, rol, password, esMesa, nombre, thNumero } = body;
+    const { userId, rol, password, esMesa, esCoordinador, coordinadorId, nombre, thNumero } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "userId requerido" }, { status: 400 });
@@ -96,6 +119,9 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No puedes cambiar tu propio rol" }, { status: 400 });
     }
 
+    const errCoord = await validarCoordinador(coordinadorId, userId);
+    if (errCoord) return NextResponse.json({ error: errCoord }, { status: 400 });
+
     const data: any = {};
 
     if (rol && ["ADMIN", "MODERADOR", "TECNICO", "USUARIO"].includes(rol)) {
@@ -104,6 +130,15 @@ export async function PATCH(req: NextRequest) {
 
     if (typeof esMesa === "boolean") {
       data.esMesa = esMesa;
+    }
+
+    if (typeof esCoordinador === "boolean") {
+      data.esCoordinador = esCoordinador;
+    }
+
+    // coordinadorId: null/"" limpia; string válido (ya validado) asigna.
+    if (coordinadorId !== undefined) {
+      data.coordinadorId = coordinadorId === null || coordinadorId === "" ? null : coordinadorId;
     }
 
     if (nombre?.trim()) {
@@ -144,7 +179,7 @@ export async function PATCH(req: NextRequest) {
     const updated = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, twoFactorEnabled: true, thNumero: true },
+      select: { id: true, nombre: true, email: true, rol: true, esMesa: true, esCoordinador: true, coordinadorId: true, twoFactorEnabled: true, thNumero: true },
     });
 
     // Refrescar la sesión del usuario afectado (rol/activo/password al instante)

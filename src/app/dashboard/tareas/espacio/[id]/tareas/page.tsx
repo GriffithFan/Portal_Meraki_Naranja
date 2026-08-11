@@ -205,7 +205,7 @@ export default function EspacioTareasPage() {
   const espacioId = params.id as string;
   const viewsScope = `espacio-${espacioId}`;
   const router = useRouter();
-  const { session, isModOrAdmin } = useSession();
+  const { session, isModOrAdmin, isCoordinador } = useSession();
   const confirm = useConfirm();
   const { headerSearch } = useSearchContext();
   const [selectedTareaId, setSelectedTareaId] = useState<string | null>(null);
@@ -2743,6 +2743,7 @@ export default function EspacioTareasPage() {
           tareaId={selectedTareaId}
           estados={estados}
           isModOrAdmin={isModOrAdmin}
+          isCoordinador={isCoordinador}
           onClose={() => setSelectedTareaId(null)}
           onUpdated={fetchData}
           onTareaPatched={(t) => setTareas(prev => prev.map(x => x.id === t.id ? { ...x, ...t } : x))}

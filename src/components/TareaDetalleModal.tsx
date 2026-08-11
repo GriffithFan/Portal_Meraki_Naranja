@@ -131,6 +131,7 @@ interface TareaDetalleModalProps {
   tareaId: string;
   estados: any[];
   isModOrAdmin: boolean;
+  isCoordinador?: boolean; // coordinador de equipo: puede (re)asignar a su equipo aunque no sea mod/admin
   onClose: () => void;
   onUpdated?: (options?: { page?: number; append?: boolean }) => void | Promise<void>; // callback para refrescar la lista (recarga completa)
   onTareaPatched?: (tarea: any) => void; // merge quirúrgico: actualiza solo esta tarea en la lista (sin recargar → sin parpadeo/pisadas)
@@ -204,6 +205,7 @@ export default function TareaDetalleModal({
   tareaId,
   estados,
   isModOrAdmin,
+  isCoordinador = false,
   onClose,
   onUpdated,
   onTareaPatched,
@@ -286,12 +288,28 @@ export default function TareaDetalleModal({
   }, [tarea?.id, tarea?.notasTecnico]);
 
   useEffect(() => {
-    if (!isModOrAdmin) return;
-    fetch("/api/catalogos/usuarios", { credentials: "include" })
-      .then((res) => res.ok ? res.json() : [])
-      .then((data) => setAllUsers(dedupeUsersByName(Array.isArray(data) ? data : [])))
-      .catch(() => setAllUsers([]));
-  }, [isModOrAdmin]);
+    if (isModOrAdmin) {
+      fetch("/api/catalogos/usuarios", { credentials: "include" })
+        .then((res) => res.ok ? res.json() : [])
+        .then((data) => setAllUsers(dedupeUsersByName(Array.isArray(data) ? data : [])))
+        .catch(() => setAllUsers([]));
+    } else if (isCoordinador) {
+      // Coordinador: solo puede asignar a su equipo (∪ él mismo).
+      fetch("/api/mi-equipo", { credentials: "include" })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (!data) { setAllUsers([]); return; }
+          const lista = [
+            ...(data.self ? [{ id: data.self.id, nombre: data.self.nombre }] : []),
+            ...((data.equipo || []) as Array<{ id: string; nombre: string }>).map((u) => ({ id: u.id, nombre: u.nombre })),
+          ];
+          setAllUsers(dedupeUsersByName(lista));
+        })
+        .catch(() => setAllUsers([]));
+    } else {
+      setAllUsers([]);
+    }
+  }, [isModOrAdmin, isCoordinador]);
 
   useEffect(() => {
     if (!tarea?.espacioId) {
@@ -974,7 +992,7 @@ export default function TareaDetalleModal({
                         <div key={`${f.id}:${f.field}`} className="flex items-center gap-3 px-3 py-2">
                           <span className="text-[11px] text-surface-400 w-24 shrink-0">{f.label}</span>
                           <div className="flex items-center flex-1 min-w-0">
-                          {isModOrAdmin && f.editable ? (
+                          {(isModOrAdmin && f.editable) || (isCoordinador && isAssignmentField(f)) ? (
                             isAssignmentField(f) ? (
                               <div className="flex-1 space-y-1.5">
                                 <div className="flex flex-wrap gap-1">

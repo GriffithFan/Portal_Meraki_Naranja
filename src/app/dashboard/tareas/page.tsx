@@ -180,7 +180,7 @@ function sortTareasList<T extends Record<string, any>>(list: T[], sortConfig: So
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
 export default function TareasPage() {
-  const { session, isModOrAdmin } = useSession();
+  const { session, isModOrAdmin, isCoordinador } = useSession();
   const confirm = useConfirm();
   const { headerSearch } = useSearchContext();
   const [tareas, setTareas] = useState<any[]>([]);
@@ -2680,6 +2680,7 @@ export default function TareasPage() {
           tareaId={selectedTarea.id}
           estados={estados}
           isModOrAdmin={isModOrAdmin}
+          isCoordinador={isCoordinador}
           onClose={closeDetail}
           onUpdated={fetchTareas}
           onTareaPatched={(t) => setTareas(prev => prev.map(x => x.id === t.id ? { ...x, ...t } : x))}

@@ -63,12 +63,24 @@ export function isClosedStateForTecnico(estado: Pick<EstadoRecord, "nombre" | "c
 }
 
 export async function getDelegatedVisibleUserIds(session: SessionLike) {
-  const delegaciones = await prisma.delegacion.findMany({
-    where: { delegadoId: session.userId, activo: true },
-    select: { delegadorId: true },
-  });
+  const [delegaciones, equipo] = await Promise.all([
+    prisma.delegacion.findMany({
+      where: { delegadoId: session.userId, activo: true },
+      select: { delegadorId: true },
+    }),
+    // Coordinador de equipo: ve además los predios de SUS técnicos (los que tienen
+    // coordinadorId = él). Un técnico normal no coordina a nadie → lista vacía.
+    prisma.user.findMany({
+      where: { coordinadorId: session.userId, activo: true },
+      select: { id: true },
+    }),
+  ]);
 
-  return [session.userId, ...delegaciones.map((delegacion) => delegacion.delegadorId)];
+  return [
+    session.userId,
+    ...delegaciones.map((delegacion) => delegacion.delegadorId),
+    ...equipo.map((tecnico) => tecnico.id),
+  ];
 }
 
 export function buildAssignedPredioVisibilityClause(userIds: string[]) {

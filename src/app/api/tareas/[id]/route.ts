@@ -7,11 +7,18 @@ import { getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 import { lanzarPredioEnSalesforce } from "@/lib/salesforce/lanzarPredio";
 
 async function delegatedUserIds(userId: string): Promise<string[]> {
-  const delegaciones = await prisma.delegacion.findMany({
-    where: { delegadoId: userId, activo: true },
-    select: { delegadorId: true },
-  });
-  return [userId, ...delegaciones.map((d) => d.delegadorId)];
+  const [delegaciones, equipo] = await Promise.all([
+    prisma.delegacion.findMany({
+      where: { delegadoId: userId, activo: true },
+      select: { delegadorId: true },
+    }),
+    // Coordinador: incluye a los técnicos de su equipo (coordinadorId = él).
+    prisma.user.findMany({
+      where: { coordinadorId: userId, activo: true },
+      select: { id: true },
+    }),
+  ]);
+  return [userId, ...delegaciones.map((d) => d.delegadorId), ...equipo.map((t) => t.id)];
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -329,12 +336,33 @@ export async function PATCH(
     const bodyAny = body as Record<string, unknown>;
 
     // Usuarios normales: solo estado, observaciones y el flag de +20 AP.
+    // Un COORDINADOR además puede (re)asignar sus predios a los técnicos de su equipo.
     if (!isModOrAdmin(session.rol)) {
       const allowedFields = ["estadoId", "notasTecnico", "camposExtra"];
+      if (session.esCoordinador) allowedFields.push("asignadoIds");
       const requestedFields = Object.keys(bodyAny).filter(k => bodyAny[k] !== undefined);
       const forbidden = requestedFields.filter(f => !allowedFields.includes(f));
       if (forbidden.length > 0) {
         return NextResponse.json({ error: "Sin permisos para editar estos campos" }, { status: 403 });
+      }
+
+      // Coordinador asignando: los destinos deben ser de SU equipo (∪ él mismo) y no vacío
+      // (para no dejar el predio huérfano y fuera de su alcance). El predio ya está
+      // validado como visible para él por el guard de acceso de más arriba.
+      if (session.esCoordinador && bodyAny.asignadoIds !== undefined) {
+        const targets = Array.isArray(bodyAny.asignadoIds) ? (bodyAny.asignadoIds as unknown[]) : [];
+        if (targets.length === 0) {
+          return NextResponse.json({ error: "Asigná el predio a al menos un técnico de tu equipo (o a vos mismo)" }, { status: 400 });
+        }
+        const equipo = await prisma.user.findMany({
+          where: { coordinadorId: session.userId, activo: true },
+          select: { id: true },
+        });
+        const permitidos = new Set<string>([session.userId, ...equipo.map((u) => u.id)]);
+        const invalidos = targets.filter((t) => typeof t !== "string" || !permitidos.has(t));
+        if (invalidos.length > 0) {
+          return NextResponse.json({ error: "Solo podés asignar a técnicos de tu equipo" }, { status: 403 });
+        }
       }
 
       // No puede MOVER la tarea a un estado que tiene oculto (p.ej. CONFORME):

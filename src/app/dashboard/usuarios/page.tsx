@@ -11,6 +11,8 @@ interface Usuario {
   email: string;
   rol: "ADMIN" | "MODERADOR" | "TECNICO" | "USUARIO";
   esMesa?: boolean;
+  esCoordinador?: boolean;
+  coordinadorId?: string | null;
   twoFactorEnabled?: boolean;
   thNumero?: number | null;
 }
@@ -82,12 +84,16 @@ export default function UsuariosPage() {
   const [crearPassword, setCrearPassword] = useState("");
   const [crearRol, setCrearRol] = useState<Usuario["rol"]>("TECNICO");
   const [crearEsMesa, setCrearEsMesa] = useState(false);
+  const [crearEsCoordinador, setCrearEsCoordinador] = useState(false);
+  const [crearCoordinadorId, setCrearCoordinadorId] = useState("");
   const [crearError, setCrearError] = useState<string | null>(null);
   const [savingCrear, setSavingCrear] = useState(false);
 
   // Editar usuario (expandido)
   const [editPassword, setEditPassword] = useState("");
   const [editEsMesa, setEditEsMesa] = useState(false);
+  const [editEsCoordinador, setEditEsCoordinador] = useState(false);
+  const [editCoordinadorId, setEditCoordinadorId] = useState("");
   const [editNombre, setEditNombre] = useState("");
   const [editThNumero, setEditThNumero] = useState("");
 
@@ -162,6 +168,8 @@ export default function UsuariosPage() {
     setNuevoRol(u.rol);
     setEditPassword("");
     setEditEsMesa(u.esMesa || false);
+    setEditEsCoordinador(u.esCoordinador || false);
+    setEditCoordinadorId(u.coordinadorId || "");
     setEditNombre(u.nombre);
     setEditThNumero(u.thNumero ? String(u.thNumero) : "");
     setError(null);
@@ -175,6 +183,8 @@ export default function UsuariosPage() {
       const body: Record<string, unknown> = { userId: editando.id };
       if (nuevoRol !== editando.rol) body.rol = nuevoRol;
       if (editEsMesa !== (editando.esMesa || false)) body.esMesa = editEsMesa;
+      if (editEsCoordinador !== (editando.esCoordinador || false)) body.esCoordinador = editEsCoordinador;
+      if ((editCoordinadorId || "") !== (editando.coordinadorId || "")) body.coordinadorId = editCoordinadorId || null;
       if (editNombre.trim() && editNombre.trim() !== editando.nombre) body.nombre = editNombre.trim();
       if (editPassword.trim()) body.password = editPassword.trim();
       const nuevoTh = editThNumero ? Number(editThNumero) : null;
@@ -214,6 +224,8 @@ export default function UsuariosPage() {
           password: crearPassword.trim(),
           rol: crearRol,
           esMesa: crearEsMesa,
+          esCoordinador: crearEsCoordinador,
+          coordinadorId: crearCoordinadorId || null,
         }),
       });
       if (!res.ok) {
@@ -228,6 +240,8 @@ export default function UsuariosPage() {
       setCrearPassword("");
       setCrearRol("TECNICO");
       setCrearEsMesa(false);
+      setCrearEsCoordinador(false);
+      setCrearCoordinadorId("");
     } catch (e) {
       setCrearError(e instanceof Error ? e.message : "Error desconocido");
     } finally {
@@ -391,6 +405,7 @@ export default function UsuariosPage() {
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${cfg.bg}`}>{u.rol}</span>
                           {u.thNumero && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 bg-orange-50 text-orange-700 border-orange-200 tabular-nums">{formatTh(u.thNumero)}</span>}
                           {u.esMesa && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
+                          {u.esCoordinador && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-purple-50 text-purple-700 border-purple-200">Coord.</span>}
                           {esMiUsuario && <span className="text-[10px] text-surface-400">(tú)</span>}
                         </div>
                         <p className="text-xs text-surface-500 mt-0.5 truncate">{u.email}</p>
@@ -452,6 +467,7 @@ export default function UsuariosPage() {
                         <td className="px-2.5 py-2.5">
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${cfg.bg}`}>{u.rol}</span>
                           {u.esMesa && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
+                          {u.esCoordinador && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-purple-50 text-purple-700 border-purple-200">Coord.</span>}
                         </td>
                         <td className="px-2.5 py-2.5">
                           {u.thNumero ? (
@@ -808,6 +824,21 @@ export default function UsuariosPage() {
                   className="rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
                 <span className="text-sm text-surface-700">Es Mesa de ayuda</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={crearEsCoordinador} onChange={e => setCrearEsCoordinador(e.target.checked)}
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
+                <span className="text-sm text-surface-700">Es coordinador de equipo</span>
+              </label>
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">
+                  Coordinador <span className="text-surface-400 font-normal">(si es técnico de un equipo)</span>
+                </label>
+                <select value={crearCoordinadorId} onChange={e => setCrearCoordinadorId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none">
+                  <option value="">Sin coordinador</option>
+                  {usuarios.filter(u => u.esCoordinador).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                </select>
+              </div>
             </div>
 
             {crearError && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2 mb-3">{crearError}</p>}
@@ -898,6 +929,23 @@ export default function UsuariosPage() {
                   className="rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
                 <span className="text-sm text-surface-700">Es Mesa de ayuda</span>
               </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={editEsCoordinador} onChange={e => setEditEsCoordinador(e.target.checked)}
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
+                <span className="text-sm text-surface-700">Es coordinador de equipo</span>
+              </label>
+
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">
+                  Coordinador <span className="text-surface-400 font-normal">(si es técnico de un equipo)</span>
+                </label>
+                <select value={editCoordinadorId} onChange={e => setEditCoordinadorId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-200 bg-white focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none">
+                  <option value="">Sin coordinador</option>
+                  {usuarios.filter(u => u.esCoordinador && u.id !== editando?.id).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                </select>
+              </div>
 
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">

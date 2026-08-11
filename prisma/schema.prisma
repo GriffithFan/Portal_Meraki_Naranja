@@ -30,6 +30,7 @@ model User {
   password      String
   rol           Role     @default(TECNICO)
   esMesa    Boolean  @default(false) // Rol secundario: puede atender consultas en Mesa de Ayuda
+  esCoordinador Boolean @default(false) // Coordinador de equipo: puede asignar SUS predios a los técnicos de su equipo (rol secundario, como esMesa)
   activo    Boolean  @default(true)
   tecnicoActivo Boolean @default(false) // Marca de técnico que TRABAJA hoy (los ~12 activos); los demás se conservan por estadística
   tecnicoDesde  DateTime?               // Fecha de inicio productivo (para técnicos nuevos: evaluar ramp 6+/7+)
@@ -40,6 +41,13 @@ model User {
   twoFactorSecret  String?                 // Secret TOTP (base32); null si no configurado
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Equipo (coordinador regional ↔ sus técnicos). Un técnico apunta a su coordinador.
+  coordinadorId String?
+  coordinador   User?   @relation("Equipo", fields: [coordinadorId], references: [id], onDelete: SetNull)
+  equipo        User[]  @relation("Equipo")
+
+  @@index([coordinadorId])
 
   prediosCreados      Predio[]          @relation("CreadorPredio")
   asignaciones        Asignacion[]

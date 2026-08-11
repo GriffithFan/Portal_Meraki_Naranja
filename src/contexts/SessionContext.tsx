@@ -7,6 +7,7 @@ interface Session {
   rol: string;
   nombre: string;
   esMesa?: boolean;
+  esCoordinador?: boolean;
 }
 
 interface SessionContextType {
@@ -15,6 +16,7 @@ interface SessionContextType {
   isModOrAdmin: boolean;
   isAdmin: boolean;
   isMesa: boolean;
+  isCoordinador: boolean;
 }
 
 const SessionContext = createContext<SessionContextType | null>(null);
@@ -52,7 +54,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const isModOrAdmin = session?.rol === "ADMIN" || session?.rol === "MODERADOR";
     const isAdmin = session?.rol === "ADMIN";
     const isMesa = session?.esMesa === true;
-    return { session, loading, isModOrAdmin, isAdmin, isMesa };
+    const isCoordinador = session?.esCoordinador === true;
+    return { session, loading, isModOrAdmin, isAdmin, isMesa, isCoordinador };
   }, [session, loading]);
 
   return (
