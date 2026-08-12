@@ -41,6 +41,7 @@ export interface PredioActual {
   fechaHasta: Date | null;
   lacR: string | null;
   notas: string | null;
+  descripcion: string | null;
   tipoIncidencia: string | null;
   cantidadCronogramas: number | null;
   camposExtra: Record<string, any> | null;
@@ -218,7 +219,7 @@ export function planificarEnriquecimiento(
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
     ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
-    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0, cantidadCronogramas: 0, conforme: 0,
+    aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, descripcion: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0, cantidadCronogramas: 0, conforme: 0,
   };
   // ── Regla LAC-R según el TILDE "Activo" REAL del último cronograma ──
   // El tilde manda en todo: Activo ✓ → "SI", sin tilde (o sin cronograma) → "NO".
@@ -295,6 +296,15 @@ export function planificarEnriquecimiento(
       upd.tipoIncidencia = tipoRep;
       previos.tipoIncidencia = p.tipoIncidencia ?? null;
       stats.tipoIncidencia++;
+    }
+
+    // Descripción de la incidencia (la orden de trabajo de Mined): se actualiza al
+    // valor real de SF si viene con contenido (no la borra si SF llega vacía).
+    const descRep = g(fila, "Incidencia_Descripcion").trim();
+    if (descRep && descRep !== cur("descripcion")) {
+      upd.descripcion = descRep;
+      previos.descripcion = p.descripcion ?? null;
+      stats.descripcion++;
     }
 
     // Cantidad de cronogramas originados de la incidencia (del extractor). Crítico

@@ -839,6 +839,22 @@ export default function TareaDetalleModal({
   const notasTecnicoDirty = notasTecnicoDraft !== String(tarea?.notasTecnico || "");
   const mas20ApValue = normalizeMas20Ap(tarea?.camposExtra?.[MAS_20_AP_KEY]);
 
+  // Descripción de la incidencia (de Mined/Salesforce). Se muestra como sección
+  // fija (independiente de la config del espacio, así es igual en todo Predios 2026
+  // y en la vista general): debajo de Notas, o primero si no hay notas.
+  const hayNotas = String(tarea?.notas || "").trim().length > 0;
+  const descripcionTxt = String(tarea?.descripcion || "").trim();
+  const descripcionSection = descripcionTxt ? (
+    <div className="border border-surface-200 rounded-lg">
+      <div className="px-3 py-2 border-b border-surface-100">
+        <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">
+          Descripción
+        </span>
+      </div>
+      <p className="text-xs text-surface-600 p-3 whitespace-pre-wrap">{descripcionTxt}</p>
+    </div>
+  ) : null;
+
   // ── Render ──────────────────────────────
   const isDrawer = variant === "drawer";
 
@@ -1135,6 +1151,9 @@ export default function TareaDetalleModal({
                     </>
                   )}
 
+                  {/* Descripción — primero si no hay notas */}
+                  {!hayNotas && descripcionSection}
+
                   {/* Notas */}
                   {showNotasSection && (
                   <div className="border border-surface-200 rounded-lg">
@@ -1160,6 +1179,9 @@ export default function TareaDetalleModal({
                     )}
                   </div>
                   )}
+
+                  {/* Descripción — debajo de Notas si hay notas */}
+                  {hayNotas && descripcionSection}
 
                   {/* Observaciones del técnico */}
                   <div className="border border-surface-200 rounded-lg">

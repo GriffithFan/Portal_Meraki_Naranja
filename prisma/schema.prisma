@@ -165,6 +165,7 @@ model Predio {
 
   // ── Campos del Cronograma (estilo ClickUp) ──
   incidencias       String?   // Código de incidencias (NI-000135...)
+  descripcion       String?   @db.Text // "Descripción" de la incidencia en Mined/Salesforce (la orden de trabajo). Se llena al enriquecer.
   tipoIncidencia    String?   // "Tipo de Incidencia" de Salesforce (normal "Mantenimiento / Reparacion"; otros = tarea especial → badge)
   cantidadCronogramas Int?    // Cronogramas originados de la incidencia (del enriquecimiento). +3 en SIN ASIGNAR = crítico
   lacR              String?   // SI/NO
