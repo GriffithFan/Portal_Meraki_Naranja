@@ -387,37 +387,47 @@ export default function ActasPage() {
     return URL.createObjectURL(await res.blob());
   }
 
-  function imprimirBlob(blobUrl: string): Promise<void> {
-    return new Promise((resolve) => {
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-      iframe.src = blobUrl;
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch {
-          toast.error("El navegador bloqueó la impresión");
-        }
-        // dar tiempo al diálogo antes de soltar el iframe/blob
-        setTimeout(() => {
-          iframe.remove();
-          URL.revokeObjectURL(blobUrl);
-          resolve();
-        }, 60000);
-        setTimeout(resolve, 1200);
-      };
-      document.body.appendChild(iframe);
-    });
+  /**
+   * Manda el PDF a la impresora. Chrome NO deja llamar print() sobre un PDF dentro
+   * de un iframe (su visor corre aislado y tira SecurityError), así que se usa una
+   * pestaña: se abre en el mismo clic (si no, el bloqueador de pop-ups la mata),
+   * se le carga el PDF y se dispara la impresión desde ahí. Si el navegador igual
+   * no deja, la pestaña queda abierta con el acta para imprimir con Ctrl+P.
+   */
+  function imprimirEnVentana(win: Window | null, blobUrl: string, nombre: string) {
+    if (!win) {
+      // pop-up bloqueado: al menos dejamos el PDF accesible
+      window.open(blobUrl, "_blank");
+      toast.warning("Permití las ventanas emergentes para imprimir directo. Abrí el acta y usá Ctrl+P.");
+      return;
+    }
+    win.location.href = blobUrl;
+    const disparar = () => {
+      try {
+        win.focus();
+        win.print();
+      } catch {
+        toast.info(`"${nombre}" quedó abierta en otra pestaña: imprimí con Ctrl+P`);
+      }
+    };
+    // el visor de PDF tarda un toque en montar; probamos en load y con respaldo por tiempo
+    try { win.addEventListener("load", () => setTimeout(disparar, 400)); } catch { /* cross-origin */ }
+    setTimeout(disparar, 1500);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
   }
 
   async function imprimirActa(acta: any) {
     if (printLoadingId) return;
+    // se abre YA, dentro del gesto del clic, para que no la bloquee el navegador
+    const win = window.open("", "_blank");
+    if (win) win.document.write("<p style='font:14px system-ui;padding:16px'>Preparando el acta para imprimir…</p>");
     setPrintLoadingId(acta.id);
     try {
       const url = await pdfBlobUrl(acta);
-      if (url) await imprimirBlob(url);
+      if (!url) { win?.close(); return; }
+      imprimirEnVentana(win, url, acta.nombre || acta.archivoNombre);
     } catch {
+      win?.close();
       toast.error("No se pudo imprimir el acta");
     } finally {
       setPrintLoadingId(null);
@@ -427,15 +437,19 @@ export default function ActasPage() {
   async function imprimirSeleccionadas() {
     const lista = actas.filter((a: any) => selected.has(a.id));
     if (!lista.length) return;
+    if (lista.length > 10 &&
+        !window.confirm(`Vas a abrir ${lista.length} pestañas de impresión, una por acta. ¿Seguimos?`)) return;
     setPrintLoadingId("bulk");
-    toast.info(`Preparando ${lista.length} acta${lista.length !== 1 ? "s" : ""} para imprimir…`);
+    toast.info(`Preparando ${lista.length} acta${lista.length !== 1 ? "s" : ""}…`);
     let ok = 0;
     try {
       for (const a of lista) {
+        const win = window.open("", "_blank");   // una pestaña por acta
         const url = await pdfBlobUrl(a);
-        if (!url) continue;
-        await imprimirBlob(url);       // un diálogo por acta, en orden
+        if (!url) { win?.close(); continue; }
+        imprimirEnVentana(win, url, a.nombre || a.archivoNombre);
         ok++;
+        await new Promise((r) => setTimeout(r, 900)); // no encimar los diálogos
       }
       if (ok) toast.success(`${ok} acta${ok !== 1 ? "s" : ""} enviada${ok !== 1 ? "s" : ""} a imprimir`);
     } finally {
