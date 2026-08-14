@@ -367,6 +367,82 @@ export default function ActasPage() {
     }
   }
 
+  // ── IMPRIMIR (solo ADMIN) ──────────────────────────────
+  // Trae el acta como PDF (los Word se convierten con OnlyOffice), la carga en un
+  // iframe oculto y abre el diálogo de impresión ya apuntando a ese documento.
+  // El navegador SIEMPRE muestra el diálogo (no se puede saltear por seguridad);
+  // con Chrome en modo --kiosk-printing sale directo a la impresora por defecto.
+  const [printLoadingId, setPrintLoadingId] = useState<string | null>(null);
+
+  async function pdfBlobUrl(acta: any): Promise<string | null> {
+    const url = esPdf(acta)
+      ? `/api/actas/${acta.id}?inline=true`   // ya es PDF: se sirve tal cual
+      : `/api/actas/${acta.id}/pdf?inline=1`; // Word/ODT: lo convierte OnlyOffice
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) {
+      const msg = await res.json().catch(() => ({}));
+      toast.error(msg?.error || `No se pudo preparar "${acta.nombre}" para imprimir`);
+      return null;
+    }
+    return URL.createObjectURL(await res.blob());
+  }
+
+  function imprimirBlob(blobUrl: string): Promise<void> {
+    return new Promise((resolve) => {
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+      iframe.src = blobUrl;
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          toast.error("El navegador bloqueó la impresión");
+        }
+        // dar tiempo al diálogo antes de soltar el iframe/blob
+        setTimeout(() => {
+          iframe.remove();
+          URL.revokeObjectURL(blobUrl);
+          resolve();
+        }, 60000);
+        setTimeout(resolve, 1200);
+      };
+      document.body.appendChild(iframe);
+    });
+  }
+
+  async function imprimirActa(acta: any) {
+    if (printLoadingId) return;
+    setPrintLoadingId(acta.id);
+    try {
+      const url = await pdfBlobUrl(acta);
+      if (url) await imprimirBlob(url);
+    } catch {
+      toast.error("No se pudo imprimir el acta");
+    } finally {
+      setPrintLoadingId(null);
+    }
+  }
+
+  async function imprimirSeleccionadas() {
+    const lista = actas.filter((a: any) => selected.has(a.id));
+    if (!lista.length) return;
+    setPrintLoadingId("bulk");
+    toast.info(`Preparando ${lista.length} acta${lista.length !== 1 ? "s" : ""} para imprimir…`);
+    let ok = 0;
+    try {
+      for (const a of lista) {
+        const url = await pdfBlobUrl(a);
+        if (!url) continue;
+        await imprimirBlob(url);       // un diálogo por acta, en orden
+        ok++;
+      }
+      if (ok) toast.success(`${ok} acta${ok !== 1 ? "s" : ""} enviada${ok !== 1 ? "s" : ""} a imprimir`);
+    } finally {
+      setPrintLoadingId(null);
+    }
+  }
+
   // Aceptar un archivo soltado (drag & drop) en el modal de subida.
   function aceptarArchivo(file: File | undefined | null) {
     if (!file) return;
@@ -559,6 +635,17 @@ export default function ActasPage() {
             <>
               <span className="text-xs text-surface-400">|</span>
               <span className="text-xs font-medium text-primary-600">{selected.size} seleccionada{selected.size !== 1 ? "s" : ""}</span>
+              {isAdmin && (
+                <button
+                  onClick={imprimirSeleccionadas}
+                  disabled={printLoadingId !== null}
+                  className="px-2.5 py-1 text-xs text-surface-700 hover:bg-surface-100 rounded-md transition-colors font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-wait"
+                  title="Imprimir las actas seleccionadas, una tras otra"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" /></svg>
+                  {printLoadingId === "bulk" ? "Imprimiendo…" : "Imprimir seleccionadas"}
+                </button>
+              )}
               <button onClick={requestDeleteSelected} className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded-md transition-colors font-medium flex items-center gap-1">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
                 Eliminar seleccionadas
@@ -644,6 +731,19 @@ export default function ActasPage() {
                         title="Descargar como PDF (convierte el Word a PDF)"
                       >
                         {pdfLoadingId === a.id ? "Generando…" : "PDF"}
+                      </button>
+                    )}
+                    {isAdmin && (esPdf(a) || esWord(a)) && (
+                      <button
+                        onClick={() => imprimirActa(a)}
+                        disabled={printLoadingId !== null}
+                        className="px-3 py-1.5 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-wait inline-flex items-center gap-1.5"
+                        title="Imprimir esta acta (solo administradores)"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                        </svg>
+                        {printLoadingId === a.id ? "Preparando…" : "Imprimir"}
                       </button>
                     )}
                     {isAdmin && /\.(docx|doc|odt|xlsx|xls|pptx|ppt)$/i.test(a.archivoNombre || "") && (

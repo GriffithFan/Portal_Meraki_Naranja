@@ -14,6 +14,8 @@ export async function GET(
 ) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  // ?inline=1 → se muestra en el visor/iframe en vez de descargarse (para imprimir).
+  const inline = _request.nextUrl.searchParams.get("inline") === "1";
 
   const { id } = await params;
   const acta = await prisma.acta.findUnique({ where: { id } });
@@ -63,7 +65,7 @@ export async function GET(
     return new NextResponse(buf, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(nombrePdf)}"`,
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(nombrePdf)}"`,
         "Content-Length": String(buf.length),
         "X-Content-Type-Options": "nosniff",
       },
