@@ -39,8 +39,8 @@ export async function GET(request: NextRequest) {
         enviarPushYBandeja(a.id, {
           tipo: "KPI_MANTENIMIENTO",
           titulo: "Indicador semanal listo para enviar",
-          mensaje: `Semana ${datos.ultima.etiqueta}: ${resumen}. El Excel y el texto del correo están en Reportes.`,
-          enlace: "/dashboard/facturacion",
+          mensaje: `Semana ${datos.ultima.etiqueta}: ${resumen}. Entrá para descargar el Excel y copiar el texto del correo.`,
+          enlace: "/dashboard/indicador",
           entidad: "KPI",
           entidadId: datos.ultima.desde,
           tag: `kpi-${datos.ultima.desde}`,
