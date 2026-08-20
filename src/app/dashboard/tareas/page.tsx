@@ -1577,6 +1577,12 @@ export default function TareasPage() {
   };
 
   const ALWAYS_VISIBLE_COLS = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion"]), []);
+  // Cambia cuando el layout vertical se movio (grupos abiertos/cerrados, filas nuevas):
+  // los cuerpos virtualizados lo usan para volver a medir su posicion dentro del
+  // contenedor que scrollea.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const layoutToken = useMemo(() => ({}), [expandedSections, groupCounts, tareas.length]);
+
   // Token que invalida el memo de TODAS las filas cuando cambia algo transversal
   // a las celdas (columnas, ancho mientras se arrastra, catalogo de usuarios).
   // eslint-disable-next-line react-hooks/exhaustive-deps -- token de version a proposito:
@@ -2520,6 +2526,7 @@ export default function TareasPage() {
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
+                            layoutToken={layoutToken}
                             colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
                           />
                         </table>
@@ -2611,6 +2618,7 @@ export default function TareasPage() {
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
+                            layoutToken={layoutToken}
                             colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
                           />
                   </table>
@@ -2618,9 +2626,11 @@ export default function TareasPage() {
                     <button
                       onClick={() => showMoreGroup("sin-estado", groupedTareas["sin-estado"].length)}
                       disabled={groupLoadState["sin-estado"] === "loading"}
-                      className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium disabled:opacity-50"
+                      className={`${groupPages["sin-estado"]?.hasMore ? "" : "md:hidden"} w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium disabled:opacity-50`}
                     >
-                      {groupLoadState["sin-estado"] === "loading" ? "Cargando…" : "Mostrar más"}
+                      {groupLoadState["sin-estado"] === "loading"
+                        ? "Cargando…"
+                        : groupPages["sin-estado"]?.hasMore ? "Cargar más" : "Mostrar más"}
                     </button>
                   )}
                 </div>
@@ -2662,6 +2672,7 @@ export default function TareasPage() {
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
+                            layoutToken={layoutToken}
                             colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
                           />
                       </table>
@@ -2702,6 +2713,7 @@ export default function TareasPage() {
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
+                            layoutToken={layoutToken}
                             colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
                           />
                 </table>

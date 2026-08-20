@@ -1,6 +1,6 @@
 "use client";
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconTrash } from "@/components/ui/Icons";
 import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
 
@@ -104,12 +104,14 @@ export const FilaTarea = memo(function FilaTarea({
  * solo existen las que entran en pantalla (mas un margen). El alto que falta se
  * rellena con dos filas espaciadoras, para que la barra de scroll siga siendo la real.
  *
- * Usa el scroll de la VENTANA (no un contenedor propio) para no romper la pantalla:
- * la pagina sigue scrolleando entera y cada grupo calcula su ventana con
- * `scrollMargin`, que es su distancia al tope del documento.
+ * OJO: en esta pantalla la ventana NO scrollea. El layout de tareas mete el contenido
+ * en `<div class="flex-1 overflow-y-auto">` (ver dashboard/tareas/layout.tsx), asi que
+ * el scroll pasa ahi adentro. Por eso se busca el ancestro que realmente scrollea en
+ * vez de asumir la ventana: apuntando al elemento equivocado el virtualizador no se
+ * entera de nada y cada grupo se queda mostrando siempre sus primeras filas.
  */
 export function CuerpoTareasVirtual({
-  items, visibleColumns, acciones, isModOrAdmin, esAdmin, selectedIds, cellVersion, colSpan,
+  items, visibleColumns, acciones, isModOrAdmin, esAdmin, selectedIds, cellVersion, colSpan, layoutToken,
 }: {
   items: any[];
   visibleColumns: ColumnaTabla[];
@@ -119,8 +121,11 @@ export function CuerpoTareasVirtual({
   selectedIds: Set<string>;
   cellVersion: unknown;
   colSpan: number;
+  /** Cambia cuando el layout de arriba se movio (grupos abiertos/cerrados, filas nuevas). */
+  layoutToken?: unknown;
 }) {
   const contenedorRef = useRef<HTMLTableSectionElement>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
   const [offset, setOffset] = useState(0);
 
   // Distancia del tbody al tope del documento. Se recalcula cuando cambia la cantidad
@@ -128,16 +133,29 @@ export function CuerpoTareasVirtual({
   useLayoutEffect(() => {
     const el = contenedorRef.current;
     if (!el) return;
+
+    // Ancestro que realmente scrollea. Si no hay ninguno, la pagina scrollea sola.
+    let ancestro: HTMLElement | null = el.parentElement;
+    while (ancestro) {
+      const cs = getComputedStyle(ancestro);
+      if (/auto|scroll/.test(cs.overflowY)) break;
+      ancestro = ancestro.parentElement;
+    }
+    const cont = ancestro ?? (document.scrollingElement as HTMLElement);
+    setScrollEl((prev) => (prev === cont ? prev : cont));
+
+    // Distancia del tbody al tope del CONTENIDO del contenedor (no de la pantalla),
+    // que es lo que espera `scrollMargin`. No cambia al scrollear; si cuando se abre
+    // o cierra un grupo de arriba, por eso el layoutToken.
     let pendiente = false;
     const medir = () => {
-      const y = el.getBoundingClientRect().top + window.scrollY;
+      const y = el.getBoundingClientRect().top - cont.getBoundingClientRect().top + cont.scrollTop;
       // Solo se toca el estado si de verdad se movio: sin esta guarda, medir ->
       // render -> medir seria un bucle.
       setOffset((prev) => (Math.abs(prev - y) < 1 ? prev : y));
     };
-    // `getBoundingClientRect` fuerza layout. El alto del body cambia cada vez que se
-    // abre o cierra un grupo, y hay un observador por grupo: se agrupan en un frame
-    // para no encadenar una medicion por grupo y por mutacion.
+    // `getBoundingClientRect` fuerza layout, y hay un medidor por grupo: se agrupan
+    // en un frame para no encadenar una medicion por grupo y por cambio.
     const medirDiferido = () => {
       if (pendiente) return;
       pendiente = true;
@@ -145,12 +163,13 @@ export function CuerpoTareasVirtual({
     };
     medir();
     const ro = new ResizeObserver(medirDiferido);
-    ro.observe(document.body);
+    ro.observe(cont);
     return () => ro.disconnect();
-  }, [items.length, visibleColumns]);
+  }, [items.length, visibleColumns, layoutToken]);
 
-  const virtualizer = useWindowVirtualizer({
+  const virtualizer = useVirtualizer({
     count: items.length,
+    getScrollElement: () => scrollEl,
     estimateSize: () => ALTO_FILA,
     overscan: 10,
     scrollMargin: offset,
