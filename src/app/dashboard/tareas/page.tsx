@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash, IconDownload } from "@/components/ui/Icons";
@@ -9,6 +9,7 @@ import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/compone
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import FloatingHScrollbar from "@/components/tareas/FloatingHScrollbar";
+import { CuerpoTareasVirtual, type AccionesFila } from "@/components/tareas/TablaTareas";
 import CreateTareaModal from "@/components/tareas/CreateTareaModal";
 import SavedViewsBar from "@/components/tareas/SavedViewsBar";
 import RegionFilter from "@/components/tareas/RegionFilter";
@@ -96,8 +97,10 @@ const SERVER_PAGE_SIZE = 1000;
 // navegador, cada estado pide sus propias filas. Asi la pantalla no depende de
 // cuantos predios haya en total.
 const GROUP_PAGE_SIZE = 300;   // filas que pide un grupo por request
-const AUTO_EXPAND_MAX = 250;   // un grupo mas grande que esto nunca se abre solo
-const AUTO_EXPAND_BUDGET = 300; // tope de filas que se abren solas entre TODOS los grupos
+// Con las filas virtualizadas el costo de dibujar ya no depende de cuantas haya,
+// asi que estos topes son por el peso del JSON y no por el render.
+const AUTO_EXPAND_MAX = 300;   // un grupo mas grande que esto nunca se abre solo
+const AUTO_EXPAND_BUDGET = 600; // tope de filas que se abren solas entre TODOS los grupos
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -185,93 +188,6 @@ function sortTareasList<T extends Record<string, any>>(list: T[], sortConfig: So
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
-
-/**
- * Una fila de la tabla, memoizada.
- *
- * La pantalla renderiza varios cientos de filas x ~14 columnas. Sin memo, CUALQUIER
- * cambio de estado del componente padre (tipear en el buscador, tildar una fila,
- * "mostrar mas", abrir un grupo) volvia a construir todas las celdas y la tabla se
- * arrastraba. Ahora una fila solo se re-renderiza si cambian sus propios datos.
- *
- * Los handlers viajan en un ref (`acciones`) en vez de como props: asi su identidad
- * es estable y no hace falta envolver cada funcion del padre en useCallback — y como
- * el ref siempre apunta a las funciones de este render, tampoco hay closures viejas.
- * `cellVersion` es el token que fuerza el re-render cuando cambia algo que afecta a
- * TODAS las celdas (columnas visibles, ancho al arrastrar, catalogo de usuarios).
- */
-type AccionesFila = {
-  openDetail: (t: any) => void;
-  toggleSelect: (id: string) => void;
-  handleRowDragStart: (e: React.DragEvent, id: string) => void;
-  setConfirmDelete: (v: any) => void;
-  tareaDeleteLabel: (t: any) => string;
-  renderCell: (t: any, col: Column) => React.ReactNode;
-  getColWidth: (col: any) => number | undefined;
-};
-
-const FilaTarea = memo(function FilaTarea({
-  t, idx, isModOrAdmin, esAdmin, selected, visibleColumns, acciones,
-}: {
-  t: any;
-  idx: number;
-  isModOrAdmin: boolean;
-  esAdmin: boolean;
-  selected: boolean;
-  visibleColumns: Column[];
-  acciones: React.MutableRefObject<AccionesFila>;
-  cellVersion: unknown;
-}) {
-  const a = acciones.current;
-  const especial = esTipoIncidenciaEspecial(t.tipoIncidencia);
-  return (
-    <tr
-      onClick={() => a.openDetail(t)}
-      title={especial ? `Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}` : undefined}
-      className={`pmn-fila-tarea cursor-pointer ${
-        especial
-          ? "bg-amber-100/80 hover:bg-amber-200/80 shadow-[inset_4px_0_0_0_#f59e0b]"
-          : `hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`
-      }`}
-    >
-      {isModOrAdmin && (
-        <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-1">
-            <span
-              draggable
-              onDragStart={(e) => a.handleRowDragStart(e, t.id)}
-              className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
-              title="Arrastrar a un espacio"
-            >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
-            </span>
-            <input type="checkbox" checked={selected} onChange={() => a.toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
-            {esAdmin && (
-              <button
-                type="button"
-                onClick={() => a.setConfirmDelete({ type: "tarea", id: t.id, label: a.tareaDeleteLabel(t) })}
-                className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
-                title="Eliminar tarea"
-                aria-label="Eliminar tarea"
-              >
-                <IconTrash className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        </td>
-      )}
-      {visibleColumns.map((col) => (
-        <td
-          key={col.id}
-          style={{ width: a.getColWidth(col), minWidth: 40, maxWidth: a.getColWidth(col) }}
-          className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
-        >
-          {a.renderCell(t, col)}
-        </td>
-      ))}
-    </tr>
-  );
-});
 
 export default function TareasPage() {
   const { session, isModOrAdmin, isCoordinador } = useSession();
@@ -1464,16 +1380,14 @@ export default function TareasPage() {
    * cuando se acaba, pide la pagina siguiente de ese grupo al servidor.
    */
   const showMoreGroup = useCallback((groupKey: string, cargadas: number) => {
-    const limiteActual = renderLimits[groupKey] || ROWS_BATCH;
-    if (limiteActual < cargadas) {
-      showMore(groupKey);
-      return;
-    }
+    // En escritorio la tabla ya muestra TODAS las filas cargadas (van virtualizadas),
+    // asi que el boton sirve sobre todo para pedirle la pagina siguiente al servidor.
+    // El limite de `renderLimits` sigue vivo para la lista de tarjetas del movil,
+    // que no esta virtualizada.
+    if ((renderLimits[groupKey] || ROWS_BATCH) < cargadas) showMore(groupKey);
     const info = groupPages[groupKey];
     if (info?.hasMore && groupLoadState[groupKey] !== "loading") {
       fetchGroupTareas(groupKey, { page: info.page + 1 }).then(() => showMore(groupKey));
-    } else {
-      showMore(groupKey);
     }
   }, [renderLimits, groupPages, groupLoadState, fetchGroupTareas]);
 
@@ -2526,7 +2440,7 @@ export default function TareasPage() {
             if (userHiddenEstados.has(estado.id)) return null;
 
             return (
-              <div key={estado.id} className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
+              <div key={estado.id} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
                 <div className="flex items-center">
                   <button
                     onClick={() => toggleSection(estado.id)}
@@ -2595,21 +2509,16 @@ export default function TareasPage() {
                               {visibleColumns.map(renderColHeader)}
                             </tr>
                           </thead>
-                          <tbody>
-                            {items.slice(0, renderLimits[estado.id] || ROWS_BATCH).map((t, idx) => (
-                              <FilaTarea
-                                key={t.id}
-                                t={t}
-                                idx={idx}
-                                isModOrAdmin={Boolean(isModOrAdmin)}
-                                esAdmin={session?.rol === "ADMIN"}
-                                selected={selectedIds.has(t.id)}
-                                visibleColumns={visibleColumns}
-                                acciones={accionesFilaRef}
-                                cellVersion={cellVersion}
-                              />
-                            ))}
-                          </tbody>
+                          <CuerpoTareasVirtual
+                            items={items}
+                            visibleColumns={visibleColumns}
+                            acciones={accionesFilaRef}
+                            isModOrAdmin={Boolean(isModOrAdmin)}
+                            esAdmin={session?.rol === "ADMIN"}
+                            selectedIds={selectedIds}
+                            cellVersion={cellVersion}
+                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                          />
                         </table>
                         {(items.length > (renderLimits[estado.id] || ROWS_BATCH) || groupPages[estado.id]?.hasMore) && (
                           <button
@@ -2619,7 +2528,10 @@ export default function TareasPage() {
                           >
                             {groupLoadState[estado.id] === "loading"
                               ? "Cargando…"
-                              : `Mostrar más (${Math.max(0, totalInGroup - Math.min(items.length, renderLimits[estado.id] || ROWS_BATCH))} restantes)`}
+                              : `Mostrar más (${Math.max(
+                                  totalInGroup - items.length,
+                                  items.length - (renderLimits[estado.id] || ROWS_BATCH)
+                                )} restantes)`}
                           </button>
                         )}
                       </div>
@@ -2632,7 +2544,7 @@ export default function TareasPage() {
 
           {/* Sin estado */}
           {getGroupTotal("sin-estado", groupedTareas["sin-estado"]?.length || 0) > 0 && (
-            <div className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
+            <div className="bg-white border border-surface-200 rounded-lg overflow-hidden">
               <div className="flex items-center">
                 <button
                   onClick={() => toggleSection("sin-estado")}
@@ -2685,25 +2597,24 @@ export default function TareasPage() {
                         {visibleColumns.map(renderColHeader)}
                       </tr>
                     </thead>
-                    <tbody>
-                      {groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH).map((t, idx) => (
-                        <FilaTarea
-                          key={t.id}
-                          t={t}
-                          idx={idx}
-                          isModOrAdmin={Boolean(isModOrAdmin)}
-                          esAdmin={session?.rol === "ADMIN"}
-                          selected={selectedIds.has(t.id)}
-                          visibleColumns={visibleColumns}
-                          acciones={accionesFilaRef}
-                          cellVersion={cellVersion}
-                        />
-                      ))}
-                    </tbody>
+                    <CuerpoTareasVirtual
+                            items={groupedTareas["sin-estado"]}
+                            visibleColumns={visibleColumns}
+                            acciones={accionesFilaRef}
+                            isModOrAdmin={Boolean(isModOrAdmin)}
+                            esAdmin={session?.rol === "ADMIN"}
+                            selectedIds={selectedIds}
+                            cellVersion={cellVersion}
+                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                          />
                   </table>
-                  {groupedTareas["sin-estado"].length > (renderLimits["sin-estado"] || ROWS_BATCH) && (
-                    <button onClick={() => showMore("sin-estado")} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
-                      Mostrar más ({groupedTareas["sin-estado"].length - (renderLimits["sin-estado"] || ROWS_BATCH)} restantes)
+                  {(groupedTareas["sin-estado"].length > (renderLimits["sin-estado"] || ROWS_BATCH) || groupPages["sin-estado"]?.hasMore) && (
+                    <button
+                      onClick={() => showMoreGroup("sin-estado", groupedTareas["sin-estado"].length)}
+                      disabled={groupLoadState["sin-estado"] === "loading"}
+                      className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium disabled:opacity-50"
+                    >
+                      {groupLoadState["sin-estado"] === "loading" ? "Cargando…" : "Mostrar más"}
                     </button>
                   )}
                 </div>
@@ -2717,7 +2628,7 @@ export default function TareasPage() {
               const isExpanded = expandedSections.has(groupKey);
               const totalInGroup = getGroupTotal(groupKey, items.length);
               return (
-                <div key={groupKey} className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
+                <div key={groupKey} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
                   <button
                     onClick={() => toggleSection(groupKey)}
                     className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
@@ -2737,24 +2648,19 @@ export default function TareasPage() {
                             {visibleColumns.map(renderColHeader)}
                           </tr>
                         </thead>
-                        <tbody>
-                          {items.slice(0, renderLimits[groupKey] || ROWS_BATCH).map((t: any, idx: number) => (
-                            <FilaTarea
-                              key={t.id}
-                              t={t}
-                              idx={idx}
-                              isModOrAdmin={Boolean(isModOrAdmin)}
-                              esAdmin={session?.rol === "ADMIN"}
-                              selected={selectedIds.has(t.id)}
-                              visibleColumns={visibleColumns}
-                              acciones={accionesFilaRef}
-                              cellVersion={cellVersion}
-                            />
-                          ))}
-                        </tbody>
+                        <CuerpoTareasVirtual
+                            items={items}
+                            visibleColumns={visibleColumns}
+                            acciones={accionesFilaRef}
+                            isModOrAdmin={Boolean(isModOrAdmin)}
+                            esAdmin={session?.rol === "ADMIN"}
+                            selectedIds={selectedIds}
+                            cellVersion={cellVersion}
+                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                          />
                       </table>
                       {items.length > (renderLimits[groupKey] || ROWS_BATCH) && (
-                        <button onClick={() => showMore(groupKey)} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
+                        <button onClick={() => showMore(groupKey)} className="md:hidden w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
                           Mostrar más ({items.length - (renderLimits[groupKey] || ROWS_BATCH)} restantes)
                         </button>
                       )}
@@ -2768,7 +2674,7 @@ export default function TareasPage() {
 
           {/* Vista tabla completa sin estados */}
           {estados.length === 0 && tareas.length > 0 && (
-            <div className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
+            <div className="bg-white border border-surface-200 rounded-lg overflow-hidden">
               <div className="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
                 <span className="text-sm font-medium text-surface-600">Todas las tareas</span>
                 <span className="text-[11px] text-surface-400">Crea estados para agrupar</span>
@@ -2782,24 +2688,19 @@ export default function TareasPage() {
                       {visibleColumns.map(renderColHeader)}
                     </tr>
                   </thead>
-                  <tbody>
-                    {sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH).map((t, idx) => (
-                      <FilaTarea
-                        key={t.id}
-                        t={t}
-                        idx={idx}
-                        isModOrAdmin={Boolean(isModOrAdmin)}
-                        esAdmin={session?.rol === "ADMIN"}
-                        selected={selectedIds.has(t.id)}
-                        visibleColumns={visibleColumns}
-                        acciones={accionesFilaRef}
-                        cellVersion={cellVersion}
-                      />
-                    ))}
-                  </tbody>
+                  <CuerpoTareasVirtual
+                            items={sortedTareas}
+                            visibleColumns={visibleColumns}
+                            acciones={accionesFilaRef}
+                            isModOrAdmin={Boolean(isModOrAdmin)}
+                            esAdmin={session?.rol === "ADMIN"}
+                            selectedIds={selectedIds}
+                            cellVersion={cellVersion}
+                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                          />
                 </table>
                 {tareas.length > (renderLimits["_all"] || ROWS_BATCH) && (
-                  <button onClick={() => showMore("_all")} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
+                  <button onClick={() => showMore("_all")} className="md:hidden w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
                     Mostrar más ({tareas.length - (renderLimits["_all"] || ROWS_BATCH)} restantes)
                   </button>
                 )}

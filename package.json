@@ -26,6 +26,7 @@
     "@prisma/client": "^5.22.0",
     "@tanstack/react-query": "^5.91.3",
     "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.10",
     "@types/adm-zip": "^0.5.8",
     "adm-zip": "^0.6.0",
     "axios": "^1.13.6",
