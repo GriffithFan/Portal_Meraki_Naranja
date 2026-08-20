@@ -158,8 +158,14 @@ export function CuerpoTareasVirtual({
 
   const filas = virtualizer.getVirtualItems();
   const alturaTotal = virtualizer.getTotalSize();
-  const rellenoArriba = filas.length > 0 ? filas[0].start - virtualizer.options.scrollMargin : 0;
-  const rellenoAbajo = filas.length > 0 ? alturaTotal - filas[filas.length - 1].end : 0;
+  // OJO: con `scrollMargin`, el `start`/`end` de cada fila viene desplazado por ese
+  // margen, pero `getTotalSize()` NO. Hay que restarselo a los dos extremos o el
+  // relleno de abajo sale negativo en todos los grupos menos el primero — y sin ese
+  // relleno el grupo colapsa al alto de las filas visibles (medido: INSTALADO con 81
+  // filas ocupaba 364 px en vez de ~2670).
+  const margen = virtualizer.options.scrollMargin;
+  const rellenoArriba = filas.length > 0 ? filas[0].start - margen : 0;
+  const rellenoAbajo = filas.length > 0 ? alturaTotal - (filas[filas.length - 1].end - margen) : 0;
 
   return (
     <tbody ref={contenedorRef}>

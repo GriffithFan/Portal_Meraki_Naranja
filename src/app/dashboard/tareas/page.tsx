@@ -2429,6 +2429,9 @@ export default function TareasPage() {
             const items = groupedTareas[estado.id] || [];
             const totalInGroup = getGroupTotal(estado.id, items.length);
             const isExpanded = expandedSections.has(estado.id);
+            // Falta traer del servidor vs. faltan tarjetas por revelar en movil.
+            const faltanEnServidor = Boolean(groupPages[estado.id]?.hasMore);
+            const faltanEnMovil = items.length > (renderLimits[estado.id] || ROWS_BATCH);
 
             // Ocultar estados sin tareas si no se activó el toggle
             if (totalInGroup === 0 && !showEmptyStates) return null;
@@ -2520,18 +2523,21 @@ export default function TareasPage() {
                             colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
                           />
                         </table>
-                        {(items.length > (renderLimits[estado.id] || ROWS_BATCH) || groupPages[estado.id]?.hasMore) && (
+                        {/* En escritorio la tabla ya muestra TODAS las filas cargadas (van
+                            virtualizadas), asi que el boton solo tiene sentido si el servidor
+                            tiene otra pagina. Si lo unico que falta son tarjetas del movil, el
+                            boton se oculta en escritorio: si no, se toca y no pasa nada. */}
+                        {(faltanEnServidor || faltanEnMovil) && (
                           <button
                             onClick={() => showMoreGroup(estado.id, items.length)}
                             disabled={groupLoadState[estado.id] === "loading"}
-                            className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium disabled:opacity-50"
+                            className={`${faltanEnServidor ? "" : "md:hidden"} w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium disabled:opacity-50`}
                           >
                             {groupLoadState[estado.id] === "loading"
                               ? "Cargando…"
-                              : `Mostrar más (${Math.max(
-                                  totalInGroup - items.length,
-                                  items.length - (renderLimits[estado.id] || ROWS_BATCH)
-                                )} restantes)`}
+                              : faltanEnServidor
+                                ? `Cargar más (${Math.max(0, totalInGroup - items.length)} sin traer)`
+                                : "Mostrar más"}
                           </button>
                         )}
                       </div>
