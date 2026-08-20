@@ -127,6 +127,9 @@ model EspacioTrabajo {
   activo      Boolean  @default(true)
   camposConfig Json?
   estadosConfig Json?
+  // Carpetas "archivo" (ej. Facturado): no se cargan por defecto en la vista general
+  // de Tareas. Se siguen viendo entrando a la carpeta o con el toggle "Ver archivadas".
+  ocultarEnTareas Boolean @default(false)
 
   parentId    String?
   parent      EspacioTrabajo?  @relation("EspacioHijos", fields: [parentId], references: [id], onDelete: Cascade)

@@ -6,7 +6,7 @@ import { parseBody, isErrorResponse, tareaCreateSchema } from "@/lib/validation"
 import { registrarEnPapelera } from "@/lib/papelera";
 import { detectarProvincia } from "@/utils/provinciaUtils";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
-import { isLegacyEquipoField, normalizeTaskQuickFilter } from "@/utils/taskFieldConfig";
+import { isLegacyEquipoField, normalizeTaskQuickFilter, SORTABLE_PREDIO_FIELDS } from "@/utils/taskFieldConfig";
 import { appendAndClause, appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 import { parseRegionesParam, partidosDeRegiones } from "@/lib/regionFiltro";
 
@@ -125,6 +125,59 @@ function mergeCamposConfig(current: unknown, incoming: unknown) {
   return Array.from(byId.values());
 }
 
+/**
+ * Campos que viaja la LISTA de tareas. Es un `select` explicito y no un `include`
+ * porque el peso del JSON es el cuello de botella de la vista (a 1000 filas cada
+ * byte por predio son 2 KB en el navegador).
+ *
+ * Quedan afuera a proposito:
+ *  - `descripcion`: texto largo de Salesforce que la tabla NO muestra nunca (era
+ *    el 20% del payload). El detalle la trae aparte con GET /api/tareas/[id].
+ *  - `notas` / `notasTecnico`: la tabla solo pinta un icono si existen, asi que se
+ *    mandan como booleanos (ver `resumirNotas`), no como texto.
+ *  - `creador`, `createdAt`, campos de Meraki y de enriquecimiento: sin uso en la lista.
+ */
+const LIST_SELECT = {
+  id: true, nombre: true, codigo: true, incidencias: true,
+  lacR: true, cue: true, cuePredio: true, ambito: true, provincia: true, ciudad: true,
+  direccion: true, latitud: true, longitud: true, gpsPredio: true,
+  tipoRed: true, codigoPostal: true, caracteristicaTelefonica: true, telefono: true,
+  lab: true, nombreInstitucion: true, correo: true, orden: true, prioridad: true,
+  fechaDesde: true, fechaHasta: true, fechaProgramada: true, fechaActualizacion: true,
+  updatedAt: true, estadoId: true, espacioId: true,
+  camposExtra: true, tipoIncidencia: true, cantidadCronogramas: true,
+  // solo para derivar los booleanos del indicador de notas
+  notas: true, notasTecnico: true,
+  estado: { select: { id: true, nombre: true, clave: true, color: true, icono: true, orden: true } },
+  asignaciones: { select: { id: true, usuario: { select: { id: true, nombre: true } } } },
+  etiquetas: { include: { etiqueta: true } },
+  _count: { select: { comentarios: true, equipos: true } },
+} as const;
+
+const CONSULTA_TTL_MS = 5 * 60 * 1000;
+const ultimaConsulta = new Map<string, number>();
+
+/** true si toca registrar la consulta de este usuario/espacio (una cada 5 min). */
+function registrarConsulta(userId: string, espacioId: string | null) {
+  const clave = `${userId}|${espacioId || "general"}`;
+  const ahora = Date.now();
+  const previo = ultimaConsulta.get(clave) || 0;
+  if (ahora - previo < CONSULTA_TTL_MS) return false;
+  ultimaConsulta.set(clave, ahora);
+  // el Map no crece sin control: se limpia cuando junta demasiadas claves viejas
+  if (ultimaConsulta.size > 5000) {
+    for (const [k, v] of Array.from(ultimaConsulta.entries())) {
+      if (ahora - v > CONSULTA_TTL_MS) ultimaConsulta.delete(k);
+    }
+  }
+  return true;
+}
+
+/** Reemplaza el texto de las notas por booleanos: la lista solo necesita saber si hay. */
+function resumirNotas(predio: Record<string, any>) {
+  return { ...predio, notas: Boolean(predio.notas), notasTecnico: Boolean(predio.notasTecnico) };
+}
+
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -151,17 +204,20 @@ export async function GET(request: NextRequest) {
   const skip = (page - 1) * limit;
   const sortByParam = searchParams.get("sortBy") || "";
   const sortDirParam = searchParams.get("sortDir") === "desc" ? "desc" : "asc";
-  const SORTABLE_PREDIO_FIELDS: Record<string, true> = {
-    codigo: true, incidencias: true, lacR: true, cue: true, ambito: true,
-    provincia: true, ciudad: true, cuePredio: true, tipoRed: true,
-    codigoPostal: true, lab: true, nombreInstitucion: true, correo: true,
-    orden: true, nombre: true, fechaDesde: true, fechaHasta: true,
-    fechaActualizacion: true, updatedAt: true, gpsPredio: true,
-    caracteristicaTelefonica: true, telefono: true,
+  // Orden por relaciones/agregados, para que ordenar por esas columnas tambien
+  // sea server-side (sobre la lista ENTERA) y no solo sobre lo ya cargado.
+  const SORTABLE_RELATION_ORDER: Record<string, any> = {
+    asignaciones: { asignaciones: { _count: sortDirParam } },
+    etiquetas: { etiquetas: { _count: sortDirParam } },
+    comentarios: { comentarios: { _count: sortDirParam } },
+    estado: { estado: { orden: sortDirParam } },
+    prioridad: { prioridad: sortDirParam },
   };
-  const orderBy: any = sortByParam && SORTABLE_PREDIO_FIELDS[sortByParam]
-    ? [{ [sortByParam]: sortDirParam }]
-    : [{ asignaciones: { _count: "desc" } }, { prioridad: "desc" }, { updatedAt: "desc" }];
+  const orderBy: any = sortByParam && SORTABLE_PREDIO_FIELDS.has(sortByParam)
+    ? [{ [sortByParam]: sortDirParam }, { id: "asc" }]
+    : sortByParam && SORTABLE_RELATION_ORDER[sortByParam]
+      ? [SORTABLE_RELATION_ORDER[sortByParam], { id: "asc" }]
+      : [{ asignaciones: { _count: "desc" } }, { prioridad: "desc" }, { updatedAt: "desc" }, { id: "asc" }];
 
   const where: any = {};
   const restrictedSpaceIds = await getRestrictedSpaceIdsForSession(session);
@@ -209,6 +265,22 @@ export async function GET(request: NextRequest) {
       where.espacioId = restrictedSpaceIds
         ? { in: restrictedSpaceIds.includes(espacioId) ? [espacioId] : [] }
         : espacioId;
+    }
+  }
+
+  // ── Carpetas archivadas (ej. "Facturado") ──────────────────────────
+  // No se cargan en la vista general: son predios cerrados que solo suman peso.
+  // Se siguen viendo entrando a la carpeta, o con ?incluirArchivadas=1.
+  // OJO: hay que contemplar espacioId NULL a mano — en SQL `x NOT IN (...)` es
+  // NULL cuando x es NULL, y esos predios se perderian del listado.
+  if (!espacioId && searchParams.get("incluirArchivadas") !== "1") {
+    const archivadas = await prisma.espacioTrabajo.findMany({
+      where: { ocultarEnTareas: true },
+      select: { id: true },
+    });
+    if (archivadas.length > 0) {
+      const ids = archivadas.map((e) => e.id);
+      appendAndClause(where, { OR: [{ espacioId: null }, { espacioId: { notIn: ids } }] });
     }
   }
 
@@ -353,17 +425,7 @@ export async function GET(request: NextRequest) {
   const [predios, total, groupCounts, espacioSummaryRaw] = await Promise.all([
     prisma.predio.findMany({
       where,
-      include: {
-        estado: { select: { id: true, nombre: true, clave: true, color: true, icono: true, orden: true } },
-        creador: { select: { id: true, nombre: true } },
-        asignaciones: {
-          select: { id: true, usuario: { select: { id: true, nombre: true } } },
-        },
-        etiquetas: {
-          include: { etiqueta: true },
-        },
-        _count: { select: { comentarios: true, equipos: true } },
-      },
+      select: LIST_SELECT,
       orderBy,
       skip,
       take: limit,
@@ -377,17 +439,22 @@ export async function GET(request: NextRequest) {
     }) : Promise.resolve([]),
   ]);
 
-  // Registrar consulta de predios (auditoría) — fire-and-forget
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  prisma.registroAcceso.create({
-    data: {
-      userId: session.userId,
-      accion: "CONSULTA_PREDIO",
-      detalle: espacioId ? `Espacio ${espacioId}` : "Vista general de tareas",
-      ip,
-      metadata: { espacioId: espacioId || null, includeSubspaces, total, buscar: buscar || null, estado: estado || null, provincia: provincia || null, prioridad: prioridad || null, quick: quick || null },
-    },
-  }).catch(() => {});
+  // Registrar consulta de predios (auditoría) — fire-and-forget y throttleado.
+  // Antes se escribia una fila por request: con la carga lazy una sola apertura de
+  // la pantalla dispara 1 conteo + N grupos, y la tabla ya venia en 66 MB / 131k filas.
+  // Una fila por usuario y espacio cada 5 min alcanza para auditar quien miro que.
+  if (registrarConsulta(session.userId, espacioId)) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    prisma.registroAcceso.create({
+      data: {
+        userId: session.userId,
+        accion: "CONSULTA_PREDIO",
+        detalle: espacioId ? `Espacio ${espacioId}` : "Vista general de tareas",
+        ip,
+        metadata: { espacioId: espacioId || null, includeSubspaces, total, buscar: buscar || null, estado: estado || null, provincia: provincia || null, prioridad: prioridad || null, quick: quick || null },
+      },
+    }).catch(() => {});
+  }
 
   let espacioSummary: Record<string, { nombre: string; total: number }> | null = null;
   if (buscar && !espacioId && Array.isArray(espacioSummaryRaw) && espacioSummaryRaw.length > 0) {
@@ -418,7 +485,7 @@ export async function GET(request: NextRequest) {
       })
     : [];
   const adjuntosSet = new Set(conAdjuntos.map((c) => c.predioId));
-  const prediosConFlags = predios.map((p) => ({ ...p, tieneAdjuntos: adjuntosSet.has(p.id) }));
+  const prediosConFlags = predios.map((p) => ({ ...resumirNotas(p), tieneAdjuntos: adjuntosSet.has(p.id) }));
 
   return NextResponse.json({
     predios: prediosConFlags,

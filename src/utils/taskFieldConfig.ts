@@ -46,3 +46,30 @@ export function normalizeTaskQuickFilter(value: unknown) {
   if (normalizedValue === "sinequipo" || normalizedValue === "sin-equipo" || normalizedValue === "equipo" || normalizedValue === "equipos") return "todos";
   return TASK_QUICK_FILTER_VALUES.has(rawValue) ? rawValue : "todos";
 }
+
+/**
+ * Columnas que el servidor sabe ordenar (ORDER BY en SQL). Lo comparten la API y
+ * las pantallas de tareas para no desincronizarse: si el front manda un sortBy
+ * que la API no reconoce, la lista volveria al orden por defecto sin avisar.
+ *
+ * Ordenar SIEMPRE es server-side sobre el total de filas que matchean el filtro,
+ * no sobre las que ya estan cargadas en pantalla.
+ */
+export const SORTABLE_PREDIO_FIELDS = new Set([
+  "codigo", "incidencias", "lacR", "cue", "ambito", "provincia", "ciudad",
+  "cuePredio", "tipoRed", "codigoPostal", "lab", "nombreInstitucion", "correo",
+  "orden", "nombre", "fechaDesde", "fechaHasta", "fechaActualizacion",
+  "updatedAt", "gpsPredio", "caracteristicaTelefonica", "telefono",
+  "latitud", "longitud",
+]);
+
+/** Columnas que se ordenan por una relacion o un agregado (no por un campo de Predio). */
+export const SORTABLE_RELATION_FIELDS = new Set([
+  "asignaciones", "etiquetas", "comentarios", "estado", "prioridad",
+]);
+
+/** true si esta columna la puede ordenar el servidor. */
+export function isServerSortable(field: string | null | undefined) {
+  if (!field) return false;
+  return SORTABLE_PREDIO_FIELDS.has(field) || SORTABLE_RELATION_FIELDS.has(field);
+}

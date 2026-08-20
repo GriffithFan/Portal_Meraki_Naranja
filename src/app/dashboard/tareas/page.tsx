@@ -15,7 +15,7 @@ import RegionFilter from "@/components/tareas/RegionFilter";
 import TareaEtiquetasEditor, { type TareaEtiquetaValue } from "@/components/tareas/TareaEtiquetasEditor";
 import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName, getDuplicatedAssigneeNames, assigneeLabel } from "@/utils/asignacionUtils";
-import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
+import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs, isServerSortable } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
 import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
@@ -92,6 +92,11 @@ const GROUP_BY_OPTIONS = [
 ];
 
 const SERVER_PAGE_SIZE = 1000;
+// Carga por grupo de estado: en vez de traer la lista entera y agrupar en el
+// navegador, cada estado pide sus propias filas. Asi la pantalla no depende de
+// cuantos predios haya en total.
+const GROUP_PAGE_SIZE = 300;   // filas que pide un grupo por request
+const AUTO_EXPAND_MAX = 250;   // los grupos mas chicos que esto se abren solos
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -190,6 +195,10 @@ export default function TareasPage() {
   const [loadError, setLoadError] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false, limit: SERVER_PAGE_SIZE });
   const [groupCounts, setGroupCounts] = useState<Record<string, number> | null>(null);
+  // Estado de la carga lazy por grupo de estado.
+  const [groupLoadState, setGroupLoadState] = useState<Record<string, "idle" | "loading" | "loaded">>({});
+  const [groupPages, setGroupPages] = useState<Record<string, { page: number; hasMore: boolean }>>({});
+  const [incluirArchivadas, setIncluirArchivadas] = useState(false);
   const [espacioSummary, setEspacioSummary] = useState<Record<string, { nombre: string; total: number }> | null>(null);
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterProvincia, setFilterProvincia] = useState("");
@@ -426,8 +435,61 @@ export default function TareasPage() {
     setShowModal(true);
   }, []);
 
+  // Filtros comunes a todas las consultas de la pantalla (lista, conteos y grupos).
+  // El orden va SIEMPRE al servidor: ordenar una columna reordena la lista entera,
+  // no solo las filas ya cargadas.
+  const buildTareasParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (serverSearch) params.set("buscar", serverSearch);
+    if (filterEstado !== "todos") params.set("estado", filterEstado);
+    if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
+    if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
+    if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
+    if (filterTipo !== "todos") params.set("tipo", filterTipo);
+    if (filterVentana !== "todos") params.set("ventana", filterVentana);
+    if (filterCronogramas !== "todos") params.set("cronogramas", filterCronogramas);
+    if (filterRegiones.length) params.set("regiones", filterRegiones.join(","));
+    if (quickFilter !== "todos") params.set("quick", quickFilter);
+    if (incluirArchivadas) params.set("incluirArchivadas", "1");
+    if (isServerSortable(sortConfig?.field)) {
+      params.set("sortBy", sortConfig!.field);
+      params.set("sortDir", sortConfig!.dir);
+    }
+    return params;
+  }, [serverSearch, filterEstado, filterProvincia, filterPrioridad, filterAsignado, filterTipo, filterVentana, filterCronogramas, filterRegiones, quickFilter, incluirArchivadas, sortConfig]);
+
+  // Trae las filas de UN grupo de estado. Se llama al expandirlo (o al abrirse
+  // solo si es chico), nunca para todos los grupos a la vez.
+  const fetchGroupTareas = useCallback(async (groupKey: string, opts?: { page?: number }) => {
+    const page = opts?.page || 1;
+    setGroupLoadState((prev) => ({ ...prev, [groupKey]: "loading" }));
+    try {
+      const gParams = buildTareasParams();
+      gParams.set("limit", String(GROUP_PAGE_SIZE));
+      gParams.set("page", String(page));
+      gParams.set("estadoId", groupKey === "sin-estado" ? "null" : groupKey);
+      const res = await fetch(`/api/tareas?${gParams.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("fetch failed");
+      const d = await res.json();
+      const nuevos: any[] = d.predios || [];
+      setTareas((prev) => {
+        // page 1 reemplaza las filas de ese grupo (reordenar vuelve a pedir la 1)
+        const base = page === 1
+          ? prev.filter((x: any) => (x.estadoId || "sin-estado") !== groupKey)
+          : prev;
+        const seen = new Set(base.map((x: any) => x.id));
+        return [...base, ...nuevos.filter((x: any) => !seen.has(x.id))];
+      });
+      setGroupPages((prev) => ({ ...prev, [groupKey]: { page, hasMore: Boolean(d.hasMore) } }));
+      setGroupLoadState((prev) => ({ ...prev, [groupKey]: "loaded" }));
+    } catch {
+      setGroupLoadState((prev) => ({ ...prev, [groupKey]: "idle" }));
+    }
+  }, [buildTareasParams]);
+
   // Cargar datos
   const autoHideDone = useRef(false);
+  const lazyConditionsRef = useRef<string>("");
   const fetchTareasRequestRef = useRef(0);
   const fetchTareas = useCallback(async (options?: { page?: number; append?: boolean }) => {
     const pageToLoad = options?.page || 1;
@@ -470,26 +532,60 @@ export default function TareasPage() {
 
     if (fetchTareasRequestRef.current !== requestId) return;
 
-    const params = new URLSearchParams({ limit: String(SERVER_PAGE_SIZE), page: String(pageToLoad) });
-    if (serverSearch) params.set("buscar", serverSearch);
-    if (filterEstado !== "todos") params.set("estado", filterEstado);
-    if (filterProvincia.trim()) params.set("provincia", filterProvincia.trim());
-    if (filterPrioridad !== "todas") params.set("prioridad", filterPrioridad);
-    if (filterAsignado !== "todos") params.set("asignadoId", filterAsignado);
-    if (filterTipo !== "todos") params.set("tipo", filterTipo);
-    if (filterVentana !== "todos") params.set("ventana", filterVentana);
-    if (filterCronogramas !== "todos") params.set("cronogramas", filterCronogramas);
-    if (filterRegiones.length) params.set("regiones", filterRegiones.join(","));
-    if (quickFilter !== "todos") params.set("quick", quickFilter);
+    const params = buildTareasParams();
+    params.set("limit", String(SERVER_PAGE_SIZE));
+    params.set("page", String(pageToLoad));
     params.set("groupBy", groupBy);
+
+    // Modo lazy: agrupado por estado y sin buscador. En vez de traer la lista
+    // entera, se piden SOLO los conteos por grupo y despues cada grupo carga sus
+    // filas (los grandes esperan a que el usuario los abra). Con buscador o con
+    // otra agrupacion se usa la carga plana de siempre.
+    const lazyMode = groupBy === "estado" && !serverSearch && !append;
+    const lazyKey = [filterEstado, filterProvincia, filterPrioridad, filterAsignado, filterTipo,
+      filterVentana, filterCronogramas, filterRegiones.join(","), quickFilter, incluirArchivadas,
+      sortConfig?.field || "", sortConfig?.dir || ""].join("|");
+
     try {
-      const res = await fetch(`/api/tareas?${params.toString()}`, { credentials: "include" });
+      const countsParams = buildTareasParams();
+      countsParams.set("countOnly", "true");
+      countsParams.set("groupBy", "estado");
+
+      const res = await fetch(
+        lazyMode ? `/api/tareas?${countsParams.toString()}` : `/api/tareas?${params.toString()}`,
+        { credentials: "include" }
+      );
       if (fetchTareasRequestRef.current !== requestId) return;
       if (!res.ok) throw new Error("No se pudieron cargar las tareas");
       const data = await res.json();
       if (fetchTareasRequestRef.current !== requestId) return;
       const predios = data.predios || [];
       setLoadError(false);
+
+      if (lazyMode) {
+        // Cambio de filtros/orden: se descarta lo cargado y se vuelve a empezar.
+        if (lazyConditionsRef.current !== lazyKey) {
+          lazyConditionsRef.current = lazyKey;
+          setTareas([]);
+          setGroupLoadState({});
+          setGroupPages({});
+          setSelectedIds(new Set());
+          setRenderLimits({});
+        }
+        const counts: Record<string, number> = data.groupCounts || {};
+        setGroupCounts(counts);
+        setPagination({ page: 1, total: Object.values(counts).reduce((a, b) => a + b, 0), hasMore: false, limit: GROUP_PAGE_SIZE });
+        setEspacioSummary(null);
+        // Se abren solos los grupos chicos; los grandes quedan plegados con su
+        // numero a la vista y cargan al tocarlos.
+        const aAbrir = Object.entries(counts)
+          .filter(([, c]) => c > 0 && c <= AUTO_EXPAND_MAX)
+          .map(([id]) => id);
+        setExpandedSections(new Set(aAbrir));
+        aAbrir.forEach((id) => fetchGroupTareas(id));
+        return;
+      }
+
       setTareas(prev => {
         if (!append) return predios;
         const seen = new Set(prev.map((item: any) => item.id));
@@ -526,7 +622,7 @@ export default function TareasPage() {
         else setLoading(false);
       }
     }
-  }, [filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, filterVentana, filterCronogramas, filterRegiones, groupBy, quickFilter, serverSearch]);
+  }, [buildTareasParams, fetchGroupTareas, filterEstado, filterPrioridad, filterProvincia, filterAsignado, filterTipo, filterVentana, filterCronogramas, filterRegiones, groupBy, quickFilter, serverSearch, incluirArchivadas, sortConfig]);
 
   useEffect(() => {
     fetch("/api/preferencias/tareas-filtros", { credentials: "include" })
@@ -580,9 +676,13 @@ export default function TareasPage() {
       .then(d => {
         const est = d.estados || [];
         setEstados(est);
-        const ids = est.map((e: any) => e.id);
-        ids.push("sin-estado");
-        setExpandedSections(new Set(ids));
+        // Los grupos NO se abren todos: la carga lazy abre los chicos y deja
+        // plegados los grandes (que renderizaban cientos de filas de una).
+        if (groupBy !== "estado") {
+          const ids = est.map((e: any) => e.id);
+          ids.push("sin-estado");
+          setExpandedSections(new Set(ids));
+        }
       });
     // Cargar permisos de visibilidad de estados
     if (session?.rol && session.rol !== "ADMIN") {
@@ -647,6 +747,15 @@ export default function TareasPage() {
     }
   }, [fetchTareas, isModOrAdmin, session?.rol, session?.userId]);
 
+  // Recargar cuando cambia el orden o el toggle de archivadas: el orden lo
+  // resuelve el servidor, asi que hay que volver a pedir la primera pagina.
+  const primerRenderRef = useRef(true);
+  useEffect(() => {
+    if (primerRenderRef.current) { primerRenderRef.current = false; return; }
+    fetchTareas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortConfig?.field, sortConfig?.dir, incluirArchivadas]);
+
   // Recargar tareas cuando el sidebar reporta un drop exitoso
   useEffect(() => {
     const handler = () => fetchTareas();
@@ -708,7 +817,9 @@ export default function TareasPage() {
       });
     }
 
-    filtered = sortTareasList(filtered, sortConfig);
+    // Si el servidor ya ordeno (lo normal), respetar ese orden: reordenar aca
+    // solo mezclaria las filas cargadas y daria un orden distinto al del total.
+    if (!isServerSortable(sortConfig?.field)) filtered = sortTareasList(filtered, sortConfig);
 
     // Agrupación por estado (default)
     if (groupBy === "estado") {
@@ -749,7 +860,10 @@ export default function TareasPage() {
   }, [tareas, estados, search, serverSearch, sortConfig, groupBy]);
 
   // Lista plana ordenada (vista sin estados): memoizada para no re-ordenar en cada render.
-  const sortedTareas = useMemo(() => sortTareasList(tareas, sortConfig), [tareas, sortConfig]);
+  const sortedTareas = useMemo(
+    () => (isServerSortable(sortConfig?.field) ? tareas : sortTareasList(tareas, sortConfig)),
+    [tareas, sortConfig]
+  );
 
   // ── Reconciliar columnas personalizadas (por lista, según los datos) ──
   // Las columnas custom existen solo si su clave está en los datos de ESTA lista,
@@ -1238,10 +1352,34 @@ export default function TareasPage() {
   const toggleSection = (id: string) => {
     setExpandedSections(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        // Primera vez que se abre este grupo: recien ahi se piden sus filas.
+        if (groupBy === "estado" && !serverSearch && !groupLoadState[id]) fetchGroupTareas(id);
+      }
       return next;
     });
   };
+
+  /**
+   * "Mostrar mas" dentro de un grupo: primero muestra mas de lo ya cargado y,
+   * cuando se acaba, pide la pagina siguiente de ese grupo al servidor.
+   */
+  const showMoreGroup = useCallback((groupKey: string, cargadas: number) => {
+    const limiteActual = renderLimits[groupKey] || ROWS_BATCH;
+    if (limiteActual < cargadas) {
+      showMore(groupKey);
+      return;
+    }
+    const info = groupPages[groupKey];
+    if (info?.hasMore && groupLoadState[groupKey] !== "loading") {
+      fetchGroupTareas(groupKey, { page: info.page + 1 }).then(() => showMore(groupKey));
+    } else {
+      showMore(groupKey);
+    }
+  }, [renderLimits, groupPages, groupLoadState, fetchGroupTareas]);
 
   const toggleSort = (field: string) => {
     setSortConfig(prev => {
@@ -1825,6 +1963,14 @@ export default function TareasPage() {
               >
                 ≥3 cronogramas
               </button>
+              <span className="mx-1 self-center text-surface-200">|</span>
+              <button
+                onClick={() => setIncluirArchivadas((v) => !v)}
+                title="Las carpetas archivadas (Facturado) no se cargan por defecto: son predios cerrados que solo hacen mas lenta la pantalla"
+                className={`px-3 py-1.5 rounded-md text-xs border font-medium transition-colors ${incluirArchivadas ? "bg-surface-600 border-surface-600 text-white" : "border-surface-300 text-surface-600 bg-surface-50 hover:bg-surface-100"}`}
+              >
+                {incluirArchivadas ? "Ocultar archivadas" : "Ver archivadas"}
+              </button>
             </>
           )}
         </div>
@@ -2324,7 +2470,9 @@ export default function TareasPage() {
                   <div className="border-t border-surface-100">
                     {items.length === 0 ? (
                       <div className="text-center py-4 text-surface-300 text-[11px] italic">
-                        Sin tareas en este estado
+                        {groupLoadState[estado.id] === "loading"
+                          ? "Cargando…"
+                          : "Sin tareas en este estado"}
                       </div>
                     ) : (
                       <div className="overflow-x-auto js-hscroll">
@@ -2385,9 +2533,15 @@ export default function TareasPage() {
                             ))}
                           </tbody>
                         </table>
-                        {items.length > (renderLimits[estado.id] || ROWS_BATCH) && (
-                          <button onClick={() => showMore(estado.id)} className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium">
-                            Mostrar más ({items.length - (renderLimits[estado.id] || ROWS_BATCH)} restantes)
+                        {(items.length > (renderLimits[estado.id] || ROWS_BATCH) || groupPages[estado.id]?.hasMore) && (
+                          <button
+                            onClick={() => showMoreGroup(estado.id, items.length)}
+                            disabled={groupLoadState[estado.id] === "loading"}
+                            className="w-full py-1.5 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 transition-colors font-medium disabled:opacity-50"
+                          >
+                            {groupLoadState[estado.id] === "loading"
+                              ? "Cargando…"
+                              : `Mostrar más (${Math.max(0, totalInGroup - Math.min(items.length, renderLimits[estado.id] || ROWS_BATCH))} restantes)`}
                           </button>
                         )}
                       </div>
