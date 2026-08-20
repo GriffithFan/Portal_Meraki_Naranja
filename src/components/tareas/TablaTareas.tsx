@@ -134,11 +134,15 @@ export function CuerpoTareasVirtual({
     const el = contenedorRef.current;
     if (!el) return;
 
-    // Ancestro que realmente scrollea. Si no hay ninguno, la pagina scrollea sola.
+    // Ancestro que realmente scrollea EN VERTICAL. No alcanza con mirar `overflow-y`:
+    // el envoltorio de la tabla tiene `overflow-x: auto` para el scroll horizontal, y
+    // CSS convierte el `overflow-y: visible` de al lado en `auto` — asi que ese div
+    // parece scrolleable, el virtualizador se colgaba de el (nunca se mueve) y
+    // terminaba dibujando TODAS las filas. Hay que exigir que de verdad desborde.
     let ancestro: HTMLElement | null = el.parentElement;
     while (ancestro) {
       const cs = getComputedStyle(ancestro);
-      if (/auto|scroll/.test(cs.overflowY)) break;
+      if (/auto|scroll/.test(cs.overflowY) && ancestro.scrollHeight > ancestro.clientHeight + 1) break;
       ancestro = ancestro.parentElement;
     }
     const cont = ancestro ?? (document.scrollingElement as HTMLElement);
