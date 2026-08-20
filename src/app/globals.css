@@ -582,3 +582,27 @@
   }
 }
 }
+/* ── Listado de tareas: scroll ─────────────────────────────────────────────
+ * Cada grupo de estado se salta del layout y del pintado mientras esta lejos de
+ * la pantalla. Sin esto, el navegador tiene que maquetar y pintar TODAS las filas
+ * cargadas en cada frame de scroll, y con varios cientos de filas x ~14 columnas
+ * el scroll se arrastra.
+ *
+ * `auto` en contain-intrinsic-size hace que el navegador recuerde el alto real de
+ * cada grupo despues de pintarlo una vez, asi la barra de scroll no salta al
+ * subir y bajar. El 400px es solo la estimacion inicial.
+ *
+ * Ctrl+F sigue encontrando el texto de los grupos salteados (Chrome lo soporta),
+ * y en los navegadores que no soportan la propiedad simplemente se ignora. */
+.pmn-grupo-tareas {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+/* El hover de las filas era `transition-colors`: con cientos de filas, pasar el
+ * mouse por encima mientras se scrollea encadena una transicion de 150 ms por
+ * fila y el navegador repinta todo el rato. El cambio de color instantaneo se ve
+ * igual y no cuesta nada. */
+.pmn-fila-tarea {
+  transition: none;
+}

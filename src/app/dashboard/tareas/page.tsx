@@ -228,7 +228,7 @@ const FilaTarea = memo(function FilaTarea({
     <tr
       onClick={() => a.openDetail(t)}
       title={especial ? `Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}` : undefined}
-      className={`cursor-pointer transition-colors ${
+      className={`pmn-fila-tarea cursor-pointer ${
         especial
           ? "bg-amber-100/80 hover:bg-amber-200/80 shadow-[inset_4px_0_0_0_#f59e0b]"
           : `hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`
@@ -2526,7 +2526,7 @@ export default function TareasPage() {
             if (userHiddenEstados.has(estado.id)) return null;
 
             return (
-              <div key={estado.id} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+              <div key={estado.id} className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
                 <div className="flex items-center">
                   <button
                     onClick={() => toggleSection(estado.id)}
@@ -2632,7 +2632,7 @@ export default function TareasPage() {
 
           {/* Sin estado */}
           {getGroupTotal("sin-estado", groupedTareas["sin-estado"]?.length || 0) > 0 && (
-            <div className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+            <div className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
               <div className="flex items-center">
                 <button
                   onClick={() => toggleSection("sin-estado")}
@@ -2717,7 +2717,7 @@ export default function TareasPage() {
               const isExpanded = expandedSections.has(groupKey);
               const totalInGroup = getGroupTotal(groupKey, items.length);
               return (
-                <div key={groupKey} className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+                <div key={groupKey} className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
                   <button
                     onClick={() => toggleSection(groupKey)}
                     className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface-50 transition-colors text-left"
@@ -2768,7 +2768,7 @@ export default function TareasPage() {
 
           {/* Vista tabla completa sin estados */}
           {estados.length === 0 && tareas.length > 0 && (
-            <div className="bg-white border border-surface-200 rounded-lg overflow-hidden">
+            <div className="pmn-grupo-tareas bg-white border border-surface-200 rounded-lg overflow-hidden">
               <div className="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
                 <span className="text-sm font-medium text-surface-600">Todas las tareas</span>
                 <span className="text-[11px] text-surface-400">Crea estados para agrupar</span>
