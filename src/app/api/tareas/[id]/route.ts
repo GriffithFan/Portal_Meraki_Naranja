@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { CLAVE_REVISION, derivarARevisionInstalacion } from "@/lib/revisionInstalacion";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, tareaUpdateSchema } from "@/lib/validation";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
@@ -506,6 +507,14 @@ export async function PATCH(
     if (body.estadoId !== undefined && body.estadoId !== existing.estadoId) {
       iniciarMonitoreoSiCambioEstado(id, session.userId, existing.estadoId, body.estadoId || null)
         .catch((e) => console.error("Error creando monitoreo:", e));
+
+      // Al entrar a REVISION INSTALACION el predio cae solo en la carpeta de
+      // triage y se desasigna, para no tener que buscarlo despues por todas las
+      // carpetas. Fire-and-forget: no bloquea el cambio de estado.
+      if (updated.estado?.clave === CLAVE_REVISION) {
+        derivarARevisionInstalacion([id], session.userId)
+          .catch((e) => console.error("Error derivando a revisión instalación:", e));
+      }
     }
 
     // Auto-lanzar en Salesforce al pasar a EN PROGRESO — SOLO admin/mesa.

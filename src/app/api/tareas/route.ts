@@ -9,6 +9,7 @@ import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 import { isLegacyEquipoField, normalizeTaskQuickFilter, SORTABLE_PREDIO_FIELDS } from "@/utils/taskFieldConfig";
 import { appendAndClause, appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 import { parseRegionesParam, partidosDeRegiones } from "@/lib/regionFiltro";
+import { derivarARevisionInstalacion } from "@/lib/revisionInstalacion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -867,6 +868,13 @@ export async function PATCH(request: NextRequest) {
         data: { [action]: nextValue },
       });
       count = result.count;
+
+      // Mismo circuito que en el cambio individual: los que quedaron en REVISION
+      // INSTALACION van a la carpeta de triage y se desasignan.
+      if (action === "estadoId" && nextValue) {
+        derivarARevisionInstalacion(safeIds, session.userId)
+          .catch((e) => console.error("Error derivando a revisión instalación:", e));
+      }
     } else {
       return NextResponse.json({ error: "Acción no válida" }, { status: 400 });
     }

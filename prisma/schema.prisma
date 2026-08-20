@@ -130,6 +130,11 @@ model EspacioTrabajo {
   // Carpetas "archivo" (ej. Facturado): no se cargan por defecto en la vista general
   // de Tareas. Se siguen viendo entrando a la carpeta o con el toggle "Ver archivadas".
   ocultarEnTareas Boolean @default(false)
+  // Papel de la carpeta en el circuito de REVISION INSTALACION (ver lib/revisionInstalacion.ts):
+  //   "inbox"       -> ahi caen solos los predios que pasan a ese estado, sin tecnico
+  //   "clasificada" -> ya fue triada (Reinstalar / Reinstalacion Facil): no se toca
+  // null = la carpeta no participa del circuito.
+  rolRevision     String?
 
   parentId    String?
   parent      EspacioTrabajo?  @relation("EspacioHijos", fields: [parentId], references: [id], onDelete: Cascade)

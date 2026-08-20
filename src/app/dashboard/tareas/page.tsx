@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useSession } from "@/hooks/useSession";
 import { useSearchContext } from "@/contexts/SearchContext";
 import { IconChevron, IconSettings, IconPlus, IconX, IconCheck, IconSort, IconTrash, IconDownload } from "@/components/ui/Icons";
@@ -96,7 +96,8 @@ const SERVER_PAGE_SIZE = 1000;
 // navegador, cada estado pide sus propias filas. Asi la pantalla no depende de
 // cuantos predios haya en total.
 const GROUP_PAGE_SIZE = 300;   // filas que pide un grupo por request
-const AUTO_EXPAND_MAX = 250;   // los grupos mas chicos que esto se abren solos
+const AUTO_EXPAND_MAX = 250;   // un grupo mas grande que esto nunca se abre solo
+const AUTO_EXPAND_BUDGET = 300; // tope de filas que se abren solas entre TODOS los grupos
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
@@ -184,6 +185,94 @@ function sortTareasList<T extends Record<string, any>>(list: T[], sortConfig: So
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * Una fila de la tabla, memoizada.
+ *
+ * La pantalla renderiza varios cientos de filas x ~14 columnas. Sin memo, CUALQUIER
+ * cambio de estado del componente padre (tipear en el buscador, tildar una fila,
+ * "mostrar mas", abrir un grupo) volvia a construir todas las celdas y la tabla se
+ * arrastraba. Ahora una fila solo se re-renderiza si cambian sus propios datos.
+ *
+ * Los handlers viajan en un ref (`acciones`) en vez de como props: asi su identidad
+ * es estable y no hace falta envolver cada funcion del padre en useCallback — y como
+ * el ref siempre apunta a las funciones de este render, tampoco hay closures viejas.
+ * `cellVersion` es el token que fuerza el re-render cuando cambia algo que afecta a
+ * TODAS las celdas (columnas visibles, ancho al arrastrar, catalogo de usuarios).
+ */
+type AccionesFila = {
+  openDetail: (t: any) => void;
+  toggleSelect: (id: string) => void;
+  handleRowDragStart: (e: React.DragEvent, id: string) => void;
+  setConfirmDelete: (v: any) => void;
+  tareaDeleteLabel: (t: any) => string;
+  renderCell: (t: any, col: Column) => React.ReactNode;
+  getColWidth: (col: any) => number | undefined;
+};
+
+const FilaTarea = memo(function FilaTarea({
+  t, idx, isModOrAdmin, esAdmin, selected, visibleColumns, acciones,
+}: {
+  t: any;
+  idx: number;
+  isModOrAdmin: boolean;
+  esAdmin: boolean;
+  selected: boolean;
+  visibleColumns: Column[];
+  acciones: React.MutableRefObject<AccionesFila>;
+  cellVersion: unknown;
+}) {
+  const a = acciones.current;
+  const especial = esTipoIncidenciaEspecial(t.tipoIncidencia);
+  return (
+    <tr
+      onClick={() => a.openDetail(t)}
+      title={especial ? `Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}` : undefined}
+      className={`cursor-pointer transition-colors ${
+        especial
+          ? "bg-amber-100/80 hover:bg-amber-200/80 shadow-[inset_4px_0_0_0_#f59e0b]"
+          : `hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`
+      }`}
+    >
+      {isModOrAdmin && (
+        <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1">
+            <span
+              draggable
+              onDragStart={(e) => a.handleRowDragStart(e, t.id)}
+              className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
+              title="Arrastrar a un espacio"
+            >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+            </span>
+            <input type="checkbox" checked={selected} onChange={() => a.toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
+            {esAdmin && (
+              <button
+                type="button"
+                onClick={() => a.setConfirmDelete({ type: "tarea", id: t.id, label: a.tareaDeleteLabel(t) })}
+                className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                title="Eliminar tarea"
+                aria-label="Eliminar tarea"
+              >
+                <IconTrash className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </td>
+      )}
+      {visibleColumns.map((col) => (
+        <td
+          key={col.id}
+          style={{ width: a.getColWidth(col), minWidth: 40, maxWidth: a.getColWidth(col) }}
+          className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
+        >
+          {a.renderCell(t, col)}
+        </td>
+      ))}
+    </tr>
+  );
+});
+
 export default function TareasPage() {
   const { session, isModOrAdmin, isCoordinador } = useSession();
   const confirm = useConfirm();
@@ -289,7 +378,7 @@ export default function TareasPage() {
   const didDragRef = useRef(false);
 
   // ── Renderizado progresivo ──────────────────────────────────
-  const ROWS_BATCH = 100;
+  const ROWS_BATCH = 50;
   const [renderLimits, setRenderLimits] = useState<Record<string, number>>({});
   const showMore = (key: string) => setRenderLimits(prev => ({ ...prev, [key]: (prev[key] || ROWS_BATCH) + ROWS_BATCH }));
 
@@ -578,9 +667,16 @@ export default function TareasPage() {
         setEspacioSummary(null);
         // Se abren solos los grupos chicos; los grandes quedan plegados con su
         // numero a la vista y cargan al tocarlos.
-        const aAbrir = Object.entries(counts)
-          .filter(([, c]) => c > 0 && c <= AUTO_EXPAND_MAX)
-          .map(([id]) => id);
+        // Se abren solos los grupos chicos, pero con un tope global de filas: sin el,
+        // una docena de grupos de 60-80 igual pintaba ~400 filas de entrada.
+        let presupuesto = AUTO_EXPAND_BUDGET;
+        const aAbrir: string[] = [];
+        for (const [id, c] of Object.entries(counts)) {
+          if (c <= 0 || c > AUTO_EXPAND_MAX) continue;
+          if (c > presupuesto) continue;
+          presupuesto -= c;
+          aAbrir.push(id);
+        }
         setExpandedSections(new Set(aAbrir));
         aAbrir.forEach((id) => fetchGroupTareas(id));
         return;
@@ -1557,7 +1653,22 @@ export default function TareasPage() {
   };
 
   // Columnas visibles: respetar configuración del usuario (toggle del drawer)
+  // Handlers de la fila, en un ref de identidad estable: asi <FilaTarea> puede estar
+  // memoizada sin que cada render del padre invalide el memo, y sin closures viejas
+  // (el ref siempre apunta a las funciones de ESTE render).
+  const accionesFilaRef = useRef<AccionesFila>({} as AccionesFila);
+  accionesFilaRef.current = {
+    openDetail, toggleSelect, handleRowDragStart, setConfirmDelete,
+    tareaDeleteLabel, renderCell, getColWidth,
+  };
+
   const ALWAYS_VISIBLE_COLS = useMemo(() => new Set(["codigoPredio", "predio", "fechaActualizacion"]), []);
+  // Token que invalida el memo de TODAS las filas cuando cambia algo transversal
+  // a las celdas (columnas, ancho mientras se arrastra, catalogo de usuarios).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- token de version a proposito:
+  // el valor no se usa, lo unico que importa es que cambie de identidad con estas deps.
+  const cellVersion = useMemo(() => ({}), [resizeDelta, usersById, dupAssigneeNames, isModOrAdmin]);
+
   const visibleColumns = useMemo(() => {
     return sanitizeTaskFieldConfigs(columns).filter(c => {
       if (ALWAYS_VISIBLE_COLS.has(c.id)) return true;
@@ -2486,50 +2597,17 @@ export default function TareasPage() {
                           </thead>
                           <tbody>
                             {items.slice(0, renderLimits[estado.id] || ROWS_BATCH).map((t, idx) => (
-                              <tr
+                              <FilaTarea
                                 key={t.id}
-                                onClick={() => openDetail(t)}
-                                title={esTipoIncidenciaEspecial(t.tipoIncidencia) ? `Tarea especial — Tipo de incidencia: ${t.tipoIncidencia}` : undefined}
-                                className={`cursor-pointer transition-colors ${
-                                  esTipoIncidenciaEspecial(t.tipoIncidencia)
-                                    ? "bg-amber-100/80 hover:bg-amber-200/80 shadow-[inset_4px_0_0_0_#f59e0b]"
-                                    : `hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`
-                                }`}
-                              >
-                              {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center gap-1">
-                                    <span
-                                      draggable
-                                      onDragStart={(e) => handleRowDragStart(e, t.id)}
-                                      className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
-                                      title="Arrastrar a un espacio"
-                                    >
-                                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
-                                    </span>
-                                    <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
-                                    {session?.rol === "ADMIN" && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
-                                        className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
-                                        title="Eliminar tarea"
-                                        aria-label="Eliminar tarea"
-                                      >
-                                        <IconTrash className="h-3 w-3" />
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>}
-                                {visibleColumns.map((col) => (
-                                  <td
-                                    key={col.id}
-                                    style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
-                                    className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
-                                  >
-                                    {renderCell(t, col)}
-                                  </td>
-                                ))}
-                              </tr>
+                                t={t}
+                                idx={idx}
+                                isModOrAdmin={Boolean(isModOrAdmin)}
+                                esAdmin={session?.rol === "ADMIN"}
+                                selected={selectedIds.has(t.id)}
+                                visibleColumns={visibleColumns}
+                                acciones={accionesFilaRef}
+                                cellVersion={cellVersion}
+                              />
                             ))}
                           </tbody>
                         </table>
@@ -2609,45 +2687,17 @@ export default function TareasPage() {
                     </thead>
                     <tbody>
                       {groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH).map((t, idx) => (
-                        <tr
+                        <FilaTarea
                           key={t.id}
-                          onClick={() => openDetail(t)}
-                          className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
-                        >
-                          {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-1">
-                              <span
-                                draggable
-                                onDragStart={(e) => handleRowDragStart(e, t.id)}
-                                className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
-                                title="Arrastrar a un espacio"
-                              >
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
-                              </span>
-                              <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
-                              {session?.rol === "ADMIN" && (
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
-                                  className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
-                                  title="Eliminar tarea"
-                                  aria-label="Eliminar tarea"
-                                >
-                                  <IconTrash className="h-3 w-3" />
-                                </button>
-                              )}
-                            </div>
-                          </td>}
-                          {visibleColumns.map((col) => (
-                            <td
-                              key={col.id}
-                              style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
-                              className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
-                            >
-                              {renderCell(t, col)}
-                            </td>
-                          ))}
-                        </tr>
+                          t={t}
+                          idx={idx}
+                          isModOrAdmin={Boolean(isModOrAdmin)}
+                          esAdmin={session?.rol === "ADMIN"}
+                          selected={selectedIds.has(t.id)}
+                          visibleColumns={visibleColumns}
+                          acciones={accionesFilaRef}
+                          cellVersion={cellVersion}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -2689,45 +2739,17 @@ export default function TareasPage() {
                         </thead>
                         <tbody>
                           {items.slice(0, renderLimits[groupKey] || ROWS_BATCH).map((t: any, idx: number) => (
-                            <tr
+                            <FilaTarea
                               key={t.id}
-                              onClick={() => openDetail(t)}
-                              className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
-                            >
-                              {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center gap-1">
-                                  <span
-                                    draggable
-                                    onDragStart={(e) => handleRowDragStart(e, t.id)}
-                                    className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
-                                    title="Arrastrar a un espacio"
-                                  >
-                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
-                                  </span>
-                                  <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
-                                  {session?.rol === "ADMIN" && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
-                                      className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
-                                      title="Eliminar tarea"
-                                      aria-label="Eliminar tarea"
-                                    >
-                                      <IconTrash className="h-3 w-3" />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>}
-                              {visibleColumns.map((col) => (
-                                <td
-                                  key={col.id}
-                                  style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
-                                  className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
-                                >
-                                  {renderCell(t, col)}
-                                </td>
-                              ))}
-                            </tr>
+                              t={t}
+                              idx={idx}
+                              isModOrAdmin={Boolean(isModOrAdmin)}
+                              esAdmin={session?.rol === "ADMIN"}
+                              selected={selectedIds.has(t.id)}
+                              visibleColumns={visibleColumns}
+                              acciones={accionesFilaRef}
+                              cellVersion={cellVersion}
+                            />
                           ))}
                         </tbody>
                       </table>
@@ -2762,45 +2784,17 @@ export default function TareasPage() {
                   </thead>
                   <tbody>
                     {sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH).map((t, idx) => (
-                      <tr
+                      <FilaTarea
                         key={t.id}
-                        onClick={() => openDetail(t)}
-                        className={`cursor-pointer transition-colors hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"}`}
-                      >
-                        {isModOrAdmin && <td className="w-16 px-1 text-center" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center gap-1">
-                            <span
-                              draggable
-                              onDragStart={(e) => handleRowDragStart(e, t.id)}
-                              className="cursor-grab active:cursor-grabbing text-surface-300 hover:text-surface-500 px-0.5"
-                              title="Arrastrar a un espacio"
-                            >
-                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
-                            </span>
-                            <input type="checkbox" checked={selectedIds.has(t.id)} onChange={() => toggleSelect(t.id)} className="accent-primary-600 cursor-pointer" />
-                            {session?.rol === "ADMIN" && (
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDelete({ type: "tarea", id: t.id, label: tareaDeleteLabel(t) })}
-                                className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
-                                title="Eliminar tarea"
-                                aria-label="Eliminar tarea"
-                              >
-                                <IconTrash className="h-3 w-3" />
-                              </button>
-                            )}
-                          </div>
-                        </td>}
-                        {visibleColumns.map((col) => (
-                          <td
-                            key={col.id}
-                            style={{ width: getColWidth(col), minWidth: 40, maxWidth: getColWidth(col) }}
-                            className="px-2.5 py-1.5 text-surface-600 overflow-hidden"
-                          >
-                            {renderCell(t, col)}
-                          </td>
-                        ))}
-                      </tr>
+                        t={t}
+                        idx={idx}
+                        isModOrAdmin={Boolean(isModOrAdmin)}
+                        esAdmin={session?.rol === "ADMIN"}
+                        selected={selectedIds.has(t.id)}
+                        visibleColumns={visibleColumns}
+                        acciones={accionesFilaRef}
+                        cellVersion={cellVersion}
+                      />
                     ))}
                   </tbody>
                 </table>
