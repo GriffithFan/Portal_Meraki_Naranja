@@ -22,11 +22,21 @@ export interface SemanaKpi {
   tecnicos: number;
   incidencias: number;      // las de MANTENIMIENTO (el indicador que se publica)
   porProvincia: Record<string, number>;
-  // ── Volumen total de la semana (todas las incidencias, no solo mantenimiento) ──
-  realizados: number;       // predios que se trabajaron en campo (pasaron a INSTALADO / AUDITAR)
-  conformes: number;        // predios que pasaron a CONFORME
-  noConformes: number;      // predios que pasaron a NO CONFORME
-  trabajos: number;         // conformes + NC = revisiones cerradas en la semana
+  /**
+   * ── Trabajo EJECUTADO en la semana y cómo termino ──────────────────────────
+   * Vista de cohorte: se toman los predios que se trabajaron en campo esa semana
+   * (entraron a INSTALADO / AUDITAR) y se los sigue hasta su desenlace, ocurra
+   * cuando ocurra. El resultado se le imputa a la semana en que se HIZO el
+   * trabajo, no a la semana en que se aprobo.
+   *
+   * Por eso `conformes + noConformes + sinRevisar === realizados` siempre. Contar
+   * los conformes por la semana en que salieron daba sumas mayores al total de
+   * realizados y se prestaba a malinterpretarse.
+   */
+  realizados: number;       // predios que pasaron a INSTALADO / AUDITAR esa semana
+  conformes: number;        // de esos, los que terminaron aprobados
+  noConformes: number;      // de esos, los que terminaron rechazados
+  sinRevisar: number;       // de esos, los que todavia no se revisaron
 }
 export interface TecnicoKpi {
   nombre: string;
@@ -158,39 +168,68 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     m.sem[k] = (m.sem[k] || 0) + 1;
   }
 
-  // ── Volumen total de la semana: conformes y NC por transicion de estado ──
-  // Se lee de Actividad (no del estado actual del predio) para contar el EVENTO en
-  // la semana en que ocurrio, aunque despues el predio haya vuelto a cambiar.
+  // ── Trabajo ejecutado por semana y su desenlace (vista de cohorte) ──────────
+  // Se traen las transiciones DESDE la primera semana HASTA AHORA (no hasta el fin
+  // del periodo): el desenlace de lo realizado la ultima semana puede haber ocurrido
+  // despues, y hay que capturarlo igual.
   const transiciones = await prisma.actividad.findMany({
-    where: { entidad: "PREDIO", descripcion: { contains: "Estado:" }, createdAt: { gte: primera, lte: hasta } },
+    where: { entidad: "PREDIO", descripcion: { contains: "Estado:" }, createdAt: { gte: primera } },
     select: { entidadId: true, descripcion: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
   });
-  const volumen: Record<string, { conf: number; nc: number; realiz: Set<string> }> = {};
-  claves.forEach((k) => (volumen[k] = { conf: 0, nc: 0, realiz: new Set() }));
+
+  type Evento = { fecha: Date; antes: string; despues: string };
+  const eventos = new Map<string, Evento[]>();
   for (const a of transiciones) {
     const tr = parseTransicion(a.descripcion);
     if (!tr) continue;
-    const k = inicioSemana(a.createdAt).toISOString().slice(0, 10);
-    if (!volumen[k]) continue;
+    const lista = eventos.get(a.entidadId) || [];
+    lista.push({ fecha: a.createdAt, antes: tr.antes, despues: tr.despues });
+    eventos.set(a.entidadId, lista);
+  }
 
-    // Realizado: entra a INSTALADO/AUDITAR viniendo de otro estado. El Set deduplica
-    // el predio que rebota dentro de la misma semana.
-    if (REALIZADO.has(tr.despues) && !REALIZADO.has(tr.antes)) volumen[k].realiz.add(a.entidadId);
+  /** ¿Este evento cierra la revision del predio? Devuelve el desenlace o null. */
+  const desenlaceDe = (e: Evento): "conforme" | "noconforme" | null => {
+    if (e.despues === "conforme" && e.antes !== "conforme") return "conforme";
+    if (e.despues === "noconforme" && ORIGEN_NC.has(e.antes)) {
+      // Los NC solo cuentan de lunes a viernes (mismo criterio que el ranking).
+      const dow = e.fecha.getDay();
+      if (dow === 0 || dow === 6) return null;
+      return "noconforme";
+    }
+    return null;
+  };
 
-    const esConforme = tr.despues === "conforme" && tr.antes !== "conforme";
-    const esNc = tr.despues === "noconforme" && ORIGEN_NC.has(tr.antes);
-    if (!esConforme && !esNc) continue;
-    // Los NC solo cuentan de lunes a viernes (mismo criterio que el ranking).
-    if (esNc) { const dow = a.createdAt.getDay(); if (dow === 0 || dow === 6) continue; }
-    if (esConforme) volumen[k].conf++; else volumen[k].nc++;
+  const volumen: Record<string, { realiz: number; conf: number; nc: number; pend: number }> = {};
+  claves.forEach((k) => (volumen[k] = { realiz: 0, conf: 0, nc: 0, pend: 0 }));
+
+  for (const lista of Array.from(eventos.values())) {
+    // Primera vez que el predio entro a INSTALADO/AUDITAR en cada semana del periodo.
+    const primeraDeLaSemana = new Map<string, Date>();
+    for (const e of lista) {
+      if (!REALIZADO.has(e.despues) || REALIZADO.has(e.antes)) continue;
+      const k = inicioSemana(e.fecha).toISOString().slice(0, 10);
+      if (!volumen[k] || primeraDeLaSemana.has(k)) continue;
+      primeraDeLaSemana.set(k, e.fecha);
+    }
+    for (const [k, cuando] of Array.from(primeraDeLaSemana.entries())) {
+      volumen[k].realiz++;
+      // Desenlace = la primera revision POSTERIOR a ese trabajo, sin importar en
+      // que semana haya caido.
+      const cierre = lista.find((e: Evento) => e.fecha > cuando && desenlaceDe(e) !== null);
+      if (!cierre) volumen[k].pend++;
+      else if (desenlaceDe(cierre) === "conforme") volumen[k].conf++;
+      else volumen[k].nc++;
+    }
   }
 
   const semanas: SemanaKpi[] = claves.map((k) => ({
     desde: k, etiqueta: ddmm(k), tecnicos: porSemana[k].tec.size,
     incidencias: porSemana[k].n, porProvincia: porSemana[k].prov,
-    realizados: volumen[k].realiz.size,
-    conformes: volumen[k].conf, noConformes: volumen[k].nc,
-    trabajos: volumen[k].conf + volumen[k].nc,
+    realizados: volumen[k].realiz,
+    conformes: volumen[k].conf,
+    noConformes: volumen[k].nc,
+    sinRevisar: volumen[k].pend,
   }));
   const tecnicos: TecnicoKpi[] = Object.entries(matriz)
     .map(([nombre, d]) => {
@@ -217,17 +256,17 @@ export function textoCorreo(d: DatosKpi): string {
     return `- Semana del ${ddmm(s.desde)} al ${fDia(f)}: ` +
            `${s.tecnicos} técnicos – ${s.incidencias} incidencias`;
   }).join("\n");
-  // Volumen total: TODAS las incidencias, no solo las de mantenimiento.
-  // Cada evento cuenta en SU semana: un predio instalado en la semana 3 que sale
-  // conforme en la 5 suma a realizados de la 3 y a conformes de la 5.
+  // Cohorte: el resultado se imputa a la semana en que se HIZO el trabajo, así las
+  // tres cifras suman siempre el total de realizados.
   const pct = (n: number, base: number) => (base > 0 ? Math.round((n / base) * 100) : 0);
   const volumen = d.semanas.map((s) => {
     const f = new Date(new Date(s.desde).getTime() + 6 * 86400000);
+    const revisados = s.conformes + s.noConformes;
+    const cola = s.sinRevisar ? `, ${s.sinRevisar} sin revisar` : "";
     return `- Semana del ${ddmm(s.desde)} al ${fDia(f)}: ${s.realizados} predios realizados – ` +
-           `${s.conformes} conformes (${pct(s.conformes, s.realizados)}%) y ` +
-           `${s.noConformes} no conformes (${pct(s.noConformes, s.realizados)}%)`;
+           `${s.conformes} conformes y ${s.noConformes} no conformes${cola}. ` +
+           `Conformidad: ${pct(s.conformes, revisados)}%`;
   }).join("\n");
-  const conformidad = d.semanas.map((s) => `${ddmm(s.desde)}: ${pct(s.conformes, s.trabajos)}%`).join("  ·  ");
   const top = d.tecnicos.slice(0, 3).map((t) => `${t.nombre} (${t.total})`).join(", ");
 
   return `Asunto: Indicador semanal — Técnicos activos en incidencias de mantenimiento
@@ -242,11 +281,11 @@ La evolución de las últimas ${d.semanas.length} semanas:
 
 ${evol}
 
-Tomando todas las incidencias, no solo las de mantenimiento, el detalle por semana es:
+Sobre el trabajo ejecutado en campo, tomando todas las incidencias y no solo las de mantenimiento, el resultado de cada semana fue:
 
 ${volumen}
 
-Cada cosa se cuenta en la semana en que ocurrió: un predio instalado una semana y aprobado dos semanas después suma a los realizados de la primera y a los conformes de la segunda. Por eso los porcentajes no cierran en 100%. Comparando conformes contra el total de revisiones cerradas, la tasa de conformidad fue: ${conformidad}.
+A cada predio se le imputa la semana en que se trabajó, con el resultado que terminó teniendo, así que las cifras suman el total realizado. La conformidad se calcula sobre lo ya revisado.
 
 Mayor volumen del período: ${top}.
 
@@ -365,7 +404,7 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   let rv = r + 3;
   ws.mergeCells(rv, 1, rv, nCols);
   const tv = ws.getCell(rv, 1);
-  tv.value = "VOLUMEN TOTAL POR SEMANA (todas las incidencias, no solo mantenimiento)";
+  tv.value = "TRABAJO EJECUTADO POR SEMANA Y CÓMO TERMINÓ (todas las incidencias)";
   tv.font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
   tv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
   tv.alignment = { horizontal: "center", vertical: "middle" };
@@ -375,12 +414,10 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   const porc = (n: number, base: number) => (base > 0 ? Math.round((n / base) * 100) : 0);
   const filasVol: Array<[string, (s: SemanaKpi) => number, string]> = [
     ["Predios realizados", (s) => s.realizados, AZUL2],
-    ["Conformes", (s) => s.conformes, VERDE],
-    ["% conformes sobre realizados", (s) => porc(s.conformes, s.realizados), VERDE],
-    ["No conformes", (s) => s.noConformes, ROJO],
-    ["% no conformes sobre realizados", (s) => porc(s.noConformes, s.realizados), ROJO],
-    ["Revisiones cerradas (conf. + NC)", (s) => s.trabajos, AZUL],
-    ["% de conformidad", (s) => porc(s.conformes, s.trabajos), AZUL],
+    ["→ Conformes", (s) => s.conformes, VERDE],
+    ["→ No conformes", (s) => s.noConformes, ROJO],
+    ["→ Sin revisar todavía", (s) => s.sinRevisar, "FF999999"],
+    ["% de conformidad (sobre lo revisado)", (s) => porc(s.conformes, s.conformes + s.noConformes), AZUL],
   ];
   for (const [etiqueta, valor, color] of filasVol) {
     const esPorcentaje = etiqueta.startsWith("%");
@@ -407,10 +444,10 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
 
   ws.mergeCells(filaNota, 1, filaNota, nCols);
   const nota = ws.getCell(filaNota, 1);
-  nota.value = "Criterio: se contabiliza al técnico que registró al menos una incidencia de mantenimiento finalizada en la semana (sábado a viernes). Verde: mejoró respecto de la primera semana del período. "
-    + "Predios realizados = los que pasaron a INSTALADO o AUDITAR, contados una vez por predio y por semana (los cambios que no son de estado, como un comentario, no suman). "
-    + "Cada cosa cuenta en la semana en que ocurrió: un predio instalado una semana y aprobado dos semanas después suma a los realizados de la primera y a los conformes de la segunda, "
-    + "por eso los porcentajes sobre realizados no cierran en 100%. El % de conformidad compara conformes contra el total de revisiones cerradas y sí es una medida cerrada.";
+  nota.value = "Indicador (tabla de arriba): se contabiliza al técnico que registró al menos una incidencia de mantenimiento finalizada en la semana (sábado a viernes). Verde: mejoró respecto de la primera semana del período. "
+    + "Trabajo ejecutado (tabla de abajo): predios que pasaron a INSTALADO o AUDITAR, contados una vez por predio y por semana; los cambios que no son de estado, como un comentario, no suman. "
+    + "A cada predio se le imputa el resultado que terminó teniendo aunque la revisión haya ocurrido semanas después, por eso conformes + no conformes + sin revisar da siempre el total realizado. "
+    + "La última semana suele tener varios sin revisar: su % de conformidad se calcula solo sobre lo ya revisado y todavía puede moverse.";
   nota.font = { size: 9, italic: true, color: { argb: "FF666666" } };
   nota.alignment = { wrapText: true, vertical: "top" };
 
