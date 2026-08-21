@@ -8,6 +8,7 @@ import { useSearchContext } from "@/contexts/SearchContext";
 import Link from "next/link";
 import TareaDetalleModal from "@/components/TareaDetalleModal";
 import FloatingHScrollbar from "@/components/tareas/FloatingHScrollbar";
+import DescargaLacRMenu from "@/components/tareas/DescargaLacRMenu";
 import StatusIcon, { ESTADO_FORMAS } from "@/components/StatusIcon";
 import EstadoInlineDropdown, { type EstadoInlineDropdownHandle } from "@/components/EstadoInlineDropdown";
 import AsignadosInlineEditor, { type AsignadosInlineEditorHandle } from "@/components/tareas/AsignadosInlineEditor";
@@ -1752,25 +1753,6 @@ export default function EspacioTareasPage() {
     return normalizeSpaceName(espacio?.nombre).includes("predio");
   }, [allEspacios, espacio, espacioId]);
 
-  const downloadLacRNo = () => {
-    // 5 archivos: nc/cronogramas/ocp (CSV) + asignados-sin-cronograma/vencidos (XLSX con
-    // hojas de a 40). Se disparan con <a> espaciados; el navegador puede pedir permiso
-    // para "descargar varios archivos" la primera vez — hay que permitirlo.
-    const tipos = ["nc", "cronogramas", "ocp", "asignados-sin-cronograma", "asignados-vencidos"];
-    tipos.forEach((tipo, index) => {
-      const params = new URLSearchParams({ espacioId, tipo });
-      if (includeSubspaces) params.set("includeSubspaces", "true");
-      window.setTimeout(() => {
-        const a = document.createElement("a");
-        a.href = `/api/tareas/exports/no-conformes-lacr-no?${params.toString()}`;
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }, index * 600);
-    });
-  };
-
   const downloadEspacioExcel = () => {
     const params = new URLSearchParams({ espacioId });
     if (includeSubspaces) params.set("includeSubspaces", "true");
@@ -2065,14 +2047,7 @@ export default function EspacioTareasPage() {
             <span className="hidden sm:inline">Excel</span>
           </button>
           {session?.rol === "ADMIN" && isPrediosBranch && (
-            <button
-              onClick={downloadLacRNo}
-              className="px-2.5 py-1.5 border border-red-200 bg-red-50 text-red-700 rounded-md text-xs font-medium hover:bg-red-100 transition-colors flex items-center gap-1"
-              title="Descargar CSV LAC-R NO: NC, Cronogramas, OCP, Asignados sin cronograma (SIN ASIGNAR con técnico y sin fechas, DESDE +14 días) y Asignados vencidos (SIN ASIGNAR con técnico y con fechas)"
-            >
-              <IconDownload className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">LAC-R NO</span>
-            </button>
+            <DescargaLacRMenu espacioId={espacioId} includeSubspaces={includeSubspaces} />
           )}
           {isModOrAdmin && !isFacturadoSpace && (
             <button

@@ -166,13 +166,26 @@ type ExportPredio = {
   incidencias: string | null;
   lacR: string | null;
   provincia: string | null;
+  ciudad: string | null;
   updatedAt: Date;
   fechaDesde: Date | null;
   fechaHasta: Date | null;
+  espacioId: string | null;
   estado: { nombre: string | null; clave: string | null } | null;
-  asignaciones: { createdAt: Date; usuario: { nombre: string | null; thNumero: number | null } | null }[];
+  asignaciones: { createdAt: Date; usuario: { id: string; nombre: string | null; thNumero: number | null } | null }[];
   espacio: { id: string; nombre: string; parentId: string | null } | null;
 };
+
+/** LAC-R = NO de forma estricta. Cualquier otra cosa (SI, PEDIDO, vacio) queda afuera. */
+function esLacRNo(predio: ExportPredio) {
+  return normalizeText(predio.lacR) === "no";
+}
+
+/** Lee un parametro separado por comas y devuelve el set normalizado (vacio = no filtra). */
+function setDeParam(valor: string | null, normalizar = true) {
+  const items = (valor || "").split(",").map((x) => (normalizar ? normalizeText(x) : x.trim())).filter(Boolean);
+  return new Set(items);
+}
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -205,17 +218,46 @@ export async function GET(request: NextRequest) {
 
   const scopedSpaceIds = includeSubspaces ? collectDescendants(espacioId, espacios) : [espacioId];
 
+  // ── Opciones del desplegable de descarga ────────────────────────────────
+  // Por defecto la lista es la ESTRICTA: solo LAC-R = NO. Un predio en LAC-R SI
+  // queda afuera aunque su cronograma este vencido — eso es justamente lo que se
+  // colaba antes en "Asignados vencidos", que no miraba LAC-R para nada (medido el
+  // 20/08/2026: 166 predios, de los cuales 109 estaban en SI).
+  const lacrModo = (searchParams.get("lacr") || "no").toLowerCase() === "todos" ? "todos" : "no";
+  const omitirTecnicos = setDeParam(searchParams.get("omitirTecnicos"), false);
+  const omitirProvincias = setDeParam(searchParams.get("omitirProvincias"));
+  const omitirCiudades = setDeParam(searchParams.get("omitirCiudades"));
+  const omitirEspacios = setDeParam(searchParams.get("omitirEspacios"), false);
+
+  /** Quita lo que el usuario pidio omitir (tecnicos, provincias, departamentos, carpetas). */
+  function aplicarOmisiones(lista: ExportPredio[]) {
+    if (!omitirTecnicos.size && !omitirProvincias.size && !omitirCiudades.size && !omitirEspacios.size) return lista;
+    return lista.filter((predio) => {
+      if (omitirEspacios.size && predio.espacioId && omitirEspacios.has(predio.espacioId)) return false;
+      if (omitirProvincias.size && omitirProvincias.has(normalizeText(predio.provincia))) return false;
+      if (omitirCiudades.size && omitirCiudades.has(normalizeText(predio.ciudad))) return false;
+      if (omitirTecnicos.size) {
+        // Se omite el predio si ALGUNO de sus tecnicos esta en la lista a omitir.
+        const tiene = (predio.asignaciones || []).some((a) => a.usuario && omitirTecnicos.has(a.usuario.id));
+        if (tiene) return false;
+      }
+      return true;
+    });
+  }
+
   const PREDIO_SELECT = {
     codigo: true,
     nombre: true,
     incidencias: true,
     lacR: true,
     provincia: true,
+    ciudad: true,
     updatedAt: true,
     fechaDesde: true,
     fechaHasta: true,
+    espacioId: true,
     estado: { select: { nombre: true, clave: true } },
-    asignaciones: { select: { createdAt: true, usuario: { select: { nombre: true, thNumero: true } } } },
+    asignaciones: { select: { createdAt: true, usuario: { select: { id: true, nombre: true, thNumero: true } } } },
     espacio: { select: { id: true, nombre: true, parentId: true } },
   };
   const PREDIO_ORDER = [{ espacioId: "asc" as const }, { codigo: "asc" as const }, { incidencias: "asc" as const }];
@@ -237,13 +279,23 @@ export async function GET(request: NextRequest) {
     const sinAsignar = rows.filter((predio) => isSinAsignarState(predio.estado));
     const sinFechas = (predio: ExportPredio) => predio.fechaDesde == null && predio.fechaHasta == null;
     if (tipo === "asignados-sin-cronograma") {
+      // Sin cronograma no hay LAC-R que mirar: esta lista no se filtra por eso.
       exportData = { filenamePrefix: "Asignados sin cronograma", predios: sinAsignar.filter(sinFechas) };
     } else {
-      exportData = { filenamePrefix: "Asignados vencidos", predios: sinAsignar.filter((predio) => !sinFechas(predio)) };
+      // Aca SI se mira: un cronograma a futuro esta en LAC-R SI y no corresponde
+      // relanzarlo, por mas que la fecha ya haya pasado o falte poco.
+      const conCronograma = sinAsignar.filter((predio) => !sinFechas(predio));
+      exportData = {
+        filenamePrefix: "Asignados vencidos",
+        predios: lacrModo === "todos" ? conCronograma : conCronograma.filter(esLacRNo),
+      };
     }
   } else {
     const lacNoPredios = await prisma.predio.findMany({
-      where: { lacR: { equals: "NO", mode: "insensitive" }, espacioId: { in: scopedSpaceIds } },
+      where: {
+        espacioId: { in: scopedSpaceIds },
+        ...(lacrModo === "todos" ? {} : { lacR: { equals: "NO", mode: "insensitive" } }),
+      },
       select: PREDIO_SELECT,
       orderBy: PREDIO_ORDER,
     }) as unknown as ExportPredio[];
@@ -259,6 +311,8 @@ export async function GET(request: NextRequest) {
     };
     exportData = exportMap[tipo as "nc" | "cronogramas" | "ocp"];
   }
+
+  exportData = { ...exportData, predios: aplicarOmisiones(exportData.predios) };
 
   const today = new Date();
   // DESDE = hoy + desdeDias (sin contar hoy), HASTA = DESDE + 14. Para cronogramas,
@@ -281,7 +335,7 @@ export async function GET(request: NextRequest) {
         accion: "EXPORT_TAREAS_LACR_NO",
         detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix}, ${partes} hoja(s) de 40)`,
         ip,
-        metadata: { total, formato: "xlsx", tipo, espacioId, includeSubspaces, partes },
+        metadata: { total, formato: "xlsx", tipo, espacioId, includeSubspaces, partes, lacr: lacrModo, omitidos: { tecnicos: omitirTecnicos.size, provincias: omitirProvincias.size, ciudades: omitirCiudades.size, carpetas: omitirEspacios.size } },
       },
     }).catch(() => {});
     return new NextResponse(new Uint8Array(buffer), {
@@ -301,7 +355,7 @@ export async function GET(request: NextRequest) {
       accion: "EXPORT_TAREAS_LACR_NO",
       detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix})`,
       ip,
-      metadata: { total, formato: "csv", tipo, espacioId, includeSubspaces },
+      metadata: { total, formato: "csv", tipo, espacioId, includeSubspaces, lacr: lacrModo, omitidos: { tecnicos: omitirTecnicos.size, provincias: omitirProvincias.size, ciudades: omitirCiudades.size, carpetas: omitirEspacios.size } },
     },
   }).catch(() => {});
 
