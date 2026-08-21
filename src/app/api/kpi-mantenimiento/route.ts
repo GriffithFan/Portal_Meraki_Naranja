@@ -50,7 +50,8 @@ export async function GET(request: NextRequest) {
   }
 
   const semanas = Math.min(12, Math.max(2, parseInt(sp.get("semanas") || "3", 10)));
-  const datos = await calcularKpi(semanas);
+  // ?enCurso=1 agrega la semana que todavía no cerró, con lo que va hasta ahora.
+  const datos = await calcularKpi(semanas, sp.get("enCurso") === "1");
 
   if (sp.get("excel") === "1") {
     const buf = await excelKpi(datos);

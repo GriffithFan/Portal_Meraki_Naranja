@@ -35,6 +35,8 @@ export interface DatosKpi {
   tecnicos: TecnicoKpi[];
   ultima: SemanaKpi;
   totalPeriodo: number;
+  /** false si la última semana del informe todavía no cerró (viernes 17:00 ART). */
+  ultimaCerrada: boolean;
 }
 
 const esMantenimiento = (t: string | null) => {
@@ -48,8 +50,19 @@ const ddmm = (iso: string) => {
   return `${d}/${m}`;
 };
 
-/** Calcula el indicador de las últimas `nSemanas` COMPLETAS (sin la que está en curso). */
-export async function calcularKpi(nSemanas = 3): Promise<DatosKpi> {
+/**
+ * Calcula el indicador de las últimas `nSemanas`.
+ *
+ * Por defecto solo entran semanas CERRADAS (la que está en curso queda afuera, que
+ * es lo que corresponde para el envío automático de los viernes). Con
+ * `incluirEnCurso` se agrega la semana actual con lo que va hasta el momento.
+ *
+ * Sirve para emitir el informe junto con el reporte de facturación, que se genera
+ * los viernes alrededor de las 14 ART — o sea antes del cierre formal de las 17.
+ * Con la misma hora de corte, los dos informes dan números consistentes.
+ * `ultimaCerrada` queda expuesto por si algún consumidor necesita distinguirlo.
+ */
+export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise<DatosKpi> {
   const estado = await prisma.estadoConfig.findFirst({ where: { nombre: "CONFORME" }, select: { id: true } });
   if (!estado) throw new Error("No existe el estado CONFORME");
 
@@ -58,7 +71,9 @@ export async function calcularKpi(nSemanas = 3): Promise<DatosKpi> {
   const finActual = new Date(iniActual.getTime() + 6 * 86400000);
   finActual.setUTCHours(20, 0, 0, 0);                       // viernes 17:00 ART
   // si la semana en curso todavía no cerró, la última completa es la anterior
-  const ultimaCompleta = ahora < finActual ? new Date(iniActual.getTime() - SEMANA_MS) : iniActual;
+  const enCurso = ahora < finActual;
+  const ultimaCerrada = !enCurso || !incluirEnCurso;
+  const ultimaCompleta = enCurso && !incluirEnCurso ? new Date(iniActual.getTime() - SEMANA_MS) : iniActual;
   const primera = new Date(ultimaCompleta.getTime() - (nSemanas - 1) * SEMANA_MS);
   const hasta = new Date(ultimaCompleta.getTime() + 6 * 86400000);
   hasta.setUTCHours(20, 0, 0, 0);
@@ -117,7 +132,7 @@ export async function calcularKpi(nSemanas = 3): Promise<DatosKpi> {
     .sort((a, b) => b.total - a.total);
 
   return { semanas, tecnicos, ultima: semanas[semanas.length - 1],
-           totalPeriodo: semanas.reduce((a, s) => a + s.incidencias, 0) };
+           totalPeriodo: semanas.reduce((a, s) => a + s.incidencias, 0), ultimaCerrada };
 }
 
 /** Texto listo para pegar en el correo. */
