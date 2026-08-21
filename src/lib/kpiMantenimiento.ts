@@ -20,8 +20,12 @@ export interface SemanaKpi {
   desde: string;            // ISO (yyyy-mm-dd) del sábado de inicio
   etiqueta: string;         // dd/mm
   tecnicos: number;
-  incidencias: number;
+  incidencias: number;      // las de MANTENIMIENTO (el indicador que se publica)
   porProvincia: Record<string, number>;
+  // ── Volumen total de la semana (todas las incidencias, no solo mantenimiento) ──
+  conformes: number;        // predios que pasaron a CONFORME
+  noConformes: number;      // predios que pasaron a NO CONFORME
+  trabajos: number;         // conformes + NC = intentos cerrados en la semana
 }
 export interface TecnicoKpi {
   nombre: string;
@@ -44,6 +48,24 @@ const esMantenimiento = (t: string | null) => {
   const s = t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   return s.includes("mantenimiento") || s.includes("reparacion");
 };
+
+/**
+ * Conformes y NC de la semana, contados por TRANSICION de estado (tabla Actividad),
+ * con los mismos criterios que la matriz del ranking para que los numeros coincidan:
+ *  - Conforme: pasa a CONFORME viniendo de cualquier otro estado.
+ *  - NC: pasa a NO CONFORME viniendo de EN PROGRESO / INSTALADO / AUDITAR (asi no
+ *    cuenta el NC administrativo de actualizar el LAC) y solo de lunes a viernes.
+ * Ojo: esto mide TODAS las incidencias, no solo las de mantenimiento.
+ */
+const ORIGEN_NC = new Set(["enprogreso", "instalado", "auditar"]);
+
+const compacto = (v: string) =>
+  (v || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[_\s-]+/g, "");
+
+function parseTransicion(desc?: string | null): { antes: string; despues: string } | null {
+  const m = /Estado:\s*(.+?)\s*->\s*([^;]+)/.exec(desc || "");
+  return m ? { antes: compacto(m[1]), despues: compacto(m[2]) } : null;
+}
 
 const ddmm = (iso: string) => {
   const [, m, d] = iso.split("-");
@@ -118,9 +140,33 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     m.sem[k] = (m.sem[k] || 0) + 1;
   }
 
+  // ── Volumen total de la semana: conformes y NC por transicion de estado ──
+  // Se lee de Actividad (no del estado actual del predio) para contar el EVENTO en
+  // la semana en que ocurrio, aunque despues el predio haya vuelto a cambiar.
+  const transiciones = await prisma.actividad.findMany({
+    where: { entidad: "PREDIO", descripcion: { contains: "Estado:" }, createdAt: { gte: primera, lte: hasta } },
+    select: { descripcion: true, createdAt: true },
+  });
+  const volumen: Record<string, { conf: number; nc: number }> = {};
+  claves.forEach((k) => (volumen[k] = { conf: 0, nc: 0 }));
+  for (const a of transiciones) {
+    const tr = parseTransicion(a.descripcion);
+    if (!tr) continue;
+    const esConforme = tr.despues === "conforme" && tr.antes !== "conforme";
+    const esNc = tr.despues === "noconforme" && ORIGEN_NC.has(tr.antes);
+    if (!esConforme && !esNc) continue;
+    // Los NC solo cuentan de lunes a viernes (mismo criterio que el ranking).
+    if (esNc) { const dow = a.createdAt.getDay(); if (dow === 0 || dow === 6) continue; }
+    const k = inicioSemana(a.createdAt).toISOString().slice(0, 10);
+    if (!volumen[k]) continue;
+    if (esConforme) volumen[k].conf++; else volumen[k].nc++;
+  }
+
   const semanas: SemanaKpi[] = claves.map((k) => ({
     desde: k, etiqueta: ddmm(k), tecnicos: porSemana[k].tec.size,
     incidencias: porSemana[k].n, porProvincia: porSemana[k].prov,
+    conformes: volumen[k].conf, noConformes: volumen[k].nc,
+    trabajos: volumen[k].conf + volumen[k].nc,
   }));
   const tecnicos: TecnicoKpi[] = Object.entries(matriz)
     .map(([nombre, d]) => {
@@ -147,6 +193,13 @@ export function textoCorreo(d: DatosKpi): string {
     return `- Semana del ${ddmm(s.desde)} al ${f.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}: ` +
            `${s.tecnicos} técnicos – ${s.incidencias} incidencias`;
   }).join("\n");
+  // Volumen total: TODAS las incidencias, no solo las de mantenimiento.
+  const volumen = d.semanas.map((s) => {
+    const f = new Date(new Date(s.desde).getTime() + 6 * 86400000);
+    const tasa = s.trabajos > 0 ? Math.round((s.conformes / s.trabajos) * 100) : 0;
+    return `- Semana del ${ddmm(s.desde)} al ${f.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}: ` +
+           `${s.trabajos} trabajos – ${s.conformes} conformes y ${s.noConformes} no conformes (${tasa}% de conformidad)`;
+  }).join("\n");
   const top = d.tecnicos.slice(0, 3).map((t) => `${t.nombre} (${t.total})`).join(", ");
 
   return `Asunto: Indicador semanal — Técnicos activos en incidencias de mantenimiento
@@ -160,6 +213,10 @@ En la semana del ${iniSemana} al ${finSemana} trabajaron ${u.tecnicos} técnicos
 La evolución de las últimas ${d.semanas.length} semanas:
 
 ${evol}
+
+Tomando todas las incidencias, no solo las de mantenimiento, el trabajo cerrado por semana fue:
+
+${volumen}
 
 Mayor volumen del período: ${top}.
 
@@ -273,6 +330,44 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCE6F1" } };
     c.alignment = { horizontal: i < 3 ? "left" : "center" };
   });
+
+  // ── Volumen total: TODAS las incidencias, no solo las de mantenimiento ──
+  let rv = r + 3;
+  ws.mergeCells(rv, 1, rv, nCols);
+  const tv = ws.getCell(rv, 1);
+  tv.value = "VOLUMEN TOTAL POR SEMANA (todas las incidencias, no solo mantenimiento)";
+  tv.font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
+  tv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
+  tv.alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(rv).height = 22;
+  rv++;
+
+  const filasVol: Array<[string, (s: SemanaKpi) => number, string]> = [
+    ["Trabajos cerrados", (s) => s.trabajos, AZUL2],
+    ["Conformes", (s) => s.conformes, VERDE],
+    ["No conformes", (s) => s.noConformes, ROJO],
+    ["% de conformidad", (s) => (s.trabajos > 0 ? Math.round((s.conformes / s.trabajos) * 100) : 0), AZUL],
+  ];
+  for (const [etiqueta, valor, color] of filasVol) {
+    const esPorcentaje = etiqueta.startsWith("%");
+    const row = ws.getRow(rv);
+    row.getCell(2).value = etiqueta;
+    d.semanas.forEach((s, i) => {
+      const c = row.getCell(3 + i);
+      c.value = esPorcentaje ? valor(s) / 100 : valor(s);
+      if (esPorcentaje) c.numFmt = "0%";
+    });
+    if (!esPorcentaje) {
+      row.getCell(2 + d.semanas.length + 1).value = d.semanas.reduce((a, s) => a + valor(s), 0);
+    }
+    row.eachCell({ includeEmpty: true }, (c, i) => {
+      c.font = { bold: true, color: { argb: color } };
+      c.alignment = { horizontal: i < 3 ? "left" : "center" };
+      c.border = { bottom: { style: "hair", color: { argb: "FFDDDDDD" } } };
+    });
+    row.height = 18;
+    rv++;
+  }
 
   ws.mergeCells(r + 3, 1, r + 3, nCols);
   const nota = ws.getCell(r + 3, 1);
