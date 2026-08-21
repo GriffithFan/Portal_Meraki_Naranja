@@ -73,6 +73,15 @@ const ddmm = (iso: string) => {
 };
 
 /**
+ * dd/mm y dd/mm/aaaa propios. `toLocaleDateString("es-AR")` NO rellena el mes con
+ * cero aunque se le pida `month: "2-digit"`, y el informe salia con fechas mezcladas
+ * ("Semana del 25/07 al 31/7"). En un correo a dirección se nota.
+ */
+const p2 = (n: number) => String(n).padStart(2, "0");
+const fDia = (d: Date) => `${p2(d.getDate())}/${p2(d.getMonth() + 1)}`;
+const fFecha = (d: Date) => `${fDia(d)}/${d.getFullYear()}`;
+
+/**
  * Calcula el indicador de las últimas `nSemanas`.
  *
  * Por defecto solo entran semanas CERRADAS (la que está en curso queda afuera, que
@@ -184,20 +193,20 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
 /** Texto listo para pegar en el correo. */
 export function textoCorreo(d: DatosKpi): string {
   const u = d.ultima;
-  const finSemana = new Date(new Date(u.desde).getTime() + 6 * 86400000).toLocaleDateString("es-AR");
-  const iniSemana = new Date(u.desde).toLocaleDateString("es-AR");
+  const finSemana = fFecha(new Date(new Date(u.desde).getTime() + 6 * 86400000));
+  const iniSemana = fFecha(new Date(u.desde));
   const prov = Object.entries(u.porProvincia).sort((a, b) => b[1] - a[1])
     .map(([p, n]) => `${p} ${n}`).join(" · ");
   const evol = d.semanas.map((s) => {
     const f = new Date(new Date(s.desde).getTime() + 6 * 86400000);
-    return `- Semana del ${ddmm(s.desde)} al ${f.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}: ` +
+    return `- Semana del ${ddmm(s.desde)} al ${fDia(f)}: ` +
            `${s.tecnicos} técnicos – ${s.incidencias} incidencias`;
   }).join("\n");
   // Volumen total: TODAS las incidencias, no solo las de mantenimiento.
   const volumen = d.semanas.map((s) => {
     const f = new Date(new Date(s.desde).getTime() + 6 * 86400000);
     const tasa = s.trabajos > 0 ? Math.round((s.conformes / s.trabajos) * 100) : 0;
-    return `- Semana del ${ddmm(s.desde)} al ${f.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}: ` +
+    return `- Semana del ${ddmm(s.desde)} al ${fDia(f)}: ` +
            `${s.trabajos} trabajos – ${s.conformes} conformes y ${s.noConformes} no conformes (${tasa}% de conformidad)`;
   }).join("\n");
   const top = d.tecnicos.slice(0, 3).map((t) => `${t.nombre} (${t.total})`).join(", ");
@@ -250,8 +259,8 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   ws.mergeCells(2, 1, 2, nCols);
   const finU = new Date(new Date(d.ultima.desde).getTime() + 6 * 86400000);
   const t2 = ws.getCell(2, 1);
-  t2.value = `Período: ${ddmm(d.semanas[0].desde)} al ${finU.toLocaleDateString("es-AR")}   ·   ` +
-             `Semana operativa: sábado a viernes   ·   Emitido: ${new Date().toLocaleDateString("es-AR")}`;
+  t2.value = `Período: ${ddmm(d.semanas[0].desde)} al ${fFecha(finU)}   ·   ` +
+             `Semana operativa: sábado a viernes   ·   Emitido: ${fFecha(new Date())}`;
   t2.font = { size: 10, italic: true, color: { argb: "FF555555" } };
   t2.alignment = { horizontal: "center" };
   ws.getRow(3).height = 6;
