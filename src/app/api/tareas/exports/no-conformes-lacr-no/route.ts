@@ -176,6 +176,21 @@ type ExportPredio = {
   espacio: { id: string; nombre: string; parentId: string | null } | null;
 };
 
+/**
+ * Cronograma que TODAVIA NO ABRIO (DESDE posterior a hoy). Es lo que la pantalla
+ * muestra como "PRONTO": LAC-R quedo en NO pero el predio ya tiene una ventana
+ * asignada por delante.
+ *
+ * No hay que volver a pedirlos: al re-lanzarlos se pierde la ventana que ya tenian
+ * y hay que esperar la nueva (14 dias mas). Pasa sobre todo en las regiones
+ * "estrictas" de BA (14 y 15), donde una ventana futura se guarda como LAC-R NO
+ * en vez de SI (ver lib/enriquecimiento/aplicar.ts) — en el resto de las regiones
+ * un cronograma futuro queda en SI y el filtro de LAC-R ya lo dejaba afuera.
+ */
+function ventanaAunNoAbrio(predio: ExportPredio, finDeHoy: Date) {
+  return predio.fechaDesde != null && predio.fechaDesde > finDeHoy;
+}
+
 /** LAC-R = NO de forma estricta. Cualquier otra cosa (SI, PEDIDO, vacio) queda afuera. */
 function esLacRNo(predio: ExportPredio) {
   return normalizeText(predio.lacR) === "no";
@@ -224,6 +239,8 @@ export async function GET(request: NextRequest) {
   // colaba antes en "Asignados vencidos", que no miraba LAC-R para nada (medido el
   // 20/08/2026: 166 predios, de los cuales 109 estaban en SI).
   const lacrModo = (searchParams.get("lacr") || "no").toLowerCase() === "todos" ? "todos" : "no";
+  // Por defecto se excluyen los cronogramas que todavia no abrieron (los "PRONTO").
+  const incluirFuturos = searchParams.get("incluirFuturos") === "1";
   const omitirTecnicos = setDeParam(searchParams.get("omitirTecnicos"), false);
   const omitirProvincias = setDeParam(searchParams.get("omitirProvincias"));
   const omitirCiudades = setDeParam(searchParams.get("omitirCiudades"));
@@ -312,7 +329,12 @@ export async function GET(request: NextRequest) {
     exportData = exportMap[tipo as "nc" | "cronogramas" | "ocp"];
   }
 
-  exportData = { ...exportData, predios: aplicarOmisiones(exportData.predios) };
+  const finDeHoy = new Date();
+  finDeHoy.setHours(23, 59, 59, 999);
+  const sinFuturos = incluirFuturos
+    ? exportData.predios
+    : exportData.predios.filter((predio) => !ventanaAunNoAbrio(predio, finDeHoy));
+  exportData = { ...exportData, predios: aplicarOmisiones(sinFuturos) };
 
   const today = new Date();
   // DESDE = hoy + desdeDias (sin contar hoy), HASTA = DESDE + 14. Para cronogramas,
@@ -335,7 +357,7 @@ export async function GET(request: NextRequest) {
         accion: "EXPORT_TAREAS_LACR_NO",
         detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix}, ${partes} hoja(s) de 40)`,
         ip,
-        metadata: { total, formato: "xlsx", tipo, espacioId, includeSubspaces, partes, lacr: lacrModo, omitidos: { tecnicos: omitirTecnicos.size, provincias: omitirProvincias.size, ciudades: omitirCiudades.size, carpetas: omitirEspacios.size } },
+        metadata: { total, formato: "xlsx", tipo, espacioId, includeSubspaces, partes, lacr: lacrModo, incluirFuturos, omitidos: { tecnicos: omitirTecnicos.size, provincias: omitirProvincias.size, ciudades: omitirCiudades.size, carpetas: omitirEspacios.size } },
       },
     }).catch(() => {});
     return new NextResponse(new Uint8Array(buffer), {
@@ -355,7 +377,7 @@ export async function GET(request: NextRequest) {
       accion: "EXPORT_TAREAS_LACR_NO",
       detalle: `${total} registros en ${targetSpace.nombre} (${exportData.filenamePrefix})`,
       ip,
-      metadata: { total, formato: "csv", tipo, espacioId, includeSubspaces, lacr: lacrModo, omitidos: { tecnicos: omitirTecnicos.size, provincias: omitirProvincias.size, ciudades: omitirCiudades.size, carpetas: omitirEspacios.size } },
+      metadata: { total, formato: "csv", tipo, espacioId, includeSubspaces, lacr: lacrModo, incluirFuturos, omitidos: { tecnicos: omitirTecnicos.size, provincias: omitirProvincias.size, ciudades: omitirCiudades.size, carpetas: omitirEspacios.size } },
     },
   }).catch(() => {});
 

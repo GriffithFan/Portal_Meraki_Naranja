@@ -88,6 +88,7 @@ export default function DescargaLacRMenu({
   const [cargando, setCargando] = useState(false);
   const [listas, setListas] = useState<string[]>(LISTAS.map((l) => l.tipo));
   const [incluirLacRSi, setIncluirLacRSi] = useState(false);
+  const [incluirFuturos, setIncluirFuturos] = useState(false);
   const [omTecnicos, setOmTecnicos] = useState<string[]>([]);
   const [omProvincias, setOmProvincias] = useState<string[]>([]);
   const [omCiudades, setOmCiudades] = useState<string[]>([]);
@@ -135,6 +136,7 @@ export default function DescargaLacRMenu({
       const params = new URLSearchParams({ espacioId, tipo });
       if (includeSubspaces) params.set("includeSubspaces", "true");
       if (incluirLacRSi) params.set("lacr", "todos");
+      if (incluirFuturos) params.set("incluirFuturos", "1");
       if (omTecnicos.length) params.set("omitirTecnicos", omTecnicos.join(","));
       if (omProvincias.length) params.set("omitirProvincias", omProvincias.join(","));
       if (omCiudades.length) params.set("omitirCiudades", omCiudades.join(","));
@@ -223,6 +225,21 @@ export default function DescargaLacRMenu({
               Incluir tambien los LAC-R SI
               <span className="block text-[10px] text-surface-400">
                 Por defecto no entran: un predio en LAC-R SI no se relanza aunque el cronograma este vencido.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 cursor-pointer rounded-md bg-surface-50 p-2">
+            <input
+              type="checkbox"
+              checked={incluirFuturos}
+              onChange={(e) => setIncluirFuturos(e.target.checked)}
+              className="mt-0.5 accent-red-600"
+            />
+            <span className="text-[11px] text-surface-700 leading-tight">
+              Incluir los que aun no abrieron (PRONTO)
+              <span className="block text-[10px] text-surface-400">
+                Por defecto no entran: ya tienen ventana por delante y volver a pedirlos la corre 14 dias mas.
               </span>
             </span>
           </label>
