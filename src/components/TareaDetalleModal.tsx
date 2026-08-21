@@ -167,6 +167,14 @@ const DEFAULT_DETAIL_FIELDS: DetailFieldDef[] = [
 
 const NOTES_DETAIL_FIELD: DetailFieldDef = { id: "notas", label: "Notas", field: "notas", editable: true };
 const MAS_20_AP_KEY = "tieneMas20Ap";
+const RECABLEAR_KEY = "recablear";
+const OPCIONES_RECABLEAR = ["1", "2", "3", "4", "5"];
+
+/** "1".."5" o "" (sin dato). Cualquier otra cosa se descarta. */
+function normalizeRecablear(value: unknown): string {
+  const v = String(value ?? "").trim();
+  return OPCIONES_RECABLEAR.includes(v) ? v : "";
+}
 
 function normalizeMas20Ap(value: unknown): "SI" | "NO" | "" {
   const normalized = String(value || "").trim().toUpperCase();
@@ -237,6 +245,7 @@ export default function TareaDetalleModal({
   const [notasTecnicoDraft, setNotasTecnicoDraft] = useState("");
   const [savingNotasTecnico, setSavingNotasTecnico] = useState(false);
   const [savingMas20Ap, setSavingMas20Ap] = useState(false);
+  const [savingRecablear, setSavingRecablear] = useState(false);
 
   const formatDateTime = (d: string) =>
     new Date(d).toLocaleDateString("es-AR", {
@@ -515,6 +524,16 @@ export default function TareaDetalleModal({
     const ok = await saveField("notasTecnico", notasTecnicoDraft);
     if (ok) toast.success("Observaciones guardadas");
     setSavingNotasTecnico(false);
+  }
+
+  async function saveRecablear(value: string) {
+    if (savingRecablear) return;
+    const current = normalizeRecablear(tarea?.camposExtra?.[RECABLEAR_KEY]);
+    if (value === current) return;
+    setSavingRecablear(true);
+    const ok = await saveField("camposExtra", { [RECABLEAR_KEY]: value || null });
+    if (ok) toast.success("Campo guardado");
+    setSavingRecablear(false);
   }
 
   async function saveMas20Ap(value: "SI" | "NO" | "") {
@@ -838,6 +857,7 @@ export default function TareaDetalleModal({
 
   const notasTecnicoDirty = notasTecnicoDraft !== String(tarea?.notasTecnico || "");
   const mas20ApValue = normalizeMas20Ap(tarea?.camposExtra?.[MAS_20_AP_KEY]);
+  const recablearValue = normalizeRecablear(tarea?.camposExtra?.[RECABLEAR_KEY]);
 
   // Descripción de la incidencia (de Mined/Salesforce). Se muestra como sección
   // fija (independiente de la config del espacio, así es igual en todo Predios 2026
@@ -1307,6 +1327,37 @@ export default function TareaDetalleModal({
                         </select>
                         {savingMas20Ap && <span className="text-[11px] text-surface-400">Guardando...</span>}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Recablear: lo carga el técnico segun lo que hizo en la visita (se factura por punto) */}
+                  <div className="border border-surface-200 rounded-lg">
+                    <div className="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">
+                        Recablear
+                      </span>
+                      {recablearValue && (
+                        <span className="text-[10px] text-cyan-700 font-medium">● {recablearValue} punto{recablearValue === "1" ? "" : "s"}</span>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={recablearValue}
+                          onChange={(e) => { void saveRecablear(normalizeRecablear(e.target.value)); }}
+                          disabled={savingRecablear}
+                          className="w-full max-w-[220px] rounded-md border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 focus:outline-none focus:border-primary-400 disabled:opacity-50"
+                        >
+                          <option value="">Sin dato</option>
+                          {OPCIONES_RECABLEAR.map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                        {savingRecablear && <span className="text-[11px] text-surface-400">Guardando...</span>}
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-surface-400">
+                        Cuántos puntos tuviste que recablear en esta visita.
+                      </p>
                     </div>
                   </div>
 
