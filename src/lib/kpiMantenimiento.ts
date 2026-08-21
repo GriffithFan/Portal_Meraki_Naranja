@@ -368,9 +368,11 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
     row.height = 18;
     rv++;
   }
+  // La nota al pie va debajo del bloque (antes vivia en r + 3, que ahora ocupa este).
+  const filaNota = rv + 1;
 
-  ws.mergeCells(r + 3, 1, r + 3, nCols);
-  const nota = ws.getCell(r + 3, 1);
+  ws.mergeCells(filaNota, 1, filaNota, nCols);
+  const nota = ws.getCell(filaNota, 1);
   nota.value = "Criterio: se contabiliza al técnico que registró al menos una incidencia de mantenimiento finalizada en la semana (sábado a viernes). Verde: mejoró respecto de la primera semana del período.";
   nota.font = { size: 9, italic: true, color: { argb: "FF666666" } };
   nota.alignment = { wrapText: true, vertical: "top" };
