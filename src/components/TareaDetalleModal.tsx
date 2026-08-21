@@ -810,7 +810,12 @@ export default function TareaDetalleModal({
     if (hasOwnCamposConfig) return [];
     const extra = tarea?.camposExtra;
     if (!extra || typeof extra !== "object" || Array.isArray(extra)) return [];
+    // Los campos que ya tienen su propio bloque abajo (20 AP, Recablear) no se
+    // repiten aca: si no, el mismo dato sale dos veces — arriba como texto de solo
+    // lectura y abajo como desplegable.
+    const conBloquePropio = new Set([MAS_20_AP_KEY, RECABLEAR_KEY]);
     return Object.entries(extra)
+      .filter(([key]) => !conBloquePropio.has(key))
       .filter(([, value]) => value !== null && value !== undefined && value !== "")
       .map(([key, value]) => ({
         id: `custom_${key}`,
