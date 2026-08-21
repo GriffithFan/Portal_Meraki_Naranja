@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { CAMPOS_EXTRA_TECNICO, normalizarCampoTecnico, valorValidoParaCampo } from "@/lib/camposPredio";
 import { CLAVE_REVISION, derivarARevisionInstalacion } from "@/lib/revisionInstalacion";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, tareaUpdateSchema } from "@/lib/validation";
@@ -377,12 +378,12 @@ export async function PATCH(
         if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
           return NextResponse.json({ error: "Formato inválido para camposExtra" }, { status: 400 });
         }
+        // El tecnico solo puede tocar los campos que carga desde el campo
+        // (ver lib/camposPredio.ts); el resto de los personalizados son solo-admin.
         const entries = Object.entries(incoming as Record<string, unknown>);
         const invalid = entries.some(([key, value]) => {
-          if (key !== "tieneMas20Ap") return true;
-          if (value === null || value === "") return false;
-          const normalized = String(value).trim().toUpperCase();
-          return normalized !== "SI" && normalized !== "NO";
+          if (!(CAMPOS_EXTRA_TECNICO as readonly string[]).includes(key)) return true;
+          return !valorValidoParaCampo(key, value);
         });
         if (invalid) {
           return NextResponse.json({ error: "Sin permisos para editar campos personalizados" }, { status: 403 });
@@ -412,9 +413,12 @@ export async function PATCH(
             ? existing.camposExtra as Record<string, unknown>
             : {};
           const incoming = { ...(bodyAny[field] as Record<string, unknown>) };
-          if (Object.prototype.hasOwnProperty.call(incoming, "tieneMas20Ap")) {
-            const normalized = String(incoming.tieneMas20Ap || "").trim().toUpperCase();
-            incoming.tieneMas20Ap = normalized === "SI" || normalized === "NO" ? normalized : null;
+          // Normalizar los campos del tecnico venga quien venga (admin incluido), asi
+          // el badge de la lista y facturacion leen siempre el mismo formato.
+          for (const clave of CAMPOS_EXTRA_TECNICO) {
+            if (Object.prototype.hasOwnProperty.call(incoming, clave)) {
+              incoming[clave] = normalizarCampoTecnico(clave, incoming[clave]);
+            }
           }
           data[field] = { ...prev, ...incoming };
         }

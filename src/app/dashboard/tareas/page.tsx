@@ -44,10 +44,11 @@ const CopyBtn = ({ text }: { text: string }) => {
 };
 
 // ── Indicador de notas/comentarios ──────────────────────────
-const NotesIndicator = ({ notas, notasTecnico, comentarios, tieneMas20Ap, tieneAdjuntos }: { notas?: string; notasTecnico?: string; comentarios?: number; tieneMas20Ap?: unknown; tieneAdjuntos?: boolean }) => {
+const NotesIndicator = ({ notas, notasTecnico, comentarios, tieneMas20Ap, recablear, tieneAdjuntos }: { notas?: string | boolean; notasTecnico?: string | boolean; comentarios?: number; tieneMas20Ap?: unknown; recablear?: unknown; tieneAdjuntos?: boolean }) => {
   const showMas20Ap = String(tieneMas20Ap || "").trim().toUpperCase() === "SI";
+  const recableado = ["1", "2", "3", "4", "5"].includes(String(recablear ?? "").trim()) ? String(recablear).trim() : "";
   const showTecnico = Boolean(notasTecnico) || Boolean(tieneAdjuntos);
-  if (!notas && !showTecnico && !showMas20Ap && !(comentarios && comentarios > 0)) return null;
+  if (!notas && !showTecnico && !showMas20Ap && !recableado && !(comentarios && comentarios > 0)) return null;
   const taskTip = [
     notas ? "Tiene notas" : "",
     comentarios ? `${comentarios} comentario${comentarios > 1 ? "s" : ""}` : "",
@@ -67,6 +68,17 @@ const NotesIndicator = ({ notas, notasTecnico, comentarios, tieneMas20Ap, tieneA
           <svg className="w-3 h-3 text-violet-500" fill="currentColor" viewBox="0 0 24 24">
             <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
           </svg>
+        </span>
+      )}
+      {/* Recableado: lo carga el técnico (1 a 5) y se factura por eso, así que
+          conviene verlo en la fila sin tener que abrir el predio. */}
+      {recableado && (
+        <span
+          title={`Recablear: ${recableado}`}
+          aria-label={`Recablear ${recableado}`}
+          className="px-1 rounded bg-cyan-50 text-cyan-700 border border-cyan-200 text-[9px] font-bold leading-[14px]"
+        >
+          R{recableado}
         </span>
       )}
       {showTecnico && (
@@ -1539,7 +1551,7 @@ export default function TareasPage() {
           {session?.rol === "ADMIN" && typeof t.cantidadCronogramas === "number" && t.cantidadCronogramas >= 3 && (
             <span title={`${t.cantidadCronogramas} cronogramas originados`} className="shrink-0 rounded bg-purple-100 border border-purple-300 px-1 text-[9px] font-bold leading-[1.4] text-purple-700">{t.cantidadCronogramas}c</span>
           )}
-          <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} tieneAdjuntos={t.tieneAdjuntos} />
+          <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} recablear={t.camposExtra?.recablear} tieneAdjuntos={t.tieneAdjuntos} />
           <CopyBtn text={t.codigo || ""} />
         </span>
       );
@@ -1790,7 +1802,7 @@ export default function TareasPage() {
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 {t.codigo && <span className="shrink-0 text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
-                <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} tieneAdjuntos={t.tieneAdjuntos} />
+                <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} recablear={t.camposExtra?.recablear} tieneAdjuntos={t.tieneAdjuntos} />
                 <p className="min-w-0 truncate text-sm font-medium text-surface-700">
                   {t.incidencias || t.nombre || "Sin nombre"}
                 </p>

@@ -10,7 +10,7 @@ interface ReporteResumenItem {
   tecnicoId: string;
   tecnicoNombre: string;
   cantidad: number;
-  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia?: string | null; fecha?: string | null; mas20Ap?: boolean }[];
+  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia?: string | null; fecha?: string | null; mas20Ap?: boolean; recablear?: string }[];
 }
 
 interface Reporte {
@@ -260,6 +260,9 @@ export default function FacturacionPage() {
                       <div className="space-y-2">
                         {r.resumen.map((grupo) => {
                           const mas20Count = grupo.tareas.filter((t) => t.mas20Ap).length;
+                          // Recableado: lo carga el técnico (1 a 5) y se paga por punto.
+                          const recabPredios = grupo.tareas.filter((t) => t.recablear).length;
+                          const recabPuntos = grupo.tareas.reduce((s, t) => s + (Number(t.recablear) || 0), 0);
                           return (
                           <div key={grupo.tecnicoId} className="bg-white rounded-md border border-surface-200 p-2.5">
                             <div className="flex items-center justify-between mb-1.5 gap-2">
@@ -270,6 +273,11 @@ export default function FacturacionPage() {
                                     ● {mas20Count} con +20 AP
                                   </span>
                                 )}
+                                {recabPredios > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700 border border-cyan-200" title="Predios con recableado y total de puntos recableados">
+                                    ● {recabPredios} recableado{recabPredios !== 1 ? "s" : ""} · {recabPuntos} pts
+                                  </span>
+                                )}
                                 <span className="text-[11px] font-semibold text-emerald-600">{grupo.cantidad} tarea{grupo.cantidad !== 1 ? "s" : ""}</span>
                               </div>
                             </div>
@@ -278,6 +286,7 @@ export default function FacturacionPage() {
                                 <div key={t.id} className="flex items-center gap-2 text-[11px] text-surface-500">
                                   <span className="text-surface-800 font-medium truncate max-w-[120px]">{t.nombre}</span>
                                   {t.mas20Ap && <span className="text-violet-600 font-semibold text-[10px]" title="Más de 20 AP — pago extra">● +20 AP</span>}
+                                  {t.recablear && <span className="text-cyan-700 font-semibold text-[10px]" title={`Recablear: ${t.recablear} punto(s)`}>● R{t.recablear}</span>}
                                   {t.incidencia && <span className="text-surface-400 font-mono text-[10px]">{t.incidencia}</span>}
                                   {t.fecha && <span className="text-surface-400 text-[10px]">{formatDate(t.fecha)}</span>}
                                   {t.provincia && <span className="text-surface-300 hidden sm:inline text-[10px]">{t.provincia}</span>}

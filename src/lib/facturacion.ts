@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { ordenarTecnicosAsignados } from "@/utils/equipoUtils";
+import { normalizarRecablear } from "@/lib/camposPredio";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -37,11 +38,14 @@ export interface FilaFacturacion {
   provincia: string | null;
   fecha: string | null;
   mas20Ap: boolean;
+  /** Puntos recableados que cargo el tecnico (1 a 5), o "" si no cargo nada. */
+  recablear: string;
   resolvio: string;   // último asignado (pago completo), o "Sin asignar"
   anterior: string;   // asignado(s) previo(s) (porcentaje), o ""
 }
 
 const esMas20 = (camposExtra: any) => String(camposExtra?.tieneMas20Ap || "").trim().toUpperCase() === "SI";
+const recableadoDe = (camposExtra: any) => normalizarRecablear(camposExtra?.recablear) ?? "";
 const fechaAR = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("es-AR") : "");
 
 /** Una fila por predio, con quién resolvió (último) y quién estuvo antes. */
@@ -58,6 +62,7 @@ export function filasFacturacion(predios: PredioFacturacion[]): FilaFacturacion[
       provincia: p.provincia,
       fecha: p.fechaActualizacion ? p.fechaActualizacion.toISOString() : null,
       mas20Ap: esMas20(p.camposExtra),
+      recablear: recableadoDe(p.camposExtra),
       resolvio,
       anterior,
     };
@@ -88,10 +93,13 @@ export function xlsxBufferFacturacion(filas: FilaFacturacion[], totalTareas: num
     Fecha: fechaAR(t.fecha),
     Provincia: t.provincia || "",
     "Más de 20 AP": t.mas20Ap ? "Sí" : "",
+    Recablear: t.recablear ? Number(t.recablear) : "",
   }));
-  rows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico (resolvió)": "", "Técnico anterior": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "" });
+  const totalRecableados = filas.filter((f) => f.recablear).length;
+  const puntosRecableados = filas.reduce((suma, f) => suma + (Number(f.recablear) || 0), 0);
+  rows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico (resolvió)": "", "Técnico anterior": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "", Recablear: totalRecableados ? `${totalRecableados} predios · ${puntosRecableados} puntos` : "" });
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 13 }];
+  ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 13 }, { wch: 11 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Facturación");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
@@ -109,6 +117,7 @@ export function resumenPorTecnico(predios: PredioFacturacion[]) {
       incidencia: p.incidencias ?? null,
       fecha: p.fechaActualizacion ? p.fechaActualizacion.toISOString() : null,
       mas20Ap: esMas20(p.camposExtra),
+      recablear: recableadoDe(p.camposExtra),
     };
     const ordenados = ordenarTecnicosAsignados(p.asignaciones);
     if (ordenados.length === 0) {
