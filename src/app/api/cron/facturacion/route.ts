@@ -5,6 +5,7 @@ import path from "path";
 import { verifyCronAuth } from "@/lib/cronAuth";
 import { avisarAdminsFallo } from "@/lib/alertasAdmin";
 import { filasFacturacion, csvFacturacion, xlsxBufferFacturacion, resumenPorTecnico } from "@/lib/facturacion";
+import { quitarYaFacturados } from "@/lib/prediosFacturados";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -82,11 +83,21 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Un predio que ya se facturó en un reporte anterior no se vuelve a facturar aunque
+    // haya vuelto a CONFORME: sería cobrar dos veces el mismo trabajo.
+    const { incluidos: prediosFacturables, excluidos: refacturados } = await quitarYaFacturados(prediosConforme);
+    if (refacturados.length > 0) {
+      console.warn(
+        `[cron/facturacion] ${refacturados.length} predio(s) excluidos por estar ya facturados: `
+        + refacturados.map((p) => p.codigo).join(", ")
+      );
+    }
+
     // Generación compartida con /api/facturacion: una fila por predio, con
     // "Técnico (resolvió)" (último asignado) + "Técnico anterior".
-    const resumen = resumenPorTecnico(prediosConforme);
-    const totalTareas = prediosConforme.length;
-    const filas = filasFacturacion(prediosConforme);
+    const resumen = resumenPorTecnico(prediosFacturables);
+    const totalTareas = prediosFacturables.length;
+    const filas = filasFacturacion(prediosFacturables);
     const totalMas20 = filas.filter((f) => f.mas20Ap).length;
 
     const csvDir = path.join(process.cwd(), "uploads", "reportes");

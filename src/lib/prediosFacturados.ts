@@ -60,3 +60,28 @@ export function yaFueFacturado(
   const cierre = facturados.get(predioId);
   return cierre != null && fechaDelEvento > cierre;
 }
+
+/**
+ * Saca de un lote de predios los que YA entraron en un reporte de facturacion previo.
+ *
+ * Es la misma regla que `yaFueFacturado`, pero para el reporte de facturacion: si un
+ * predio ya facturado vuelve a CONFORME (alguien lo mueve de estado, o el
+ * enriquecimiento lo re-confirma), su `fechaActualizacion` se corre y volveria a caer
+ * dentro del periodo del reporte siguiente. Se cobraria dos veces el mismo trabajo.
+ *
+ * Devuelve tambien los excluidos para poder dejarlos en el log: que un predio no se
+ * facture no puede pasar en silencio.
+ */
+export async function quitarYaFacturados<T extends { id: string; fechaActualizacion: Date | null }>(
+  predios: T[]
+): Promise<{ incluidos: T[]; excluidos: T[] }> {
+  const facturados = await prediosFacturadosHasta();
+  const incluidos: T[] = [];
+  const excluidos: T[] = [];
+  for (const p of predios) {
+    const fecha = p.fechaActualizacion;
+    if (fecha && yaFueFacturado(facturados, p.id, fecha)) excluidos.push(p);
+    else incluidos.push(p);
+  }
+  return { incluidos, excluidos };
+}

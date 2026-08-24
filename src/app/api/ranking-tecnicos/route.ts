@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
 import { semanaRango } from "@/lib/semanaRanking";
+import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,10 @@ export async function GET(request: Request) {
           ],
         },
         select: {
+          id: true,
           estado: { select: { nombre: true, clave: true } },
+          fechaActualizacion: true,
+          updatedAt: true,
           asignaciones: {
             where: { tipo: { in: ["TAREA", "TECNICO"] } },
             select: { createdAt: true, usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
@@ -87,11 +91,17 @@ export async function GET(request: Request) {
       })
     : [];
 
+  // Un predio ya facturado en una semana ANTERIOR no vuelve a sumar aunque lo muevan
+  // de estado y regrese a CONFORME: seria cobrar dos veces el mismo trabajo. Paso el
+  // 21/08/2026 con dos predios (ver lib/prediosFacturados.ts).
+  const facturados = await prediosFacturadosHasta();
+
   const ranking = new Map<string, MutableRankingRow>();
 
   for (const predio of predios) {
     const bucket = getStateBucket(predio.estado);
     if (!bucket) continue;
+    if (yaFueFacturado(facturados, predio.id, predio.fechaActualizacion ?? predio.updatedAt)) continue;
 
     // Se acredita a UN SOLO técnico (el último asignado) para no duplicar el predio
     // cuando intervinieron varios. Así el total coincide con predios únicos.
