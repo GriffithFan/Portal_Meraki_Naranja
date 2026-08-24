@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyCronAuth } from "@/lib/cronAuth";
+import { pausaFinDeSemana } from "@/lib/pausaFinDeSemana";
 import { resolverPrediosAlcance, type AlcanceSpec } from "@/lib/enriquecimiento/alcance";
 import { ejecutarExtraccion } from "@/lib/enriquecimiento/ejecutar";
 
@@ -16,6 +17,14 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const authError = verifyCronAuth(request);
   if (authError) return authError;
+
+  // Sábado y domingo no se enriquece: traería conformidades del fin de semana que
+  // nadie revisó y quedarían contadas en el ranking y la facturación. El guard vive
+  // en el código (y no solo en el crontab) para que sobreviva a un redeploy.
+  const pausa = pausaFinDeSemana();
+  if (pausa.pausado) {
+    return NextResponse.json({ ok: true, skipped: "pausa de fin de semana", motivo: pausa.motivo, ahora: pausa.art });
+  }
 
   try {
     // Una sola corrida a la vez (comparte la sesión de Chrome del extractor).
