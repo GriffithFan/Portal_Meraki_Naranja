@@ -12,6 +12,7 @@
  */
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
+import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
 
 const NO_CONTABILIZAR = ["Gustavo"];
@@ -131,7 +132,7 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
   const predios = await prisma.predio.findMany({
     where: { estadoId: estado.id, fechaActualizacion: { gte: primera, lte: hasta } },
     select: {
-      provincia: true, tipoIncidencia: true, fechaActualizacion: true,
+      id: true, provincia: true, tipoIncidencia: true, fechaActualizacion: true,
       asignaciones: {
         where: { tipo: { in: ["TAREA", "TECNICO"] } },
         select: { createdAt: true, usuario: { select: { nombre: true, thNumero: true } } },
@@ -148,8 +149,13 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
   claves.forEach((k) => (porSemana[k] = { tec: new Set(), n: 0, prov: {} }));
   const matriz: Record<string, { th: number | null; sem: Record<string, number> }> = {};
 
+  // Un predio ya facturado que vuelve a CONFORME no se cuenta otra vez (ver
+  // lib/prediosFacturados.ts).
+  const facturados = await prediosFacturadosHasta();
+
   for (const p of predios) {
     if (!esMantenimiento(p.tipoIncidencia)) continue;
+    if (p.fechaActualizacion && yaFueFacturado(facturados, p.id, p.fechaActualizacion)) continue;
     let asignados = p.asignaciones.filter((a) => a.usuario);
     if (!asignados.length) continue;
     // Gustavo no se contabiliza: se acredita al otro técnico asignado

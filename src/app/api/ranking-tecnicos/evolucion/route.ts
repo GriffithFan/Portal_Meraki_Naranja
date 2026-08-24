@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
 import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
           ],
         },
         select: {
+          id: true,
           fechaActualizacion: true,
           updatedAt: true,
           estado: { select: { nombre: true, clave: true } },
@@ -82,11 +84,17 @@ export async function GET(request: Request) {
   const globalConformes = new Array(semanas).fill(0);
   const globalTotal = new Array(semanas).fill(0);
 
+  // Un predio YA FACTURADO que vuelve a CONFORME (alguien lo pasa a INSTALADO y lo
+  // devuelve) mueve su fechaActualizacion a la semana actual y volveria a contar en
+  // una semana en la que nadie lo trabajo. Paso el 21/08/2026 con dos predios.
+  const facturados = await prediosFacturadosHasta();
+
   for (const predio of predios) {
     const bucket = getStateBucket(predio.estado);
     if (!bucket) continue;
     const fecha = predio.fechaActualizacion || predio.updatedAt;
     if (!fecha) continue;
+    if (yaFueFacturado(facturados, predio.id, fecha)) continue;
     const weekIndex = Math.floor((inicioSemana(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
     if (weekIndex < 0 || weekIndex >= semanas) continue;
 

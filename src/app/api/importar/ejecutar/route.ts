@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { codigosDadosDeBaja } from "@/lib/prediosBaja";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { parseBody, isErrorResponse, importarEjecutarSchema } from "@/lib/validation";
 import { detectarProvincia } from "@/utils/provinciaUtils";
@@ -21,6 +22,8 @@ interface ImportPayload {
   espacioId?: string;
   updateExisting?: boolean;
   dryRun?: boolean;
+  /** Reincorporar predios dados de baja (por defecto NO se crean). */
+  ignorarBajas?: boolean;
 }
 
 // Campos del cronograma SF 2026
@@ -198,6 +201,13 @@ export async function POST(request: NextRequest) {
   let updated = 0;
   let skipped = 0;
   const errors: string[] = [];
+
+  // Predios dados de BAJA: no se vuelven a crear aunque el archivo los traiga.
+  // Sin esto, borrar un predio no sirve de nada — la importación siguiente lo
+  // recrea con id nuevo (paso el 02/06/2026 con 1080 predios). Con `ignorarBajas`
+  // se puede forzar la reincorporación desde la pantalla de importación.
+  const bajas = body.ignorarBajas ? new Set<string>() : await codigosDadosDeBaja();
+  const omitidosPorBaja: string[] = [];
   const duplicates: { fila: number; serial: string; nuevo: Record<string, string>; existente: Record<string, string>; iguales: string[]; diferentes: string[]; accion?: "actualizado" | "omitido" }[] = [];
   // Detalle de lo actualizado (qué campos cambiaron) y desglose de motivos de omisión.
   const updates: { fila: number; serial: string | null; id?: string; cambios: { campo: string; antes: string; despues: string }[] }[] = [];
@@ -414,6 +424,14 @@ export async function POST(request: NextRequest) {
             const existingId = batchCreatedCodes.get(effectiveCodigo)!;
             await updateExistingPredio(existingId, null);
             updated++;
+            continue;
+          }
+
+          // ¿El predio está dado de baja? Entonces no entra, aunque el archivo lo traiga.
+          if (effectiveCodigo && bajas.has(effectiveCodigo)) {
+            omitidosPorBaja.push(effectiveCodigo);
+            errors.push(`Fila ${i + 2}: predio ${effectiveCodigo} está dado de baja, se omitió`);
+            skipped++;
             continue;
           }
 
@@ -787,7 +805,10 @@ export async function POST(request: NextRequest) {
         falladoTransitorio: motivos.transitorio,
         falladoOtro: motivos.error,
         filaInvalida: motivos.filaInvalida,
+        omitidoPorBaja: omitidosPorBaja.length,
       },
+      // Códigos que quedaron afuera por estar dados de baja, para que se vea en la UI.
+      omitidosPorBaja: omitidosPorBaja.slice(0, 300),
       errors: errors.slice(0, 300),
       duplicates: duplicates.slice(0, 300),
       updates: updates.slice(0, 300),

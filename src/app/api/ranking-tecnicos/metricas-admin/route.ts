@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 import { getSession } from "@/lib/auth";
 import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
 import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
@@ -121,12 +122,18 @@ export async function GET(request: Request) {
     return s;
   };
 
+  // Re-conformidades de predios YA FACTURADOS: no cuentan. Si alguien mueve un predio
+  // facturado a INSTALADO y lo devuelve a CONFORME se genera una transicion nueva que
+  // sumaria de nuevo, en una semana en la que no se trabajo. Paso el 21/08/2026.
+  const facturados = await prediosFacturadosHasta();
+
   for (const a of acts) {
     const tr = parseTransicion(a.descripcion);
     if (!tr) continue;
     const esConforme = tr.despues === "conforme" && tr.antes !== "conforme";
     const esNc = tr.despues === "noconforme" && ORIGEN_NC.has(tr.antes);
     if (!esConforme && !esNc) continue;
+    if (yaFueFacturado(facturados, a.entidadId, a.createdAt)) continue;
 
     const fecha = a.createdAt;
     // NC: solo cuenta de lunes a viernes (getDay 1..5).

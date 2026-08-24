@@ -81,6 +81,7 @@ model User {
   lecturasAnuncio      AnuncioLectura[]
   jornadas             JornadaLaboral[]
   enriquecimientos     EnriquecimientoJob[] @relation("CreadorEnriquecimiento")
+  bajasPredio   PredioBaja[] @relation("BajasPredio")
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -696,6 +697,31 @@ model CampoPersonalizado {
   createdAt DateTime @default(now())
 
   @@index([activo, orden])
+}
+
+// ─── PREDIOS DADOS DE BAJA ──────────────────────────
+// Predios que nos sacaron del contrato. El registro sobrevive al borrado del predio
+// porque guarda el CODIGO, no el id.
+//
+// Existe porque borrar el predio no alcanzaba: el 24/05/2026 se borraron ~1150
+// registros y el 02/06 una importacion masiva volvio a crear 1080 —entre ellos los 68
+// que nos habian quitado— porque el archivo de origen seguia trayendolos y nada
+// marcaba que estuvieran de baja. Volvieron con id nuevo, asi que ni siquiera quedaba
+// rastro utilizable en la papelera. Ahora el import consulta esta tabla y los saltea.
+model PredioBaja {
+  id            String    @id @default(cuid())
+  codigo        String    @unique   // codigo del predio (sobrevive al borrado)
+  nombre        String?
+  motivo        String?
+  // Si se reactiva, se deja el registro con fecha en vez de borrarlo: asi queda
+  // la historia de que estuvo de baja y quien la levanto.
+  reactivadoEn  DateTime?
+  reactivadoPorId String?
+  creadoPorId   String
+  creadoPor     User      @relation("BajasPredio", fields: [creadoPorId], references: [id])
+  createdAt     DateTime  @default(now())
+
+  @@index([reactivadoEn])
 }
 
 // ─── CONFIGURACIÓN VISTA COMPARTIDA ─────────────────

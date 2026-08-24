@@ -4,6 +4,7 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
 import { parseBody, isErrorResponse, tareaCreateSchema } from "@/lib/validation";
 import { registrarEnPapelera } from "@/lib/papelera";
+import { darDeBaja } from "@/lib/prediosBaja";
 import { detectarProvincia } from "@/utils/provinciaUtils";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 import { isLegacyEquipoField, normalizeTaskQuickFilter, SORTABLE_PREDIO_FIELDS } from "@/utils/taskFieldConfig";
@@ -697,19 +698,34 @@ export async function DELETE(request: NextRequest) {
       await registrarEnPapelera("PREDIO", p.nombre || p.codigo || "Sin nombre", p as unknown as Record<string, unknown>, session.userId);
     }
 
+    // Dejar la BAJA registrada por código. La papelera guarda el id, y si el predio
+    // vuelve por una importación lo hace con id nuevo, así que no alcanza para
+    // impedir que reaparezca (paso el 02/06/2026: una import recreó 1080 predios
+    // borrados en mayo). Con `?sinBaja=1` se borra sin registrar la baja, para
+    // limpiezas que no son bajas de contrato.
+    const registrarBaja = searchParams.get("sinBaja") !== "1";
+    let bajas = 0;
+    if (registrarBaja) {
+      const motivo = (searchParams.get("motivo") || "Eliminado desde la lista de tareas").slice(0, 200);
+      const r = await darDeBaja(predios.map((p) => ({ codigo: p.codigo, nombre: p.nombre })), motivo, session.userId);
+      bajas = r.registrados;
+    }
+
     const result = await prisma.predio.deleteMany({ where });
 
     await prisma.actividad.create({
       data: {
         accion: "ELIMINAR",
-        descripcion: `Eliminación masiva: ${result.count} tareas eliminadas`,
+        descripcion: `Eliminación masiva: ${result.count} tareas eliminadas`
+          + (registrarBaja ? ` · ${bajas} registradas como baja (no volverán a entrar por importación)` : " · sin registrar baja"),
         entidad: "PREDIO",
         entidadId: "bulk",
         userId: session.userId,
+        metadata: { eliminados: result.count, bajasRegistradas: bajas },
       },
     });
 
-    return NextResponse.json({ success: true, count: result.count });
+    return NextResponse.json({ success: true, count: result.count, bajasRegistradas: bajas });
   } catch (error) {
     console.error("Error en eliminación masiva:", error);
     return NextResponse.json({ error: "Error al eliminar" }, { status: 500 });
