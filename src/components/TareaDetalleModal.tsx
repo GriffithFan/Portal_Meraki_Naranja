@@ -150,9 +150,16 @@ interface DetailFieldDef {
   hidden?: boolean;
 }
 
+// Campos del detalle cuando la carpeta NO tiene camposConfig propio.
+//
+// "asignados" tiene que estar sí o sí: no es un dato más, es el control para asignar
+// y desasignar técnicos. Si falta acá, en una carpeta sin configurar el control no
+// se dibuja y ni un ADMIN ni un coordinador pueden asignar desde el detalle, sin
+// ningún mensaje que lo explique. Pasó con "Reinstalacion Facil" (24/08/2026).
 const DEFAULT_DETAIL_FIELDS: DetailFieldDef[] = [
   { id: "nombre", label: "Predio", field: "nombre", editable: false },
   { id: "incidencias", label: "Incidencia", field: "incidencias", editable: true },
+  { id: "asignados", label: "Asignados", field: "asignaciones", editable: true },
   { id: "ambito", label: "Ámbito", field: "ambito", editable: true },
   { id: "cue", label: "CUE", field: "cue", editable: true },
   { id: "cuePredio", label: "CUE_Predio", field: "cuePredio", editable: true },
