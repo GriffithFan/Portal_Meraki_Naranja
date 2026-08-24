@@ -116,9 +116,15 @@ type AsignacionParaOrden = {
 
 /**
  * Ordena los técnicos de un predio por fecha de asignación (PRIMERO → ÚLTIMO),
- * deduplicados por equipo. `opts.soloTecnicos` filtra a técnicos activos (para el
- * ranking); sin eso incluye a todos los asignados (para facturación).
+ * deduplicados por equipo. `opts.soloTecnicos` restringe a usuarios con rol TECNICO
+ * (para el ranking); sin eso incluye a todos los asignados (para facturación).
  * Devuelve [primero(s)…, último] — el último es quien lo resolvió.
+ *
+ * OJO con `activo`: NO se filtra por ese campo. `activo` controla el acceso al
+ * sistema, no si el trabajo hecho cuenta. Un técnico dado de baja sigue teniendo
+ * predios que salen CONFORME después de su salida, y esos tienen que aparecer en el
+ * ranking y cobrarse igual. Antes se filtraba y el ranking quedaba corto respecto de
+ * la lista y del reporte de facturación (paso el 24/08/2026 con un predio).
  */
 export function ordenarTecnicosAsignados(
   asignaciones: AsignacionParaOrden[],
@@ -128,7 +134,7 @@ export function ordenarTecnicosAsignados(
     .filter((a) => {
       const u = a.usuario;
       if (!u) return false;
-      if (opts.soloTecnicos) return u.activo !== false && u.rol === "TECNICO";
+      if (opts.soloTecnicos) return u.rol === "TECNICO";
       return true;
     })
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -149,7 +155,8 @@ export function ordenarTecnicosAsignados(
 
 /**
  * Elige el ÚNICO técnico al que se le acredita un predio en el ranking (para NO
- * duplicar): el ÚLTIMO asignado entre los técnicos activos, o null si no hay.
+ * duplicar): el ÚLTIMO asignado con rol TECNICO, o null si no hay. Incluye a los
+ * dados de baja: ver la nota sobre `activo` en ordenarTecnicosAsignados.
  */
 export function elegirTecnicoAcreditado(asignaciones: AsignacionParaOrden[]): TecnicoAcreditado | null {
   const ordenados = ordenarTecnicosAsignados(asignaciones, { soloTecnicos: true });
