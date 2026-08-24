@@ -87,6 +87,26 @@ export interface ResultadoPlan {
   salteadosConforme: string[];
   salteadosYaEnriquecidos: string[];
   sinMatch: string[];
+  /**
+   * Predios en NO CONFORME cuya incidencia YA figura "Cerrado" en Salesforce.
+   *
+   * NO se mueven solos: se listan para que un admin decida. Un NC que se cierra es
+   * el final del retrabajo y casi siempre corresponde pasarlo a CONFORME, pero eso
+   * acredita al tecnico y entra en la facturacion, asi que la decision es humana.
+   */
+  noConformeCerrados: NoConformeCerrado[];
+}
+
+export interface NoConformeCerrado {
+  predioId: string;
+  codigo: string;
+  incidencia: string;
+  /** Ultimo comentario de Nivel 3, que es donde queda la explicacion del cierre. */
+  comentario: string;
+  nivel3: string;
+  nivel4: string;
+  auditoriaLac: string;
+  provincia: string;
 }
 
 const PLACEHOLDER_LAB = new Set(["sin-adjudicar", "sin adjudicar", "sin_adjudicar", ""]);
@@ -103,6 +123,18 @@ function esGpsPlaceholder(coord: [number, number] | null): boolean {
   return GPS_PLACEHOLDERS.some(
     ([la, ln]) => Math.abs(coord[0] - la) < 0.001 && Math.abs(coord[1] - ln) < 0.001
   );
+}
+
+/**
+ * Se queda con el ULTIMO comentario de un campo que Salesforce acumula en un solo
+ * texto separando las entradas con una linea de puntos y dos puntos. Si no encuentra
+ * el separador devuelve el texto recortado.
+ */
+function ultimoComentario(texto: string): string {
+  const limpio = (texto || "").replace(/[.:]{6,}/g, "\n").trim();
+  const partes = limpio.split("\n").map((t) => t.trim()).filter(Boolean);
+  const ultimo = partes.length ? partes[partes.length - 1] : "";
+  return ultimo.length > 400 ? `${ultimo.slice(0, 400)}…` : ultimo;
 }
 
 function g(fila: FilaReporte, col: string): string {
@@ -233,6 +265,7 @@ export function planificarEnriquecimiento(
   const salteadosConforme: string[] = [];
   const salteadosYaEnriquecidos: string[] = [];
   const sinMatch: string[] = [];
+  const noConformeCerrados: NoConformeCerrado[] = [];
 
   for (const fila of filas) {
     const codigo = g(fila, "Numero_Predio");
@@ -446,10 +479,28 @@ export function planificarEnriquecimiento(
       }
     }
 
+    // ── NO CONFORME con la incidencia ya cerrada: se AVISA, no se mueve ──────────
+    // Desde NO CONFORME el estado no se toca nunca de forma automatica: pasarlo a
+    // CONFORME acredita al tecnico y lo mete en la facturacion del viernes. Se junta
+    // la evidencia (comentario de Nivel 3, estados de nivel, auditoria) para que el
+    // admin decida uno por uno desde la pantalla de enriquecimiento.
+    if (estadoUp === "NO CONFORME" && g(fila, "Incidencia_Estado").trim().toLowerCase() === "cerrado") {
+      noConformeCerrados.push({
+        predioId: p.id,
+        codigo,
+        incidencia: g(fila, "Numero_Incidencia"),
+        comentario: ultimoComentario(g(fila, "Incidencia_Comentario_Nivel_3")),
+        nivel3: g(fila, "Estado_Nivel3_Reporte") || g(fila, "Incidencia_Estado_de_Nivel_3"),
+        nivel4: g(fila, "Incidencia_Estado_de_Nivel_4"),
+        auditoriaLac: g(fila, "Incidencia_Estado_Auditoria_LAC_Unificado"),
+        provincia: p.provincia || g(fila, "Provincia_Reporte"),
+      });
+    }
+
     if (Object.keys(upd).length > 0 || Object.keys(extra).length > 0) {
       cambios.push({ predioId: p.id, codigo, upd, extra, cambiosPrevios: previos, transicionEstado });
     }
   }
 
-  return { cambios, stats, conflictos, gpsOmitido, sinVerificar, salteadosConforme, salteadosYaEnriquecidos, sinMatch };
+  return { cambios, stats, conflictos, gpsOmitido, sinVerificar, salteadosConforme, salteadosYaEnriquecidos, sinMatch, noConformeCerrados };
 }

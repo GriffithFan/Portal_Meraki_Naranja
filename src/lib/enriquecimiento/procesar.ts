@@ -55,5 +55,8 @@ export function resumenDePlan(plan: ResultadoPlan, errores: ErrorExtraccion[] = 
     salteadosConforme: plan.salteadosConforme.length,
     salteadosYaEnriquecidos: plan.salteadosYaEnriquecidos.length,
     sinMatch: plan.sinMatch.length,
+    // NO CONFORME que Salesforce ya cerro: se listan para que un admin decida
+    // (no se mueven solos). Ver aplicar.ts.
+    noConformeCerrados: plan.noConformeCerrados,
   };
 }

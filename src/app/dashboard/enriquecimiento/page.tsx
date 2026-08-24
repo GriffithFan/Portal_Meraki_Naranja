@@ -84,6 +84,10 @@ export default function EnriquecimientoPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Fase 2 (automático en el servidor)
+  // NO CONFORME que Salesforce ya cerro: se eligen a mano (ver renderNoConformeCerrados).
+  const [ncSel, setNcSel] = useState<Record<string, boolean>>({});
+  const [ncAplicando, setNcAplicando] = useState(false);
+  const [ncHecho, setNcHecho] = useState<string>("");
   const [ejecJobId, setEjecJobId] = useState<string | null>(null);
   const [progreso, setProgreso] = useState<any>(null);
   const [ejecResultado, setEjecResultado] = useState<any>(null);
@@ -335,6 +339,107 @@ export default function EnriquecimientoPage() {
     );
   };
 
+  /**
+   * Aviso de NO CONFORME cuya incidencia ya figura CERRADA en Salesforce.
+   *
+   * No se mueven solos a proposito: pasarlos a CONFORME acredita al tecnico y entra
+   * en la facturacion del viernes. Se muestra la evidencia (nivel 3/4, auditoria y el
+   * ultimo comentario) y el admin tilda los que correspondan.
+   */
+  const renderNoConformeCerrados = (res: any, jobIdRes: string | null) => {
+    const lista: any[] = res?.noConformeCerrados || [];
+    if (lista.length === 0) return null;
+    const elegidos = lista.filter((x) => ncSel[x.predioId]);
+    const todos = elegidos.length === lista.length;
+
+    const confirmarNc = async () => {
+      if (elegidos.length === 0) return;
+      const ok = await confirm({
+        title: "Pasar a CONFORME",
+        message: `${elegidos.length} predio(s) pasaran de NO CONFORME a CONFORME. Van a sumar en el ranking y entrar en la facturacion. ¿Continuar?`,
+      });
+      if (!ok) return;
+      setNcAplicando(true);
+      setNcHecho("");
+      try {
+        const r = await fetch("/api/enriquecimiento/confirmar-conformes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ predioIds: elegidos.map((x) => x.predioId), jobId: jobIdRes }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d?.error || "No se pudo aplicar");
+        setNcHecho(d.mensaje || `${d.movidos} pasaron a CONFORME.`);
+        setNcSel({});
+        cargarHistorial();
+      } catch (e: any) {
+        setError(e.message || "No se pudo aplicar");
+      } finally {
+        setNcAplicando(false);
+      }
+    };
+
+    return (
+      <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+        <div className="text-sm font-semibold text-amber-900">
+          ⚠ {lista.length} predio(s) en NO CONFORME figuran CERRADOS en Salesforce
+        </div>
+        <div className="mt-0.5 text-[11px] text-amber-800">
+          No se movieron solos. Revisa el comentario y tilda los que correspondan pasar a CONFORME.
+        </div>
+
+        <label className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-900 cursor-pointer w-fit">
+          <input
+            type="checkbox"
+            checked={todos}
+            onChange={(e) => {
+              const v = e.target.checked;
+              const next: Record<string, boolean> = {};
+              if (v) for (const x of lista) next[x.predioId] = true;
+              setNcSel(next);
+            }}
+          />
+          Seleccionar todos
+        </label>
+
+        <ul className="mt-2 space-y-1.5 max-h-80 overflow-y-auto">
+          {lista.map((x) => (
+            <li key={x.predioId} className="flex gap-2 rounded border border-amber-200 bg-white p-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 shrink-0"
+                checked={!!ncSel[x.predioId]}
+                onChange={(e) => setNcSel((prev) => ({ ...prev, [x.predioId]: e.target.checked }))}
+              />
+              <div className="min-w-0 text-[11px]">
+                <div className="font-semibold text-surface-800">
+                  {x.codigo} <span className="font-normal text-surface-500">· {x.incidencia}</span>
+                  {x.provincia && <span className="font-normal text-surface-400"> · {x.provincia}</span>}
+                </div>
+                <div className="text-surface-500">
+                  Nivel 3: {x.nivel3 || "—"} · Nivel 4: {x.nivel4 || "—"} · Auditoria LAC: {x.auditoriaLac || "—"}
+                </div>
+                {x.comentario && <div className="mt-0.5 text-surface-600 break-words">{x.comentario}</div>}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            onClick={confirmarNc}
+            disabled={ncAplicando || elegidos.length === 0}
+            className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+          >
+            {ncAplicando ? "Aplicando…" : `Pasar ${elegidos.length} a CONFORME`}
+          </button>
+          {ncHecho && <span className="text-[11px] text-green-700">{ncHecho}</span>}
+        </div>
+      </div>
+    );
+  };
+
   // Detalle por campo como chips con etiquetas legibles (fechas y LAC-R primero).
   const renderResumenCampos = (res: any) => {
     const campos = res.detallePorCampo || {};
@@ -520,6 +625,7 @@ export default function EnriquecimientoPage() {
               </div>
             )}
             {renderProblemas(ejecResultado)}
+            {renderNoConformeCerrados(ejecResultado, ejecJobId)}
           </div>
         )}
 
