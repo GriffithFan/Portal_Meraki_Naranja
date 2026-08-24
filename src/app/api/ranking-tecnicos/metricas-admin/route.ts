@@ -133,7 +133,9 @@ export async function GET(request: Request) {
     const esConforme = tr.despues === "conforme" && tr.antes !== "conforme";
     const esNc = tr.despues === "noconforme" && ORIGEN_NC.has(tr.antes);
     if (!esConforme && !esNc) continue;
-    if (yaFueFacturado(facturados, a.entidadId, a.createdAt)) continue;
+    // Solo se suprime la re-conformidad. Un NC posterior a la facturacion es un
+    // rechazo real de trabajo ya cobrado y tiene que quedar a la vista.
+    if (esConforme && yaFueFacturado(facturados, a.entidadId, a.createdAt)) continue;
 
     const fecha = a.createdAt;
     // NC: solo cuenta de lunes a viernes (getDay 1..5).

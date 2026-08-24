@@ -101,7 +101,10 @@ export async function GET(request: Request) {
   for (const predio of predios) {
     const bucket = getStateBucket(predio.estado);
     if (!bucket) continue;
-    if (yaFueFacturado(facturados, predio.id, predio.fechaActualizacion ?? predio.updatedAt)) continue;
+    // Solo se suprimen los CONFORMES repetidos. Un predio ya facturado que vuelve
+    // NO CONFORME es un rechazo real de trabajo ya cobrado, y una reinstalacion es
+    // trabajo nuevo: esos si tienen que verse.
+    if (bucket === "conformes" && yaFueFacturado(facturados, predio.id, predio.fechaActualizacion ?? predio.updatedAt)) continue;
 
     // Se acredita a UN SOLO técnico (el último asignado) para no duplicar el predio
     // cuando intervinieron varios. Así el total coincide con predios únicos.

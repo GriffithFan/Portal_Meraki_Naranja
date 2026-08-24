@@ -94,7 +94,9 @@ export async function GET(request: Request) {
     if (!bucket) continue;
     const fecha = predio.fechaActualizacion || predio.updatedAt;
     if (!fecha) continue;
-    if (yaFueFacturado(facturados, predio.id, fecha)) continue;
+    // Solo los CONFORMES repetidos (ver el ranking): los NC y las reinstalaciones
+    // de un predio ya facturado son eventos reales y siguen contando.
+    if (bucket === "conformes" && yaFueFacturado(facturados, predio.id, fecha)) continue;
     const weekIndex = Math.floor((inicioSemana(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
     if (weekIndex < 0 || weekIndex >= semanas) continue;
 
