@@ -11,6 +11,19 @@ export default function DashboardError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // Un chunk que ya no existe (deploy con la pestaña abierta) no es un error de la
+    // seccion: es una version vieja. Se recarga en vez de mostrar "Algo salio mal".
+    const esChunkViejo = /Loading chunk .* failed|ChunkLoadError|Failed to fetch dynamically imported module/i
+      .test(error?.message || "");
+    if (esChunkViejo) {
+      try {
+        if (!sessionStorage.getItem("carrot:recarga-por-chunk")) {
+          sessionStorage.setItem("carrot:recarga-por-chunk", String(Date.now()));
+          window.location.reload();
+          return;
+        }
+      } catch { window.location.reload(); return; }
+    }
     console.error("[dashboard] error de render:", error);
     try {
       fetch("/api/operacion/error-cliente", {

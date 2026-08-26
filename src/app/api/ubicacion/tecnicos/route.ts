@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { dentroDeHorarioLaboral, VENTANA_LEGIBLE } from "@/lib/horarioLaboral";
+import { esCoordenadaValida, parCoordenadas } from "@/lib/gpsPredio";
 
 export const dynamic = "force-dynamic";
 
@@ -29,16 +30,13 @@ function metrosEntre(aLat: number, aLng: number, bLat: number, bLng: number): nu
 
 /** El GPS del predio puede venir como texto ("-32.88, -60.70" o con S/W). */
 function coordsDePredio(p: { latitud: number | null; longitud: number | null; gpsPredio: string | null }) {
-  if (Number.isFinite(p.latitud) && Number.isFinite(p.longitud)) {
+  // esCoordenadaValida y no Number.isFinite: 0 ES finito, y un predio en 0,0 daria una
+  // distancia calculada desde el Golfo de Guinea.
+  if (esCoordenadaValida(p.latitud, p.longitud)) {
     return { lat: p.latitud as number, lng: p.longitud as number };
   }
-  const nums = (p.gpsPredio || "").match(/-?\d+(?:[.,]\d+)?/g);
-  if (!nums || nums.length < 2) return null;
-  const lat = Number(nums[0].replace(",", "."));
-  const lng = Number(nums[1].replace(",", "."));
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-  return { lat, lng };
+  const par = parCoordenadas(p.gpsPredio);
+  return par ? { lat: par[0], lng: par[1] } : null;
 }
 
 export async function GET() {

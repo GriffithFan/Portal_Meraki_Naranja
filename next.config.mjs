@@ -2,6 +2,11 @@ const isDev = process.env.NODE_ENV !== "production";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Permite construir en un directorio aparte y recien despues cambiarlo por el que se
+  // esta sirviendo (ver scripts/update.sh). Si se construye sobre .next en caliente, el
+  // server viejo se queda sin los chunks que ya mando al navegador y tira
+  // "Cannot read properties of undefined (reading 'clientModules')" hasta que reinicia.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || "",
   poweredByHeader: false,
   async headers() {

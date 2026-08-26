@@ -245,8 +245,26 @@ function matchesQuickFilter(tarea: any, filter: string) {
   return true;
 }
 
+/**
+ * Un predio esta "sin GPS" cuando no tiene NINGUNA coordenada usable.
+ *
+ * Ojo con dos trampas: "0S 0W" es texto pero no es una ubicacion (es como el origen
+ * dice "no tengo el dato"), y 0 es un numero finito, asi que chequear que lat/lng no
+ * sean null tampoco alcanza. Sin esto el tecnico no ve el badge "Sin GPS" justamente
+ * en los predios a los que no puede llegar.
+ */
+function coordUsable(lat: unknown, lng: unknown) {
+  const a = Number(lat), b = Number(lng);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  if (Math.abs(a) > 90 || Math.abs(b) > 180) return false;
+  return !(Math.abs(a) < 0.01 && Math.abs(b) < 0.01);
+}
+
 function isMissingGps(tarea: any) {
-  return !tarea.gpsPredio && (tarea.latitud == null || tarea.longitud == null);
+  if (coordUsable(tarea.latitud, tarea.longitud)) return false;
+  const nums = String(tarea.gpsPredio || "").match(/-?\d+(?:[.,]\d+)?/g);
+  if (!nums || nums.length < 2) return true;
+  return !coordUsable(nums[0].replace(",", "."), nums[1].replace(",", "."));
 }
 
 function isOverdue(tarea: any) {

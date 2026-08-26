@@ -60,11 +60,23 @@ ok "Schema de BD actualizado"
 
 # ── Build ────────────────────────────────────────────────────
 step "4/5  Construyendo aplicación"
-npm run build 2>&1 | tail -5
+# Se construye en .next-build y recien al final se cambia por .next, con un mv que es
+# atomico. Construir sobre .next en caliente deja al server viejo sirviendo un build a
+# medio escribir: los chunks que ya mando al navegador desaparecen y el usuario ve la
+# pantalla rota hasta que hace Ctrl+Shift+R. La ventana pasa de minutos a milisegundos.
+rm -rf .next-build
+NEXT_DIST_DIR=.next-build npm run build 2>&1 | tail -5
+if [[ ! -f .next-build/BUILD_ID ]]; then
+  echo "El build no genero .next-build/BUILD_ID — se aborta y queda corriendo la version anterior" >&2
+  exit 1
+fi
 ok "Build completado"
 
 # ── PM2 restart ──────────────────────────────────────────────
 step "5/5  Reiniciando servidor"
+rm -rf .next-anterior
+[[ -d .next ]] && mv .next .next-anterior
+mv .next-build .next
 pm2 restart carrot
 ok "PM2 reiniciado"
 
@@ -89,3 +101,6 @@ echo ""
 echo -e "${GREEN}═══ 🥕 Actualización completada (${AFTER:0:7}) ═══${NC}"
 echo -e "  pm2 logs carrot  — para ver logs"
 echo ""
+
+# El build anterior se conserva hasta despues del arranque, por si hay que volver.
+rm -rf .next-anterior

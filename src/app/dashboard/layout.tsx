@@ -17,6 +17,7 @@ import AnunciosToast from "@/components/AnunciosToast";
 import { AnunciosProvider } from "@/contexts/AnunciosContext";
 import OcultarParaPersonalOnly from "@/components/OcultarParaPersonalOnly";
 import UbicacionGate from "@/components/ubicacion/UbicacionGate";
+import RecargarSiChunkViejo from "@/components/RecargarSiChunkViejo";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 
 export default function DashboardLayout({
@@ -36,6 +37,7 @@ export default function DashboardLayout({
         <AnunciosProvider>
         {/* Piezas del caparazón que NO deben existir para cuentas solo-Personal. */}
         <OcultarParaPersonalOnly>
+          <RecargarSiChunkViejo />
           <PushNotificationRegistrar />
           {/* Pide el consentimiento de ubicacion y reporta la posicion. Para todo el
               que no sea tecnico activo no renderiza nada ni toca el GPS. */}
