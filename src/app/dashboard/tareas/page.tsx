@@ -23,6 +23,7 @@ import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
 import { estadoVentana } from "@/lib/cronogramaVentana";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useConfirm } from "@/contexts/ConfirmContext";
+import { getEspacios } from "@/lib/espaciosCache";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -752,8 +753,8 @@ export default function TareasPage() {
         .then(r => r.ok ? r.json() : [])
         .then((data) => setAllUsers(dedupeUsersByName(Array.isArray(data) ? data : [])))
         .catch(() => {});
-      fetch("/api/espacios", { credentials: "include" })
-        .then(r => r.ok ? r.json() : [])
+      getEspacios<any>()
+        .then((data: any) => data)
         .then((data: any) => {
           const flat: any[] = [];
           const roots = Array.isArray(data) ? data : (data.espacios || []);

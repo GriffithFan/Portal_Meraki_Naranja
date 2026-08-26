@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
 import { useConfirm } from "@/contexts/ConfirmContext";
+import { getEspacios, invalidarEspacios } from "@/lib/espaciosCache";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -614,7 +615,7 @@ export default function EspaciosSidebar() {
     if (!clearConfirm) return;
     const res = await fetch(`/api/tareas?espacioId=${clearConfirm.id}`, { method: "DELETE", credentials: "include" });
     if (res.ok) {
-      fetchEspacios();
+      fetchEspacios(true);
     }
     setClearConfirm(null);
   }
@@ -665,7 +666,7 @@ export default function EspaciosSidebar() {
         const data = await res.json();
         setDropNotice(`${data.count || ids.length} tarea(s) movida(s) a "${nombre}"`);
         setTimeout(() => setDropNotice(null), 3000);
-        fetchEspacios();
+        fetchEspacios(true);
         // Disparar evento para que la página de tareas se refresque
         window.dispatchEvent(new CustomEvent("espacios-updated", { detail: { movedIds: ids, targetEspacioId: espacioId } }));
       }
@@ -674,12 +675,12 @@ export default function EspaciosSidebar() {
     (window as any).__draggedPredioFields = null;
   }
 
-  const fetchEspacios = useCallback(async () => {
-    const res = await fetch("/api/espacios", { credentials: "include" });
-    if (res.ok) {
-      const data = await res.json();
-      setEspacios(data.espacios || []);
-    }
+  const fetchEspacios = useCallback(async (forzar = false) => {
+    // Al recargar despues de crear, mover o borrar una carpeta hay que saltear la cache:
+    // si no, durante unos segundos se sigue viendo el arbol de antes del cambio.
+    if (forzar) invalidarEspacios();
+    const data = await getEspacios<any>();
+    setEspacios(Array.isArray(data) ? data : (data?.espacios || []));
     setLoading(false);
   }, []);
 

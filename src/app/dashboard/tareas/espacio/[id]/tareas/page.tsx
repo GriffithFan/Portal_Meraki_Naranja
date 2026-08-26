@@ -24,6 +24,7 @@ import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
 import { useConfirm } from "@/contexts/ConfirmContext";
+import { getEspacios } from "@/lib/espaciosCache";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -585,8 +586,8 @@ export default function EspacioTareasPage() {
         .then(r => r.ok ? r.json() : [])
         .then((data: any) => setAllUsers(dedupeUsersByName(Array.isArray(data) ? data : (data.usuarios || []))))
         .catch(() => {});
-      fetch("/api/espacios", { credentials: "include" })
-        .then(r => r.ok ? r.json() : [])
+      getEspacios<any>()
+        .then((data: any) => data)
         .then((data: any) => {
           const flat: any[] = [];
           const roots = Array.isArray(data) ? data : (data.espacios || []);
