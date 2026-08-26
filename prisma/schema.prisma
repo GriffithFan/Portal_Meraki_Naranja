@@ -82,6 +82,9 @@ model User {
   jornadas             JornadaLaboral[]
   enriquecimientos     EnriquecimientoJob[] @relation("CreadorEnriquecimiento")
   bajasPredio   PredioBaja[] @relation("BajasPredio")
+  ubicaciones   UbicacionTecnico[]
+  consentimientoUbicacion ConsentimientoUbicacion?
+  fichaPersonal FichaPersonal?
 }
 
 // ─── DELEGACIONES (visibilidad cruzada de tareas) ──
@@ -509,6 +512,13 @@ model FichaPersonal {
   tipo           String   @default("TECNICO") // "TECNICO" | "CONTRATISTA"
   nombre         String
   fotoUrl        String?  // foto de perfil (/uploads/personal/fotos/<archivo>)
+  // Usuario de Carrot al que corresponde esta ficha. Se carga A MANO desde la seccion
+  // Personal: las fichas usan el nombre legal completo ("AXEL ARIEL SOSA RIOS") y los
+  // usuarios apodos ("Axel Sosa", "Axel"), asi que cruzarlos por nombre no funciona
+  // (de 35 fichas solo 2 coincidian, y hay dos Arieles / tres Jorges / tres Sebastianes).
+  // Sirve para mostrar la foto del tecnico en el mapa de ubicaciones.
+  userId         String?  @unique
+  usuario        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   // Estructura dinámica de campos por persona (cada ficha es independiente):
   // [{ id, titulo, campos: [{ id, label, valor, tipo: "text"|"number"|"date", nota }] }]
   secciones      Json?
@@ -1046,4 +1056,43 @@ model AsistenteMensaje {
 
   @@index([conversacionId, createdAt])
   @@index([replyToId])
+}
+
+/// Rastro de ubicacion de los tecnicos, para el mapa solo-ADMIN.
+///
+/// Es "ULTIMA UBICACION CONOCIDA", no rastreo continuo: un navegador no puede reportar
+/// posicion en segundo plano (y la API de geolocalizacion no existe dentro de un service
+/// worker), asi que solo se registra mientras Carrot esta abierto. Por eso el mapa SIEMPRE
+/// muestra la antiguedad de la marca: una posicion vieja no puede pasar por actual.
+///
+/// Solo se escribe en horario laboral (ver lib/horarioLaboral.ts) y solo si el tecnico
+/// dio su consentimiento. Se purga a los 30 dias (api/cron/purgar-ubicaciones).
+model UbicacionTecnico {
+  id        String   @id @default(cuid())
+  userId    String
+  usuario   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lat       Float
+  lng       Float
+  precision Float?   // metros de error que informa el navegador
+  origen    String   @default("GPS") // "GPS" | "IP"
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// Consentimiento informado para compartir ubicacion.
+///
+/// El permiso del navegador NO alcanza: es un permiso tecnico, no un consentimiento.
+/// Aca queda quien acepto, cuando, y que version del aviso leyo. Sin un registro con
+/// aceptadoEn y sin revocadoEn, /api/ubicacion rechaza las marcas.
+model ConsentimientoUbicacion {
+  id         String    @id @default(cuid())
+  userId     String    @unique
+  usuario    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aceptadoEn DateTime?
+  revocadoEn DateTime?
+  version    String    @default("2026-08-v1")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }

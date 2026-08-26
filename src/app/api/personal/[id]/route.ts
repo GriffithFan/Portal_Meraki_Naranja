@@ -61,6 +61,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (typeof body?.notasGenerales === "string") {
     data.notasGenerales = body.notasGenerales.slice(0, 5000) || null;
   }
+  // Vinculo con el usuario de Carrot. Se carga a mano porque las fichas usan el nombre
+  // legal completo y los usuarios apodos: cruzarlos por nombre no funciona (de 35 fichas
+  // solo 2 coincidian). Sirve para mostrar la foto del tecnico en el mapa de ubicaciones.
+  // "" o null desvincula. Es @unique: si el usuario ya esta tomado por otra ficha, falla.
+  if (body?.userId !== undefined) {
+    const uid = typeof body.userId === "string" && body.userId.trim() ? body.userId.trim() : null;
+    if (uid) {
+      const yaTomado = await prisma.fichaPersonal.findFirst({
+        where: { userId: uid, id: { not: id } },
+        select: { nombre: true },
+      });
+      if (yaTomado) {
+        return NextResponse.json(
+          { error: `Ese usuario ya esta vinculado a la ficha de "${yaTomado.nombre}"` },
+          { status: 409 }
+        );
+      }
+    }
+    data.userId = uid;
+  }
+
   // Multi-select de proyectos (reemplaza el set completo).
   if (Array.isArray(body?.proyectoIds)) {
     const ids: string[] = body.proyectoIds.filter((x: any) => typeof x === "string");

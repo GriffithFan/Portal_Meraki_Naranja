@@ -18,7 +18,7 @@ interface Seccion { id: string; titulo: string; campos: Campo[] }
 interface Proyecto { id: string; nombre: string; orden?: number }
 interface Archivo { id: string; seccion: string; nombre: string; ruta: string; tipo: string; size: number; createdAt: string }
 interface FichaListItem {
-  id: string; tipo: string; nombre: string; fotoUrl: string | null;
+  id: string; tipo: string; nombre: string; fotoUrl: string | null; userId?: string | null;
   secciones: Seccion[] | null; proyectos: Proyecto[]; updatedAt: string; _count?: { archivos: number };
 }
 interface Ficha extends FichaListItem { notasGenerales: string | null; archivos: Archivo[] }
@@ -78,6 +78,11 @@ export default function PersonalPage() {
   const [showGestor, setShowGestor] = useState(false);
   const [uploadingSeccion, setUploadingSeccion] = useState<string | null>(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+  // Vinculo ficha -> usuario de Carrot. Se elige a mano: las fichas usan el nombre legal
+  // completo y los usuarios apodos, asi que cruzarlos por nombre no funciona.
+  const [usuarioId, setUsuarioId] = useState<string>("");
+  const [vinculables, setVinculables] = useState<{ id: string; nombre: string; rol: string; th: number | null; tecnicoActivo: boolean; tomadoPor: string | null }[]>([]);
+  const [sugerido, setSugerido] = useState<string | null>(null);
   const [viewer, setViewer] = useState<Archivo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fotoInputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +114,7 @@ export default function PersonalPage() {
     setFicha(data);
     setNombre(data.nombre || "");
     setTipo(data.tipo || "TECNICO");
+    setUsuarioId(data.userId || "");
     setSecciones(Array.isArray(data.secciones) ? data.secciones : []);
     setNotasGen(data.notasGenerales || "");
     setProyectoIds((data.proyectos || []).map((p) => p.id));
@@ -152,7 +158,7 @@ export default function PersonalPage() {
   };
 
   const buildPayload = (over?: Partial<{ secciones: Seccion[]; proyectoIds: string[] }>) => ({
-    nombre, tipo, notasGenerales: notasGen,
+    nombre, tipo, notasGenerales: notasGen, userId: usuarioId || null,
     secciones: over?.secciones ?? secciones,
     proyectoIds: over?.proyectoIds ?? proyectoIds,
   });
@@ -175,7 +181,16 @@ export default function PersonalPage() {
   const guardarActual = useCallback(async () => {
     if (!selectedId || !dirty || saving) return;
     await guardar(selectedId, buildPayload());
-  }, [selectedId, dirty, saving, guardar, nombre, tipo, secciones, notasGen, proyectoIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedId, dirty, saving, guardar, nombre, tipo, secciones, notasGen, proyectoIds, usuarioId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Candidatos para vincular, cada vez que se abre una ficha.
+  useEffect(() => {
+    if (!selectedId) { setVinculables([]); setSugerido(null); return; }
+    fetch(`/api/personal/usuarios-vinculables?fichaId=${selectedId}`, { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) { setVinculables(d.usuarios || []); setSugerido(d.sugerido || null); } })
+      .catch(() => { setVinculables([]); setSugerido(null); });
+  }, [selectedId]);
 
   const onEnterGuardar = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); guardarActual(); }
@@ -494,6 +509,33 @@ export default function PersonalPage() {
                         <option value="CONTRATISTA">Contratista</option>
                       </select>
                       {ficha.fotoUrl && <button onClick={quitarFoto} className="mt-0.5 text-[10px] text-surface-300 hover:text-red-500">quitar foto</button>}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] uppercase tracking-wide text-surface-400">Usuario</span>
+                      <select
+                        value={usuarioId}
+                        onChange={(e) => { setUsuarioId(e.target.value); marcar(); }}
+                        title="Usuario de Carrot al que corresponde esta ficha (habilita la foto en el mapa de técnicos)"
+                        className="text-[11px] text-surface-600 dark:text-surface-300 bg-transparent border border-surface-200 dark:border-surface-600 rounded px-1.5 py-0.5 focus:outline-none focus:border-primary-400 max-w-[220px]"
+                      >
+                        <option value="">— sin vincular —</option>
+                        {vinculables.map((u) => (
+                          <option key={u.id} value={u.id} disabled={Boolean(u.tomadoPor)}>
+                            {u.nombre}
+                            {u.th ? ` (TH${String(u.th).padStart(2, "0")})` : ""}
+                            {u.tecnicoActivo ? " ·activo" : ""}
+                            {u.tomadoPor ? ` — ya es ${u.tomadoPor}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {!usuarioId && sugerido && (
+                        <button
+                          onClick={() => { setUsuarioId(sugerido); marcar(); }}
+                          className="text-[10px] font-medium text-primary-600 hover:text-primary-700 underline decoration-dotted"
+                        >
+                          ¿es {vinculables.find((u) => u.id === sugerido)?.nombre}?
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

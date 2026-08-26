@@ -17,7 +17,7 @@ export async function GET() {
   const fichas = await prisma.fichaPersonal.findMany({
     orderBy: { nombre: "asc" },
     select: {
-      id: true, tipo: true, nombre: true, fotoUrl: true, secciones: true, updatedAt: true,
+      id: true, tipo: true, nombre: true, fotoUrl: true, secciones: true, updatedAt: true, userId: true,
       proyectos: { select: { id: true, nombre: true }, orderBy: { orden: "asc" } },
       _count: { select: { archivos: true } },
     },
