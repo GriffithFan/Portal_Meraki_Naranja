@@ -258,7 +258,7 @@ export function planificarEnriquecimiento(
   const cambios: PlanCambio[] = [];
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
-    ambito: 0, gpsPredio: 0, latlong: 0, fechaDesde: 0, fechaHasta: 0,
+    ambito: 0, gpsPredio: 0, latlong: 0, gpsDelInstalador: 0, fechaDesde: 0, fechaHasta: 0,
     aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, descripcion: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0, cantidadCronogramas: 0, conforme: 0,
   };
   // ── Regla LAC-R según el TILDE "Activo" REAL del último cronograma ──
@@ -304,9 +304,23 @@ export function planificarEnriquecimiento(
     const gpsRep = dmsADecimal(primero(fila, ["GPS_Reporte", "Predio_Coordenadas_GPS"]));
     let gpsCurRaw = gpsDecimal(p.gpsPredio);
     if (!gpsCurRaw && p.latitud != null && p.longitud != null) gpsCurRaw = [p.latitud, p.longitud];
-    const curEsPlaceholder = esGpsPlaceholder(gpsCurRaw, opciones.coordsCompartidas);
+    // El GPS del INSTALADOR de la incidencia no es la ubicacion de la escuela: es donde
+    // estaba parado quien cargo la incidencia, y para un lote entero suele ser el mismo
+    // punto (una oficina). Si lo que tenemos guardado coincide con ese valor, no es una
+    // ubicacion: es contaminacion. Paso con seis predios de General Lopez —Aaron
+    // Castellanos, Maggiolo, Sancti Spiritu, Lazzarino y dos de Venado Tuerto— todos en
+    // el mismo punto, mientras Salesforce tenia las seis bien en Predio_Coordenadas_GPS.
+    const gpsInstalador = gpsDecimal(g(fila, "Incidencia_Coordenadas_GPS_Instalador"))
+      ?? dmsADecimal(g(fila, "Incidencia_Coordenadas_GPS_Instalador"));
+    const curEsDelInstalador = Boolean(
+      gpsCurRaw && gpsInstalador && haversineKm(gpsCurRaw, gpsInstalador) < 0.05
+    );
+    const curEsPlaceholder =
+      esGpsPlaceholder(gpsCurRaw, opciones.coordsCompartidas) || curEsDelInstalador;
     const gpsCur = curEsPlaceholder ? null : gpsCurRaw; // placeholder = como si no tuviera GPS
     let gpsBloqueado = false;
+    // Si el local es del instalador, gpsCur ya quedo en null y no hay que comparar nada:
+    // el de Salesforce gana sin discusion.
     if (gpsRep && gpsCur) {
       const d = haversineKm(gpsRep, gpsCur);
       if (d > 5) { gpsBloqueado = true; gpsOmitido.push({ codigo, dist: d }); }
@@ -370,6 +384,7 @@ export function planificarEnriquecimiento(
 
     // GPS: solo si no está bloqueado por discrepancia. El placeholder cuenta como
     // vacío, así que se sobrescribe con el dato real del reporte.
+    if (curEsDelInstalador) stats.gpsDelInstalador++;
     if (!gpsBloqueado) {
       const gpsTextoVacio = !cur("gpsPredio") || curEsPlaceholder;
       let gpsDec = gpsCur || gpsRep;
