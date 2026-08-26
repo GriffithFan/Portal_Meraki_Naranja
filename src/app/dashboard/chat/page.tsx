@@ -189,6 +189,16 @@ function ReactionPicker({ msg, onReact, placement }: { msg: any; onReact: (msg: 
   );
 }
 
+/**
+ * La lista de conversaciones ahora viene paginada: `{ conversaciones, hayMas, proximoCursor }`.
+ * Se acepta tambien el array suelto por si queda alguna respuesta de la version anterior
+ * en un service worker o en una pestaña que no se recargo todavia.
+ */
+function listaDeConversaciones(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data?.conversaciones) ? data.conversaciones : [];
+}
+
 export default function ChatPage() {
   const { session, isMesa, isModOrAdmin } = useSession();
   const confirm = useConfirm();
@@ -360,9 +370,9 @@ export default function ChatPage() {
     if (conversacionesLoadingRef.current) return;
     conversacionesLoadingRef.current = true;
     try {
-      const res = await fetch("/api/chat", { credentials: "include" });
+      const res = await fetch("/api/chat?limit=60", { credentials: "include" });
       if (res.ok) {
-        const data = await res.json();
+        const data = listaDeConversaciones(await res.json());
         // Solo actualizar estado (y re-renderizar) si la lista realmente cambió
         const raw = JSON.stringify(data);
         if (raw !== conversacionesJsonRef.current) {
@@ -452,7 +462,7 @@ export default function ChatPage() {
       .then(async (res) => {
         if (!res.ok) return;
         const data = await res.json();
-        if (!controller.signal.aborted) setResultadosBusqueda(Array.isArray(data) ? data : []);
+        if (!controller.signal.aborted) setResultadosBusqueda(listaDeConversaciones(data));
       })
       .catch(() => { /* silenciar */ })
       .finally(() => {

@@ -92,6 +92,21 @@ function getAsignados(predio: PredioMapa) {
   return (predio.asignaciones || []).map((asignacion) => asignacion.usuario?.nombre).filter(Boolean) as string[];
 }
 
+/**
+ * A partir de cuantos predios se dibuja en canvas en vez de con marcadores del DOM.
+ *
+ * Cada pin es un divIcon con un SVG adentro: unos 4,4 nodos de DOM por predio. Con 2.525
+ * predios la pantalla del mapa tenia 11.157 nodos, y un telefono de gama media se arrastra
+ * mucho antes de eso. Con 10.000 predios —el numero del que hablamos para el año que
+ * viene— serian mas de 44.000 y el navegador directamente no responde.
+ *
+ * En canvas todos los puntos se dibujan sobre UN solo elemento: los nodos de DOM dejan de
+ * crecer con la cantidad de predios. Se pierde la letra dentro del pin, que a esta escala
+ * es ilegible igual y cuya informacion ya esta en el color. Con pocos predios se mantiene
+ * el pin detallado, que es cuando de verdad se lee.
+ */
+const UMBRAL_CANVAS = 300;
+
 function createMarkerIcon(color: string, label?: string) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 40" width="28" height="40">
     <path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 26 14 26s14-15.5 14-26C28 6.3 21.7 0 14 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
@@ -139,6 +154,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
       center: [center.lat, center.lng],
       zoom: 6,
       zoomControl: true,
+      preferCanvas: true,
     });
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -198,6 +214,8 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
     if (predios.length === 0) return;
 
     const bounds = L.latLngBounds([]);
+    const usarCanvas = predios.length > UMBRAL_CANVAS;
+    const rendererCanvas = usarCanvas ? L.canvas({ padding: 0.5 }) : undefined;
 
     for (const p of predios) {
       const prov = obtenerProvincia(p.provincia, p.codigo) || null;
@@ -217,9 +235,16 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
         ? (primaryAsignado ? primaryAsignado[0].toUpperCase() : "")
         : (prov ? prov[0].toUpperCase() : "");
 
-      const marker = L.marker([p.latitud, p.longitud], {
-        icon: createMarkerIcon(color, label),
-      });
+      const marker = usarCanvas
+        ? L.circleMarker([p.latitud, p.longitud], {
+            renderer: rendererCanvas,
+            radius: 6,
+            color: "#ffffff",
+            weight: 1.5,
+            fillColor: color,
+            fillOpacity: 0.95,
+          })
+        : L.marker([p.latitud, p.longitud], { icon: createMarkerIcon(color, label) });
 
       const estadoLabel = p.estado
         ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.estado.color};margin-right:4px"></span>${p.estado.nombre}`

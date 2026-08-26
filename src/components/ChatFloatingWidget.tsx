@@ -185,6 +185,16 @@ function ReactionPicker({ msg, onReact, placement }: { msg: any; onReact: (msg: 
   );
 }
 
+/**
+ * La lista de conversaciones ahora viene paginada: `{ conversaciones, hayMas, proximoCursor }`.
+ * Se acepta tambien el array suelto por si queda alguna respuesta de la version anterior
+ * en un service worker o en una pestaña que no se recargo todavia.
+ */
+function listaDeConversaciones(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data?.conversaciones) ? data.conversaciones : [];
+}
+
 export default function ChatFloatingWidget() {
   const { session, loading, isMesa, isModOrAdmin } = useSession();
   const pathname = usePathname();
@@ -281,12 +291,12 @@ export default function ChatFloatingWidget() {
     if (convActivaLoadingRef.current) return;
     convActivaLoadingRef.current = true;
     try {
-      const res = await fetch("/api/chat?estado=EN_CURSO", { credentials: "include" });
+      const res = await fetch("/api/chat?estado=EN_CURSO&limit=20", { credentials: "include" });
       if (!res.ok) return;
-      let data = await res.json();
+      let data = listaDeConversaciones(await res.json());
       if (data.length === 0) {
-        const res2 = await fetch("/api/chat?estado=ABIERTA", { credentials: "include" });
-        if (res2.ok) data = await res2.json();
+        const res2 = await fetch("/api/chat?estado=ABIERTA&limit=20", { credentials: "include" });
+        if (res2.ok) data = listaDeConversaciones(await res2.json());
       }
       if (data.length > 0) {
         setConversacion(data[0]);
@@ -310,10 +320,9 @@ export default function ChatFloatingWidget() {
     supportLoadingRef.current = true;
     setSupportLoading(true);
     try {
-      const res = await fetch("/api/chat", { credentials: "include" });
+      const res = await fetch("/api/chat?limit=8", { credentials: "include" });
       if (res.ok) {
-        const data = await res.json();
-        const lista = Array.isArray(data) ? data.slice(0, 8) : [];
+        const lista = listaDeConversaciones(await res.json()).slice(0, 8);
         // Solo actualizar estado (y re-renderizar) si la lista realmente cambió
         const raw = JSON.stringify(lista);
         if (raw !== supportConvsJsonRef.current) {

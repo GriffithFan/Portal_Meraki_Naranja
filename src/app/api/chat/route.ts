@@ -79,6 +79,11 @@ export async function GET(request: NextRequest) {
 
   const where = andClauses.length > 0 ? { AND: andClauses } : {};
 
+  // Paginado. Antes esto traia TODAS las conversaciones sin limite; con 622 ya eran
+  // 437 KB por llamada y crece para siempre. `limit` deja pedir mas desde el front.
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "60", 10) || 60, 1), 200);
+  const cursor = searchParams.get("cursor");
+
   const conversaciones = await prisma.chatConversacion.findMany({
     where,
     include: {
@@ -89,15 +94,37 @@ export async function GET(request: NextRequest) {
         take: 1,
         select: { contenido: true, createdAt: true, autorId: true, eliminadoAt: true, autor: { select: { esMesa: true, nombre: true } } },
       },
-      _count: { select: { mensajes: true } },
     },
     orderBy: { updatedAt: "desc" },
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
 
-  return NextResponse.json(conversaciones.map((c) => ({
-    ...c,
-    noLeida: isUnreadForUser(c, session.userId, user?.esMesa === true, esAdminOMod),
-  })));
+  const hayMas = conversaciones.length > limit;
+  const pagina = hayMas ? conversaciones.slice(0, limit) : conversaciones;
+
+  // Cantidad de mensajes en UNA sola consulta agrupada, en vez de `_count` dentro del
+  // include. Ese _count es una subconsulta por fila: con 622 conversaciones eran 622
+  // conteos sobre ChatMensaje en cada llamada, y de ahi salian los miles de millones
+  // de filas leidas que mostraba pg_stat_user_tables.
+  const conteos = pagina.length
+    ? await prisma.chatMensaje.groupBy({
+        by: ["conversacionId"],
+        where: { conversacionId: { in: pagina.map((c) => c.id) } },
+        _count: { _all: true },
+      })
+    : [];
+  const conteoPorConv = new Map(conteos.map((c) => [c.conversacionId, c._count._all]));
+
+  return NextResponse.json({
+    conversaciones: pagina.map((c) => ({
+      ...c,
+      _count: { mensajes: conteoPorConv.get(c.id) ?? 0 },
+      noLeida: isUnreadForUser(c, session.userId, user?.esMesa === true, esAdminOMod),
+    })),
+    hayMas,
+    proximoCursor: hayMas ? pagina[pagina.length - 1]?.id ?? null : null,
+  });
 }
 
 /**
