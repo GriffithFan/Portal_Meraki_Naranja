@@ -83,7 +83,10 @@ ok "PM2 reiniciado"
 # ── Warm-up ──────────────────────────────────────────────────
 echo -n "  Esperando arranque"
 for i in $(seq 1 20); do
-  if curl -sf "http://localhost:${APP_PORT}/carrot" >/dev/null 2>&1; then
+  # /api/health y no /carrot: no hay basePath configurado, asi que /carrot siempre
+  # devolvio 404 y este loop esperaba los 40 segundos completos en cada deploy sin
+  # llegar a confirmar nada.
+  if curl -sf "http://localhost:${APP_PORT}/api/health" >/dev/null 2>&1; then
     echo ""
     ok "Servidor respondiendo"
     break
@@ -93,7 +96,7 @@ for i in $(seq 1 20); do
 done
 
 # Pre-calentar rutas
-for path in "/carrot" "/carrot/login"; do
+for path in "/login" "/dashboard"; do
   curl -sf "http://localhost:${APP_PORT}${path}" >/dev/null 2>&1 || true
 done
 
