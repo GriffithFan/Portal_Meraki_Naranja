@@ -4,14 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import { useReportarUbicacion } from "@/hooks/useReportarUbicacion";
 
 /**
- * Pide el consentimiento para compartir ubicación y, si está dado, mantiene el reporte.
+ * Dispara el permiso de ubicación y, una vez dado, mantiene el reporte.
  *
  * Va montado en el layout del dashboard. Para todo el que no sea técnico activo no hace
  * absolutamente nada: `aplica` viene en false y el componente no renderiza ni pide GPS.
  *
- * El aviso existe porque el permiso del navegador NO es un consentimiento: es un permiso
- * técnico que el sistema operativo pide sin explicar para qué. Acá se dice qué se guarda,
- * en qué horario y quién lo ve, y queda registrado quién aceptó y cuándo.
+ * El cartel es corto y tiene un solo botón a propósito: la explicación ya se dio en
+ * persona, uno por uno, antes de activar esto. Acá no se vuelve a explicar ni se ofrece
+ * "ahora no" — lo único que falta es el permiso del navegador, que el sistema operativo
+ * pide aparte. Igual queda registrado quién aceptó y cuándo: eso no es la conversación,
+ * es el respaldo de que existió.
+ *
+ * Si el técnico rechaza el permiso del sistema operativo no queda atrapado: el
+ * consentimiento ya se guardó, el cartel se cierra y simplemente no hay señal.
  *
  * Mientras comparte, el indicador de abajo a la izquierda queda visible siempre. Que esto
  * no sea silencioso es parte del trato.
@@ -60,50 +65,19 @@ export default function UbicacionGate() {
   if (estado.debePreguntar) {
     return (
       <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 p-4 sm:items-center">
-        <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-          <h2 className="text-base font-semibold text-surface-900">Compartir tu ubicación durante la jornada</h2>
-          <p className="mt-2 text-sm text-surface-600">
-            Carrot puede registrar dónde estás para coordinar el trabajo del día. Antes de activarlo,
-            esto es exactamente lo que pasa:
+        <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+          <h2 className="text-base font-semibold text-surface-900">Compartir ubicación</h2>
+          <p className="mt-1.5 text-sm text-surface-600">
+            Como hablamos, Carrot registra tu ubicación durante la jornada. Al aceptar, el teléfono
+            te va a pedir permiso: tocá <b>Permitir</b>.
           </p>
-          <ul className="mt-3 space-y-2 text-sm text-surface-600">
-            <li className="flex gap-2">
-              <span className="text-primary-600">•</span>
-              <span>Solo <b>{estado.ventana}</b>. Fuera de ese horario no se registra nada.</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-primary-600">•</span>
-              <span>Solo mientras tenés Carrot abierto. Si cerrás la app, deja de registrarse.</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-primary-600">•</span>
-              <span>Lo ve <b>únicamente administración</b>. No lo ven los otros técnicos ni tu coordinador.</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-primary-600">•</span>
-              <span>Se borra solo a los <b>30 días</b>.</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="text-primary-600">•</span>
-              <span>Podés desactivarlo cuando quieras desde tu perfil.</span>
-            </li>
-          </ul>
-          <div className="mt-5 flex gap-2">
-            <button
-              onClick={() => responder(true)}
-              disabled={guardando}
-              className="flex-1 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              {guardando ? "Guardando…" : "Aceptar y compartir"}
-            </button>
-            <button
-              onClick={() => responder(false)}
-              disabled={guardando}
-              className="rounded-lg border border-surface-300 px-4 py-2.5 text-sm font-medium text-surface-600 hover:bg-surface-50 disabled:opacity-50"
-            >
-              Ahora no
-            </button>
-          </div>
+          <button
+            onClick={() => responder(true)}
+            disabled={guardando}
+            className="mt-4 w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {guardando ? "Guardando…" : "Aceptar y compartir"}
+          </button>
         </div>
       </div>
     );
