@@ -3,6 +3,7 @@ import { cargarPrediosPorCodigo, resolverConformeEstadoId } from "./cargar";
 import { planificarEnriquecimiento, type ResultadoPlan } from "./aplicar";
 import { obtenerRegionesEstrictas } from "./regionesEstrictas";
 import type { AlcanceSpec } from "./alcance";
+import { coordenadasCompartidas } from "@/lib/gpsPredio";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -24,6 +25,9 @@ export async function procesarSubida(
   const codigosSnapshot = new Set(pares.map((p) => String(p.codigo)));
   const prediosPorCodigo = await cargarPrediosPorCodigo(idsSnapshot);
   const conformeEstadoId = await resolverConformeEstadoId();
+  // Coordenadas que comparten predios de localidades distintas: son relleno, no
+  // ubicacion. Se pasan para que el enriquecimiento las trate como vacias y las pise.
+  const coordsCompartidas = await coordenadasCompartidas();
   const regionesEstrictas = await obtenerRegionesEstrictas();
 
   // Solo filas cuyo predio está en el snapshot del job (respeta el alcance).
@@ -33,6 +37,7 @@ export async function procesarSubida(
     excluirConforme: alcance.excluirConforme !== false, // default seguro: excluir CONFORME
     excluirYaEnriquecidos: Boolean(alcance.excluirYaEnriquecidos),
     conformeEstadoId,
+      coordsCompartidas,
     regionesEstrictas,
   });
 

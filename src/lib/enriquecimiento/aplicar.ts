@@ -70,6 +70,8 @@ export interface OpcionesPlan {
   // Id del estado CONFORME: habilita pasar INSTALADO/AUDITAR → CONFORME cuando la
   // incidencia está "Cerrado". Sin esto, el estado nunca se toca (comportamiento previo).
   conformeEstadoId?: string | null;
+  /** Coordenadas compartidas por predios de localidades distintas (ver lib/gpsPredio.ts). */
+  coordsCompartidas?: Set<string>;
   // Regiones educativas de BA (1-25) con LAC-R estricto por ventana: en ellas el
   // SI exige estar DENTRO del cronograma (desde-hasta), no basta con "Activo".
   // Default de negocio {14,15} (lo resuelve el caller). Vacío/undefined = regla normal.
@@ -118,8 +120,14 @@ const GPS_PLACEHOLDERS: [number, number][] = [
   [-34.75940139473794, -58.37239525447914], // se veía repetida en ER y Bs As (cerca de Quilmes)
 ];
 
-function esGpsPlaceholder(coord: [number, number] | null): boolean {
+function esGpsPlaceholder(coord: [number, number] | null, compartidas?: Set<string>): boolean {
   if (!coord) return false;
+  // 0,0 nunca es un predio: es lo que queda cuando el origen mando "0S 0W".
+  if (Math.abs(coord[0]) < 0.01 && Math.abs(coord[1]) < 0.01) return true;
+  // Coordenada compartida por predios de localidades distintas: relleno, no ubicacion.
+  // Sin esto el guard de los 5 km congela el error para siempre, porque justamente
+  // cuando el dato local es basura la diferencia con Salesforce es grande.
+  if (compartidas?.has(`${coord[0].toFixed(3)},${coord[1].toFixed(3)}`)) return true;
   return GPS_PLACEHOLDERS.some(
     ([la, ln]) => Math.abs(coord[0] - la) < 0.001 && Math.abs(coord[1] - ln) < 0.001
   );
@@ -296,7 +304,7 @@ export function planificarEnriquecimiento(
     const gpsRep = dmsADecimal(primero(fila, ["GPS_Reporte", "Predio_Coordenadas_GPS"]));
     let gpsCurRaw = gpsDecimal(p.gpsPredio);
     if (!gpsCurRaw && p.latitud != null && p.longitud != null) gpsCurRaw = [p.latitud, p.longitud];
-    const curEsPlaceholder = esGpsPlaceholder(gpsCurRaw);
+    const curEsPlaceholder = esGpsPlaceholder(gpsCurRaw, opciones.coordsCompartidas);
     const gpsCur = curEsPlaceholder ? null : gpsCurRaw; // placeholder = como si no tuviera GPS
     let gpsBloqueado = false;
     if (gpsRep && gpsCur) {

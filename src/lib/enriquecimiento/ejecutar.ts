@@ -12,6 +12,7 @@ import { aplicarCambiosEnDB, backupBestEffort, filasEntradaDesdePredios } from "
 import { resumenDePlan, type ParSnapshot } from "./procesar";
 import type { AlcanceSpec, PredioAlcance } from "./alcance";
 import { avisarAdminsFallo } from "@/lib/alertasAdmin";
+import { coordenadasCompartidas } from "@/lib/gpsPredio";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -164,11 +165,15 @@ export async function ejecutarExtraccion(
     const { filas, comentariosPorCodigo, errores } = parsearExcelExtractor(buf);
     const prediosPorCodigo = await cargarPrediosPorCodigo(pares.map((p) => p.predioId));
     const conformeEstadoId = await resolverConformeEstadoId();
+    // Coordenadas que comparten predios de localidades distintas: son relleno, no
+    // ubicacion. Se pasan para que el enriquecimiento las trate como vacias y las pise.
+    const coordsCompartidas = await coordenadasCompartidas();
     const regionesEstrictas = await obtenerRegionesEstrictas();
     const plan = planificarEnriquecimiento(filas, prediosPorCodigo, comentariosPorCodigo, {
       excluirConforme: alcance.excluirConforme !== false,
       excluirYaEnriquecidos: Boolean(alcance.excluirYaEnriquecidos),
       conformeEstadoId,
+      coordsCompartidas,
       regionesEstrictas,
     });
     const resumen = resumenDePlan(plan, errores);

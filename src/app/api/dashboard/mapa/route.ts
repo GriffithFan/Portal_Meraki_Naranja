@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
+import { esCoordenadaValida } from "@/lib/gpsPredio";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -107,7 +108,9 @@ export async function GET(request: NextRequest) {
       delete base.gpsPredio;
       const lat = toFiniteNumber(predio.latitud);
       const lng = toFiniteNumber(predio.longitud);
-      if (lat != null && lng != null) {
+      // esCoordenadaValida y no solo "finito": 0 ES finito, y 0,0 dibuja el predio
+      // frente a la costa de Africa. Es lo que queda cuando el origen mando "0S 0W".
+      if (lat != null && lng != null && esCoordenadaValida(lat, lng)) {
         return {
           ...base,
           latitud: lat,
@@ -116,7 +119,7 @@ export async function GET(request: NextRequest) {
       }
 
       const parsed = parseGpsPair(predio.gpsPredio);
-      if (!parsed) return null;
+      if (!parsed || !esCoordenadaValida(parsed.lat, parsed.lng)) return null;
 
       return {
         ...base,
