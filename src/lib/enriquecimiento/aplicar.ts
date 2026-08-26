@@ -258,7 +258,7 @@ export function planificarEnriquecimiento(
   const cambios: PlanCambio[] = [];
   const stats: Record<string, number> = {
     ciudad: 0, nombreInstitucion: 0, cuePredio: 0, telefono: 0, lab: 0, labPlaceholder: 0,
-    ambito: 0, gpsPredio: 0, latlong: 0, gpsDelInstalador: 0, fechaDesde: 0, fechaHasta: 0,
+    ambito: 0, gpsPredio: 0, latlong: 0, gpsDelInstalador: 0, gpsPorInstalador: 0, fechaDesde: 0, fechaHasta: 0,
     aps: 0, utm: 0, switch: 0, z3: 0, notas: 0, descripcion: 0, lacRSi: 0, lacRNo: 0, tipoIncidencia: 0, cantidadCronogramas: 0, conforme: 0,
   };
   // ── Regla LAC-R según el TILDE "Activo" REAL del último cronograma ──
@@ -274,6 +274,37 @@ export function planificarEnriquecimiento(
   const salteadosYaEnriquecidos: string[] = [];
   const sinMatch: string[] = [];
   const noConformeCerrados: NoConformeCerrado[] = [];
+
+  // ── Que fuente de GPS es la buena, para esta corrida ─────────────────────────
+  // Ninguna de las dos que trae Salesforce es confiable siempre:
+  //  - Predio_Coordenadas_GPS (GPS_Reporte) a veces es la coordenada generica del
+  //    pueblo, identica para todas las escuelas de esa localidad.
+  //  - Incidencia_Coordenadas_GPS_Instalador a veces es donde estaba parado quien
+  //    cargo un lote entero de incidencias, identica para todas ellas.
+  // La que sirve es la que NO se repite: una coordenada que aparece en varios predios
+  // no ubica a ninguno. Se cuenta cada valor una sola vez por predio, para que un
+  // predio con varias incidencias no se cuente como repeticion de si mismo.
+  const claveGps = (c: [number, number]) => `${c[0].toFixed(3)},${c[1].toFixed(3)}`;
+  const contar = (extraer: (fila: FilaReporte) => [number, number] | null) => {
+    const porClave = new Map<string, Set<string>>();
+    for (const fila of filas) {
+      const cod = g(fila, "Numero_Predio");
+      const c = extraer(fila);
+      if (!cod || !c) continue;
+      const k = claveGps(c);
+      const set = porClave.get(k) ?? new Set<string>();
+      set.add(cod);
+      porClave.set(k, set);
+    }
+    return porClave;
+  };
+  const gpsDeFila = (fila: FilaReporte) => dmsADecimal(primero(fila, ["GPS_Reporte", "Predio_Coordenadas_GPS"]));
+  const instDeFila = (fila: FilaReporte) => {
+    const t = g(fila, "Incidencia_Coordenadas_GPS_Instalador");
+    return gpsDecimal(t) ?? dmsADecimal(t);
+  };
+  const repetidoReporte = contar(gpsDeFila);
+  const repetidoInstalador = contar(instDeFila);
 
   for (const fila of filas) {
     const codigo = g(fila, "Numero_Predio");
@@ -301,7 +332,17 @@ export function planificarEnriquecimiento(
     // ── GPS: el placeholder basura se trata como vacío (se corrige); un GPS que
     //    discrepa >5 km NO frena el predio: se enriquece todo lo demás y solo se
     //    deja el GPS sin tocar (dato dudoso, requiere decisión humana). ──
-    const gpsRep = dmsADecimal(primero(fila, ["GPS_Reporte", "Predio_Coordenadas_GPS"]));
+    // Fuente elegida: si la oficial se repite entre predios y la del instalador no,
+    // manda la del instalador. Es el caso de Arequito, San Gregorio y Totoras, donde
+    // Salesforce daba la misma coordenada del pueblo a las dos escuelas — y en Totoras
+    // esa coordenada generica caia 10 km afuera del pueblo.
+    const gpsOficial = gpsDeFila(fila);
+    const gpsInst = instDeFila(fila);
+    const repiteOficial = gpsOficial ? (repetidoReporte.get(claveGps(gpsOficial))?.size ?? 0) > 1 : false;
+    const repiteInst = gpsInst ? (repetidoInstalador.get(claveGps(gpsInst))?.size ?? 0) > 1 : false;
+    const usarInstalador = Boolean(gpsInst && repiteOficial && !repiteInst);
+    const gpsRep = usarInstalador ? gpsInst : gpsOficial;
+    if (usarInstalador) stats.gpsPorInstalador++;
     let gpsCurRaw = gpsDecimal(p.gpsPredio);
     if (!gpsCurRaw && p.latitud != null && p.longitud != null) gpsCurRaw = [p.latitud, p.longitud];
     // El GPS del INSTALADOR de la incidencia no es la ubicacion de la escuela: es donde
@@ -310,10 +351,11 @@ export function planificarEnriquecimiento(
     // ubicacion: es contaminacion. Paso con seis predios de General Lopez —Aaron
     // Castellanos, Maggiolo, Sancti Spiritu, Lazzarino y dos de Venado Tuerto— todos en
     // el mismo punto, mientras Salesforce tenia las seis bien en Predio_Coordenadas_GPS.
-    const gpsInstalador = gpsDecimal(g(fila, "Incidencia_Coordenadas_GPS_Instalador"))
-      ?? dmsADecimal(g(fila, "Incidencia_Coordenadas_GPS_Instalador"));
+    // Si lo guardado es exactamente el GPS del instalador Y ese valor se repite entre
+    // predios, es contaminacion y no ubicacion. Cuando NO se repite es un dato bueno
+    // (puede ser incluso el que elegimos arriba), asi que no se descarta.
     const curEsDelInstalador = Boolean(
-      gpsCurRaw && gpsInstalador && haversineKm(gpsCurRaw, gpsInstalador) < 0.05
+      gpsCurRaw && gpsInst && repiteInst && haversineKm(gpsCurRaw, gpsInst) < 0.05
     );
     const curEsPlaceholder =
       esGpsPlaceholder(gpsCurRaw, opciones.coordsCompartidas) || curEsDelInstalador;

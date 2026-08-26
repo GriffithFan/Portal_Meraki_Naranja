@@ -46,7 +46,7 @@ function ordenarArbol(espacios: Opciones["espacios"]): { id: string; label: stri
 const CAMPO_LABELS: Record<string, string> = {
   ciudad: "Departamento", nombreInstitucion: "Institución", cuePredio: "CUE del predio",
   telefono: "Teléfono", lab: "Proveedor LAB", labPlaceholder: "LAB (reemplazo)",
-  ambito: "Ámbito", gpsPredio: "GPS", latlong: "Lat / Long", gpsDelInstalador: "GPS del instalador corregido",
+  ambito: "Ámbito", gpsPredio: "GPS", latlong: "Lat / Long", gpsDelInstalador: "GPS del instalador corregido", gpsPorInstalador: "GPS tomado del instalador",
   fechaDesde: "Fecha DESDE", fechaHasta: "Fecha HASTA",
   aps: "Cant. APs", utm: "Cant. UTM", switch: "Cant. Switch", z3: "Cant. Z3",
   notas: "Notas / comentarios", lacRSi: "LAC-R → SI", lacRNo: "LAC-R → NO",
