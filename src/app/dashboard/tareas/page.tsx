@@ -24,6 +24,7 @@ import { estadoVentana } from "@/lib/cronogramaVentana";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios } from "@/lib/espaciosCache";
+import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -305,6 +306,10 @@ export default function TareasPage() {
   const [dragColId, setDragColId] = useState<string | null>(null);
   const [dragOverColId, setDragOverColId] = useState<string | null>(null);
   const didDragRef = useRef(false);
+
+  // La tabla ya esta virtualizada, pero la lista de celular no: se dibujaba igual en
+  // escritorio, oculta por CSS. Ocultar no evita construir. Ver hooks/useAnchoPantalla.
+  const esPantallaChica = useEsPantallaChica();
 
   // ── Renderizado progresivo ──────────────────────────────────
   const ROWS_BATCH = 50;
@@ -2523,7 +2528,7 @@ export default function TareasPage() {
                       </div>
                     ) : (
                       <div className="overflow-x-auto js-hscroll">
-                        {renderMobileList(items.slice(0, renderLimits[estado.id] || ROWS_BATCH))}
+                        {esPantallaChica !== false && renderMobileList(items.slice(0, renderLimits[estado.id] || ROWS_BATCH))}
                         <table className="w-full min-w-max text-[11px] hidden md:table">
                           <thead>
                             <tr className="border-b border-surface-100">
@@ -2615,7 +2620,7 @@ export default function TareasPage() {
               </div>
               {expandedSections.has("sin-estado") && (
                 <div className="border-t border-surface-100 overflow-x-auto">
-                  {renderMobileList(groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH))}
+                  {esPantallaChica !== false && renderMobileList(groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH))}
                   <table className="w-full min-w-max text-[11px] hidden md:table">
                     <thead>
                       <tr className="border-b border-surface-100">
@@ -2669,7 +2674,7 @@ export default function TareasPage() {
                   </button>
                   {isExpanded && (
                     <div className="border-t border-surface-100 overflow-x-auto">
-                      {renderMobileList(items.slice(0, renderLimits[groupKey] || ROWS_BATCH))}
+                      {esPantallaChica !== false && renderMobileList(items.slice(0, renderLimits[groupKey] || ROWS_BATCH))}
                       <table className="w-full min-w-max text-[11px] hidden md:table">
                         <thead>
                           <tr className="border-b border-surface-100">
@@ -2710,7 +2715,7 @@ export default function TareasPage() {
                 <span className="text-[11px] text-surface-400">Crea estados para agrupar</span>
               </div>
               <div className="overflow-x-auto js-hscroll">
-                {renderMobileList(sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH))}
+                {esPantallaChica !== false && renderMobileList(sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH))}
                 <table className="w-full min-w-max text-[11px] hidden md:table">
                   <thead>
                     <tr className="border-b border-surface-100">

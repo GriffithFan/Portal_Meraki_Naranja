@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
 import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios } from "@/lib/espaciosCache";
+import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -1861,6 +1862,11 @@ export default function EspacioTareasPage() {
     </div>
   );
 
+  // Solo se construye el marcado que se ve. Antes se dibujaban las DOS versiones de cada
+  // fila (lista de celular + tabla) y CSS ocultaba una: el navegador armaba, estilaba y
+  // media igual las dos. Ver hooks/useAnchoPantalla.
+  const esPantallaChica = useEsPantallaChica();
+
   // ── Renderizado progresivo ──────────────────────────────────
   const ROWS_BATCH = 100;
   const [renderLimits, setRenderLimits] = useState<Record<string, number>>({});
@@ -1873,7 +1879,8 @@ export default function EspacioTareasPage() {
     const hasMore = items.length > limit;
     return (
     <div className="overflow-x-auto js-hscroll">
-      {renderMobileTaskList(visible)}
+      {esPantallaChica !== false && renderMobileTaskList(visible)}
+      {esPantallaChica === true ? null : (
       <table className="w-full min-w-max text-[11px] hidden md:table">
         <thead>
           <tr className="border-b border-surface-100">
@@ -1972,6 +1979,7 @@ export default function EspacioTareasPage() {
           ))}
         </tbody>
       </table>
+      )}
       {hasMore && (
         <button
           onClick={() => showMore(groupKey)}
