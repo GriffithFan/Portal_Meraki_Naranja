@@ -1917,7 +1917,6 @@ export default function EspacioTareasPage() {
   const showMore = (key: string) => setRenderLimits(prev => ({ ...prev, [key]: (prev[key] || ROWS_BATCH) + ROWS_BATCH }));
 
   // Tabla reutilizable (render function, not component — avoids remount on every parent re-render)
-
   const renderTaskTable = (items: any[], groupKey = "_default") => {
     const limit = renderLimits[groupKey] || ROWS_BATCH;
     const visible = items.slice(0, limit);
