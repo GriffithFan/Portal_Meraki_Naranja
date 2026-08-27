@@ -27,6 +27,7 @@ import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios } from "@/lib/espaciosCache";
 import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
 import { useVentanaFilas } from "@/components/tareas/useVentanaFilas";
+import { getCacheado, invalidarCache } from "@/lib/fetchCompartido";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -593,9 +594,9 @@ export default function EspacioTareasPage() {
 
   // Cargar campos personalizados como columnas
   useEffect(() => {
-    fetch("/api/campos-personalizados", { credentials: "include" })
-      .then(r => r.ok ? r.json() : { campos: [] })
+    getCacheado<any>("/api/campos-personalizados")
       .then(d => {
+        d = d || { campos: [] };
         const campos = d.campos || [];
         if (campos.length > 0) {
           setColumns(prev => {
@@ -732,8 +733,8 @@ export default function EspacioTareasPage() {
     const [tareasResOrNull, estadosRes, espacioRes, camposRes, countsResOrNull] = await Promise.all([
       lazyMode ? Promise.resolve(null) : fetch(`/api/tareas?${params.toString()}`, { credentials: "include" }),
       fetch("/api/estados", { credentials: "include" }),
-      fetch(`/api/espacios/${espacioId}`, { credentials: "include" }),
-      fetch("/api/campos-personalizados", { credentials: "include" }),
+      getCacheado<any>(`/api/espacios/${espacioId}`),
+      getCacheado<any>("/api/campos-personalizados"),
       lazyMode ? fetch(`/api/tareas?${countsParams.toString()}`, { credentials: "include" }) : Promise.resolve(null),
     ]);
     const tareasRes = tareasResOrNull as Response | null;
@@ -787,9 +788,9 @@ export default function EspacioTareasPage() {
       }
     }
     let nextEspacio: any = null;
-    if (espacioRes.ok) {
-      const d = await espacioRes.json();
-      nextEspacio = d.espacio;
+    // espacioRes ya viene parseado (getCacheado), no es un Response.
+    if (espacioRes?.espacio) {
+      nextEspacio = espacioRes.espacio;
       setEspacio(nextEspacio);
     }
     if (estadosRes.ok) {
@@ -816,9 +817,8 @@ export default function EspacioTareasPage() {
         nonEmptyIds.forEach(id => fetchGroupTareas(id));
       }
     }
-    if (camposRes.ok) {
-      const d = await camposRes.json();
-      const globalCampos = d.campos || [];
+    if (camposRes) {
+      const globalCampos = camposRes.campos || [];
       // Catálogo de etiquetas (clave→nombre/ancho) — NO se agregan todos como columnas.
       const defsMap: Record<string, { nombre: string; ancho?: number; tipo?: string; opciones?: string[] }> = {};
       for (const c of globalCampos) defsMap[c.clave] = { nombre: c.nombre, ancho: c.ancho, tipo: c.tipo, opciones: c.opciones };
@@ -1223,6 +1223,7 @@ export default function EspacioTareasPage() {
         ...(espacio?.estadosConfig && typeof espacio.estadosConfig === "object" && !Array.isArray(espacio.estadosConfig) ? espacio.estadosConfig : {}),
         estadoIds: nextEstadoIds,
       };
+      invalidarCache(`/api/espacios/${espacioId}`);
       await fetch(`/api/espacios/${espacioId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1265,7 +1266,8 @@ export default function EspacioTareasPage() {
       if (espacio?.id) {
         const nextColumns = columns.filter(c => c.id !== `custom_${id}`);
         setColumns(nextColumns);
-        await fetch(`/api/espacios/${espacioId}`, {
+        invalidarCache(`/api/espacios/${espacioId}`);
+      await fetch(`/api/espacios/${espacioId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -1307,6 +1309,7 @@ export default function EspacioTareasPage() {
       removedCustomKeysRef.current.delete(uniqueClave);
       const nextColumns = columns.some(c => c.id === colId) ? columns : [...columns, newColumn];
       setColumns(nextColumns);
+      invalidarCache(`/api/espacios/${espacioId}`);
       await fetch(`/api/espacios/${espacioId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1390,7 +1393,8 @@ export default function EspacioTareasPage() {
     }));
     setColumns(normalizedFields);
     setEspacio((prev: any) => prev ? { ...prev, camposConfig: normalizedFields } : prev);
-    await fetch(`/api/espacios/${espacioId}`, {
+    invalidarCache(`/api/espacios/${espacioId}`);
+      await fetch(`/api/espacios/${espacioId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",

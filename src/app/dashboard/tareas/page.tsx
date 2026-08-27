@@ -25,6 +25,7 @@ import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios } from "@/lib/espaciosCache";
 import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
+import { getCacheado } from "@/lib/fetchCompartido";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -742,9 +743,9 @@ export default function TareasPage() {
     }
     // Cargar campos personalizados SOLO como catálogo de etiquetas (clave→nombre/ancho).
     // Las columnas custom se derivan de los datos + la config de esta lista (efecto aparte).
-    fetch("/api/campos-personalizados", { credentials: "include" })
-      .then(r => r.ok ? r.json() : { campos: [] })
+    getCacheado<any>("/api/campos-personalizados")
       .then(d => {
+        d = d || { campos: [] };
         const map: Record<string, { nombre: string; ancho?: number; tipo?: string; opciones?: string[] }> = {};
         for (const c of (d.campos || [])) {
           map[c.clave] = { nombre: c.nombre, ancho: c.ancho, tipo: c.tipo, opciones: c.opciones };

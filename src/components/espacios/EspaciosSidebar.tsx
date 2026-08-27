@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "@/hooks/useSession";
 import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios, invalidarEspacios } from "@/lib/espaciosCache";
+import { getCacheado } from "@/lib/fetchCompartido";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -97,9 +98,8 @@ function CreateSpaceModal({
   const [newEstados, setNewEstados] = useState<Array<{ nombre: string; color: string }>>([]);
 
   useEffect(() => {
-    fetch("/api/campos-personalizados", { credentials: "include" })
-      .then((r) => r.ok ? r.json() : { campos: [] })
-      .then((data) => setExistingFields(data.campos || []))
+    getCacheado<any>("/api/campos-personalizados")
+      .then((data) => setExistingFields(data?.campos || []))
       .catch(() => {});
     fetch("/api/estados", { credentials: "include" })
       .then((r) => r.ok ? r.json() : { estados: [] })
