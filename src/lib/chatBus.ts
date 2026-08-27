@@ -20,11 +20,29 @@ function canal(conversacionId: string) {
   return `chat:${conversacionId}`;
 }
 
+/** Canal global: cualquier cambio del chat, sin importar la conversación. */
+const CANAL_GLOBAL = "chat:*";
+
 /** Notifica un cambio (mensaje nuevo, edición, borrado o reacción) en una conversación. */
 export function publicarCambioChat(conversacionId: string, meta?: Record<string, unknown>) {
   try {
-    bus.emit(canal(conversacionId), { conversacionId, at: Date.now(), ...(meta || {}) });
+    const evento = { conversacionId, at: Date.now(), ...(meta || {}) };
+    bus.emit(canal(conversacionId), evento);
+    // También al canal global, que es del que se cuelga el contador de no leídos: no le
+    // importa QUÉ conversación cambió, solo que algo cambió y hay que recalcular.
+    bus.emit(CANAL_GLOBAL, evento);
   } catch { /* nunca debe romper el flujo que lo llama */ }
+}
+
+/**
+ * Suscribe a CUALQUIER cambio del chat. Lo usa el contador de no leídos.
+ *
+ * Recalcular por cada evento sería un desperdicio cuando entran varios mensajes juntos,
+ * así que quien lo use debe agrupar (ver el stream del contador).
+ */
+export function suscribirChatGlobal(cb: (data: any) => void): () => void {
+  bus.on(CANAL_GLOBAL, cb);
+  return () => { bus.off(CANAL_GLOBAL, cb); };
 }
 
 /** Suscribe un callback a los cambios de una conversación. Devuelve la función para desuscribir. */

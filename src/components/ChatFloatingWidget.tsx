@@ -367,13 +367,53 @@ export default function ChatFloatingWidget() {
     return updated;
   }, [cargarConversacionesSoporte]);
 
+  // Contador de no leidos: lo empuja el servidor por SSE en vez de preguntarlo en bucle.
+  //
+  // Antes esto consultaba cada 10 segundos y la respuesta era "no hay nada" casi siempre.
+  // Ese costo escala con la CANTIDAD DE GENTE conectada, no con el trabajo real: con 16
+  // personas ya eran 1,3 millones de recorridos sobre ChatConversacion, y a 100 seria seis
+  // veces eso para el mismo chat.
+  //
+  // Queda un fetch al abrir (primer numero, por si el stream tarda) y un repaso cada 3
+  // minutos como red de seguridad: EventSource reconecta solo, pero si el navegador se
+  // duerme o un proxy corta la conexion en silencio, el badge no puede quedar congelado.
   useEffect(() => {
     if (loading || !session) return;
     checkUnread();
-    const interval = setInterval(() => {
+
+    if (typeof EventSource === "undefined") {
+      // Navegador sin SSE: se vuelve al bucle de siempre.
+      const interval = setInterval(() => {
+        if (document.visibilityState !== "hidden") checkUnread();
+      }, intervaloPollingAdaptativo(10000));
+      return () => clearInterval(interval);
+    }
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/chat/sin-leer/stream", { withCredentials: true });
+      es.addEventListener("contador", (ev) => {
+        try {
+          const d = JSON.parse((ev as MessageEvent).data);
+          if (typeof d?.count === "number") setUnread(d.count);
+        } catch { /* evento mal formado: se ignora */ }
+      });
+      // No se cierra el stream ante un error: EventSource reintenta solo, y cerrarlo
+      // dejaria el badge sin actualizarse hasta recargar la pagina.
+    } catch { es = null; }
+
+    const repaso = setInterval(() => {
       if (document.visibilityState !== "hidden") checkUnread();
-    }, intervaloPollingAdaptativo(10000));
-    return () => clearInterval(interval);
+    }, 180000);
+
+    const alVolver = () => { if (document.visibilityState === "visible") checkUnread(); };
+    document.addEventListener("visibilitychange", alVolver);
+
+    return () => {
+      clearInterval(repaso);
+      document.removeEventListener("visibilitychange", alVolver);
+      try { es?.close(); } catch { /* ya cerrado */ }
+    };
   }, [loading, session, checkUnread]);
 
   useEffect(() => {
