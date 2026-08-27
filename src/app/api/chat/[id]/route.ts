@@ -91,9 +91,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const hayNovedades = !validSinceDate || conversacion.mensajes.length > 0;
   if (hayNovedades) {
     if (esCreador) {
-      prisma.chatConversacion.update({ where: { id }, data: { leidoPorCreadorAt: new Date() } }).catch(() => {});
+      prisma.chatConversacion.update({ where: { id }, data: { leidoPorCreadorAt: new Date() } })
+        .then(() => publicarCambioChat(id, { tipo: "leida" })).catch(() => {});
     } else if (esMesa || esAdminOMod) {
-      prisma.chatConversacion.update({ where: { id }, data: { leidoPorMesaAt: new Date() } }).catch(() => {});
+      prisma.chatConversacion.update({ where: { id }, data: { leidoPorMesaAt: new Date() } })
+        .then(() => publicarCambioChat(id, { tipo: "leida" })).catch(() => {});
     }
   }
 
@@ -325,6 +327,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         data: { agenteId: session.userId, estado: "EN_CURSO" },
       });
 
+      // Tomarla la saca de "ABIERTA sin agente", que es lo que la hacia contar como
+      // pendiente para TODA la Mesa: hay que avisar o el badge de los demas queda alto.
+      publicarCambioChat(id, { tipo: "tomada" });
+
       // Notificar al t\u00e9cnico (fire-and-forget)
       import("@/lib/pushNotifications").then(({ enviarPushYBandeja }) =>
         enviarPushYBandeja(conversacion.creadorId, {
@@ -350,6 +356,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         where: { id },
         data: { estado: "CERRADA", cerradoAt: new Date() },
       });
+
+      // Cerrada deja de contar para todos.
+      publicarCambioChat(id, { tipo: "cerrada" });
 
       // Notificar al t\u00e9cnico (fire-and-forget)
       import("@/lib/pushNotifications").then(({ enviarPushYBandeja }) =>

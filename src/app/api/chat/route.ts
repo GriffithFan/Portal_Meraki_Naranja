@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
+import { publicarCambioChat } from "@/lib/chatBus";
 
 type ChatUnreadSnapshot = {
   estado: string;
@@ -175,6 +176,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Notificar a usuarios Mesa que hay nueva consulta
+    // Avisar al bus: es lo que hace saltar el contador de no leidos de Mesa sin que
+    // nadie tenga que preguntar. Faltaba justamente aca —una consulta NUEVA es el caso
+    // que Mesa mas necesita ver— porque el bus solo se publicaba al escribir mensajes
+    // en conversaciones que ya existian.
+    publicarCambioChat(conversacion.id, { tipo: "conversacion-nueva" });
+
     const usuariosMesa = await prisma.user.findMany({
       where: { esMesa: true, activo: true, id: { not: session.userId } },
       select: { id: true },
