@@ -108,6 +108,23 @@ export function useVentanaFilas({
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => scrollEl,
+    // TRAMPA 5 — un virtualizador recien montado pone el scroll compartido en CERO.
+    //
+    // Al engancharse a su elemento de scroll, el virtualizador hace
+    // `_scrollToOffset(this.getScrollOffset())`. En ese instante su `scrollOffset` todavia
+    // es null, asi que `getScrollOffset()` devuelve `initialOffset`, que por defecto vale
+    // 0. Con un virtualizador por elemento eso es inofensivo. Pero aca hay uno POR GRUPO y
+    // todos comparten el mismo contenedor: cada grupo que se monta mientras bajas manda el
+    // scroll de todos al principio.
+    //
+    // Ese era el bug de "llego al final de un estado y me devuelve al inicio de la lista":
+    // medido en la lista general con seis estados abiertos, un scrollTo de 10.081 a 0 con
+    // la traza terminando en `_willUpdate -> _scrollToOffset`. Y explica por que no pasaba
+    // con el estado contraido: sin tabla no hay virtualizador que montar.
+    //
+    // La solucion es decirle cual es la posicion de verdad, para que su restauracion sea
+    // un no-op en vez de un salto.
+    initialOffset: () => scrollEl?.scrollTop ?? 0,
     estimateSize: () => altoEstimado,
     // 3 y no 10: hay un virtualizador POR GRUPO, asi que el overscan se paga 13 veces.
     // Con 10 eran 130 filas de sobra en el DOM, y el costo de tenerlas ahi no es dibujarlas

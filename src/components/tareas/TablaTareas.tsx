@@ -215,6 +215,12 @@ export function CuerpoTareasVirtual({
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollEl,
+    // Un virtualizador recien montado pone el scroll compartido en CERO: al engancharse
+    // hace `_scrollToOffset(getScrollOffset())` y en ese momento su offset es null, asi
+    // que usa `initialOffset`, que por defecto vale 0. Aca hay un virtualizador POR GRUPO
+    // sobre el mismo contenedor, asi que cada grupo que se monta mientras bajas manda el
+    // scroll de todos al principio. Ver el detalle en useVentanaFilas (TRAMPA 5).
+    initialOffset: () => scrollEl?.scrollTop ?? 0,
     estimateSize: () => ALTO_FILA,
     // 3 y no 10: hay un virtualizador POR GRUPO, asi que el overscan se paga 13 veces.
     // Con 10 eran 130 filas de sobra en el DOM, y el costo de tenerlas ahi no es dibujarlas
