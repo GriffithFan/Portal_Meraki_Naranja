@@ -355,6 +355,7 @@ export default function TareasPage() {
   };
   const getColWidth = (col: any) => resizeDelta && resizeDelta.id === col.id ? resizeDelta.width : col.width;
 
+
   // Persistir config de columnas — compartida vía servidor
   const colConfigLoaded = useRef(false);
   const hadSavedConfig = useRef(false);
@@ -1861,6 +1862,23 @@ export default function TareasPage() {
     </div>
   );
 
+  // `table-layout: fixed` y ancho explicito, en vez de `min-w-max`.
+  //
+  // Con el layout automatico el navegador tiene que MEDIR EL CONTENIDO de cada celda para
+  // decidir el ancho de cada columna — y como el ancho es compartido, cualquier fila que
+  // entra o sale obliga a recalcular la tabla entera. Con ~100 filas y 20 columnas eso
+  // dejaba el scroll en 200 ms por cuadro (5 fps): el perfil mostraba el 55% del tiempo en
+  // layout del navegador, no en JavaScript.
+  //
+  // Fijo, los anchos salen del encabezado —que ya los trae explicitos— y el contenido de
+  // las celdas deja de importar. El scroll horizontal sigue igual: lo da el contenedor.
+  const anchoTabla = useMemo(
+    () => visibleColumns.reduce((s: number, c: any) => s + (getColWidth(c) || 100), 0) + (isModOrAdmin ? 64 : 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleColumns, resizeDelta, isModOrAdmin]
+  );
+  const estiloTabla = { tableLayout: "fixed" as const, width: anchoTabla, minWidth: "100%" };
+
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
@@ -2530,7 +2548,7 @@ export default function TareasPage() {
                     ) : (
                       <div className="overflow-x-auto js-hscroll">
                         {esPantallaChica !== false && renderMobileList(items.slice(0, renderLimits[estado.id] || ROWS_BATCH))}
-                        <table className="w-full min-w-max text-[11px] hidden md:table">
+                        <table className="text-[11px] hidden md:table" style={estiloTabla}>
                           <thead>
                             <tr className="border-b border-surface-100">
                               {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
@@ -2622,7 +2640,7 @@ export default function TareasPage() {
               {expandedSections.has("sin-estado") && (
                 <div className="border-t border-surface-100 overflow-x-auto">
                   {esPantallaChica !== false && renderMobileList(groupedTareas["sin-estado"].slice(0, renderLimits["sin-estado"] || ROWS_BATCH))}
-                  <table className="w-full min-w-max text-[11px] hidden md:table">
+                  <table className="text-[11px] hidden md:table" style={estiloTabla}>
                     <thead>
                       <tr className="border-b border-surface-100">
                         {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={groupedTareas["sin-estado"].length > 0 && groupedTareas["sin-estado"].every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(groupedTareas["sin-estado"])} className="accent-primary-600 cursor-pointer" /></th>}
@@ -2676,7 +2694,7 @@ export default function TareasPage() {
                   {isExpanded && (
                     <div className="border-t border-surface-100 overflow-x-auto">
                       {esPantallaChica !== false && renderMobileList(items.slice(0, renderLimits[groupKey] || ROWS_BATCH))}
-                      <table className="w-full min-w-max text-[11px] hidden md:table">
+                      <table className="text-[11px] hidden md:table" style={estiloTabla}>
                         <thead>
                           <tr className="border-b border-surface-100">
                             {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
@@ -2717,7 +2735,7 @@ export default function TareasPage() {
               </div>
               <div className="overflow-x-auto js-hscroll">
                 {esPantallaChica !== false && renderMobileList(sortedTareas.slice(0, renderLimits["_all"] || ROWS_BATCH))}
-                <table className="w-full min-w-max text-[11px] hidden md:table">
+                <table className="text-[11px] hidden md:table" style={estiloTabla}>
                   <thead>
                     <tr className="border-b border-surface-100">
                       {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={tareas.length > 0 && tareas.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(tareas)} className="accent-primary-600 cursor-pointer" /></th>}
