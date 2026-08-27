@@ -77,7 +77,7 @@ const CopyBtn = ({ text }: { text: string }) => {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text); }}
-      className="opacity-0 group-hover/cell:opacity-100 ml-0.5 p-0.5 text-surface-300 hover:text-surface-500 transition-all shrink-0"
+      className="hidden group-hover/cell:inline-flex items-center ml-0.5 p-0.5 text-surface-300 hover:text-surface-500 shrink-0"
       title="Copiar texto"
     >
       <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
