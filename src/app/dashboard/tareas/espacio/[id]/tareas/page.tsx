@@ -1917,18 +1917,6 @@ export default function EspacioTareasPage() {
   const showMore = (key: string) => setRenderLimits(prev => ({ ...prev, [key]: (prev[key] || ROWS_BATCH) + ROWS_BATCH }));
 
   // Tabla reutilizable (render function, not component — avoids remount on every parent re-render)
-  // `table-layout: fixed` y ancho explicito, en vez de `min-w-max`.
-  //
-  // Con el layout automatico el navegador tiene que MEDIR EL CONTENIDO de cada celda para
-  // decidir el ancho de cada columna — y como el ancho es compartido, cualquier fila que
-  // entra o sale obliga a recalcular la tabla entera. Con ~100 filas y 20 columnas eso
-  // dejaba el scroll en 200 ms por cuadro (5 fps): el perfil mostraba el 55% del tiempo en
-  // layout del navegador, no en JavaScript.
-  //
-  // Fijo, los anchos salen del encabezado —que ya los trae explicitos— y el contenido de
-  // las celdas deja de importar. El scroll horizontal sigue igual: lo da el contenedor.
-  const anchoTabla = visibleColumns.reduce((s: number, c: any) => s + (getColWidth(c) || 100), 0) + (isModOrAdmin ? 64 : 0);
-  const estiloTabla = { tableLayout: "fixed" as const, width: anchoTabla, minWidth: "100%" };
 
   const renderTaskTable = (items: any[], groupKey = "_default") => {
     const limit = renderLimits[groupKey] || ROWS_BATCH;
@@ -1938,7 +1926,7 @@ export default function EspacioTareasPage() {
     <div className="overflow-x-auto js-hscroll">
       {esPantallaChica !== false && renderMobileTaskList(visible)}
       {esPantallaChica === true ? null : (
-      <table className="text-[11px] hidden md:table" style={estiloTabla}>
+      <table className="w-full min-w-max text-[11px] hidden md:table">
         <thead>
           <tr className="border-b border-surface-100">
             {isModOrAdmin && (
