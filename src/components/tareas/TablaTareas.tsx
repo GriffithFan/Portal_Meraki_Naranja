@@ -152,6 +152,7 @@ export function CuerpoTareasVirtual({
     // que es lo que espera `scrollMargin`. No cambia al scrollear; si cuando se abre
     // o cierra un grupo de arriba, por eso el layoutToken.
     let pendiente = false;
+    let frenado: ReturnType<typeof setTimeout> | null = null;
     const medir = () => {
       const y = el.getBoundingClientRect().top - cont.getBoundingClientRect().top + cont.scrollTop;
       // Solo se toca el estado si de verdad se movio: sin esta guarda, medir ->
@@ -171,14 +172,27 @@ export function CuerpoTareasVirtual({
     // reales— este tbody se corre y el offset queda viejo. El sintoma medido: con la
     // lista arriba de todo, el primer grupo tenia 2.244 px de relleno donde correspondia
     // cero, y al scrollear los grupos se quedaban mostrando siempre las mismas filas.
+    // Medir es CARO: `getBoundingClientRect` fuerza un layout, y hay un medidor por grupo.
+    // Hacerlo en cada cuadro de scroll costaba el 11% del tiempo de CPU y dejaba el scroll
+    // en 6 fps. Pero tampoco se puede no medir: cuando un grupo de mas arriba cambia de
+    // alto, este se corre y su offset queda viejo.
+    //
+    // La salida es medir cuando el scroll SE DETIENE. Mientras el dedo se mueve el offset
+    // no cambia —lo que cambia es la posicion del scroll, que el virtualizador ya sigue
+    // solo— asi que no hace falta remedir hasta que la pagina se acomode.
+    const alFrenar = () => {
+      if (frenado) clearTimeout(frenado);
+      frenado = setTimeout(medir, 150);
+    };
     const ro = new ResizeObserver(medirDiferido);
     ro.observe(cont);
     const contenido = cont.firstElementChild;
     if (contenido) ro.observe(contenido);
-    cont.addEventListener("scroll", medirDiferido, { passive: true });
+    cont.addEventListener("scroll", alFrenar, { passive: true });
     return () => {
       ro.disconnect();
-      cont.removeEventListener("scroll", medirDiferido);
+      if (frenado) clearTimeout(frenado);
+      cont.removeEventListener("scroll", alFrenar);
     };
   }, [items.length, visibleColumns, layoutToken]);
 

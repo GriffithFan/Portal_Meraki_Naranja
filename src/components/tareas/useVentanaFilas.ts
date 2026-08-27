@@ -55,6 +55,7 @@ export function useVentanaFilas({
     setScrollEl((prev) => (prev === cont ? prev : cont));
 
     let pendiente = false;
+    let frenado: ReturnType<typeof setTimeout> | null = null;
     const medir = () => {
       const y = el.getBoundingClientRect().top - cont.getBoundingClientRect().top + cont.scrollTop;
       // Solo se toca el estado si de verdad se movió: sin esta guarda,
@@ -79,14 +80,27 @@ export function useVentanaFilas({
     // Por eso se observa tambien el contenido, y se vuelve a medir al scrollear. Medir es
     // barato: la guarda de arriba corta antes de tocar el estado si nada se movio, asi que
     // no hay re-render por frame.
+    // Medir es CARO: `getBoundingClientRect` fuerza un layout, y hay un medidor por grupo.
+    // Hacerlo en cada cuadro de scroll costaba el 11% del tiempo de CPU y dejaba el scroll
+    // en 6 fps. Pero tampoco se puede no medir: cuando un grupo de mas arriba cambia de
+    // alto, este se corre y su offset queda viejo.
+    //
+    // La salida es medir cuando el scroll SE DETIENE. Mientras el dedo se mueve el offset
+    // no cambia —lo que cambia es la posicion del scroll, que el virtualizador ya sigue
+    // solo— asi que no hace falta remedir hasta que la pagina se acomode.
+    const alFrenar = () => {
+      if (frenado) clearTimeout(frenado);
+      frenado = setTimeout(medir, 150);
+    };
     const ro = new ResizeObserver(medirDiferido);
     ro.observe(cont);
     const contenido = cont.firstElementChild;
     if (contenido) ro.observe(contenido);
-    cont.addEventListener("scroll", medirDiferido, { passive: true });
+    cont.addEventListener("scroll", alFrenar, { passive: true });
     return () => {
       ro.disconnect();
-      cont.removeEventListener("scroll", medirDiferido);
+      if (frenado) clearTimeout(frenado);
+      cont.removeEventListener("scroll", alFrenar);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [count, ...deps]);
