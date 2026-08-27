@@ -1930,19 +1930,12 @@ export default function EspacioTareasPage() {
   const anchoTabla = visibleColumns.reduce((s: number, c: any) => s + (getColWidth(c) || 100), 0) + (isModOrAdmin ? 64 : 0);
   const estiloTabla = { tableLayout: "fixed" as const, width: anchoTabla, minWidth: "100%" };
 
-  const altoAprox = 51; // alto tipico de fila, para reservar el espacio del grupo oculto
   const renderTaskTable = (items: any[], groupKey = "_default") => {
     const limit = renderLimits[groupKey] || ROWS_BATCH;
     const visible = items.slice(0, limit);
     const hasMore = items.length > limit;
     return (
-    <div
-      className="overflow-x-auto js-hscroll"
-      // El navegador no calcula estilo ni layout de este grupo mientras esta fuera de la
-      // pantalla. Va en el div y no en el <tbody>: las partes de una tabla no admiten
-      // containment, y puesto ahi no hacia nada.
-      style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${Math.max(items.length * altoAprox, 1)}px` }}
-    >
+    <div className="overflow-x-auto js-hscroll">
       {esPantallaChica !== false && renderMobileTaskList(visible)}
       {esPantallaChica === true ? null : (
       <table className="text-[11px] hidden md:table" style={estiloTabla}>
