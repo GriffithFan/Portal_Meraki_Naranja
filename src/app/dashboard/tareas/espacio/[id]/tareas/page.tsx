@@ -29,6 +29,7 @@ import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
 import { useVentanaFilas } from "@/components/tareas/useVentanaFilas";
 import { getCacheado, invalidarCache } from "@/lib/fetchCompartido";
 import GrupoPerezoso from "@/components/tareas/GrupoPerezoso";
+import { useVentanaColumnas } from "@/components/tareas/useVentanaColumnas";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -1671,6 +1672,16 @@ export default function EspacioTareasPage() {
     return sanitizeTaskFieldConfigs(columns).filter(c => ALWAYS_VISIBLE.has(c.id) || c.visible);
   }, [columns, ALWAYS_VISIBLE]);
 
+  // Solo se dibujan las columnas que caen en la ventana horizontal. Ver el porque en
+  // useVentanaColumnas: son 71 columnas y en pantalla entran 13.
+  const anchoDeColumna = useCallback((c: Column) => getColWidth(c) || 120, [resizeDelta]);
+  const {
+    visibles: columnasEnVentana,
+    anchoIzq: anchoColsIzq,
+    anchoDer: anchoColsDer,
+    alDesplazar: alDesplazarColumnas,
+  } = useVentanaColumnas({ columnas: visibleColumns, anchoDe: anchoDeColumna });
+
   const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterRegiones.length > 0 || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
@@ -1939,7 +1950,8 @@ export default function EspacioTareasPage() {
                 />
               </th>
             )}
-            {visibleColumns.map((col) => (
+            {anchoColsIzq > 0 && <th style={{ width: anchoColsIzq, minWidth: anchoColsIzq, padding: 0 }} />}
+            {columnasEnVentana.map((col) => (
               <th
                 key={col.id}
                 draggable={isModOrAdmin}
@@ -1966,13 +1978,15 @@ export default function EspacioTareasPage() {
                 />
               </th>
             ))}
+            {anchoColsDer > 0 && <th style={{ width: anchoColsDer, minWidth: anchoColsDer, padding: 0 }} />}
           </tr>
         </thead>
         <CuerpoVirtual
           items={visible}
-          colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+          colSpan={columnasEnVentana.length + 2 + (isModOrAdmin ? 1 : 0)}
           altoFila={51}
           deps={[visibleColumns, esPantallaChica]}
+
           renderFila={(t: any, idx: number, medir: (el: HTMLElement | null) => void) => (
             <tr
               key={t.id}
@@ -2012,7 +2026,8 @@ export default function EspacioTareasPage() {
                   </div>
                 </td>
               )}
-              {visibleColumns.map((col) => {
+              {anchoColsIzq > 0 && <td style={{ width: anchoColsIzq, minWidth: anchoColsIzq, padding: 0 }} />}
+              {columnasEnVentana.map((col) => {
                 const raw = col.field.startsWith("_custom_") ? t.camposExtra?.[col.field.substring(8)] : t[col.field];
                 const cellTitle = raw != null && raw !== "" ? String(raw) : "";
                 return (
@@ -2026,6 +2041,7 @@ export default function EspacioTareasPage() {
                   </td>
                 );
               })}
+              {anchoColsDer > 0 && <td style={{ width: anchoColsDer, minWidth: anchoColsDer, padding: 0 }} />}
             </tr>
           )}
         />
@@ -2770,7 +2786,7 @@ export default function EspacioTareasPage() {
           </div>
         )}
 
-        <FloatingHScrollbar scopeRef={listScopeRef} />
+        <FloatingHScrollbar scopeRef={listScopeRef} onDesplazamiento={alDesplazarColumnas} />
       </div>
 
       {showCreateModal && (

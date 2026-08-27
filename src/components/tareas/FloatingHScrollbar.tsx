@@ -10,9 +10,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export default function FloatingHScrollbar({
   scopeRef,
   selector = ".js-hscroll",
+  onDesplazamiento,
 }: {
   scopeRef: React.RefObject<HTMLElement | null>;
   selector?: string;
+  /** Avisa el desplazamiento compartido y el ancho visible, para virtualizar columnas. */
+  onDesplazamiento?: (left: number, ancho: number) => void;
 }) {
   const barRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
@@ -44,10 +47,11 @@ export default function FloatingHScrollbar({
       maxScroll = Math.max(maxScroll, t.scrollWidth);
       client = Math.max(client, t.clientWidth);
     }
+    if (client > 0) onDesplazamiento?.(leftRef.current, client);
     setWidth((prev) => (prev === maxScroll ? prev : maxScroll));
     const hayOverflow = maxScroll > client + 2;
     setOverflow((prev) => (prev === hayOverflow ? prev : hayOverflow));
-  }, [getTables]);
+  }, [getTables, onDesplazamiento]);
 
   const medirDiferido = useCallback(() => {
     if (medirPendiente.current) return;
@@ -113,6 +117,7 @@ export default function FloatingHScrollbar({
       syncing.current = true;
       const left = src.scrollLeft;
       leftRef.current = left;
+      onDesplazamiento?.(left, src.clientWidth);
       // Escribir scrollLeft en ~12 contenedores en medio del evento provoca un
       // reflow por cada uno. Se hace todo junto en el frame siguiente.
       requestAnimationFrame(() => {
@@ -174,13 +179,15 @@ export default function FloatingHScrollbar({
       scope.removeEventListener("scroll", onScrollCapture, true);
       scope.removeEventListener("wheel", onWheel, true);
     };
-  }, [scopeRef, selector, measure, getTables]);
+  }, [scopeRef, selector, measure, getTables, onDesplazamiento]);
 
   const onBarScroll = () => {
     if (syncing.current || !barRef.current) return;
     syncing.current = true;
     const left = barRef.current.scrollLeft;
     leftRef.current = left;
+    const primera = getTables()[0];
+    onDesplazamiento?.(left, primera ? primera.clientWidth : 0);
     for (const t of getTables()) t.scrollLeft = left;
     requestAnimationFrame(() => { syncing.current = false; });
   };
