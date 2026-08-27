@@ -45,10 +45,10 @@ function CuerpoVirtual({
   items: any[];
   colSpan: number;
   altoFila: number;
-  renderFila: (t: any, idx: number) => React.ReactNode;
+  renderFila: (t: any, idx: number, medir: (el: HTMLElement | null) => void) => React.ReactNode;
   deps?: unknown[];
 }) {
-  const { contenedorRef, filas, rellenoArriba, rellenoAbajo, alturaTotal } = useVentanaFilas({
+  const { contenedorRef, filas, rellenoArriba, rellenoAbajo, alturaTotal, medirFila } = useVentanaFilas({
     count: items.length, altoEstimado: altoFila, deps,
   });
   return (
@@ -59,7 +59,11 @@ function CuerpoVirtual({
         <tr style={{ height: alturaTotal }}><td colSpan={colSpan} /></tr>
       )}
       {rellenoArriba > 0 && <tr style={{ height: rellenoArriba }}><td colSpan={colSpan} /></tr>}
-      {filas.map((v) => renderFila(items[v.index], v.index))}
+      {/* Se le pasa el medidor a cada fila: sin eso el virtualizador se queda con la
+          ESTIMACION para siempre. Las filas reales miden ~51 px y la estimacion era 34,
+          asi que toda la geometria salia un 50% corrida — de ahi el hueco arriba y las
+          filas dibujadas fuera de la vista. */}
+      {filas.map((v) => renderFila(items[v.index], v.index, medirFila))}
       {rellenoAbajo > 0 && <tr style={{ height: rellenoAbajo }}><td colSpan={colSpan} /></tr>}
     </tbody>
   );
@@ -1966,11 +1970,13 @@ export default function EspacioTareasPage() {
         <CuerpoVirtual
           items={visible}
           colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
-          altoFila={34}
+          altoFila={51}
           deps={[visibleColumns, esPantallaChica]}
-          renderFila={(t: any, idx: number) => (
+          renderFila={(t: any, idx: number, medir: (el: HTMLElement | null) => void) => (
             <tr
               key={t.id}
+              ref={medir}
+              data-index={idx}
               onClick={() => setSelectedTareaId(t.id)}
               className={`cursor-pointer hover:bg-surface-50 ${idx % 2 === 0 ? "" : "bg-surface-50/40"} ${selectedIds.has(t.id) ? "bg-primary-50/60" : ""}`}
             >
