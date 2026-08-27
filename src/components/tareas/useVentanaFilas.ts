@@ -125,6 +125,13 @@ export function useVentanaFilas({
     // La solucion es decirle cual es la posicion de verdad, para que su restauracion sea
     // un no-op en vez de un salto.
     initialOffset: () => scrollEl?.scrollTop ?? 0,
+    // Y hay que esperar a conocer el contenedor antes de arrancar, porque
+    // `getScrollOffset()` CACHEA el valor la primera vez que se lo llama: si eso pasa en
+    // el primer render, cuando `scrollEl` todavia es null, guarda 0 y despues reusa ese 0
+    // aunque `initialOffset` ya sepa la posicion buena. Con `enabled` en false la libreria
+    // no cachea nada (deja el offset en null) ni se engancha, asi que el primer calculo
+    // de verdad es el que vale.
+    enabled: scrollEl !== null,
     estimateSize: () => altoEstimado,
     // 3 y no 10: hay un virtualizador POR GRUPO, asi que el overscan se paga 13 veces.
     // Con 10 eran 130 filas de sobra en el DOM, y el costo de tenerlas ahi no es dibujarlas
