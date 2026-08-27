@@ -41,6 +41,17 @@ import { useVentanaColumnas } from "@/components/tareas/useVentanaColumnas";
  * evitar. La fila se sigue dibujando con `renderFila`, asi que el marcado de siempre no
  * se toca y sigue teniendo a mano todo lo que necesita de la pagina.
  */
+/**
+ * Alto de una fila en px: es la estimacion inicial del virtualizador, que despues mide
+ * las reales. Tiene que estar CERCA del valor real (medido: 45 px en esta tabla).
+ *
+ * Estaba en 51 y ese era el bug del scroll: cuando la estimacion sobra, el alto total de
+ * la pagina se ACHICA a medida que el virtualizador mide las filas de verdad, y el
+ * navegador te recorta el scroll al nuevo maximo. Con 242 filas cargadas eran ~1.450 px
+ * de diferencia: llegabas al final de un estado y te tiraba al inicio de la lista.
+ */
+const ALTO_FILA_CARPETA = 45;
+
 function CuerpoVirtual({
   items, colSpan, altoFila, renderFila, deps,
 }: {
@@ -1984,7 +1995,7 @@ export default function EspacioTareasPage() {
         <CuerpoVirtual
           items={visible}
           colSpan={columnasEnVentana.length + 2 + (isModOrAdmin ? 1 : 0)}
-          altoFila={51}
+          altoFila={ALTO_FILA_CARPETA}
           deps={[visibleColumns, esPantallaChica]}
 
           renderFila={(t: any, idx: number, medir: (el: HTMLElement | null) => void) => (

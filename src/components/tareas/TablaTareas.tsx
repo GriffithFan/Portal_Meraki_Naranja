@@ -29,8 +29,14 @@ export type AccionesFila = {
   getColWidth: (col: any) => number | undefined;
 };
 
-/** Alto de una fila en px. Solo es la estimacion inicial: el virtualizador mide las reales. */
-export const ALTO_FILA = 29;
+/**
+ * Alto de una fila en px. Es la estimacion inicial: el virtualizador mide las reales.
+ *
+ * Tiene que estar CERCA del alto real (medido: 33 px). Si no lo esta, el alto total de la
+ * pagina cambia a medida que se van midiendo las filas —se achica si la estimacion sobra,
+ * crece si falta— y el scroll se sacude o directamente te recorta al nuevo maximo.
+ */
+export const ALTO_FILA = 33;
 
 export const FilaTarea = memo(function FilaTarea({
   t, idx, isModOrAdmin, esAdmin, selected, visibleColumns, acciones, medirRef,
