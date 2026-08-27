@@ -26,8 +26,44 @@ import { mensajeError } from "@/lib/fetchJson";
 import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios } from "@/lib/espaciosCache";
 import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
+import { useVentanaFilas } from "@/components/tareas/useVentanaFilas";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Cuerpo de la tabla virtualizado.
+ *
+ * Vive a nivel de modulo, no dentro de la pagina: un componente definido adentro cambia
+ * de identidad en cada render y React lo remonta entero, que es justo lo que se quiere
+ * evitar. La fila se sigue dibujando con `renderFila`, asi que el marcado de siempre no
+ * se toca y sigue teniendo a mano todo lo que necesita de la pagina.
+ */
+function CuerpoVirtual({
+  items, colSpan, altoFila, renderFila, deps,
+}: {
+  items: any[];
+  colSpan: number;
+  altoFila: number;
+  renderFila: (t: any, idx: number) => React.ReactNode;
+  deps?: unknown[];
+}) {
+  const { contenedorRef, filas, rellenoArriba, rellenoAbajo, alturaTotal } = useVentanaFilas({
+    count: items.length, altoEstimado: altoFila, deps,
+  });
+  return (
+    <tbody ref={contenedorRef}>
+      {/* Tabla entera fuera de la ventana: no se dibuja ninguna fila, pero el cuerpo
+          tiene que seguir ocupando su alto o el resto de la pagina se corre. */}
+      {filas.length === 0 && alturaTotal > 0 && (
+        <tr style={{ height: alturaTotal }}><td colSpan={colSpan} /></tr>
+      )}
+      {rellenoArriba > 0 && <tr style={{ height: rellenoArriba }}><td colSpan={colSpan} /></tr>}
+      {filas.map((v) => renderFila(items[v.index], v.index))}
+      {rellenoAbajo > 0 && <tr style={{ height: rellenoAbajo }}><td colSpan={colSpan} /></tr>}
+    </tbody>
+  );
+}
+
 
 // ── Copiar al portapapeles ──────────────────────────────────
 const CopyBtn = ({ text }: { text: string }) => {
@@ -1923,8 +1959,12 @@ export default function EspacioTareasPage() {
             ))}
           </tr>
         </thead>
-        <tbody>
-          {visible.map((t, idx) => (
+        <CuerpoVirtual
+          items={visible}
+          colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+          altoFila={34}
+          deps={[visibleColumns, esPantallaChica]}
+          renderFila={(t: any, idx: number) => (
             <tr
               key={t.id}
               onClick={() => setSelectedTareaId(t.id)}
@@ -1976,8 +2016,8 @@ export default function EspacioTareasPage() {
                 );
               })}
             </tr>
-          ))}
-        </tbody>
+          )}
+        />
       </table>
       )}
       {hasMore && (
