@@ -26,6 +26,7 @@ import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios } from "@/lib/espaciosCache";
 import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
 import { getCacheado } from "@/lib/fetchCompartido";
+import GrupoPerezoso from "@/components/tareas/GrupoPerezoso";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -2538,6 +2539,7 @@ export default function TareasPage() {
                 </div>
 
                 {isExpanded && (
+                  <GrupoPerezoso altoEstimado={Math.max(items.length, 1) * 34}>
                   <div className="border-t border-surface-100">
                     {items.length === 0 ? (
                       <div className="text-center py-4 text-surface-300 text-[11px] italic">
@@ -2587,6 +2589,7 @@ export default function TareasPage() {
                       </div>
                     )}
                   </div>
+                  </GrupoPerezoso>
                 )}
               </div>
             );
