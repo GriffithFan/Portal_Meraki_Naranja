@@ -166,9 +166,20 @@ export function CuerpoTareasVirtual({
       requestAnimationFrame(() => { pendiente = false; medir(); });
     };
     medir();
+    // Observar el CONTENEDOR no alcanza: su caja no cambia nunca, lo que cambia es su
+    // contenido. Cuando un grupo de mas arriba crece o se achica —al medir sus filas
+    // reales— este tbody se corre y el offset queda viejo. El sintoma medido: con la
+    // lista arriba de todo, el primer grupo tenia 2.244 px de relleno donde correspondia
+    // cero, y al scrollear los grupos se quedaban mostrando siempre las mismas filas.
     const ro = new ResizeObserver(medirDiferido);
     ro.observe(cont);
-    return () => ro.disconnect();
+    const contenido = cont.firstElementChild;
+    if (contenido) ro.observe(contenido);
+    cont.addEventListener("scroll", medirDiferido, { passive: true });
+    return () => {
+      ro.disconnect();
+      cont.removeEventListener("scroll", medirDiferido);
+    };
   }, [items.length, visibleColumns, layoutToken]);
 
   const virtualizer = useVirtualizer({

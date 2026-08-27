@@ -67,9 +67,27 @@ export function useVentanaFilas({
       requestAnimationFrame(() => { pendiente = false; medir(); });
     };
     medir();
+
+    // TRAMPA 4 — observar el contenedor NO alcanza. `ResizeObserver` avisa cuando cambia
+    // la caja del elemento observado, y la del contenedor no cambia nunca: lo que cambia
+    // es su CONTENIDO. Cuando un grupo de mas arriba crece o se achica —porque su propio
+    // virtualizador midio las filas reales— este tbody se corre y su offset queda viejo.
+    // El sintoma medido: con la lista arriba de todo, el primer grupo tenia 2.244 px de
+    // relleno donde correspondia cero, y al scrollear los grupos se quedaban mostrando
+    // siempre las mismas filas.
+    //
+    // Por eso se observa tambien el contenido, y se vuelve a medir al scrollear. Medir es
+    // barato: la guarda de arriba corta antes de tocar el estado si nada se movio, asi que
+    // no hay re-render por frame.
     const ro = new ResizeObserver(medirDiferido);
     ro.observe(cont);
-    return () => ro.disconnect();
+    const contenido = cont.firstElementChild;
+    if (contenido) ro.observe(contenido);
+    cont.addEventListener("scroll", medirDiferido, { passive: true });
+    return () => {
+      ro.disconnect();
+      cont.removeEventListener("scroll", medirDiferido);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [count, ...deps]);
 
