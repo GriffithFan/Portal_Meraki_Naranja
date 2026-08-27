@@ -40,48 +40,34 @@ export default function GrupoPerezoso({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [cerca, setCerca] = useState(true); // primer render montado: evita un parpadeo inicial
-  const cercaRef = useRef(true);
-  const altoRef = useRef(altoEstimado);
   const [alto, setAlto] = useState(altoEstimado);
 
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-
     const io = new IntersectionObserver(
       ([entrada]) => {
-        // El ref se actualiza ANTES que el estado, a proposito: el ResizeObserver de
-        // abajo lo consulta y necesita saber que el grupo ya se va en el mismo momento.
-        cercaRef.current = entrada.isIntersecting;
+        if (!entrada.isIntersecting) {
+          // Se mide JUSTO ANTES de desmontar, y en el mismo lote que el cambio de estado:
+          // React aplica los dos juntos, asi que el hueco nace midiendo exactamente lo que
+          // media el grupo y el alto de la pagina no se mueve.
+          //
+          // Si, `getBoundingClientRect` fuerza un layout. Pero pasa solo cuando un grupo se
+          // va —unas pocas veces por scroll—, no en cada cuadro, que era el error de la
+          // primera version. Y no sirve leerlo del observador ni de un ResizeObserver: los
+          // dos entregan una caja de un cuadro anterior, y el grupo sigue creciendo mientras
+          // su virtualizador mide filas. Medido: el hueco quedaba 472 px corto, la pagina se
+          // encogia al bajar y el navegador te recortaba el scroll al inicio.
+          const h = el.getBoundingClientRect().height;
+          if (h > 0) setAlto(h);
+        }
         setCerca(entrada.isIntersecting);
       },
       { rootMargin: "900px 0px" }
     );
     io.observe(el);
-
-    // Mientras el grupo está montado se sigue su alto real. `contentRect` viene calculado,
-    // así que leerlo no cuesta un layout. Solo se guarda en un ref: cambiar el estado acá
-    // provocaría un render por cada ajuste del virtualizador de adentro, y el valor
-    // únicamente hace falta en el momento de desmontar.
-    const ro = new ResizeObserver(([entrada]) => {
-      // Solo se anota el alto mientras el grupo esta montado. Sin esta guarda el
-      // observador vuelve a dispararse DESPUES de desmontar —cuando el envoltorio ya es
-      // el hueco vacio— y pisa el alto bueno con el del hueco, que es justo el numero
-      // equivocado. Medido: dejaba un escalon de 466 px al desmontar el grupo, y ese
-      // escalon es lo que recorta el scroll y te manda arriba.
-      if (!cercaRef.current) return;
-      const h = entrada.contentRect.height;
-      if (h > 0) altoRef.current = h;
-    });
-    ro.observe(el);
-
-    return () => { io.disconnect(); ro.disconnect(); };
+    return () => io.disconnect();
   }, []);
-
-  // Al pasar a "lejos" se congela el último alto conocido para el hueco.
-  useEffect(() => {
-    if (!cerca) setAlto(altoRef.current);
-  }, [cerca]);
 
   return (
     <div ref={ref} style={cerca ? undefined : { height: alto }}>
