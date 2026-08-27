@@ -40,6 +40,7 @@ export default function GrupoPerezoso({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [cerca, setCerca] = useState(true); // primer render montado: evita un parpadeo inicial
+  const cercaRef = useRef(true);
   const altoRef = useRef(altoEstimado);
   const [alto, setAlto] = useState(altoEstimado);
 
@@ -48,7 +49,12 @@ export default function GrupoPerezoso({
     if (!el || typeof IntersectionObserver === "undefined") return;
 
     const io = new IntersectionObserver(
-      ([entrada]) => setCerca(entrada.isIntersecting),
+      ([entrada]) => {
+        // El ref se actualiza ANTES que el estado, a proposito: el ResizeObserver de
+        // abajo lo consulta y necesita saber que el grupo ya se va en el mismo momento.
+        cercaRef.current = entrada.isIntersecting;
+        setCerca(entrada.isIntersecting);
+      },
       { rootMargin: "900px 0px" }
     );
     io.observe(el);
@@ -58,6 +64,12 @@ export default function GrupoPerezoso({
     // provocaría un render por cada ajuste del virtualizador de adentro, y el valor
     // únicamente hace falta en el momento de desmontar.
     const ro = new ResizeObserver(([entrada]) => {
+      // Solo se anota el alto mientras el grupo esta montado. Sin esta guarda el
+      // observador vuelve a dispararse DESPUES de desmontar —cuando el envoltorio ya es
+      // el hueco vacio— y pisa el alto bueno con el del hueco, que es justo el numero
+      // equivocado. Medido: dejaba un escalon de 466 px al desmontar el grupo, y ese
+      // escalon es lo que recorta el scroll y te manda arriba.
+      if (!cercaRef.current) return;
       const h = entrada.contentRect.height;
       if (h > 0) altoRef.current = h;
     });
