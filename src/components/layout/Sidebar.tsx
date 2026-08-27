@@ -370,6 +370,12 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                     <li key={item.href}>
                       <Link
                         href={item.href}
+                        // Sin prefetch: el sidebar tiene 36 secciones y Next descargaba el
+                        // bundle de cada una que quedara a la vista, aunque el tecnico no
+                        // entrara nunca. En el celular eso es una docena de archivos de mas
+                        // en cada carga. La navegacion sigue siendo instantanea salvo la
+                        // primera vez que se entra a cada seccion.
+                        prefetch={false}
                         title={collapsed ? item.label : undefined}
                         className={clsx(
                           "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
