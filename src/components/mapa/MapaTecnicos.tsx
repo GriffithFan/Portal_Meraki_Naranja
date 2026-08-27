@@ -52,7 +52,30 @@ export default function MapaTecnicos({ tecnicos, seleccionado, onSeleccionar }: 
     mapaRef.current = mapa;
     // Al hacer clic en el mapa vacío se deselecciona.
     mapa.on("click", () => onSeleccionar(null));
-    return () => { mapa.remove(); mapaRef.current = null; };
+
+    // Leaflet mide el contenedor UNA vez, al crearse. Si en ese momento todavía no tiene
+    // su tamaño final —porque el layout no se acomodó, porque la pestaña estaba oculta, o
+    // porque el navegador está a otro zoom— el mapa queda en blanco y no se recupera solo.
+    // Es el fallo clásico de Leaflet y no da error en consola, así que se ve como si no
+    // hubiera cargado nada.
+    //
+    // invalidateSize() le dice que vuelva a medir. Se llama al toque, en el cuadro
+    // siguiente por si el layout se acomoda después, y cada vez que el contenedor cambia
+    // de tamaño.
+    const remedir = () => { try { mapa.invalidateSize(); } catch { /* mapa ya destruido */ } };
+    remedir();
+    const alFrame = requestAnimationFrame(remedir);
+    const alRato = setTimeout(remedir, 400);
+    const ro = new ResizeObserver(remedir);
+    ro.observe(contenedorRef.current);
+
+    return () => {
+      cancelAnimationFrame(alFrame);
+      clearTimeout(alRato);
+      ro.disconnect();
+      mapa.remove();
+      mapaRef.current = null;
+    };
   }, [onSeleccionar]);
 
   // Marcadores

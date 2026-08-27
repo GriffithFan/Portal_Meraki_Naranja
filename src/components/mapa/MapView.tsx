@@ -150,6 +150,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    let limpiezaTamano = () => {};
     const map = L.map(containerRef.current, {
       center: [center.lat, center.lng],
       zoom: 6,
@@ -164,6 +165,18 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
 
     markersRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+
+    // Leaflet mide el contenedor UNA sola vez, al crearse: si todavia no tiene su tamaño
+    // final el mapa queda en blanco y no se recupera solo, sin dar error. invalidateSize
+    // le dice que vuelva a medir — al toque, en el cuadro siguiente, y ante cada cambio
+    // de tamaño del contenedor.
+    const remedir = () => { try { map.invalidateSize(); } catch { /* mapa ya destruido */ } };
+    remedir();
+    const alFrame = requestAnimationFrame(remedir);
+    const alRato = setTimeout(remedir, 400);
+    const roTam = new ResizeObserver(remedir);
+    if (containerRef.current) roTam.observe(containerRef.current);
+    limpiezaTamano = () => { cancelAnimationFrame(alFrame); clearTimeout(alRato); roTam.disconnect(); };
 
     // ── User location tracking ──
     const userMarkerRef: { marker: L.Marker | null; circle: L.Circle | null } = { marker: null, circle: null };
@@ -196,6 +209,7 @@ export default function MapView({ predios, colorBy }: MapViewProps) {
     map.locate({ watch: true, enableHighAccuracy: true, maxZoom: 16 });
 
     return () => {
+      limpiezaTamano();
       map.stopLocate();
       map.remove();
       mapRef.current = null;
