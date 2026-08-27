@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 /**
  * Retrasa el montaje de un grupo hasta que estás por llegar a él. Una vez montado, se
- * queda: nunca se desmonta.
+ * queda: no existe camino de vuelta.
  *
  * Para qué sirve: hay un virtualizador POR GRUPO, y cada uno mantiene sus filas en el DOM.
  * Con 13 grupos abiertos son ~270 filas para una ventana que muestra 15, y el costo no es
@@ -39,21 +39,22 @@ export default function GrupoPerezoso({
   altoEstimado: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  // Arranca montado: en el primer render todavía no se sabe qué se ve, y es preferible
-  // armar de más una vez que mostrar un hueco vacío.
-  const [montado, setMontado] = useState(true);
+  // Arranca sin montar y solo se monta hacia adelante. Que NO exista un camino de vuelta
+  // es lo importante: en la version anterior habia una rama que desmontaba los grupos que
+  // nunca llegaste a ver, y el hueco de esos vale `items.length * alto`, o sea CERO para
+  // un grupo que todavia no cargo sus datos. Varios grupos cayendo a cero de golpe
+  // desploman el contenido y el navegador manda el scroll al principio: medido, un salto
+  // de 9.961 px a 0 en la lista general con seis estados abiertos.
+  const [montado, setMontado] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(
       ([entrada]) => {
-        if (entrada.isIntersecting) {
-          setMontado(true);
-          io.disconnect(); // ya está: no hay nada más que vigilar
-        } else {
-          setMontado(false);
-        }
+        if (!entrada.isIntersecting) return; // nunca se vuelve atras
+        setMontado(true);
+        io.disconnect(); // ya está: no hay nada más que vigilar
       },
       { rootMargin: "900px 0px" }
     );
@@ -62,7 +63,7 @@ export default function GrupoPerezoso({
   }, []);
 
   return (
-    <div ref={ref} style={montado ? undefined : { height: altoEstimado }}>
+    <div ref={ref} style={montado ? undefined : { height: Math.max(altoEstimado, 60) }}>
       {montado ? children : null}
     </div>
   );
