@@ -66,9 +66,43 @@ export default function FloatingHScrollbar({
 
     const ro = new ResizeObserver(medirDiferido);
     ro.observe(scope);
-    // Solo interesan las altas/bajas de tablas, no cada cambio dentro de una fila.
-    const mo = new MutationObserver(medirDiferido);
+
+    // El comentario de antes decia "solo interesan las altas/bajas de tablas", pero el
+    // observador no filtraba nada: recibia TODA mutacion del subarbol. Y el virtualizador
+    // agrega y saca filas en cada cuadro de scroll, asi que disparaba una medicion por
+    // cuadro, y medir lee scrollWidth/clientWidth de ~13 tablas -> layout forzado por
+    // cuadro. En el perfil del scroll esta funcion sola era el 31,9% del tiempo de CPU.
+    //
+    // Que entren y salgan filas no cambia el ancho de la tabla. Lo unico que importa es
+    // que aparezca o desaparezca una tabla entera (un grupo que se abre o se cierra).
+    const mo = new MutationObserver((registros) => {
+      for (const r of registros) {
+        for (const lista of [r.addedNodes, r.removedNodes]) {
+          for (const nodo of Array.from(lista)) {
+            if (!(nodo instanceof Element)) continue;
+            if (nodo.matches(selector) || nodo.querySelector(selector)) {
+              medirDiferido();
+              return;
+            }
+          }
+        }
+      }
+    });
     mo.observe(scope, { childList: true, subtree: true });
+
+    // Si una tabla cambia de ancho de verdad —columnas nuevas, un valor mas largo— hay
+    // que remedir igual. `ResizeObserver` da el tamano ya calculado en `contentRect`, sin
+    // forzar layout, y se ignora el alto: al agregarse filas cambia el alto, no el ancho.
+    const anchos = new WeakMap<Element, number>();
+    const roTablas = new ResizeObserver((entradas) => {
+      let cambio = false;
+      for (const e of entradas) {
+        const w = e.contentRect.width;
+        if (anchos.get(e.target) !== w) { anchos.set(e.target, w); cambio = true; }
+      }
+      if (cambio) medirDiferido();
+    });
+
     window.addEventListener("resize", medirDiferido);
 
     const cls = selector.replace(/^\./, "");
@@ -109,7 +143,12 @@ export default function FloatingHScrollbar({
     );
     const observarTablas = () => {
       io.disconnect();
-      for (const t of getTables()) io.observe(t);
+      roTablas.disconnect();
+      for (const t of getTables()) {
+        io.observe(t);
+        const interior = t.firstElementChild;
+        if (interior) roTablas.observe(interior);
+      }
     };
     observarTablas();
     // Se engancha al mismo ciclo throttleado que la medicion: un segundo
@@ -127,6 +166,7 @@ export default function FloatingHScrollbar({
 
     return () => {
       ro.disconnect();
+      roTablas.disconnect();
       mo.disconnect();
       window.removeEventListener("resize", medirDiferido);
       io.disconnect();
