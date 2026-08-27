@@ -28,6 +28,7 @@ import { getEspacios } from "@/lib/espaciosCache";
 import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
 import { useVentanaFilas } from "@/components/tareas/useVentanaFilas";
 import { getCacheado, invalidarCache } from "@/lib/fetchCompartido";
+import GrupoPerezoso from "@/components/tareas/GrupoPerezoso";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -2663,6 +2664,7 @@ export default function EspacioTareasPage() {
               </div>
 
               {isExpanded && (
+                <GrupoPerezoso altoEstimado={Math.max(items.length, 1) * 30}>
                 <div className="border-t border-surface-100">
                   {groupLoadState[estado.id] === "loading" ? (
                     <div className="flex justify-center py-6">
@@ -2676,6 +2678,7 @@ export default function EspacioTareasPage() {
                     renderTaskTable(items, estado.id)
                   )}
                 </div>
+                </GrupoPerezoso>
               )}
             </div>
           );
