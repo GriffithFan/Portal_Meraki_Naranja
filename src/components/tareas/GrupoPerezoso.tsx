@@ -3,65 +3,57 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Monta el contenido de un grupo solo cuando está cerca de la pantalla.
+ * Retrasa el montaje de un grupo hasta que estás por llegar a él. Una vez montado, se
+ * queda: nunca se desmonta.
  *
- * El problema medido: hay un virtualizador POR GRUPO, y cada uno mantiene sus filas
- * montadas aunque el grupo esté lejos de la vista. Con 13 grupos abiertos eso son ~270
- * filas en el DOM cuando la ventana muestra 15. Y el costo no es dibujarlas: es que el
- * navegador recalcule el estilo de todo ese árbol cada vez que algo cambia.
+ * Para qué sirve: hay un virtualizador POR GRUPO, y cada uno mantiene sus filas en el DOM.
+ * Con 13 grupos abiertos son ~270 filas para una ventana que muestra 15, y el costo no es
+ * dibujarlas sino que el navegador recalcule el estilo de todo ese árbol en cada cambio.
+ * Al abrir la pantalla solo se arman los grupos que se ven; el resto espera a que llegues.
  *
- * Antes probé `content-visibility: auto`, que es la versión CSS de esta idea, y no sirve
- * acá: el contenido "saltado" no se puede medir, y el virtualizador de adentro necesita
- * medir su posición. Dejaba la tabla vacía. Hecho en React sí funciona, porque cuando el
- * grupo entra se monta de verdad y todo se mide normal.
+ * POR QUÉ NO SE DESMONTA. La primera versión sí lo hacía, dejando un hueco del alto del
+ * grupo, y provocó un bug feo: al llegar al final de un estado el scroll te devolvía al
+ * principio de la lista y no te dejaba seguir bajando.
  *
- * EL HUECO TIENE QUE MEDIR EXACTAMENTE LO QUE MEDÍA EL GRUPO. Es la parte delicada, y
- * la primera versión la tenía mal. Guardaba el alto UNA sola vez, cuando el grupo cruzaba
- * el margen del observador. Pero el virtualizador de adentro sigue afinando el alto de sus
- * filas después de eso —arranca con una estimación y va midiendo las reales—, así que el
- * número guardado quedaba viejo y corto. Resultado: al desmontar, el hueco medía menos que
- * el grupo, la página entera se encogía mientras bajabas y el navegador te recortaba el
- * scroll al nuevo máximo. Medido en Facturado: el alto total caía de 6.163 a 5.122 px
- * durante el descenso y el scroll quedaba trabado; con varios grupos el recorte es mucho
- * mayor y te deja arriba de todo. Era el bug de "llego al final y me tira al inicio".
+ * La causa no fue una sola cosa, y por eso costó. Un grupo montado NO tiene un alto fijo:
+ * su virtualizador arranca estimando el alto de las filas y lo va corrigiendo a medida que
+ * mide las reales, así que el grupo crece y se achica mientras lo recorrés. Cualquier alto
+ * que se guarde para el hueco es una foto de un instante — probé con
+ * `entry.boundingClientRect`, con un `ResizeObserver` y midiendo justo antes de desmontar,
+ * y las tres dejaban el hueco corto. Y con el hueco corto la página se encoge al bajar, el
+ * navegador te recorta el scroll al nuevo máximo, ese recorte vuelve a acercar un grupo que
+ * se había ido, que se monta y cambia el alto otra vez: un vaivén que te va empujando para
+ * arriba. Eso es exactamente lo que se sentía como "llego al final y me tira al inicio".
  *
- * La solución es seguir el alto mientras el grupo está montado, con un `ResizeObserver`:
- * da el tamaño ya calculado en `contentRect` —sin forzar layout, fuera del hilo principal—
- * y avisa cada vez que cambia de verdad. Así el hueco siempre vale lo último que valió el
- * grupo, y la página no cambia de alto al desmontarlo.
+ * Montar y no soltar corta el problema de raíz: la página solo puede crecer, así que el
+ * navegador nunca tiene motivo para recortar el scroll. Se conserva casi todo el beneficio
+ * —lo caro es abrir la pantalla con todos los grupos armados— y el DOM crece solo con los
+ * grupos que de verdad visitaste.
  */
 export default function GrupoPerezoso({
   children,
   altoEstimado,
 }: {
   children: React.ReactNode;
-  /** Alto aproximado del grupo, para reservar el hueco antes de haberlo medido nunca. */
+  /** Alto aproximado del grupo, para reservar el lugar antes de armarlo. */
   altoEstimado: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [cerca, setCerca] = useState(true); // primer render montado: evita un parpadeo inicial
-  const [alto, setAlto] = useState(altoEstimado);
+  // Arranca montado: en el primer render todavía no se sabe qué se ve, y es preferible
+  // armar de más una vez que mostrar un hueco vacío.
+  const [montado, setMontado] = useState(true);
 
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(
       ([entrada]) => {
-        if (!entrada.isIntersecting) {
-          // Se mide JUSTO ANTES de desmontar, y en el mismo lote que el cambio de estado:
-          // React aplica los dos juntos, asi que el hueco nace midiendo exactamente lo que
-          // media el grupo y el alto de la pagina no se mueve.
-          //
-          // Si, `getBoundingClientRect` fuerza un layout. Pero pasa solo cuando un grupo se
-          // va —unas pocas veces por scroll—, no en cada cuadro, que era el error de la
-          // primera version. Y no sirve leerlo del observador ni de un ResizeObserver: los
-          // dos entregan una caja de un cuadro anterior, y el grupo sigue creciendo mientras
-          // su virtualizador mide filas. Medido: el hueco quedaba 472 px corto, la pagina se
-          // encogia al bajar y el navegador te recortaba el scroll al inicio.
-          const h = el.getBoundingClientRect().height;
-          if (h > 0) setAlto(h);
+        if (entrada.isIntersecting) {
+          setMontado(true);
+          io.disconnect(); // ya está: no hay nada más que vigilar
+        } else {
+          setMontado(false);
         }
-        setCerca(entrada.isIntersecting);
       },
       { rootMargin: "900px 0px" }
     );
@@ -70,8 +62,8 @@ export default function GrupoPerezoso({
   }, []);
 
   return (
-    <div ref={ref} style={cerca ? undefined : { height: alto }}>
-      {cerca ? children : null}
+    <div ref={ref} style={montado ? undefined : { height: altoEstimado }}>
+      {montado ? children : null}
     </div>
   );
 }
