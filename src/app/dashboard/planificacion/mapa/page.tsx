@@ -8,6 +8,7 @@ import { provinciaDeCodigo, PROVINCIAS_META, PROVINCIAS_ORDEN, type ProvinciaCla
 import { regionDePartido } from "@/lib/regionesBA";
 import { estadoVentana, type VentanaEstado } from "@/lib/cronogramaVentana";
 import RegionFilter from "@/components/tareas/RegionFilter";
+import { rehidratarMapa } from "@/lib/mapaDiccionario";
 
 const MapView = dynamic(() => import("@/components/mapa/MapView"), { ssr: false });
 
@@ -47,7 +48,7 @@ export default function PlanificacionMapaPage() {
   const cargar = useCallback(async () => {
     try {
       const res = await fetch("/api/dashboard/mapa", { credentials: "include", cache: "no-store" });
-      if (res.ok) setPredios(await res.json());
+      if (res.ok) setPredios(rehidratarMapa(await res.json()));
     } catch { /* noop */ }
     finally { setLoading(false); }
   }, []);

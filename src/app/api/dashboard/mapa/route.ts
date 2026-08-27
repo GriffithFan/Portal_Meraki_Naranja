@@ -4,6 +4,7 @@ import { getSession, isModOrAdmin } from "@/lib/auth";
 import { appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getDelegatedVisibleUserIds, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
 import { esCoordenadaValida } from "@/lib/gpsPredio";
+import { comprimirMapa } from "@/lib/mapaDiccionario";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -133,5 +134,8 @@ export async function GET(request: NextRequest) {
     })
     .filter((predio): predio is NonNullable<typeof predio> => Boolean(predio));
 
-  return NextResponse.json(predios);
+  // Se manda comprimido con diccionario: de los 1.264 KB que pesaba, 514 eran unos
+  // pocos valores (13 estados, 4 provincias, ~40 tecnicos) repetidos miles de veces.
+  // El cliente rehidrata al recibir y los predios vuelven a tener la forma de siempre.
+  return NextResponse.json(comprimirMapa(predios));
 }

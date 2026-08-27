@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useSession } from "@/hooks/useSession";
 import { obtenerProvincia } from "@/utils/provinciaUtils";
+import { rehidratarMapa } from "@/lib/mapaDiccionario";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -102,7 +103,7 @@ export default function PrediosPage() {
       if (filtroEstado && filtroEstado !== SIN_ESTADO) params.set("estadoId", filtroEstado);
       const res = await fetch(`/api/dashboard/mapa?${params}`, { credentials: "include" });
       if (res.ok) {
-        setPredios(await res.json());
+        setPredios(rehidratarMapa(await res.json()));
       } else if (res.status === 403) {
         setError("No tenés permisos para ver el mapa. Se requiere rol Moderador o Admin.");
       } else {
