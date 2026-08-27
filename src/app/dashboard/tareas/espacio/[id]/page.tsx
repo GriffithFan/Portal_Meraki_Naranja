@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { getCacheado } from "@/lib/fetchCompartido";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -14,8 +15,9 @@ export default function EspacioOverviewPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/espacios/${espacioId}`, { credentials: "include" });
-    if (res.ok) setData(await res.json());
+    // Cacheado: esta pantalla y la de tareas de la misma carpeta lo piden las dos.
+    const d = await getCacheado<any>(`/api/espacios/${espacioId}`);
+    if (d) setData(d);
     setLoading(false);
   }, [espacioId]);
 

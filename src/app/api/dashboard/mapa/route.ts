@@ -97,7 +97,11 @@ export async function GET(request: NextRequest) {
       fechaDesde: true,
       fechaHasta: true,
       estado: { select: { id: true, nombre: true, color: true } },
-      asignaciones: { include: { usuario: { select: { id: true, nombre: true } } } },
+      // `select` y no `include`: include trae TODOS los campos de Asignacion (id, tipo,
+      // notas, userId, predioId, equipoId, createdAt) por cada asignacion de cada predio,
+      // y el mapa solo usa el nombre para colorear por tecnico. Con 2.525 predios eso
+      // eran cientos de KB de campos que nadie mira.
+      asignaciones: { select: { usuario: { select: { nombre: true } } } },
     },
     take: 5000,
   });
