@@ -43,14 +43,18 @@ import { useVentanaColumnas } from "@/components/tareas/useVentanaColumnas";
  */
 /**
  * Alto de una fila en px: es la estimacion inicial del virtualizador, que despues mide
- * las reales. Tiene que estar CERCA del valor real (medido: 45 px en esta tabla).
+ * las reales.
  *
- * Estaba en 51 y ese era el bug del scroll: cuando la estimacion sobra, el alto total de
- * la pagina se ACHICA a medida que el virtualizador mide las filas de verdad, y el
- * navegador te recorta el scroll al nuevo maximo. Con 242 filas cargadas eran ~1.450 px
- * de diferencia: llegabas al final de un estado y te tiraba al inicio de la lista.
+ * Tiene que estar cerca del PROMEDIO real, y en esta tabla el alto es bimodal: sobre 306
+ * filas medidas, 157 miden 32 px y 144 miden 45 -segun si alguna celda parte el texto en
+ * dos lineas-, con promedio 38,4. Por eso 38 y no 45: 45 es la moda alta, no el promedio.
+ *
+ * Importa porque el alto total de la pagina es la suma de lo ya medido mas la estimacion
+ * de lo que falta. Si la estimacion sobra, ese total se ACHICA mientras bajas y el
+ * navegador te recorta el scroll al nuevo maximo. Estaba en 51 y era parte del bug de
+ * "llego al final de un estado y me tira al inicio de la lista".
  */
-const ALTO_FILA_CARPETA = 45;
+const ALTO_FILA_CARPETA = 38;
 
 function CuerpoVirtual({
   items, colSpan, altoFila, renderFila, deps,
