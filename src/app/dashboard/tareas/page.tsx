@@ -27,6 +27,7 @@ import { getEspacios } from "@/lib/espaciosCache";
 import { useEsPantallaChica } from "@/hooks/useAnchoPantalla";
 import { getCacheado } from "@/lib/fetchCompartido";
 import GrupoPerezoso from "@/components/tareas/GrupoPerezoso";
+import { useVentanaColumnas } from "@/components/tareas/useVentanaColumnas";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -1623,6 +1624,16 @@ export default function TareasPage() {
     });
   }, [columns, tareas]);
 
+  // Solo se dibujan las columnas que caen en la ventana horizontal (son 71 y en
+  // pantalla entran 13). Ver el porque en useVentanaColumnas.
+  const anchoDeColumna = useCallback((c: any) => getColWidth(c) || 120, [resizeDelta]);
+  const {
+    visibles: columnasEnVentana,
+    anchoIzq: anchoColsIzq,
+    anchoDer: anchoColsDer,
+    alDesplazar: alDesplazarColumnas,
+  } = useVentanaColumnas({ columnas: visibleColumns, anchoDe: anchoDeColumna });
+
   const hasServerFilters = Boolean(serverSearch || filterEstado !== "todos" || filterProvincia.trim() || filterPrioridad !== "todas" || filterAsignado !== "todos" || filterTipo !== "todos" || filterVentana !== "todos" || filterCronogramas !== "todos" || filterRegiones.length > 0 || quickFilter !== "todos");
   const clearServerFilters = () => {
     setSearch("");
@@ -2554,19 +2565,23 @@ export default function TareasPage() {
                           <thead>
                             <tr className="border-b border-surface-100">
                               {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
-                              {visibleColumns.map(renderColHeader)}
+                              {anchoColsIzq > 0 && <th style={{ width: anchoColsIzq, minWidth: anchoColsIzq, padding: 0 }} />}
+                              {columnasEnVentana.map(renderColHeader)}
+                              {anchoColsDer > 0 && <th style={{ width: anchoColsDer, minWidth: anchoColsDer, padding: 0 }} />}
                             </tr>
                           </thead>
                           <CuerpoTareasVirtual
                             items={items}
-                            visibleColumns={visibleColumns}
+                            visibleColumns={columnasEnVentana}
+                            anchoIzq={anchoColsIzq}
+                            anchoDer={anchoColsDer}
                             acciones={accionesFilaRef}
                             isModOrAdmin={Boolean(isModOrAdmin)}
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
                             layoutToken={layoutToken}
-                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                            colSpan={columnasEnVentana.length + 2 + (isModOrAdmin ? 1 : 0)}
                           />
                         </table>
                         {/* En escritorio la tabla ya muestra TODAS las filas cargadas (van
@@ -2647,19 +2662,23 @@ export default function TareasPage() {
                     <thead>
                       <tr className="border-b border-surface-100">
                         {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={groupedTareas["sin-estado"].length > 0 && groupedTareas["sin-estado"].every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(groupedTareas["sin-estado"])} className="accent-primary-600 cursor-pointer" /></th>}
-                        {visibleColumns.map(renderColHeader)}
+                        {anchoColsIzq > 0 && <th style={{ width: anchoColsIzq, minWidth: anchoColsIzq, padding: 0 }} />}
+                              {columnasEnVentana.map(renderColHeader)}
+                              {anchoColsDer > 0 && <th style={{ width: anchoColsDer, minWidth: anchoColsDer, padding: 0 }} />}
                       </tr>
                     </thead>
                     <CuerpoTareasVirtual
                             items={groupedTareas["sin-estado"]}
-                            visibleColumns={visibleColumns}
+                            visibleColumns={columnasEnVentana}
+                            anchoIzq={anchoColsIzq}
+                            anchoDer={anchoColsDer}
                             acciones={accionesFilaRef}
                             isModOrAdmin={Boolean(isModOrAdmin)}
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
                             layoutToken={layoutToken}
-                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                            colSpan={columnasEnVentana.length + 2 + (isModOrAdmin ? 1 : 0)}
                           />
                   </table>
                   {(groupedTareas["sin-estado"].length > (renderLimits["sin-estado"] || ROWS_BATCH) || groupPages["sin-estado"]?.hasMore) && (
@@ -2701,19 +2720,23 @@ export default function TareasPage() {
                         <thead>
                           <tr className="border-b border-surface-100">
                             {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={items.length > 0 && items.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(items)} className="accent-primary-600 cursor-pointer" /></th>}
-                            {visibleColumns.map(renderColHeader)}
+                            {anchoColsIzq > 0 && <th style={{ width: anchoColsIzq, minWidth: anchoColsIzq, padding: 0 }} />}
+                              {columnasEnVentana.map(renderColHeader)}
+                              {anchoColsDer > 0 && <th style={{ width: anchoColsDer, minWidth: anchoColsDer, padding: 0 }} />}
                           </tr>
                         </thead>
                         <CuerpoTareasVirtual
                             items={items}
-                            visibleColumns={visibleColumns}
+                            visibleColumns={columnasEnVentana}
+                            anchoIzq={anchoColsIzq}
+                            anchoDer={anchoColsDer}
                             acciones={accionesFilaRef}
                             isModOrAdmin={Boolean(isModOrAdmin)}
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
                             layoutToken={layoutToken}
-                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                            colSpan={columnasEnVentana.length + 2 + (isModOrAdmin ? 1 : 0)}
                           />
                       </table>
                       {items.length > (renderLimits[groupKey] || ROWS_BATCH) && (
@@ -2742,19 +2765,23 @@ export default function TareasPage() {
                   <thead>
                     <tr className="border-b border-surface-100">
                       {isModOrAdmin && <th className="w-16 px-1 text-center"><input type="checkbox" checked={tareas.length > 0 && tareas.every((t: any) => selectedIds.has(t.id))} onChange={() => toggleSelectGroup(tareas)} className="accent-primary-600 cursor-pointer" /></th>}
-                      {visibleColumns.map(renderColHeader)}
+                      {anchoColsIzq > 0 && <th style={{ width: anchoColsIzq, minWidth: anchoColsIzq, padding: 0 }} />}
+                              {columnasEnVentana.map(renderColHeader)}
+                              {anchoColsDer > 0 && <th style={{ width: anchoColsDer, minWidth: anchoColsDer, padding: 0 }} />}
                     </tr>
                   </thead>
                   <CuerpoTareasVirtual
                             items={sortedTareas}
-                            visibleColumns={visibleColumns}
+                            visibleColumns={columnasEnVentana}
+                            anchoIzq={anchoColsIzq}
+                            anchoDer={anchoColsDer}
                             acciones={accionesFilaRef}
                             isModOrAdmin={Boolean(isModOrAdmin)}
                             esAdmin={session?.rol === "ADMIN"}
                             selectedIds={selectedIds}
                             cellVersion={cellVersion}
                             layoutToken={layoutToken}
-                            colSpan={visibleColumns.length + (isModOrAdmin ? 1 : 0)}
+                            colSpan={columnasEnVentana.length + 2 + (isModOrAdmin ? 1 : 0)}
                           />
                 </table>
                 {tareas.length > (renderLimits["_all"] || ROWS_BATCH) && (
@@ -2778,7 +2805,7 @@ export default function TareasPage() {
             </div>
           )}
 
-          <FloatingHScrollbar scopeRef={listScopeRef} />
+          <FloatingHScrollbar scopeRef={listScopeRef} onDesplazamiento={alDesplazarColumnas} />
         </div>
       )}
 

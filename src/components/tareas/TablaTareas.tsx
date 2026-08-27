@@ -34,6 +34,7 @@ export const ALTO_FILA = 29;
 
 export const FilaTarea = memo(function FilaTarea({
   t, idx, isModOrAdmin, esAdmin, selected, visibleColumns, acciones, medirRef,
+  anchoIzq = 0, anchoDer = 0,
 }: {
   t: any;
   idx: number;
@@ -45,6 +46,9 @@ export const FilaTarea = memo(function FilaTarea({
   cellVersion: unknown;
   /** Lo usa el virtualizador para medir el alto real de la fila. */
   medirRef?: (el: HTMLTableRowElement | null) => void;
+  /** Ancho de las columnas salteadas a cada lado (virtualizacion horizontal). */
+  anchoIzq?: number;
+  anchoDer?: number;
 }) {
   const a = acciones.current;
   const especial = esTipoIncidenciaEspecial(t.tipoIncidencia);
@@ -86,6 +90,7 @@ export const FilaTarea = memo(function FilaTarea({
           </div>
         </td>
       )}
+      {anchoIzq > 0 && <td style={{ width: anchoIzq, minWidth: anchoIzq, padding: 0 }} />}
       {visibleColumns.map((col) => (
         <td
           key={col.id}
@@ -95,6 +100,7 @@ export const FilaTarea = memo(function FilaTarea({
           {a.renderCell(t, col)}
         </td>
       ))}
+      {anchoDer > 0 && <td style={{ width: anchoDer, minWidth: anchoDer, padding: 0 }} />}
     </tr>
   );
 });
@@ -112,9 +118,13 @@ export const FilaTarea = memo(function FilaTarea({
  */
 export function CuerpoTareasVirtual({
   items, visibleColumns, acciones, isModOrAdmin, esAdmin, selectedIds, cellVersion, colSpan, layoutToken,
+  anchoIzq = 0, anchoDer = 0,
 }: {
   items: any[];
   visibleColumns: ColumnaTabla[];
+  /** Ancho de las columnas salteadas a cada lado (virtualizacion horizontal). */
+  anchoIzq?: number;
+  anchoDer?: number;
   acciones: React.MutableRefObject<AccionesFila>;
   isModOrAdmin: boolean;
   esAdmin: boolean;
@@ -238,6 +248,8 @@ export function CuerpoTareasVirtual({
             esAdmin={esAdmin}
             selected={selectedIds.has(t.id)}
             visibleColumns={visibleColumns}
+            anchoIzq={anchoIzq}
+            anchoDer={anchoDer}
             acciones={acciones}
             cellVersion={cellVersion}
             medirRef={virtualizer.measureElement}
