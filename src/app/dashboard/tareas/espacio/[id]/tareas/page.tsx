@@ -48,11 +48,11 @@ function CuerpoVirtual({
   renderFila: (t: any, idx: number, medir: (el: HTMLElement | null) => void) => React.ReactNode;
   deps?: unknown[];
 }) {
-  const { contenedorRef, filas, rellenoArriba, rellenoAbajo, alturaTotal, medirFila } = useVentanaFilas({
+  const { contenedorRef, filas, rellenoArriba, rellenoAbajo, alturaTotal, medirFila, estiloCuerpo } = useVentanaFilas({
     count: items.length, altoEstimado: altoFila, deps,
   });
   return (
-    <tbody ref={contenedorRef}>
+    <tbody ref={contenedorRef} style={estiloCuerpo}>
       {/* Tabla entera fuera de la ventana: no se dibuja ninguna fila, pero el cuerpo
           tiene que seguir ocupando su alto o el resto de la pagina se corre. */}
       {filas.length === 0 && alturaTotal > 0 && (

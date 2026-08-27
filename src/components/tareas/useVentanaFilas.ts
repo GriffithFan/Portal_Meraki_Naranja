@@ -109,7 +109,10 @@ export function useVentanaFilas({
     count,
     getScrollElement: () => scrollEl,
     estimateSize: () => altoEstimado,
-    overscan: 10,
+    // 3 y no 10: hay un virtualizador POR GRUPO, asi que el overscan se paga 13 veces.
+    // Con 10 eran 130 filas de sobra en el DOM, y el costo de tenerlas ahi no es dibujarlas
+    // sino que el navegador recalcule su estilo en cada cambio.
+    overscan: 3,
     scrollMargin: offset,
   });
 
@@ -126,5 +129,10 @@ export function useVentanaFilas({
     rellenoAbajo: filas.length > 0 ? alturaTotal - (filas[filas.length - 1].end - margen) : 0,
     /** Para medir el alto real de cada fila (mejora la estimación sobre la marcha). */
     medirFila: virtualizer.measureElement,
+    /** Estilo para el <tbody>: evita que el navegador trabaje en grupos fuera de pantalla. */
+    estiloCuerpo: {
+      contentVisibility: "auto" as const,
+      containIntrinsicSize: `auto ${Math.max(alturaTotal, 1)}px`,
+    },
   };
 }
