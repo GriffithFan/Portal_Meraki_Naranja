@@ -129,7 +129,14 @@ export function useVentanaFilas({
     rellenoAbajo: filas.length > 0 ? alturaTotal - (filas[filas.length - 1].end - margen) : 0,
     /** Para medir el alto real de cada fila (mejora la estimación sobre la marcha). */
     medirFila: virtualizer.measureElement,
-    /** Estilo para el <tbody>: evita que el navegador trabaje en grupos fuera de pantalla. */
+    /**
+     * Estilo para el DIV que envuelve la tabla del grupo — no para el <tbody>.
+     *
+     * `content-visibility` necesita que el elemento admita containment, y las partes de
+     * una tabla (<tbody>, <tr>) no lo admiten: puesto ahi no hace nada. Medido: el
+     * recalculo de estilo no se movio. En el div contenedor si funciona, y ahi es donde
+     * corta el trabajo de los grupos que estan fuera de la pantalla.
+     */
     estiloCuerpo: {
       contentVisibility: "auto" as const,
       containIntrinsicSize: `auto ${Math.max(alturaTotal, 1)}px`,

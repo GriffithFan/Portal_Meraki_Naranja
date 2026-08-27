@@ -2538,7 +2538,14 @@ export default function TareasPage() {
                 </div>
 
                 {isExpanded && (
-                  <div className="border-t border-surface-100">
+                  <div
+                    className="border-t border-surface-100"
+                    // El navegador ni calcula el estilo de este grupo mientras esta fuera
+                    // de la pantalla. Recalcular estilo era el 32,7% del tiempo de scroll
+                    // sobre un arbol de 50.000 nodos. Va en el div contenedor y no en el
+                    // <tbody>: las partes de una tabla no admiten containment.
+                    style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${Math.max(items.length * 34, 1)}px` }}
+                  >
                     {items.length === 0 ? (
                       <div className="text-center py-4 text-surface-300 text-[11px] italic">
                         {groupLoadState[estado.id] === "loading"

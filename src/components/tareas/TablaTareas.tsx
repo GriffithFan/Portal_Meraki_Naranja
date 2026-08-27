@@ -219,15 +219,7 @@ export function CuerpoTareasVirtual({
   const rellenoAbajo = filas.length > 0 ? alturaTotal - (filas[filas.length - 1].end - margen) : 0;
 
   return (
-    <tbody
-      ref={contenedorRef}
-      // `content-visibility: auto` le dice al navegador que NO calcule estilo ni layout de
-      // este grupo mientras este fuera de la pantalla. Es lo que ataca el costo real
-      // medido: recalcular estilo era el 32,7% del tiempo de scroll sobre un arbol de
-      // 50.088 nodos. `contain-intrinsic-size` le da el alto que debe reservar, para que
-      // la barra de scroll no salte al entrar y salir de la vista.
-      style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${Math.max(alturaTotal, 1)}px` }}
-    >
+    <tbody ref={contenedorRef}>
       {/* Grupo entero fuera de la ventana visible: no se dibuja ninguna fila, pero el
           cuerpo tiene que seguir ocupando su alto o el resto de la pagina se corre. */}
       {filas.length === 0 && alturaTotal > 0 && (
