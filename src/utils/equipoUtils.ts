@@ -16,13 +16,16 @@ export interface EquipoEntry {
 }
 
 const EQUIPOS: EquipoEntry[] = [
-  { key: "Dani",    aliases: ["TH01", "DANIEL", "DANI", "DANIEL C01"], display: "Dani" },
+  // Los nombres completos son alias, no reemplazos: en la base quedan asignaciones y
+  // cronogramas viejos guardados como "Dani" o "TH01", y tienen que seguir resolviendo
+  // al mismo equipo. Si se saca el alias corto, el historico se parte en dos.
+  { key: "Dani",    aliases: ["TH01", "DANIEL", "DANI", "DANIEL C01", "DANIEL SUAREZ"], display: "Daniel Suárez" },
   { key: "TH02",    aliases: [],                                        display: "TH02" },
   { key: "Jorge",   aliases: ["TH03", "JORGE"],                         display: "Jorge" },
   { key: "Lucio",   aliases: ["TH04", "LUCIO", "ADOLFO"],               display: "Lucio" },
   { key: "Gustavo", aliases: ["TH05", "GUSTAVO"],                       display: "Gustavo" },
   { key: "TH06",    aliases: [],                                        display: "TH06" },
-  { key: "Fede",    aliases: ["TH07", "FEDE", "FEDERICO"],             display: "Fede" },
+  { key: "Fede",    aliases: ["TH07", "FEDE", "FEDERICO", "FEDERICO ALBARRACIN"], display: "Federico Albarracin" },
   { key: "TH08",    aliases: [],                                        display: "TH08" },
   { key: "TH09",    aliases: [],                                        display: "TH09" },
   { key: "TH10",    aliases: [],                                        display: "TH10" },
