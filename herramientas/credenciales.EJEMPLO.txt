@@ -1,0 +1,8 @@
+# Credenciales de Salesforce para las herramientas de escritorio.
+#
+# Copiar este archivo como "credenciales.txt" y completar los valores.
+# NO subir credenciales.txt a ningun lado: es personal y da acceso a Salesforce.
+
+SALESFORCE_URL_BASE=https://educar.lightning.force.com
+SALESFORCE_USERNAME=tu.usuario@dominio.com
+SALESFORCE_PASSWORD=tu-clave

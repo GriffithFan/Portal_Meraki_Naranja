@@ -251,6 +251,31 @@ async function main() {
   }
   console.log(`evidencias: ${carpetasEv} carpetas, ${archivosEv} archivos`);
 
+  // ── Herramientas y scripts ──────────────────────────────────────────────────
+  // Van al respaldo porque hasta hoy el codigo del extractor y del generador de actas
+  // vivia SOLO en el VPS: estaba excluido del repositorio por .gitignore. Si el servidor
+  // se perdia, ese codigo no existia en ningun otro lado.
+  const copiarCarpeta = (origen, destino, filtro) => {
+    if (!fs.existsSync(origen)) return 0;
+    let n = 0;
+    for (const rel of listarRecursivo(origen)) {
+      if (filtro && !filtro(rel)) continue;
+      agregar(path.join(origen, rel), `${destino}/${rel.split(path.sep).map((x) => limpio(x, 80)).join("/")}`);
+      n++;
+    }
+    return n;
+  };
+  // Del venv y la cache no tiene sentido guardar nada: se regeneran solos y pesan GB.
+  const sinBasura = (rel) => !/(^|[\/])(\.venv|__pycache__|cache|node_modules)([\/]|$)/.test(rel)
+    && !/\.(bak|pyc)$|\.bak-|\.py\.bak/.test(rel);
+  const nHerr = copiarCarpeta(path.join(RAIZ, "herramientas"), "06 Tools/Desktop tools", sinBasura);
+  const nScripts = copiarCarpeta(path.join(RAIZ, "scripts"), "06 Tools/Server scripts", sinBasura);
+  console.log(`herramientas: ${nHerr} archivos · scripts del servidor: ${nScripts}`);
+
+  // El manual de operacion se copia tambien suelto en su propia seccion, para que se
+  // encuentre sin tener que entrar a "Tools".
+  agregar(path.join(RAIZ, "herramientas", "OPERACION-SERVIDOR.txt"), "07 Operations/OPERACION-SERVIDOR.txt");
+
   // ── Índice: sin esto, 2.451 carpetas no se pueden buscar ────────────────────
   const equipos = await prisma.equipo.findMany({
     select: {
@@ -442,6 +467,10 @@ async function construirIndice(predios, equipos, carpetaDe, provinciaCanonica) {
     "  04 Personnel/       Legajos. Acceso restringido.",
     "  05 Helpdesk/        Chat de mesa de ayuda por mes y técnico, y las",
     "                      evidencias ODK que se enviaron por ahí.",
+    "  06 Tools/           Herramientas de escritorio (enriquecer una lista, generar",
+    "                      un acta) y los scripts que usa el servidor.",
+    "                      Empezá por 06 Tools/Desktop tools/LEEME.txt",
+    "  07 Operations/      Cómo reiniciar, revisar y restaurar Carrot.",
     "",
     "SOBRE LAS ACTUALIZACIONES",
     "",

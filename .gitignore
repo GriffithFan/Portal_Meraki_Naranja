@@ -56,3 +56,10 @@ tmp_deploy.sh
 
 # Generador de actas (scripts Python + template Word con credenciales, vive en el VPS)
 /actas-gen/
+
+# Las herramientas de escritorio SI se versionan: hasta hoy el codigo del extractor y
+# del generador de actas vivia solo en el VPS y no existia en ningun otro lado. Lo que
+# se sigue ignorando es lo regenerable y lo secreto.
+/herramientas/.venv/
+/herramientas/**/__pycache__/
+/herramientas/credenciales.txt

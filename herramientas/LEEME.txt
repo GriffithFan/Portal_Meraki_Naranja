@@ -1,0 +1,94 @@
+HERRAMIENTAS DE ESCRITORIO — THNET / Carrot
+===========================================
+
+Son las mismas herramientas que usa Carrot en el servidor, preparadas para correr
+desde una PC con Windows. Sirven cuando el servidor no está disponible, o cuando
+querés procesar una lista sin pasar por el portal.
+
+
+QUÉ NECESITÁS ANTES DE EMPEZAR
+------------------------------
+
+  1. Python 3.10 o superior — https://www.python.org/downloads/
+     Al instalarlo, TILDAR "Add Python to PATH". Si no, nada de esto funciona.
+
+  2. Google Chrome instalado (el que ya tenés sirve).
+
+  3. Usuario y clave de Salesforce.
+
+
+INSTALACIÓN (una sola vez)
+--------------------------
+
+  Doble clic en INSTALAR.bat y esperar. Tarda unos minutos: baja las librerías
+  de Python y arma un entorno propio en la carpeta .venv, sin tocar nada más de
+  tu PC.
+
+  Al terminar te crea "credenciales.txt". Abrilo y completá el usuario y la clave
+  de Salesforce. Ese archivo es tuyo: no lo compartas ni lo subas al NAS.
+
+
+ENRIQUECER UNA LISTA
+--------------------
+
+  Completa los datos de una lista de predios leyéndolos de Salesforce.
+
+  Forma fácil:  arrastrar el Excel sobre ENRIQUECER.bat.
+  Forma manual: doble clic en ENRIQUECER.bat y pegar la ruta del archivo.
+
+  El Excel de entrada necesita dos columnas: "Numero_Predio" y "Numero_Incidencia".
+  Tenés un modelo listo en extractor\Plantilla_Entrada_Predios_Incidencias.xlsx
+
+  El resultado se guarda al lado del original, con "-enriquecido" al final del
+  nombre. El archivo de entrada no se toca.
+
+  Mientras corre se abre una ventana de Chrome. NO LA CIERRES: es la herramienta
+  navegando Salesforce. Cerrarla corta el proceso a la mitad.
+
+
+GENERAR UN ACTA
+---------------
+
+  Doble clic en GENERAR-ACTA.bat, escribir el número de predio, y listo. El acta
+  sale en la carpeta "actas", armada sobre la plantilla oficial.
+
+
+CUÁNTO TARDA
+------------
+
+  El enriquecimiento procesa 4 predios a la vez. Una lista de 100 predios tarda
+  del orden de 15 a 25 minutos, según cómo ande Salesforce.
+
+  No subas ese número de 4. En el servidor se probó con 8 y Chrome se cae: la
+  herramienta queda a mitad de camino y hay que empezar de nuevo.
+
+
+SI ALGO FALLA
+-------------
+
+  "No se encontro Python"
+      No está instalado, o se instaló sin tildar "Add Python to PATH".
+      Solución: reinstalar Python tildando esa opción.
+
+  "Falta credenciales.txt"
+      Correr INSTALAR.bat, que lo crea, y después completarlo.
+
+  Se abre Chrome y no pasa nada / pide login
+      Usuario o clave mal en credenciales.txt, o Salesforce pidió verificación
+      en dos pasos. Entrá a Salesforce desde el navegador normal, confirmá el
+      acceso, y volvé a intentar.
+
+  Termina con error a la mitad
+      Volvé a correrlo: guarda caché de lo ya consultado, así que la segunda
+      vuelta es bastante más rápida y retoma casi donde quedó.
+
+
+DIFERENCIAS CON EL SERVIDOR
+---------------------------
+
+  Estas versiones NO escriben en la base de Carrot: entra un Excel y sale un
+  Excel. Para que los datos entren al portal hay que subir el resultado desde
+  la sección de importación, igual que cualquier otra planilla.
+
+  Es a propósito: así se pueden usar sin tocar producción y sin riesgo de pisar
+  datos por accidente.

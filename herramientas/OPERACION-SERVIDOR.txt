@@ -1,0 +1,185 @@
+MANUAL DE OPERACIÓN — Servidor de Carrot
+========================================
+
+Para qué sirve: que alguien que no sea Ulises pueda revisar, reiniciar o restaurar
+Carrot si hace falta. No hace falta saber programar, pero sí seguir los pasos como
+están escritos.
+
+Generado el 28/08/2026. Si algo no coincide con la realidad, la realidad tiene razón.
+
+
+DÓNDE ESTÁ TODO
+---------------
+
+  Servidor       72.61.32.146   (VPS, Ubuntu 24.04)
+  Usuario        deploy
+  Aplicación     /var/www/carrot
+  Copia demo     /var/www/carrot-demo
+  Archivos       /var/www/carrot/uploads
+  Backups        /var/www/carrot/backups
+  Logs           /var/www/carrot/logs
+  Base de datos  PostgreSQL 16 · base "carrot_db"
+  Node           v20
+
+
+CÓMO ENTRAR
+-----------
+
+  Desde una PC con Windows, en PowerShell:
+
+      ssh deploy@72.61.32.146
+
+  La llave de acceso NO está en este documento a propósito (ver el apartado
+  CREDENCIALES más abajo).
+
+
+LO QUE MÁS SE NECESITA
+----------------------
+
+  Ver si está funcionando
+      pm2 status
+      curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3001/api/health
+      Tiene que responder 200.
+
+  Reiniciar Carrot
+      pm2 restart carrot
+
+      CUIDADO: antes de reiniciar, fijate que no haya un enriquecimiento corriendo.
+      Reiniciar en el medio deja el trabajo a mitad y hay que rehacerlo:
+          pm2 logs carrot --lines 50 --nostream | grep -i enriquec
+      Si ves actividad reciente, esperá a que termine.
+
+  Ver los logs
+      pm2 logs carrot --lines 100
+      Salir con Ctrl+C.
+
+  Ver el espacio en disco
+      df -h /
+      Si pasa el 85%, revisá /var/www/carrot/backups: es lo que más ocupa.
+
+  Panel de estado
+      En el navegador: /dashboard/operacion  (solo administración).
+      Muestra memoria, disco, procesos, logs y las tareas programadas.
+
+
+SI CARROT NO RESPONDE
+---------------------
+
+  1. pm2 status
+     ¿"carrot" figura como "online"? Si dice "errored" o "stopped":
+         pm2 restart carrot
+     Esperá 30 segundos y probá el health de nuevo.
+
+  2. Si vuelve a caerse, mirá por qué:
+         pm2 logs carrot --lines 100 --nostream
+     Los errores suelen estar en las últimas líneas.
+
+  3. Si el disco está lleno (df -h muestra 100%), liberá espacio borrando los
+     backups de uploads más viejos, que son los más pesados:
+         ls -la /var/www/carrot/backups/uploads-*.tar.gz
+         rm /var/www/carrot/backups/uploads-<el más viejo>.tar.gz
+     Después: pm2 restart carrot
+
+  4. Si nada de eso alcanza, reiniciar el servidor entero:
+         sudo reboot
+     Tarda un par de minutos y levanta solo.
+
+
+RESTAURAR LA BASE DE DATOS
+--------------------------
+
+  Se hace SOLO si se perdieron datos. Reemplaza todo por la copia elegida: lo que
+  haya pasado después de esa copia se pierde.
+
+  1. Ver qué copias hay (una por día, se guardan 21 días):
+         ls -la /var/www/carrot/backups/db-*.sql.gz
+
+  2. Parar la aplicación para que nadie escriba mientras tanto:
+         pm2 stop carrot
+
+  3. Restaurar (cambiá el nombre del archivo por el que elijas):
+         gunzip -c /var/www/carrot/backups/db-20260828-031501.sql.gz | sudo -u postgres psql carrot_db
+
+  4. Volver a levantar:
+         pm2 start carrot
+
+
+TAREAS PROGRAMADAS
+------------------
+
+  Se ven con: crontab -l
+
+  Cada minuto      monitoreo del servidor
+  Cada 15 min      anuncios
+  03:15            backup de base y de archivos
+  03:40            purga de ubicaciones GPS viejas
+  03:50            purga de historial
+  08:00            avisos de vencimientos
+  09:00 lun-vie    enriquecimiento total
+  11:00            reporte diario
+  11:30 lunes      reporte semanal
+  19:00 lun-jue    enriquecimiento
+  20:05            cierre automático de chats
+  20:30 viernes    indicador semanal de mantenimiento
+
+  El enriquecimiento no corre sábados ni domingos, a propósito: la última pasada
+  es el viernes y se retoma el lunes.
+
+
+ACTUALIZAR LA APLICACIÓN
+------------------------
+
+      cd /var/www/carrot && bash scripts/update.sh
+
+  Baja los cambios, reinstala lo que haga falta, compila y reinicia. Tarda entre
+  5 y 12 minutos. Si se corta a la mitad, volvé a correrlo: es repetible.
+
+
+CREDENCIALES
+------------
+
+  En este documento NO hay ninguna clave, y es deliberado.
+
+  Este archivo viaja dentro del respaldo que se sube al NAS, que es una carpeta
+  compartida. Poner acá la llave SSH, la clave de la base o las claves de API
+  significaría que cualquiera con acceso al NAS tiene control total de producción
+  y de los datos de las escuelas.
+
+  Las claves que existen y hacen falta son:
+
+      Acceso SSH al servidor        llave privada del usuario "deploy"
+      Base de datos                 dentro de DATABASE_URL, en /var/www/carrot/.env
+      Salesforce                    usuario y clave, en el mismo .env
+      Claves de aplicación          JWT_SECRET, CRON_SECRET, ANTHROPIC_API_KEY,
+                                    MERAKI_API_KEY, VAPID_PRIVATE_KEY,
+                                    ONLYOFFICE_JWT_SECRET
+
+  Todas viven en /var/www/carrot/.env dentro del servidor.
+
+  Dónde guardarlas para que otro pueda usarlas: en un gestor de contraseñas
+  compartido del equipo (Bitwarden, 1Password o similar), no en un archivo de
+  texto en una carpeta de red. Ahí se controla quién accede y queda registro.
+
+  Si aun así se decide ponerlas en el NAS, que sea en una carpeta con permisos
+  restringidos a las dos o tres personas que corresponda, nunca junto al resto
+  del respaldo.
+
+  ---
+
+  Copia de seguridad del .env (esto sí conviene tenerlo, y guardado aparte):
+
+      ssh deploy@72.61.32.146 "cat /var/www/carrot/.env" > carrot-env-respaldo.txt
+
+  Ese archivo tiene TODAS las claves. Guardalo en el gestor de contraseñas o en
+  un pendrive bajo llave. Sin él, reconstruir el servidor desde cero es mucho
+  más trabajoso.
+
+
+A QUIÉN AVISAR
+--------------
+
+  Completar antes de guardar en el NAS:
+
+      Responsable técnico    ______________________  ____________
+      Proveedor del VPS      ______________________  ____________
+      Contacto de Salesforce ______________________  ____________
