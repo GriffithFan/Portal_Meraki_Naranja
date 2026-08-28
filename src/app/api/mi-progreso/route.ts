@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
+import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
+import { elegirTecnicoAcreditado, resolveEquipoKey, normalizeAssigneeName } from "@/utils/equipoUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +63,7 @@ export async function GET() {
           asignaciones: { some: { userId: session.userId } },
         },
         select: {
+          id: true,
           codigo: true,
           nombre: true,
           incidencias: true,
@@ -69,10 +72,23 @@ export async function GET() {
           updatedAt: true,
           estado: { select: { nombre: true, clave: true } },
           comentarios: { orderBy: { createdAt: "desc" }, take: 1, select: { contenido: true } },
+          asignaciones: {
+            where: { tipo: { in: ["TAREA", "TECNICO"] } },
+            select: { createdAt: true, usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
+          },
         },
         take: 4000,
       })
     : [];
+
+  // Esta pantalla tiene que dar EXACTAMENTE lo mismo que el ranking y la facturación.
+  // Cuando no coincide, el técnico ve un número que después no cobra y reclama la
+  // diferencia — paso el 28/08/2026: Sebastian veia 10 conformes y cobraba 9.
+  const facturados = await prediosFacturadosHasta();
+
+  // La clave con la que el ranking agrupa a este usuario.
+  const yo = await prisma.user.findUnique({ where: { id: session.userId }, select: { nombre: true } });
+  const miMergeKey = resolveEquipoKey(yo?.nombre || "") || normalizeAssigneeName(yo?.nombre || "") || session.userId;
 
   // Ventanas de tiempo.
   const startSemana = inicioSemana(now);
@@ -96,10 +112,33 @@ export async function GET() {
   const ncMotivos: string[] = [];
   const ncEjemplos: Array<{ predio: string; motivo: string; categoria: string }> = [];
 
+  /** Conformes que ya se cobraron antes y volvieron a CONFORME: se muestran aparte. */
+  let reconformadosYaFacturados = 0;
+
   for (const p of predios) {
     const bucket = getStateBucket(p.estado);
     if (!bucket) continue;
     const fecha = p.fechaActualizacion || p.updatedAt;
+
+    // Misma regla que el ranking: un predio que ya entro en un reporte de facturacion
+    // de una semana ANTERIOR no vuelve a sumar. Pasa cuando alguien lo mueve a
+    // INSTALADO por error y lo devuelve a CONFORME: se genera una conformidad nueva
+    // por trabajo que ya se cobro.
+    if (bucket === "conformes" && yaFueFacturado(facturados, p.id, fecha)) {
+      if (fecha && fecha >= startSemana) reconformadosYaFacturados += 1;
+      continue;
+    }
+
+    // Y misma atribucion que el ranking: el predio se le acredita a UN solo tecnico,
+    // el ultimo asignado. Si no, cuando trabajan dos en el mismo predio los dos lo ven
+    // en su progreso y solo uno lo cobra.
+    //
+    // La comparacion es por mergeKey y no por id de usuario, que es como agrupa el
+    // ranking: los tecnicos que comparten equipo cuentan juntos, y comparar por id
+    // dejaria afuera predios que el ranking si le acredita.
+    const elegido = elegirTecnicoAcreditado(p.asignaciones);
+    if (!elegido || elegido.mergeKey !== miMergeKey) continue;
+
     totales[bucket] += 1;
 
     // Esta semana.
@@ -149,6 +188,8 @@ export async function GET() {
     semana,
     totales,
     porcentajeConformidad,
+    /** Predios que volvieron a CONFORME pero ya se cobraron antes: no suman, se avisan. */
+    reconformadosYaFacturados,
     evolucionSemanal: semanasLabels.map((s, i) => ({ ...s, conformes: conformesSemana[i], total: totalSemana[i] })),
     evolucionMensual: mesesLabels.map((m, i) => ({ label: m.label, conformes: conformesMes[i] })),
     promedios: { conformesPorSemana: promedioConformes, mejorSemana },
