@@ -13,6 +13,7 @@
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
+import { provinciaCanonica } from "@/utils/provinciaUtils";
 import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
 
 const NO_CONTABILIZAR = ["Gustavo"];
@@ -207,7 +208,7 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     if (!porSemana[k]) continue;
     porSemana[k].tec.add(u.nombre);
     porSemana[k].n++;
-    const prov = p.provincia || "Sin provincia";
+    const prov = provinciaCanonica(p.provincia) || "Sin provincia";
     porSemana[k].prov[prov] = (porSemana[k].prov[prov] || 0) + 1;
     const m = (matriz[u.nombre] ??= { th: u.thNumero, sem: {} });
     m.sem[k] = (m.sem[k] || 0) + 1;
@@ -270,7 +271,7 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
   const responsableDe = new Map<string, { nombre: string; thNumero: number | null } | null>();
   const zonaDe = new Map<string, string>();
   for (const p of datosCohorte) {
-    zonaDe.set(p.id, p.provincia || "Sin provincia");
+    zonaDe.set(p.id, provinciaCanonica(p.provincia) || "Sin provincia");
     let asignados = p.asignaciones.filter((a) => a.usuario);
     if (asignados.length && NO_CONTABILIZAR.includes(asignados[asignados.length - 1].usuario!.nombre)) {
       asignados = asignados.filter((a) => !NO_CONTABILIZAR.includes(a.usuario!.nombre));

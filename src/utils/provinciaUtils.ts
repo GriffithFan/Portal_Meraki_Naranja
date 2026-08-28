@@ -57,3 +57,37 @@ export function obtenerProvincia(
 export const PROVINCIAS = Array.from(new Set(Object.values(PREFIX_TO_PROVINCIA))).sort((a, b) =>
   a.localeCompare(b, "es")
 );
+
+/**
+ * Unifica el nombre de una provincia para agrupar y mostrar.
+ *
+ * Hace falta porque la misma provincia entra escrita de dos formas: `detectarProvincia`
+ * la deduce del código y devuelve MAYUSCULAS SIN ACENTO ("ENTRE RIOS"), mientras que lo
+ * que viene de Salesforce llega en capitalización normal ("Entre Ríos"). Medido en la
+ * base: 97 predios como "Entre Ríos" y 16 como "ENTRE RIOS", 1.637 "Buenos Aires" y 38
+ * "BUENOS AIRES", 605 "Santa Fe" y 2 "SANTA FE".
+ *
+ * Sin unificar, cualquier corte por provincia parte la misma zona en dos filas. En el
+ * informe que se manda a dirección eso se nota.
+ */
+const CANONICO: Record<string, string> = {
+  "buenos aires": "Buenos Aires",
+  "santa fe": "Santa Fe",
+  "entre rios": "Entre Ríos",
+  "cordoba": "Córdoba",
+  "rio negro": "Río Negro",
+  "neuquen": "Neuquén",
+  "tucuman": "Tucumán",
+  "sgo del estero": "Sgo. del Estero",
+  "santiago del estero": "Sgo. del Estero",
+  "tierra del fuego": "Tierra del Fuego",
+};
+
+export function provinciaCanonica(valor?: string | null): string | null {
+  const limpio = (valor || "").trim();
+  if (!limpio) return null;
+  const clave = limpio.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\./g, "").replace(/\s+/g, " ").trim();
+  if (CANONICO[clave]) return CANONICO[clave];
+  // Desconocida: se deja legible en vez de gritada.
+  return clave.replace(/(^| )(\w)/g, (_m, sep, c) => sep + c.toUpperCase());
+}
