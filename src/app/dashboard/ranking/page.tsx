@@ -254,6 +254,20 @@ export default function RankingTecnicosPage() {
         <Stat label={modo === "movimientos" ? "Inst./Auditar nuevos" : "Inst./Auditar"} value={data.resumen.instaladosAuditar} tone="primary" />
         <Stat label="Conformes" value={data.resumen.conformes} tone="success" />
         <Stat label={modo === "movimientos" ? "NC nuevos" : "No conformes"} value={data.resumen.noConformes} tone="danger" />
+        {modo === "movimientos" && (() => {
+          const t = tasaNc(data.resumen.noConformes, data.resumen.instaladosAuditar);
+          return (
+            <div className="rounded-lg border border-surface-200 bg-white p-3 sm:p-4" title="NC nuevos sobre instalados/auditados de la semana">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-surface-400">NC sobre realizados</p>
+              <p className={`mt-1 text-2xl font-semibold tabular-nums ${t === null ? "text-surface-400" : tonoTasa(t)}`}>
+                {t === null ? "—" : `${t}%`}
+              </p>
+              <p className="mt-0.5 text-[11px] text-surface-400 tabular-nums">
+                {data.resumen.noConformes} de {data.resumen.instaladosAuditar}
+              </p>
+            </div>
+          );
+        })()}
       </div>
 
       {evolucion && evolucion.global.conformesPorSemana.some((n) => n > 0) && (
@@ -268,7 +282,7 @@ export default function RankingTecnicosPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {data.ranking.map((tecnico) => (
-            <RankingCard key={tecnico.tecnicoId} tecnico={tecnico} maxConformes={topConformes} serie={seriePorTecnico.get(tecnico.tecnicoId)} />
+            <RankingCard key={tecnico.tecnicoId} tecnico={tecnico} maxConformes={topConformes} serie={seriePorTecnico.get(tecnico.tecnicoId)} modo={modo} />
           ))}
         </div>
       )}
@@ -480,6 +494,29 @@ function EvolucionGlobal({ evolucion }: { evolucion: EvolucionData }) {
   );
 }
 
+/**
+ * Índice de rechazo: de todo el trabajo hecho, qué parte volvió NO CONFORME.
+ *
+ * Solo tiene sentido con números de MOVIMIENTOS. Con los de estado actual daría
+ * disparates —en W34, 56 NC sobre 39 instalados: 143%— porque ahí los dos números miden
+ * poblaciones distintas: los NC son todos los que siguen abiertos, vengan de la semana
+ * que vengan, y los instalados son solo los que todavía no avanzaron.
+ *
+ * Aun con movimientos es un indicador, no una medida exacta: los NC de esta semana no
+ * salen necesariamente de los predios instalados esta semana (uno instalado el jueves
+ * puede volver NC la semana que viene). Sobre una semana completa la comparación sirve
+ * igual para ver la tendencia, que es para lo que se usa.
+ */
+function tasaNc(noConformes: number, instaladosAuditar: number): number | null {
+  if (instaladosAuditar <= 0) return null;
+  return Math.round((noConformes / instaladosAuditar) * 1000) / 10;
+}
+
+/** Verde hasta 10%, ámbar hasta 20%, rojo arriba. */
+function tonoTasa(t: number) {
+  return t <= 10 ? "text-emerald-600" : t <= 20 ? "text-amber-600" : "text-red-600";
+}
+
 function Stat({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "primary" | "success" | "danger" }) {
   const color = tone === "primary" ? "text-primary-600" : tone === "success" ? "text-emerald-600" : tone === "danger" ? "text-red-600" : "text-surface-800";
   return (
@@ -490,7 +527,7 @@ function Stat({ label, value, tone = "default" }: { label: string; value: number
   );
 }
 
-function RankingCard({ tecnico, maxConformes, serie }: { tecnico: RankingRow; maxConformes: number; serie?: SerieTecnico }) {
+function RankingCard({ tecnico, maxConformes, serie, modo }: { tecnico: RankingRow; maxConformes: number; serie?: SerieTecnico; modo: "estado" | "movimientos" }) {
   const progress = maxConformes > 0 ? Math.round((tecnico.conformes / maxConformes) * 100) : 0;
   const positionClass = tecnico.puesto === 1 ? "bg-amber-50 text-amber-700 border-amber-200" : tecnico.puesto === 2 ? "bg-surface-100 text-surface-700 border-surface-200" : tecnico.puesto === 3 ? "bg-orange-50 text-orange-700 border-orange-200" : "bg-white text-surface-500 border-surface-200";
   const conformesSerie = serie?.conformesPorSemana || [];
@@ -520,6 +557,17 @@ function RankingCard({ tecnico, maxConformes, serie }: { tecnico: RankingRow; ma
         <Metric label="Conformes" value={tecnico.conformes} tone="success" />
         <Metric label="No conf." value={tecnico.noConformes} tone="danger" />
       </div>
+
+      {modo === "movimientos" && (() => {
+        const t = tasaNc(tecnico.noConformes, tecnico.instaladosAuditar);
+        if (t === null) return null;
+        return (
+          <div className="mt-2 flex items-center justify-between rounded-md bg-surface-50 px-2 py-1 text-[11px]">
+            <span className="text-surface-500">NC sobre realizados</span>
+            <span className={`font-semibold tabular-nums ${tonoTasa(t)}`}>{t}%</span>
+          </div>
+        );
+      })()}
 
       <div className="mt-3">
         <div className="mb-1 flex items-center justify-between text-[11px]">
