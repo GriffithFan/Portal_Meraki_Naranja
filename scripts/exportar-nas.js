@@ -53,6 +53,19 @@ const COMPLETO = args.includes("--completo");
  * El corte se hace por archivo entero, nunca por la mitad, y el indice va siempre en la
  * primera parte.
  */
+/**
+ * Incluye la seccion de credenciales: .env, configuracion de nginx, cron y pm2.
+ *
+ * Esta detras de una bandera y NO entra por defecto. Con esos archivos se tiene control
+ * total de produccion y acceso a los datos de las escuelas, asi que el ZIP deja de ser
+ * un respaldo y pasa a ser una llave: solo tiene sentido si el destino es un disco
+ * personal y bajo llave, nunca una carpeta compartida ni una nube.
+ *
+ * Los secretos se leen del servidor en el momento de exportar y se escriben directo al
+ * ZIP. Nunca se guardan en el repositorio ni quedan en disco fuera del ZIP.
+ */
+const CREDENCIALES = args.includes("--con-credenciales");
+
 const idxMax = args.indexOf("--max-gb");
 const MAX_BYTES = idxMax >= 0 && args[idxMax + 1]
   ? Math.max(0.2, parseFloat(args[idxMax + 1])) * 1024 * 1024 * 1024
@@ -276,6 +289,27 @@ async function main() {
   // encuentre sin tener que entrar a "Tools".
   agregar(path.join(RAIZ, "herramientas", "OPERACION-SERVIDOR.txt"), "07 Operations/OPERACION-SERVIDOR.txt");
 
+  // ── Credenciales y configuración del servidor (solo con --con-credenciales) ─
+  const secretos = [];
+  if (CREDENCIALES) {
+    const { execSync } = require("child_process");
+    const leer = (ruta) => { try { return fs.readFileSync(ruta, "utf8"); } catch { return null; } };
+    const correr = (cmd) => { try { return execSync(cmd, { encoding: "utf8" }); } catch { return null; } };
+    const sumar = (nombre, contenido) => {
+      if (contenido) secretos.push({ nombre: `07 Operations/Credentials/${nombre}`, contenido });
+    };
+
+    sumar("carrot.env", leer(path.join(RAIZ, ".env")));
+    sumar("crontab-deploy.txt", correr("crontab -l"));
+    sumar("nginx-carrot.conf", leer("/etc/nginx/sites-available/carrot"));
+    sumar("nginx-office.conf", leer("/etc/nginx/sites-available/office.thnet.com.ar"));
+    sumar("ecosystem.config.js", leer(path.join(RAIZ, "ecosystem.config.js")));
+    sumar("ssh-authorized_keys.txt", leer(path.join(process.env.HOME || "/home/deploy", ".ssh/authorized_keys")));
+    sumar("versiones.txt", correr("node -v; psql --version; nginx -v 2>&1; pm2 -v"));
+    sumar("LEEME-PRIMERO.txt", textoCredenciales());
+    console.log(`credenciales: ${secretos.length} archivos`);
+  }
+
   // ── Índice: sin esto, 2.451 carpetas no se pueden buscar ────────────────────
   const equipos = await prisma.equipo.findMany({
     select: {
@@ -325,6 +359,7 @@ async function main() {
     if (i === 0) {
       zip.append(indice.readme, { name: "00 Index/README.txt" });
       zip.append(indice.excel, { name: "00 Index/Sites and equipment.xlsx" });
+      for (const sec of secretos) zip.append(sec.contenido, { name: sec.nombre });
     }
     for (const e of tandas[i]) zip.file(e.origen, { name: e.destino });
 
@@ -351,6 +386,62 @@ async function main() {
   console.log(`     ${entradas.length} archivos · ${mb} MB · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   console.log(`manifiesto actualizado: ${yaExportado.size + nuevos.length} archivos exportados en total`);
   await prisma.$disconnect();
+}
+
+/** Advertencia que acompaña a las credenciales. Va primero en la carpeta, por nombre. */
+function textoCredenciales() {
+  return [
+    "CREDENCIALES DE PRODUCCIÓN — LEER ANTES DE TOCAR NADA",
+    "=====================================================",
+    "",
+    `Generado el ${new Date().toLocaleDateString("es-AR")} desde el servidor 72.61.32.146.`,
+    "",
+    "QUÉ HAY ACÁ",
+    "",
+    "  carrot.env               TODAS las claves de la aplicación: base de datos,",
+    "                           Salesforce, JWT, Anthropic, Meraki, notificaciones push.",
+    "  crontab-deploy.txt       las tareas programadas, tal como están.",
+    "  nginx-*.conf             configuración del servidor web.",
+    "  ecosystem.config.js      cómo arranca la aplicación en pm2.",
+    "  ssh-authorized_keys.txt  qué llaves tienen acceso al servidor.",
+    "  versiones.txt            versiones de Node, PostgreSQL, nginx y pm2.",
+    "",
+    "CON ESTO SE PUEDE RECONSTRUIR EL SERVIDOR DESDE CERO. También se puede entrar a",
+    "Salesforce, leer la base entera y hacerse pasar por cualquier usuario de Carrot.",
+    "",
+    "DÓNDE PUEDE ESTAR Y DÓNDE NO",
+    "",
+    "  Sí:  un disco personal, físicamente tuyo, que no se comparta.",
+    "  No:  carpetas compartidas del equipo, Drive, Dropbox, OneDrive, correo.",
+    "",
+    "  Si algún día este NAS se sincroniza con la nube o se comparte con alguien, esta",
+    "  carpeta se saca ANTES, y se rotan las claves si hubo exposición.",
+    "",
+    "LO QUE NO ESTÁ ACÁ",
+    "",
+    "  Tu llave SSH privada, porque no vive en el servidor sino en tu PC:",
+    "      C:\\Users\\<usuario>\\.ssh\\   (id_rsa o id_ed25519, y su .pub)",
+    "",
+    "  Copiá esa carpeta a mano al lado de este archivo. Sin ella no entrás al servidor",
+    "  aunque tengas todo lo demás: el servidor solo guarda la mitad pública.",
+    "",
+    "CÓMO SE USA PARA LEVANTAR TODO DE NUEVO",
+    "",
+    "  1. Servidor Ubuntu con Node 20, PostgreSQL 16 y nginx.",
+    "  2. Clonar el repositorio en /var/www/carrot.",
+    "  3. Copiar carrot.env como .env en esa carpeta.",
+    "  4. Restaurar la base desde el backup más reciente (ver OPERACION-SERVIDOR.txt).",
+    "  5. Copiar nginx-carrot.conf a /etc/nginx/sites-available/ y activarlo.",
+    "  6. npm install && npm run build && pm2 start ecosystem.config.js",
+    "  7. Cargar el cron con crontab-deploy.txt.",
+    "",
+    "SI SE FILTRA ALGO",
+    "",
+    "  Rotar en este orden: clave de Salesforce, JWT_SECRET y CRON_SECRET (obliga a",
+    "  todos a volver a iniciar sesión), claves de API (Anthropic, Meraki), y por último",
+    "  la contraseña de PostgreSQL.",
+    "",
+  ].join("\n");
 }
 
 /** Lista rutas relativas de todos los archivos bajo `dir`. */
@@ -471,6 +562,8 @@ async function construirIndice(predios, equipos, carpetaDe, provinciaCanonica) {
     "                      un acta) y los scripts que usa el servidor.",
     "                      Empezá por 06 Tools/Desktop tools/LEEME.txt",
     "  07 Operations/      Cómo reiniciar, revisar y restaurar Carrot.",
+    "                      Si existe la subcarpeta Credentials, ahí están las claves de",
+    "                      producción: leer su LEEME-PRIMERO.txt antes de tocar nada.",
     "",
     "SOBRE LAS ACTUALIZACIONES",
     "",
