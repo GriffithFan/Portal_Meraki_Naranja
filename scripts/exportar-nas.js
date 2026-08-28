@@ -5,6 +5,7 @@
  *   node scripts/exportar-nas.js              → solo lo nuevo desde la última corrida
  *   node scripts/exportar-nas.js --completo   → todo de nuevo, ignorando el historial
  *   node scripts/exportar-nas.js --salida /ruta/archivo.zip
+ *   node scripts/exportar-nas.js --max-gb 3   -> corta en varios ZIP de 3 GB como mucho
  *
  * ── Por qué esto no es un `cp -r uploads/` ─────────────────────────────────────
  * En disco los archivos se guardan con nombres opacos: `1783451529850-pmqp0x.jpg`.
@@ -41,6 +42,21 @@ const DESTINO = path.join(RAIZ, "exportaciones");
 
 const args = process.argv.slice(2);
 const COMPLETO = args.includes("--completo");
+/**
+ * Corta la salida en varios ZIP de como mucho `--max-gb` cada uno.
+ *
+ * No es un ZIP partido (multivolumen) sino ZIPs independientes: cada parte se abre y se
+ * descomprime sola, sobre la misma carpeta del NAS. Asi se puede bajar una, subirla,
+ * borrarla y seguir con la siguiente, que es lo unico posible cuando en el disco desde
+ * donde se sube hay menos lugar que el total a exportar.
+ *
+ * El corte se hace por archivo entero, nunca por la mitad, y el indice va siempre en la
+ * primera parte.
+ */
+const idxMax = args.indexOf("--max-gb");
+const MAX_BYTES = idxMax >= 0 && args[idxMax + 1]
+  ? Math.max(0.2, parseFloat(args[idxMax + 1])) * 1024 * 1024 * 1024
+  : Infinity;
 const idxSalida = args.indexOf("--salida");
 const SALIDA = idxSalida >= 0 && args[idxSalida + 1]
   ? args[idxSalida + 1]
@@ -252,32 +268,61 @@ async function main() {
     return;
   }
   fs.mkdirSync(path.dirname(SALIDA), { recursive: true });
-  const salida = fs.createWriteStream(SALIDA);
+
+  // Se reparten las entradas en tandas segun el tamano en disco de cada archivo. Se
+  // acumula el tamano REAL del origen, no el comprimido: son fotos, asi que el ZIP pesa
+  // practicamente lo mismo y la cuenta sale bien.
+  const tandas = [[]];
+  let acumulado = 0;
+  for (const e of entradas) {
+    let tam = 0;
+    try { tam = fs.statSync(e.origen).size; } catch { tam = 0; }
+    if (acumulado > 0 && acumulado + tam > MAX_BYTES) { tandas.push([]); acumulado = 0; }
+    tandas[tandas.length - 1].push(e);
+    acumulado += tam;
+  }
+  const varias = tandas.length > 1;
+  if (varias) console.log(`\nse corta en ${tandas.length} partes de hasta ${(MAX_BYTES / 1024 / 1024 / 1024).toFixed(1)} GB`);
+
+  const generados = [];
+  for (let i = 0; i < tandas.length; i++) {
+    const destino = varias
+      ? SALIDA.replace(/\.zip$/i, `-parte${i + 1}de${tandas.length}.zip`)
+      : SALIDA;
+    const salida = fs.createWriteStream(destino);
   // Nivel 1: casi todo son JPG y DOCX, que ya vienen comprimidos. Subir el nivel
   // costaría minutos de CPU para ganar unos pocos MB.
   const zip = archiver("zip", { zlib: { level: 1 } });
   const listo = new Promise((res, rej) => { salida.on("close", res); zip.on("error", rej); });
   zip.pipe(salida);
 
-  zip.append(indice.readme, { name: "00 Index/README.txt" });
-  zip.append(indice.excel, { name: "00 Index/Sites and equipment.xlsx" });
-  for (const e of entradas) zip.file(e.origen, { name: e.destino });
+    // El indice va en la primera parte: es lo primero que se abre.
+    if (i === 0) {
+      zip.append(indice.readme, { name: "00 Index/README.txt" });
+      zip.append(indice.excel, { name: "00 Index/Sites and equipment.xlsx" });
+    }
+    for (const e of tandas[i]) zip.file(e.origen, { name: e.destino });
 
-  let ultimo = 0;
-  zip.on("progress", (d) => {
-    const n = d.entries.processed;
-    if (n - ultimo >= 2000) { ultimo = n; console.log(`  ${n}/${entradas.length} archivos…`); }
-  });
-  await zip.finalize();
-  await listo;
+    let ultimo = 0;
+    zip.on("progress", (d) => {
+      const n = d.entries.processed;
+      if (n - ultimo >= 2000) { ultimo = n; console.log(`  parte ${i + 1}: ${n}/${tandas[i].length} archivos…`); }
+    });
+    await zip.finalize();
+    await listo;
+    const gb = (fs.statSync(destino).size / 1024 / 1024 / 1024).toFixed(2);
+    console.log(`  parte ${i + 1}/${tandas.length}: ${path.basename(destino)} · ${tandas[i].length} archivos · ${gb} GB`);
+    generados.push(destino);
+  }
 
-  const mb = (fs.statSync(SALIDA).size / 1024 / 1024).toFixed(0);
+  const mb = (generados.reduce((a, f) => a + fs.statSync(f).size, 0) / 1024 / 1024).toFixed(0);
   fs.writeFileSync(MANIFIESTO, JSON.stringify({
-    corridas: [...(previo.corridas || []), { fecha: new Date().toISOString(), archivos: nuevos.length, zip: path.basename(SALIDA), completo: COMPLETO }],
+    corridas: [...(previo.corridas || []), { fecha: new Date().toISOString(), archivos: nuevos.length, zip: generados.map((g) => path.basename(g)), completo: COMPLETO }],
     exportados: [...yaExportado, ...nuevos],
   }, null, 0));
 
-  console.log(`\nZIP: ${SALIDA}`);
+  console.log(`\n${generados.length === 1 ? "ZIP" : "ZIPs"}:`);
+  for (const g of generados) console.log(`  ${g}`);
   console.log(`     ${entradas.length} archivos · ${mb} MB · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   console.log(`manifiesto actualizado: ${yaExportado.size + nuevos.length} archivos exportados en total`);
   await prisma.$disconnect();
