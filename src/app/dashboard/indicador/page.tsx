@@ -185,6 +185,32 @@ export default function IndicadorPage() {
             </table>
           </div>
 
+          {/* Conformidad y NC: por semana, por zona y por técnico. Es otra medida que el
+              indicador de arriba (que cuenta técnicos activos en mantenimiento): acá se
+              sigue a los predios trabajados en cada semana hasta su desenlace. */}
+          <TablaDesenlace
+            titulo="Conformidad por semana"
+            ayuda="A cada predio se le imputa la semana en que se trabajó, con el resultado que terminó teniendo. El % de NC se calcula sobre lo ya revisado."
+            filas={sem.map((x: any) => ({ nombre: x.etiqueta, d: x }))}
+            total={datos.volumenTotal}
+          />
+          <TablaDesenlace
+            titulo="Conformidad por zona"
+            ayuda="Acumulado del período por provincia."
+            filas={(datos.volumenZonas || []).map((z: any) => ({ nombre: z.zona, d: z }))}
+            total={datos.volumenTotal}
+          />
+          <TablaDesenlace
+            titulo="Conformidad por técnico"
+            ayuda="Acumulado del período. Con menos de 3 predios revisados el porcentaje no se muestra: un solo NC lo mueve demasiado."
+            filas={(datos.volumenTecnicos || []).map((t: any) => ({
+              nombre: t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} · ${t.nombre}` : t.nombre,
+              d: t.total,
+            }))}
+            total={datos.volumenTotal}
+            minRevisados={3}
+          />
+
           {/* Texto del correo */}
           <div className="rounded-xl border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
             <div className="mb-2 flex items-center justify-between">
@@ -202,6 +228,76 @@ export default function IndicadorPage() {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** NC sobre lo REVISADO (no sobre lo realizado): lo pendiente no es culpa de nadie. */
+function tasaNc(d: { conformes: number; noConformes: number }): number | null {
+  const rev = d.conformes + d.noConformes;
+  return rev > 0 ? Math.round((d.noConformes / rev) * 1000) / 10 : null;
+}
+
+function TablaDesenlace({
+  titulo, ayuda, filas, total, minRevisados = 0,
+}: {
+  titulo: string;
+  ayuda: string;
+  filas: Array<{ nombre: string; d: any }>;
+  total: any;
+  /** Debajo de este umbral se muestra el conteo pero no el porcentaje. */
+  minRevisados?: number;
+}) {
+  if (!filas.length) return null;
+  const celda = (d: any) => {
+    const t = tasaNc(d);
+    const rev = (d.conformes || 0) + (d.noConformes || 0);
+    if (t === null || rev < minRevisados) return <span className="text-surface-300">—</span>;
+    const color = t <= 10 ? "text-emerald-600" : t <= 20 ? "text-amber-600" : "text-red-600";
+    return <span className={`font-semibold ${color}`}>{t}%</span>;
+  };
+  return (
+    <div className="overflow-hidden rounded-xl border border-surface-200 bg-white dark:bg-surface-800 dark:border-surface-700">
+      <div className="border-b border-surface-100 px-4 py-3 dark:border-surface-700">
+        <h2 className="text-sm font-medium text-surface-700 dark:text-surface-200">{titulo}</h2>
+        <p className="mt-0.5 text-[11px] text-surface-400">{ayuda}</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-max text-xs">
+          <thead className="bg-surface-50 text-surface-500 dark:bg-surface-900/40">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">Nombre</th>
+              <th className="px-3 py-2 text-center font-medium">Realizados</th>
+              <th className="px-3 py-2 text-center font-medium">Conformes</th>
+              <th className="px-3 py-2 text-center font-medium">No conformes</th>
+              <th className="px-3 py-2 text-center font-medium">Sin revisar</th>
+              <th className="px-3 py-2 text-center font-medium">% NC</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
+            {filas.map((f) => (
+              <tr key={f.nombre}>
+                <td className="px-3 py-2 text-surface-700 dark:text-surface-200">{f.nombre}</td>
+                <td className="px-3 py-2 text-center tabular-nums">{f.d.realizados || "·"}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-emerald-600">{f.d.conformes || "·"}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-red-500">{f.d.noConformes || "·"}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-surface-400">{f.d.sinRevisar || "·"}</td>
+                <td className="px-3 py-2 text-center tabular-nums">{celda(f.d)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-surface-50 font-medium dark:bg-surface-900/40">
+            <tr>
+              <td className="px-3 py-2 text-surface-700 dark:text-surface-200">Total</td>
+              <td className="px-3 py-2 text-center tabular-nums">{total?.realizados ?? 0}</td>
+              <td className="px-3 py-2 text-center tabular-nums text-emerald-600">{total?.conformes ?? 0}</td>
+              <td className="px-3 py-2 text-center tabular-nums text-red-500">{total?.noConformes ?? 0}</td>
+              <td className="px-3 py-2 text-center tabular-nums text-surface-400">{total?.sinRevisar ?? 0}</td>
+              <td className="px-3 py-2 text-center tabular-nums">{total ? celda(total) : null}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   );
 }

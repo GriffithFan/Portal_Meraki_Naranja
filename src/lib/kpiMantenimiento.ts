@@ -38,6 +38,24 @@ export interface SemanaKpi {
   conformes: number;        // de esos, los que terminaron aprobados
   noConformes: number;      // de esos, los que terminaron rechazados
   sinRevisar: number;       // de esos, los que todavia no se revisaron
+  /** El mismo desenlace abierto por provincia. */
+  porZona: Record<string, Desenlace>;
+}
+
+/** Trabajo realizado y en qué terminó. Siempre conformes + noConformes + sinRevisar = realizados. */
+export interface Desenlace {
+  realizados: number;
+  conformes: number;
+  noConformes: number;
+  sinRevisar: number;
+}
+
+/** Desenlace del trabajo de un técnico, en total y semana por semana. */
+export interface VolumenTecnico {
+  nombre: string;
+  thNumero: number | null;
+  total: Desenlace;
+  porSemana: Record<string, Desenlace>;
 }
 export interface TecnicoKpi {
   nombre: string;
@@ -53,6 +71,27 @@ export interface DatosKpi {
   totalPeriodo: number;
   /** false si la última semana del informe todavía no cerró (viernes 17:00 ART). */
   ultimaCerrada: boolean;
+  /** Trabajo realizado y su desenlace, por técnico. Mismo criterio de cohorte que `semanas`. */
+  volumenTecnicos: VolumenTecnico[];
+  /** Acumulado del período por provincia. */
+  volumenZonas: Array<{ zona: string } & Desenlace>;
+  /** Acumulado del período (suma de todas las semanas). */
+  volumenTotal: Desenlace;
+}
+
+const nuevoDesenlace = (): Desenlace => ({ realizados: 0, conformes: 0, noConformes: 0, sinRevisar: 0 });
+
+/** Índice de rechazo: NC sobre el trabajo YA REVISADO. Null si todavía no se revisó nada. */
+export function tasaNc(d: Desenlace): number | null {
+  const revisados = d.conformes + d.noConformes;
+  if (revisados <= 0) return null;
+  return Math.round((d.noConformes / revisados) * 1000) / 10;
+}
+
+/** Conformidad: la otra cara de la misma moneda. */
+export function tasaConformidad(d: Desenlace): number | null {
+  const t = tasaNc(d);
+  return t === null ? null : Math.round((100 - t) * 10) / 10;
 }
 
 const esMantenimiento = (t: string | null) => {
@@ -209,7 +248,47 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
   const volumen: Record<string, { realiz: number; conf: number; nc: number; pend: number }> = {};
   claves.forEach((k) => (volumen[k] = { realiz: 0, conf: 0, nc: 0, pend: 0 }));
 
-  for (const lista of Array.from(eventos.values())) {
+  // Para abrir el desenlace por técnico y por zona hace falta saber, de cada predio de
+  // la cohorte, quién lo trabajó y dónde está. La consulta de arriba no sirve: esa trae
+  // solo los CONFORME de mantenimiento, y acá entran todos los predios que pasaron por
+  // INSTALADO/AUDITAR, terminen como terminen.
+  const idsCohorte = Array.from(eventos.keys());
+  const datosCohorte = idsCohorte.length
+    ? await prisma.predio.findMany({
+        where: { id: { in: idsCohorte } },
+        select: {
+          id: true, provincia: true,
+          asignaciones: {
+            where: { tipo: { in: ["TAREA", "TECNICO"] } },
+            select: { createdAt: true, usuario: { select: { nombre: true, thNumero: true } } },
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      })
+    : [];
+  /** Mismo criterio que el resto del informe: el último asignado, salteando a Gustavo. */
+  const responsableDe = new Map<string, { nombre: string; thNumero: number | null } | null>();
+  const zonaDe = new Map<string, string>();
+  for (const p of datosCohorte) {
+    zonaDe.set(p.id, p.provincia || "Sin provincia");
+    let asignados = p.asignaciones.filter((a) => a.usuario);
+    if (asignados.length && NO_CONTABILIZAR.includes(asignados[asignados.length - 1].usuario!.nombre)) {
+      asignados = asignados.filter((a) => !NO_CONTABILIZAR.includes(a.usuario!.nombre));
+    }
+    const u = asignados.length ? asignados[asignados.length - 1].usuario! : null;
+    responsableDe.set(p.id, u ? { nombre: u.nombre, thNumero: u.thNumero } : null);
+  }
+
+  const volTecnicos = new Map<string, { th: number | null; total: Desenlace; sem: Record<string, Desenlace> }>();
+  const volZonas: Record<string, Record<string, Desenlace>> = {};
+  claves.forEach((k) => (volZonas[k] = {}));
+
+  const sumar = (d: Desenlace, cual: "conformes" | "noConformes" | "sinRevisar") => {
+    d.realizados++;
+    d[cual]++;
+  };
+
+  for (const [predioId, lista] of Array.from(eventos.entries())) {
     // Primera vez que el predio entro a INSTALADO/AUDITAR en cada semana del periodo.
     const primeraDeLaSemana = new Map<string, Date>();
     for (const e of lista) {
@@ -223,9 +302,23 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
       // Desenlace = la primera revision POSTERIOR a ese trabajo, sin importar en
       // que semana haya caido.
       const cierre = lista.find((e: Evento) => e.fecha > cuando && desenlaceDe(e) !== null);
-      if (!cierre) volumen[k].pend++;
-      else if (desenlaceDe(cierre) === "conforme") volumen[k].conf++;
+      const cual: "conformes" | "noConformes" | "sinRevisar" =
+        !cierre ? "sinRevisar" : desenlaceDe(cierre) === "conforme" ? "conformes" : "noConformes";
+      if (cual === "sinRevisar") volumen[k].pend++;
+      else if (cual === "conformes") volumen[k].conf++;
       else volumen[k].nc++;
+
+      const zona = zonaDe.get(predioId) || "Sin provincia";
+      sumar((volZonas[k][zona] ??= nuevoDesenlace()), cual);
+
+      const resp = responsableDe.get(predioId);
+      if (resp) {
+        const t = volTecnicos.get(resp.nombre)
+          ?? { th: resp.thNumero, total: nuevoDesenlace(), sem: {} };
+        sumar(t.total, cual);
+        sumar((t.sem[k] ??= nuevoDesenlace()), cual);
+        volTecnicos.set(resp.nombre, t);
+      }
     }
   }
 
@@ -236,6 +329,7 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     conformes: volumen[k].conf,
     noConformes: volumen[k].nc,
     sinRevisar: volumen[k].pend,
+    porZona: volZonas[k],
   }));
   const tecnicos: TecnicoKpi[] = Object.entries(matriz)
     .map(([nombre, d]) => {
@@ -246,8 +340,32 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     })
     .sort((a, b) => b.total - a.total);
 
+  const volumenTecnicos: VolumenTecnico[] = Array.from(volTecnicos.entries())
+    .map(([nombre, d]) => ({ nombre, thNumero: d.th, total: d.total, porSemana: d.sem }))
+    .sort((a, b) => b.total.realizados - a.total.realizados || a.nombre.localeCompare(b.nombre, "es"));
+
+  const zonasAcum: Record<string, Desenlace> = {};
+  for (const k of claves) {
+    for (const [zona, d] of Object.entries(volZonas[k])) {
+      const acc = (zonasAcum[zona] ??= nuevoDesenlace());
+      acc.realizados += d.realizados; acc.conformes += d.conformes;
+      acc.noConformes += d.noConformes; acc.sinRevisar += d.sinRevisar;
+    }
+  }
+  const volumenZonas = Object.entries(zonasAcum)
+    .map(([zona, d]) => ({ zona, ...d }))
+    .sort((a, b) => b.realizados - a.realizados);
+
+  const volumenTotal = semanas.reduce((acc, s) => ({
+    realizados: acc.realizados + s.realizados,
+    conformes: acc.conformes + s.conformes,
+    noConformes: acc.noConformes + s.noConformes,
+    sinRevisar: acc.sinRevisar + s.sinRevisar,
+  }), nuevoDesenlace());
+
   return { semanas, tecnicos, ultima: semanas[semanas.length - 1],
-           totalPeriodo: semanas.reduce((a, s) => a + s.incidencias, 0), ultimaCerrada };
+           totalPeriodo: semanas.reduce((a, s) => a + s.incidencias, 0), ultimaCerrada,
+           volumenTecnicos, volumenZonas, volumenTotal };
 }
 
 /** Texto listo para pegar en el correo. */
@@ -275,6 +393,23 @@ export function textoCorreo(d: DatosKpi): string {
   }).join("\n");
   const top = d.tecnicos.slice(0, 3).map((t) => `${t.nombre} (${t.total})`).join(", ");
 
+  // Índice de rechazo por zona y por técnico. Se calcula sobre lo REVISADO, no sobre lo
+  // realizado: incluir lo que todavía no se miró castigaría a la última semana, que
+  // siempre tiene cola pendiente.
+  const linea = (etiqueta: string, x: Desenlace) => {
+    const nc = tasaNc(x);
+    const cola = x.sinRevisar ? ` (${x.sinRevisar} sin revisar)` : "";
+    return `- ${etiqueta}: ${x.realizados} realizados – ${x.conformes} conformes, ${x.noConformes} no conformes${cola}. ` +
+           `Conformidad ${nc === null ? "s/d" : `${tasaConformidad(x)}%`} · NC ${nc === null ? "s/d" : `${nc}%`}`;
+  };
+  const zonas = d.volumenZonas.map((z) => linea(z.zona, z)).join("\n");
+  // Solo los que tienen algo revisado: con uno o dos predios el porcentaje no dice nada.
+  const tecnicosVol = d.volumenTecnicos
+    .filter((t) => t.total.conformes + t.total.noConformes >= 3)
+    .map((t) => linea(t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} ${t.nombre}` : t.nombre, t.total))
+    .join("\n");
+  const tot = linea("Total del período", d.volumenTotal);
+
   return `Asunto: Indicador semanal — Técnicos activos en incidencias de mantenimiento
 
 Alberto, Fernando:
@@ -292,6 +427,16 @@ Sobre el trabajo ejecutado en campo, tomando todas las incidencias y no solo las
 ${volumen}
 
 A cada predio se le imputa la semana en que se trabajó, con el resultado que terminó teniendo, así que las cifras suman el total realizado. La conformidad se calcula sobre lo ya revisado.
+
+Por provincia, en el período completo:
+
+${zonas}
+
+Por técnico (solo los que tienen al menos 3 predios ya revisados, para que el porcentaje signifique algo):
+
+${tecnicosVol}
+
+${tot}
 
 Mayor volumen del período: ${top}.
 
@@ -494,6 +639,86 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   wp.getColumn(1).width = 22;
   d.semanas.forEach((_, i) => (wp.getColumn(2 + i).width = 11));
   wp.getColumn(2 + d.semanas.length).width = 10;
+
+  // ── Conformidad y NC: por técnico, por zona y por semana ───────────────────
+  // Va en hojas aparte para no ensuciar el indicador que se publica, que mide otra
+  // cosa (técnicos activos en incidencias de mantenimiento).
+  const cabecera = (ws: ExcelJS.Worksheet, cols: string[]) => {
+    const h = ws.getRow(1);
+    cols.forEach((v, i) => {
+      const c = h.getCell(i + 1);
+      c.value = v;
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL2 } };
+      c.alignment = { horizontal: i === 0 ? "left" : "center" };
+    });
+  };
+  /** Las cinco columnas de desenlace, con el % de NC coloreado. */
+  const filaDesenlace = (row: ExcelJS.Row, desde: number, x: Desenlace) => {
+    const nc = tasaNc(x);
+    const vals: (number | string | null)[] = [
+      x.realizados || null, x.conformes || null, x.noConformes || null, x.sinRevisar || null,
+      nc === null ? "s/d" : nc / 100,
+    ];
+    vals.forEach((v, i) => {
+      const c = row.getCell(desde + i);
+      c.value = v;
+      c.alignment = { horizontal: "center" };
+      if (i === 4 && nc !== null) {
+        c.numFmt = "0.0%";
+        // Mismo semáforo que el ranking: verde hasta 10, ámbar hasta 20, rojo arriba.
+        c.font = { bold: true, color: { argb: nc <= 10 ? VERDE : nc <= 20 ? "FFB26A00" : ROJO } };
+      }
+    });
+  };
+  const COLS_DES = ["Realizados", "Conformes", "No conformes", "Sin revisar", "% NC"];
+
+  const wt = wb.addWorksheet("Conformidad por técnico");
+  cabecera(wt, ["Técnico", "TH", ...COLS_DES]);
+  d.volumenTecnicos.forEach((t, i) => {
+    const row = wt.getRow(i + 2);
+    row.getCell(1).value = t.nombre;
+    row.getCell(2).value = t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")}` : "";
+    row.getCell(2).alignment = { horizontal: "center" };
+    filaDesenlace(row, 3, t.total);
+  });
+  const totT = wt.getRow(d.volumenTecnicos.length + 2);
+  totT.getCell(1).value = "Total";
+  totT.getCell(1).font = { bold: true, color: { argb: AZUL } };
+  filaDesenlace(totT, 3, d.volumenTotal);
+  totT.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
+  wt.getColumn(1).width = 24; wt.getColumn(2).width = 8;
+  COLS_DES.forEach((_, i) => (wt.getColumn(3 + i).width = 13));
+
+  const wz = wb.addWorksheet("Conformidad por zona");
+  cabecera(wz, ["Provincia", ...COLS_DES]);
+  d.volumenZonas.forEach((z, i) => {
+    const row = wz.getRow(i + 2);
+    row.getCell(1).value = z.zona;
+    filaDesenlace(row, 2, z);
+  });
+  const totZ = wz.getRow(d.volumenZonas.length + 2);
+  totZ.getCell(1).value = "Total";
+  totZ.getCell(1).font = { bold: true, color: { argb: AZUL } };
+  filaDesenlace(totZ, 2, d.volumenTotal);
+  totZ.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
+  wz.getColumn(1).width = 22;
+  COLS_DES.forEach((_, i) => (wz.getColumn(2 + i).width = 13));
+
+  const wsm = wb.addWorksheet("Conformidad por semana");
+  cabecera(wsm, ["Semana", ...COLS_DES]);
+  d.semanas.forEach((sem, i) => {
+    const row = wsm.getRow(i + 2);
+    row.getCell(1).value = sem.etiqueta;
+    filaDesenlace(row, 2, sem);
+  });
+  const totS = wsm.getRow(d.semanas.length + 2);
+  totS.getCell(1).value = "Total";
+  totS.getCell(1).font = { bold: true, color: { argb: AZUL } };
+  filaDesenlace(totS, 2, d.volumenTotal);
+  totS.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
+  wsm.getColumn(1).width = 14;
+  COLS_DES.forEach((_, i) => (wsm.getColumn(2 + i).width = 13));
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
