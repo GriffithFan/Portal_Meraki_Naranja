@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isAdmin, isModOrAdmin, invalidateSessionCache } from "@/lib/auth";
 import bcrypt from "bcryptjs";
+import { thEfectivo, thEsHeredado, mapaTh } from "@/lib/thEfectivo";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -25,7 +26,15 @@ export async function GET() {
     orderBy: { nombre: "asc" },
   });
 
-  return NextResponse.json(usuarios);
+  // Un tecnico a cargo de un coordinador trabaja bajo el TH de el (ver lib/thEfectivo).
+  // Se calcula al vuelo: si se copiara al usuario, cambiar el TH del coordinador
+  // dejaria a los suyos con el numero viejo.
+  const th = mapaTh(usuarios);
+  return NextResponse.json(usuarios.map((u) => ({
+    ...u,
+    thEfectivo: thEfectivo(u, th),
+    thHeredado: thEsHeredado(u, th),
+  })));
 }
 
 /**

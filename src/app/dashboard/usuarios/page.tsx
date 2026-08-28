@@ -15,6 +15,9 @@ interface Usuario {
   coordinadorId?: string | null;
   twoFactorEnabled?: boolean;
   thNumero?: number | null;
+  /** TH propio o heredado del coordinador. Ver lib/thEfectivo. */
+  thEfectivo?: number | null;
+  thHeredado?: boolean;
 }
 
 /** Formatea el identificador TH: 5 → "TH05". */
@@ -403,7 +406,18 @@ export default function UsuariosPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium text-surface-800 truncate">{u.nombre}</span>
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 ${cfg.bg}`}>{u.rol}</span>
-                          {u.thNumero && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 bg-orange-50 text-orange-700 border-orange-200 tabular-nums">{formatTh(u.thNumero)}</span>}
+                          {u.thEfectivo != null && (
+                            <span
+                              title={u.thHeredado ? "Heredado de su coordinador" : undefined}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 tabular-nums ${
+                                u.thHeredado
+                                  ? "bg-surface-50 text-surface-500 border-surface-200 border-dashed"
+                                  : "bg-orange-50 text-orange-700 border-orange-200"
+                              }`}
+                            >
+                              {formatTh(u.thEfectivo)}
+                            </span>
+                          )}
                           {u.esMesa && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-blue-50 text-blue-700 border-blue-200">Mesa</span>}
                           {u.esCoordinador && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 bg-purple-50 text-purple-700 border-purple-200">Coord.</span>}
                           {esMiUsuario && <span className="text-[10px] text-surface-400">(tú)</span>}
@@ -470,8 +484,19 @@ export default function UsuariosPage() {
                           {u.esCoordinador && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-purple-50 text-purple-700 border-purple-200">Coord.</span>}
                         </td>
                         <td className="px-2.5 py-2.5">
-                          {u.thNumero ? (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-orange-50 text-orange-700 border-orange-200 tabular-nums">{formatTh(u.thNumero)}</span>
+                          {u.thEfectivo != null ? (
+                            /* Borde punteado y gris cuando el TH no es suyo sino de su
+                               coordinador: se ve que lo comparte, no que se lo asignaron. */
+                            <span
+                              title={u.thHeredado ? "Heredado de su coordinador" : undefined}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border tabular-nums ${
+                                u.thHeredado
+                                  ? "bg-surface-50 text-surface-500 border-surface-200 border-dashed"
+                                  : "bg-orange-50 text-orange-700 border-orange-200"
+                              }`}
+                            >
+                              {formatTh(u.thEfectivo)}
+                            </span>
                           ) : (
                             <span className="text-xs text-surface-300">—</span>
                           )}

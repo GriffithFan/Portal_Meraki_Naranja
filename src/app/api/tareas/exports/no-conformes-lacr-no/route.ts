@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import * as XLSX from "xlsx";
+import { mapaTh } from "@/lib/thEfectivo";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -118,11 +119,15 @@ function formatTh(n: number | null | undefined): string {
 }
 
 /** DNI del predio = identificador TH del \u00DALTIMO t\u00E9cnico asignado (o vac\u00EDo). */
-function dniDePredio(predio: ExportPredio): string {
+function dniDePredio(predio: ExportPredio, thPorUsuario: Map<string, number | null>): string {
   const asigs = (predio.asignaciones || []).filter((a) => a.usuario);
   if (!asigs.length) return "";
   const ult = asigs.slice().sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[asigs.length - 1];
-  return formatTh(ult.usuario?.thNumero);
+  // Si el tecnico esta a cargo de un coordinador, se reporta con el TH de el: es lo que
+  // el cliente espera en esta columna. Ver lib/thEfectivo.
+  const u = ult.usuario;
+  if (!u) return "";
+  return formatTh(u.thNumero ?? (u.coordinadorId ? thPorUsuario.get(u.coordinadorId) ?? null : null));
 }
 
 // Ventana DESDE-HASTA: DESDE = hoy + desdeDias, HASTA = DESDE + 14 (ventana de 14 d\u00EDas).
@@ -134,23 +139,23 @@ function ventana(desdeDias: number) {
   };
 }
 
-function buildCsv(predios: ExportPredio[], desdeDias: number) {
+function buildCsv(predios: ExportPredio[], desdeDias: number, thPorUsuario: Map<string, number | null>) {
   const { desde, hasta } = ventana(desdeDias);
   const rows = [
     csvRow(CABECERA),
-    ...predios.map((predio) => csvRow([predio.codigo || "", desde, hasta, dniDePredio(predio), predio.incidencias || predio.nombre || ""])),
+    ...predios.map((predio) => csvRow([predio.codigo || "", desde, hasta, dniDePredio(predio, thPorUsuario), predio.incidencias || predio.nombre || ""])),
   ];
   return `\uFEFF${rows.join("\r\n")}\r\n`;
 }
 
 /** Excel con una HOJA por bloque de 40 predios (SF no acepta m\u00E1s de 40 por carga). */
-function buildXlsxPartes(predios: ExportPredio[], desdeDias: number): Buffer {
+function buildXlsxPartes(predios: ExportPredio[], desdeDias: number, thPorUsuario: Map<string, number | null>): Buffer {
   const { desde, hasta } = ventana(desdeDias);
   const wb = XLSX.utils.book_new();
   const partes = Math.max(1, Math.ceil(predios.length / 40));
   for (let i = 0; i < partes; i++) {
     const trozo = predios.slice(i * 40, (i + 1) * 40);
-    const filas = trozo.map((p) => [p.codigo || "", desde, hasta, dniDePredio(p), p.incidencias || p.nombre || ""]);
+    const filas = trozo.map((p) => [p.codigo || "", desde, hasta, dniDePredio(p, thPorUsuario), p.incidencias || p.nombre || ""]);
     const ws = XLSX.utils.aoa_to_sheet([CABECERA, ...filas]);
     ws["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws, `Parte ${i + 1} de ${partes}`);
@@ -172,7 +177,7 @@ type ExportPredio = {
   fechaHasta: Date | null;
   espacioId: string | null;
   estado: { nombre: string | null; clave: string | null } | null;
-  asignaciones: { createdAt: Date; usuario: { id: string; nombre: string | null; thNumero: number | null } | null }[];
+  asignaciones: { createdAt: Date; usuario: { id: string; nombre: string | null; thNumero: number | null; coordinadorId: string | null } | null }[];
   espacio: { id: string; nombre: string; parentId: string | null } | null;
 };
 
@@ -274,7 +279,7 @@ export async function GET(request: NextRequest) {
     fechaHasta: true,
     espacioId: true,
     estado: { select: { nombre: true, clave: true } },
-    asignaciones: { select: { createdAt: true, usuario: { select: { id: true, nombre: true, thNumero: true } } } },
+    asignaciones: { select: { createdAt: true, usuario: { select: { id: true, nombre: true, thNumero: true, coordinadorId: true } } } },
     espacio: { select: { id: true, nombre: true, parentId: true } },
   };
   const PREDIO_ORDER = [{ espacioId: "asc" as const }, { codigo: "asc" as const }, { incidencias: "asc" as const }];
@@ -344,13 +349,21 @@ export async function GET(request: NextRequest) {
   const total = exportData.predios.length;
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
 
+  // Para resolver el TH heredado: un tecnico a cargo de un coordinador se reporta con el
+  // TH de el. Alcanza con los coordinadores, que son unos pocos. Ver lib/thEfectivo.
+  const coordinadores = await prisma.user.findMany({
+    where: { esCoordinador: true },
+    select: { id: true, thNumero: true },
+  });
+  const thPorUsuario = mapaTh(coordinadores);
+
   // Las listas de asignados se entregan como UN Excel con HOJAS de a 40 predios
   // (Salesforce no acepta más de 40 por carga). nc/cronogramas/ocp siguen como CSV.
   const esAsignados = tipo === "asignados-sin-cronograma" || tipo === "asignados-vencidos";
 
   if (esAsignados) {
     const partes = Math.max(1, Math.ceil(total / 40));
-    const buffer = buildXlsxPartes(exportData.predios, desdeDias);
+    const buffer = buildXlsxPartes(exportData.predios, desdeDias, thPorUsuario);
     prisma.registroAcceso.create({
       data: {
         userId: session.userId,
@@ -370,7 +383,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const csv = buildCsv(exportData.predios, desdeDias);
+  const csv = buildCsv(exportData.predios, desdeDias, thPorUsuario);
   prisma.registroAcceso.create({
     data: {
       userId: session.userId,
