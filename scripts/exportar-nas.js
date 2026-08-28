@@ -31,13 +31,20 @@ const { PrismaClient } = require("@prisma/client");
 const RAIZ = path.resolve(__dirname, "..");
 const UPLOADS = path.join(RAIZ, "uploads");
 const MANIFIESTO = path.join(UPLOADS, "nas-manifiesto.json");
+/**
+ * El ZIP va FUERA de `uploads`. Adentro no: el backup diario de las 03:15 empaqueta esa
+ * carpeta entera, asi que un ZIP de 6 GB ahi dentro hace crecer el backup otros 6 GB, y
+ * con 4 copias retenidas son 24 GB de disco por un archivo que ya es una copia de todo.
+ * El manifiesto si se queda en uploads: pesa poco y conviene que se respalde.
+ */
+const DESTINO = path.join(RAIZ, "exportaciones");
 
 const args = process.argv.slice(2);
 const COMPLETO = args.includes("--completo");
 const idxSalida = args.indexOf("--salida");
 const SALIDA = idxSalida >= 0 && args[idxSalida + 1]
   ? args[idxSalida + 1]
-  : path.join(UPLOADS, `nas-${new Date().toISOString().slice(0, 10)}${COMPLETO ? "-completo" : ""}.zip`);
+  : path.join(DESTINO, `nas-${new Date().toISOString().slice(0, 10)}${COMPLETO ? "-completo" : ""}.zip`);
 
 /** Nombres válidos en Windows y en el NAS. Se conservan los acentos: UTF-8 no molesta. */
 function limpio(nombre, max = 80) {
