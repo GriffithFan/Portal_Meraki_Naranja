@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
 import { semanaRango } from "@/lib/semanaRanking";
 import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
+import { parseTransicion, bucketDeMovimiento } from "@/lib/transicionesEstado";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,14 @@ export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const offset = Math.min(Math.max(parseInt(new URL(request.url).searchParams.get("offset") || "0") || 0, 0), 52);
+  const params = new URL(request.url).searchParams;
+  const offset = Math.min(Math.max(parseInt(params.get("offset") || "0") || 0, 0), 52);
+  /**
+   * "estado" (por defecto): predios que HOY están en cada estado y se tocaron esta semana.
+   * "movimientos": predios que PASARON a cada estado durante la semana, sigan ahí o no.
+   * Ver lib/transicionesEstado.ts para por qué las dos formas dan números distintos.
+   */
+  const modo = params.get("modo") === "movimientos" ? "movimientos" : "estado";
   const isCurrentWeek = offset === 0;
   const now = new Date();
   const { desde, hasta } = semanaRango(now, offset);
@@ -69,7 +77,8 @@ export async function GET(request: Request) {
   });
   const estadoIds = estados.filter((estado) => getStateBucket(estado)).map((estado) => estado.id);
 
-  const predios = estadoIds.length > 0
+  // En modo "movimientos" esta consulta no se usa: ahí se parte del log de actividad.
+  const predios = estadoIds.length > 0 && modo === "estado"
     ? await prisma.predio.findMany({
         where: {
           estadoId: { in: estadoIds },
@@ -98,6 +107,61 @@ export async function GET(request: Request) {
 
   const ranking = new Map<string, MutableRankingRow>();
 
+  const acumular = (elegido: { mergeKey: string; displayName: string; equipoKey: string }, bucket: ReturnType<typeof getStateBucket>) => {
+    const current = ranking.get(elegido.mergeKey) || {
+      tecnicoId: elegido.mergeKey,
+      tecnicoNombre: elegido.displayName,
+      equipoKey: elegido.equipoKey,
+      instaladosAuditar: 0,
+      conformes: 0,
+      noConformes: 0,
+      total: 0,
+    };
+    addMetric(current, bucket);
+    ranking.set(elegido.mergeKey, current);
+  };
+
+  if (modo === "movimientos") {
+    const acts = await prisma.actividad.findMany({
+      where: { entidad: "PREDIO", descripcion: { contains: "Estado:" }, createdAt: { gte: desde, lte: hasta } },
+      select: { entidadId: true, descripcion: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const idsMovidos = Array.from(new Set(acts.map((a) => a.entidadId).filter(Boolean))) as string[];
+    const prediosMovidos = idsMovidos.length
+      ? await prisma.predio.findMany({
+          where: { id: { in: idsMovidos } },
+          select: {
+            id: true,
+            asignaciones: {
+              where: { tipo: { in: ["TAREA", "TECNICO"] } },
+              select: { createdAt: true, usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
+            },
+          },
+        })
+      : [];
+    const asignacionesPorPredio = new Map(prediosMovidos.map((p) => [p.id, p.asignaciones]));
+
+    // Un predio que rebota (conforme -> NC -> conforme) en la misma semana cuenta UNA
+    // vez por cuenta, para que el total siga siendo predios únicos como en el otro modo.
+    const yaContado = new Set<string>();
+    for (const act of acts) {
+      if (!act.entidadId) continue;
+      const tr = parseTransicion(act.descripcion);
+      if (!tr) continue;
+      const bucket = bucketDeMovimiento(tr.antes, tr.despues);
+      if (!bucket) continue;
+      const clave = `${act.entidadId}|${bucket}`;
+      if (yaContado.has(clave)) continue;
+      // Misma regla que el otro modo: un predio ya facturado antes no vuelve a sumar
+      // como conforme, pero un NC o una reinstalación posterior sí se ven.
+      if (bucket === "conformes" && yaFueFacturado(facturados, act.entidadId, act.createdAt)) continue;
+      const elegido = elegirTecnicoAcreditado(asignacionesPorPredio.get(act.entidadId) || []);
+      if (!elegido) continue;
+      yaContado.add(clave);
+      acumular(elegido, bucket);
+    }
+  } else {
   for (const predio of predios) {
     const bucket = getStateBucket(predio.estado);
     if (!bucket) continue;
@@ -111,17 +175,8 @@ export async function GET(request: Request) {
     const elegido = elegirTecnicoAcreditado(predio.asignaciones);
     if (!elegido) continue;
 
-    const current = ranking.get(elegido.mergeKey) || {
-      tecnicoId: elegido.mergeKey,
-      tecnicoNombre: elegido.displayName,
-      equipoKey: elegido.equipoKey,
-      instaladosAuditar: 0,
-      conformes: 0,
-      noConformes: 0,
-      total: 0,
-    };
-    addMetric(current, bucket);
-    ranking.set(elegido.mergeKey, current);
+    acumular(elegido, bucket);
+  }
   }
 
   const rows = Array.from(ranking.values())
@@ -148,6 +203,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     generatedAt: now.toISOString(),
     offset,
+    modo,
     isCurrentWeek,
     semana: getISOWeek(desde),
     desde: desde.toISOString(),

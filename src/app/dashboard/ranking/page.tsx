@@ -79,13 +79,19 @@ export default function RankingTecnicosPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0); // 0 = semana actual; 1 = semana pasada; etc.
+  /**
+   * "estado": predios que HOY están en cada estado y se tocaron esta semana (la foto).
+   * "movimientos": predios que PASARON a cada estado durante la semana, sigan ahí o no.
+   * Los dos son correctos y dan numeros distintos; ver lib/transicionesEstado.ts.
+   */
+  const [modo, setModo] = useState<"estado" | "movimientos">("estado");
 
   const fetchData = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/ranking-tecnicos?offset=${offset}`, { credentials: "include", cache: "no-store" });
+      const res = await fetch(`/api/ranking-tecnicos?offset=${offset}&modo=${modo}`, { credentials: "include", cache: "no-store" });
       if (!res.ok) throw new Error(res.status === 401 ? "No autenticado" : "No se pudo cargar el ranking");
       setData(await res.json());
     } catch (err) {
@@ -94,7 +100,7 @@ export default function RankingTecnicosPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [offset]);
+  }, [offset, modo]);
 
   const fetchEvolucion = useCallback(async () => {
     try {
@@ -213,11 +219,38 @@ export default function RankingTecnicosPage() {
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-lg border border-surface-200 bg-white p-0.5">
+          {([
+            ["estado", "Estado actual", "Predios que hoy están en cada estado y se tocaron esta semana"],
+            ["movimientos", "Movimientos de la semana", "Predios que PASARON a cada estado esta semana, sigan ahí o no"],
+          ] as const).map(([valor, etiqueta, ayuda]) => (
+            <button
+              key={valor}
+              onClick={() => setModo(valor)}
+              title={ayuda}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                modo === valor
+                  ? "bg-primary-600 text-white"
+                  : "text-surface-500 hover:bg-surface-50"
+              }`}
+            >
+              {etiqueta}
+            </button>
+          ))}
+        </div>
+        <span className="text-[11px] text-surface-400">
+          {modo === "estado"
+            ? "Foto del momento: un NC abierto de semanas pasadas cuenta si lo tocaron."
+            : "Crecimiento real: solo lo que cambió de estado dentro de la semana."}
+        </span>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Total" value={data.resumen.total} />
-        <Stat label="Inst./Auditar" value={data.resumen.instaladosAuditar} tone="primary" />
+        <Stat label={modo === "movimientos" ? "Inst./Auditar nuevos" : "Inst./Auditar"} value={data.resumen.instaladosAuditar} tone="primary" />
         <Stat label="Conformes" value={data.resumen.conformes} tone="success" />
-        <Stat label="No conformes" value={data.resumen.noConformes} tone="danger" />
+        <Stat label={modo === "movimientos" ? "NC nuevos" : "No conformes"} value={data.resumen.noConformes} tone="danger" />
       </div>
 
       {evolucion && evolucion.global.conformesPorSemana.some((n) => n > 0) && (
