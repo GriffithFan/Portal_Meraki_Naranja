@@ -247,7 +247,10 @@ export default function RankingTecnicosPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Total" value={data.resumen.total} />
+        {/* En "movimientos" el total NO son predios unicos: un predio que paso a
+            instalado y despues a conforme en la misma semana cuenta en las dos cuentas.
+            Por eso cambia de nombre, para no leerlo como cantidad de predios. */}
+        <Stat label={modo === "movimientos" ? "Movimientos" : "Total"} value={data.resumen.total} />
         <Stat label={modo === "movimientos" ? "Inst./Auditar nuevos" : "Inst./Auditar"} value={data.resumen.instaladosAuditar} tone="primary" />
         <Stat label="Conformes" value={data.resumen.conformes} tone="success" />
         <Stat label={modo === "movimientos" ? "NC nuevos" : "No conformes"} value={data.resumen.noConformes} tone="danger" />
