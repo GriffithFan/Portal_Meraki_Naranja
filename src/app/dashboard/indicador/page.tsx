@@ -101,16 +101,19 @@ export default function IndicadorPage() {
         <div className="rounded-lg border border-surface-200 bg-white py-16 text-center text-sm text-surface-400">Sin datos.</div>
       ) : (
         <>
-          {/* Tarjetas */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Tarjetas. Los tres numeros que importan son de MOVIMIENTOS: predios unicos
+              que se movieron en la semana, con el conforme acreditado a un solo tecnico.
+              Asi el de conformes coincide con lo facturado. */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[
-              { t: "Técnicos activos", v: u?.tecnicos, s: `semana del ${u?.etiqueta}` },
-              { t: "Incidencias finalizadas", v: u?.incidencias, s: "última semana cerrada" },
-              { t: "Total del período", v: datos.totalPeriodo, s: `${sem.length} semanas` },
+              { t: "Conformes", v: u?.mov?.conformes, s: `semana del ${u?.etiqueta}`, tono: "text-emerald-600" },
+              { t: "NC nuevos", v: u?.mov?.ncNuevos, s: "quedaron al cerrar", tono: "text-red-600" },
+              { t: "Predios trabajados", v: u?.mov?.trabajados, s: "pasaron a instalar/auditar", tono: "text-primary-600" },
+              { t: "Técnicos activos", v: u?.tecnicos, s: `${sem.length} semanas · ${datos.movTotal?.conformes ?? 0} conformes`, tono: "text-surface-700" },
             ].map((c) => (
               <div key={c.t} className="rounded-xl border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
                 <div className="text-[11px] uppercase tracking-wider text-surface-400">{c.t}</div>
-                <div className="mt-1 text-3xl font-semibold text-primary-600 tabular-nums">{c.v ?? "—"}</div>
+                <div className={`mt-1 text-3xl font-semibold tabular-nums ${c.tono}`}>{c.v ?? "—"}</div>
                 <div className="text-[11px] text-surface-400">{c.s}</div>
               </div>
             ))}
@@ -184,6 +187,28 @@ export default function IndicadorPage() {
               </tfoot>
             </table>
           </div>
+
+          <TablaMovimientos
+            titulo="Por semana"
+            ayuda="Predios únicos que se movieron en cada semana. Un predio trabajado por dos técnicos cuenta una sola vez."
+            filas={sem.map((x: any) => ({ nombre: x.etiqueta, m: x.mov }))}
+            total={datos.movTotal}
+          />
+          <TablaMovimientos
+            titulo="Por zona"
+            ayuda="Acumulado del período por provincia."
+            filas={(datos.movZonas || []).map((z: any) => ({ nombre: z.zona, m: z }))}
+            total={datos.movTotal}
+          />
+          <TablaMovimientos
+            titulo="Por técnico"
+            ayuda="Acumulado del período. El conforme se acredita al último asignado, igual que en el ranking y la facturación."
+            filas={(datos.movTecnicos || []).map((t: any) => ({
+              nombre: t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} · ${t.nombre}` : t.nombre,
+              m: t.total,
+            }))}
+            total={datos.movTotal}
+          />
 
           {/* Conformidad y NC: por semana, por zona y por técnico. Es otra medida que el
               indicador de arriba (que cuenta técnicos activos en mantenimiento): acá se
@@ -294,6 +319,65 @@ function TablaDesenlace({
               <td className="px-3 py-2 text-center tabular-nums text-red-500">{total?.noConformes ?? 0}</td>
               <td className="px-3 py-2 text-center tabular-nums text-surface-400">{total?.sinRevisar ?? 0}</td>
               <td className="px-3 py-2 text-center tabular-nums">{total ? celda(total) : null}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Los tres numeros de la semana: conformes, NC nuevos y predios trabajados.
+ *
+ * Es la vista que se publica. A diferencia de las tablas de conformidad de mas abajo
+ * -que siguen a los predios trabajados hasta su desenlace- esta cuenta lo que se movio
+ * DURANTE la semana, que es lo que se factura.
+ */
+function TablaMovimientos({
+  titulo, ayuda, filas, total,
+}: {
+  titulo: string;
+  ayuda: string;
+  filas: Array<{ nombre: string; m: any }>;
+  total: any;
+}) {
+  if (!filas.length) return null;
+  const celda = (v: number | undefined, clase = "") => (
+    <td className={`px-3 py-2 text-center tabular-nums ${clase}`}>{v || "·"}</td>
+  );
+  return (
+    <div className="overflow-hidden rounded-xl border border-surface-200 bg-white dark:bg-surface-800 dark:border-surface-700">
+      <div className="border-b border-surface-100 px-4 py-3 dark:border-surface-700">
+        <h2 className="text-sm font-medium text-surface-700 dark:text-surface-200">{titulo}</h2>
+        <p className="mt-0.5 text-[11px] text-surface-400">{ayuda}</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-max text-xs">
+          <thead className="bg-surface-50 text-surface-500 dark:bg-surface-900/40">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">Nombre</th>
+              <th className="px-3 py-2 text-center font-medium">Conformes</th>
+              <th className="px-3 py-2 text-center font-medium">NC nuevos</th>
+              <th className="px-3 py-2 text-center font-medium">Trabajados</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
+            {filas.map((f) => (
+              <tr key={f.nombre}>
+                <td className="px-3 py-2 text-surface-700 dark:text-surface-200">{f.nombre}</td>
+                {celda(f.m?.conformes, "text-emerald-600 font-medium")}
+                {celda(f.m?.ncNuevos, "text-red-500")}
+                {celda(f.m?.trabajados, "text-surface-500")}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-surface-50 font-medium dark:bg-surface-900/40">
+            <tr>
+              <td className="px-3 py-2 text-surface-700 dark:text-surface-200">Total</td>
+              {celda(total?.conformes, "text-emerald-600")}
+              {celda(total?.ncNuevos, "text-red-500")}
+              {celda(total?.trabajados, "text-surface-500")}
             </tr>
           </tfoot>
         </table>
