@@ -482,23 +482,31 @@ export function textoCorreo(d: DatosKpi): string {
     return base > 0 ? Math.round((m.conformes / base) * 100) : null;
   };
   const pct = (m: Movimientos) => { const c = conf(m); return c === null ? "s/d" : `${c}%`; };
+  /** Porcentaje de NC sobre lo resuelto. Es el numero que se sigue semana a semana. */
+  const pctNc = (m: Movimientos) => {
+    const base = m.conformes + m.ncNuevos;
+    return base > 0 ? `${Math.round((m.ncNuevos / base) * 1000) / 10}%` : "s/d";
+  };
 
   // Tabla alineada: en un correo de texto plano es lo unico que se lee de un vistazo.
   const col = (t: string | number, n: number) => String(t).padStart(n);
   const filaSem = (etiqueta: string, m: Movimientos) =>
-    `  ${etiqueta.padEnd(16)}${col(m.conformes, 10)}${col(m.ncNuevos, 11)}${col(m.trabajados, 12)}${col(pct(m), 13)}`;
+    `  ${etiqueta.padEnd(16)}${col(m.conformes, 10)}${col(m.ncNuevos, 11)}${col(m.trabajados, 12)}${col(pctNc(m), 9)}${col(pct(m), 13)}`;
 
   const tabla = [
-    `  ${"Semana".padEnd(16)}${col("Conformes", 10)}${col("No conf.", 11)}${col("Trabajados", 12)}${col("Conformidad", 13)}`,
-    `  ${"-".repeat(62)}`,
+    `  ${"Semana".padEnd(16)}${col("Conformes", 10)}${col("No conf.", 11)}${col("Trabajados", 12)}${col("% NC", 9)}${col("Conformidad", 13)}`,
+    `  ${"-".repeat(71)}`,
     ...d.semanas.map((sm) => filaSem(`${ddmm(sm.desde)} al ${fDia(new Date(new Date(sm.desde).getTime() + 6 * 86400000))}`, sm.mov)),
-    `  ${"-".repeat(62)}`,
+    `  ${"-".repeat(71)}`,
     filaSem("Total", d.movTotal),
   ].join("\n");
 
+  // Se dice explicitamente "de NC": la version anterior ponia el porcentaje de
+  // conformidad pegado al numero de NC —"28 NC (88%)"— y se leia como si el 88 fuera
+  // el rechazo. En un correo a direccion eso se malinterpreta una sola vez y ya.
   const zonas = d.movZonas
     .filter((z) => z.conformes + z.ncNuevos > 0)
-    .map((z) => `${z.zona} ${z.conformes} conformes / ${z.ncNuevos} NC (${pct(z)})`)
+    .map((z) => `${z.zona}: ${z.conformes} conformes y ${z.ncNuevos} NC, ${pctNc(z)} de NC`)
     .join(" · ");
 
   const previa = d.semanas.length > 1 ? d.semanas[d.semanas.length - 2].mov : null;
@@ -639,7 +647,7 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   let rv = r + 3;
   ws.mergeCells(rv, 1, rv, nCols);
   const tv = ws.getCell(rv, 1);
-  tv.value = "TRABAJO EJECUTADO POR SEMANA Y CÓMO TERMINÓ (todas las incidencias)";
+  tv.value = "RESULTADO DE CADA SEMANA (todas las incidencias, predios únicos)";
   tv.font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
   tv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
   tv.alignment = { horizontal: "center", vertical: "middle" };
@@ -647,12 +655,17 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   rv++;
 
   const porc = (n: number, base: number) => (base > 0 ? Math.round((n / base) * 100) : 0);
+  // Estos son los MISMOS numeros que muestra la pantalla y el correo: predios unicos que
+  // se movieron en la semana. Antes esta seccion usaba la vista de cohorte -de lo
+  // trabajado en la semana, cuanto termino aprobado- y daba 104 donde el resto de la
+  // planilla decia 120. Tres cifras distintas de "conformes" en el mismo archivo: nadie
+  // podia saber cual mirar.
   const filasVol: Array<[string, (s: SemanaKpi) => number, string]> = [
-    ["Predios realizados", (s) => s.realizados, AZUL2],
-    ["→ Conformes", (s) => s.conformes, VERDE],
-    ["→ No conformes", (s) => s.noConformes, ROJO],
-    ["→ Sin revisar todavía", (s) => s.sinRevisar, "FF999999"],
-    ["% de conformidad (sobre lo revisado)", (s) => porc(s.conformes, s.conformes + s.noConformes), AZUL],
+    ["Predios trabajados (pasaron a instalar/auditar)", (s) => s.mov.trabajados, AZUL2],
+    ["→ Conformes", (s) => s.mov.conformes, VERDE],
+    ["→ No conformes nuevos", (s) => s.mov.ncNuevos, ROJO],
+    ["% de NC (sobre lo resuelto)", (s) => porc(s.mov.ncNuevos, s.mov.conformes + s.mov.ncNuevos), ROJO],
+    ["% de conformidad (sobre lo resuelto)", (s) => porc(s.mov.conformes, s.mov.conformes + s.mov.ncNuevos), AZUL],
   ];
   for (const [etiqueta, valor, color] of filasVol) {
     const esPorcentaje = etiqueta.startsWith("%");
@@ -737,72 +750,13 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
       c.alignment = { horizontal: i === 0 ? "left" : "center" };
     });
   };
-  /** Las cinco columnas de desenlace, con el % de NC coloreado. */
-  const filaDesenlace = (row: ExcelJS.Row, desde: number, x: Desenlace) => {
-    const nc = tasaNc(x);
-    const vals: (number | string | null)[] = [
-      x.realizados || null, x.conformes || null, x.noConformes || null, x.sinRevisar || null,
-      nc === null ? "s/d" : nc / 100,
-    ];
-    vals.forEach((v, i) => {
-      const c = row.getCell(desde + i);
-      c.value = v;
-      c.alignment = { horizontal: "center" };
-      if (i === 4 && nc !== null) {
-        c.numFmt = "0.0%";
-        // Mismo semáforo que el ranking: verde hasta 10, ámbar hasta 20, rojo arriba.
-        c.font = { bold: true, color: { argb: nc <= 10 ? VERDE : nc <= 20 ? "FFB26A00" : ROJO } };
-      }
-    });
-  };
-  const COLS_DES = ["Realizados", "Conformes", "No conformes", "Sin revisar", "% NC"];
 
-  const wt = wb.addWorksheet("Conformidad por técnico");
-  cabecera(wt, ["Técnico", "TH", ...COLS_DES]);
-  d.volumenTecnicos.forEach((t, i) => {
-    const row = wt.getRow(i + 2);
-    row.getCell(1).value = t.nombre;
-    row.getCell(2).value = t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")}` : "";
-    row.getCell(2).alignment = { horizontal: "center" };
-    filaDesenlace(row, 3, t.total);
-  });
-  const totT = wt.getRow(d.volumenTecnicos.length + 2);
-  totT.getCell(1).value = "Total";
-  totT.getCell(1).font = { bold: true, color: { argb: AZUL } };
-  filaDesenlace(totT, 3, d.volumenTotal);
-  totT.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
-  wt.getColumn(1).width = 24; wt.getColumn(2).width = 8;
-  COLS_DES.forEach((_, i) => (wt.getColumn(3 + i).width = 13));
-
-  const wz = wb.addWorksheet("Conformidad por zona");
-  cabecera(wz, ["Provincia", ...COLS_DES]);
-  d.volumenZonas.forEach((z, i) => {
-    const row = wz.getRow(i + 2);
-    row.getCell(1).value = z.zona;
-    filaDesenlace(row, 2, z);
-  });
-  const totZ = wz.getRow(d.volumenZonas.length + 2);
-  totZ.getCell(1).value = "Total";
-  totZ.getCell(1).font = { bold: true, color: { argb: AZUL } };
-  filaDesenlace(totZ, 2, d.volumenTotal);
-  totZ.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
-  wz.getColumn(1).width = 22;
-  COLS_DES.forEach((_, i) => (wz.getColumn(2 + i).width = 13));
-
-  const wsm = wb.addWorksheet("Conformidad por semana");
-  cabecera(wsm, ["Semana", ...COLS_DES]);
-  d.semanas.forEach((sem, i) => {
-    const row = wsm.getRow(i + 2);
-    row.getCell(1).value = sem.etiqueta;
-    filaDesenlace(row, 2, sem);
-  });
-  const totS = wsm.getRow(d.semanas.length + 2);
-  totS.getCell(1).value = "Total";
-  totS.getCell(1).font = { bold: true, color: { argb: AZUL } };
-  filaDesenlace(totS, 2, d.volumenTotal);
-  totS.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
-  wsm.getColumn(1).width = 14;
-  COLS_DES.forEach((_, i) => (wsm.getColumn(2 + i).width = 13));
+  // Las hojas "Conformidad por tecnico/zona/semana" se sacaron: usaban la vista de
+  // cohorte -a cada predio se le imputa la semana en que se TRABAJO, con el resultado
+  // que termino teniendo- y daban numeros distintos a los del resto de la planilla para
+  // la misma palabra "conformes". Tener dos metodologias en el mismo archivo, sin que
+  // nada lo aclarara, hacia imposible saber cual mirar. El calculo sigue existiendo en
+  // `volumenTecnicos` / `volumenZonas` por si vuelve a hacer falta.
 
   // ── Movimientos: los mismos numeros que muestra la pantalla ────────────────
   // Faltaban en la planilla: se descargaba el Excel y no traia lo que se estaba viendo.
