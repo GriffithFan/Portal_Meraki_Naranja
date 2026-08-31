@@ -41,6 +41,28 @@ export interface SemanaKpi {
   sinRevisar: number;       // de esos, los que todavia no se revisaron
   /** El mismo desenlace abierto por provincia. */
   porZona: Record<string, Desenlace>;
+  /** Lo que se movio en la semana (predios unicos). Es la vista que se publica. */
+  mov: Movimientos;
+  movPorZona: Record<string, Movimientos>;
+}
+
+/**
+ * Lo que se MOVIO en la semana, contado por predios unicos.
+ *
+ * Es la vista que se publica: cuantas conformidades nuevas hubo, cuantos NC nuevos
+ * quedaron, y cuantos predios se trabajaron (entraron a INSTALADO/AUDITAR).
+ *
+ * Cada predio cuenta UNA vez por cuenta, aunque lo hayan trabajado dos tecnicos y aunque
+ * rebote de estado varias veces en la semana. Se acredita al ultimo asignado, igual que
+ * el ranking y la facturacion: sin eso, un predio compartido inflaba el total.
+ */
+export interface Movimientos {
+  /** Predios que pasaron a CONFORME durante la semana. */
+  conformes: number;
+  /** Predios que pasaron a NO CONFORME viniendo de trabajo real. */
+  ncNuevos: number;
+  /** Predios que entraron a INSTALADO / AUDITAR: el trabajo ejecutado. */
+  trabajados: number;
 }
 
 /** Trabajo realizado y en qué terminó. Siempre conformes + noConformes + sinRevisar = realizados. */
@@ -78,7 +100,15 @@ export interface DatosKpi {
   volumenZonas: Array<{ zona: string } & Desenlace>;
   /** Acumulado del período (suma de todas las semanas). */
   volumenTotal: Desenlace;
+  /** Movimientos por tecnico, semana a semana y en total. */
+  movTecnicos: Array<{ nombre: string; thNumero: number | null; total: Movimientos; porSemana: Record<string, Movimientos> }>;
+  /** Movimientos por provincia, acumulado del periodo. */
+  movZonas: Array<{ zona: string } & Movimientos>;
+  /** Acumulado del periodo. */
+  movTotal: Movimientos;
 }
+
+const nuevoMov = (): Movimientos => ({ conformes: 0, ncNuevos: 0, trabajados: 0 });
 
 const nuevoDesenlace = (): Desenlace => ({ realizados: 0, conformes: 0, noConformes: 0, sinRevisar: 0 });
 
@@ -323,6 +353,48 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     }
   }
 
+  // ── Movimientos de la semana: conformes, NC nuevos y trabajados ────────────
+  // Se cuenta por PREDIO UNICO y por semana en que ocurrio el movimiento. Distinto de la
+  // cohorte de arriba, que imputa el desenlace a la semana en que se HIZO el trabajo.
+  // Las dos vistas conviven a proposito: la cohorte dice como salio lo que se trabajo,
+  // esta dice que paso durante la semana.
+  const mov: Record<string, Movimientos> = {};
+  const movZona: Record<string, Record<string, Movimientos>> = {};
+  const movTec = new Map<string, { th: number | null; total: Movimientos; sem: Record<string, Movimientos> }>();
+  claves.forEach((k) => { mov[k] = nuevoMov(); movZona[k] = {}; });
+
+  const yaContado = new Set<string>();
+  for (const [predioId, lista] of Array.from(eventos.entries())) {
+    for (const e of lista) {
+      const k = inicioSemana(e.fecha).toISOString().slice(0, 10);
+      if (!mov[k]) continue;
+      let cual: keyof Movimientos | null = null;
+      if (e.despues === "conforme" && e.antes !== "conforme") cual = "conformes";
+      else if (desenlaceDe(e) === "noconforme") cual = "ncNuevos";
+      else if (REALIZADO.has(e.despues) && !REALIZADO.has(e.antes)) cual = "trabajados";
+      if (!cual) continue;
+
+      // Un predio que rebota en la misma semana cuenta una sola vez por cuenta.
+      const clave = `${predioId}|${k}|${cual}`;
+      if (yaContado.has(clave)) continue;
+      yaContado.add(clave);
+
+      // Un conforme de un predio ya facturado antes no es trabajo nuevo.
+      if (cual === "conformes" && yaFueFacturado(facturados, predioId, e.fecha)) continue;
+
+      mov[k][cual]++;
+      const zona = zonaDe.get(predioId) || "Sin provincia";
+      (movZona[k][zona] ??= nuevoMov())[cual]++;
+      const resp = responsableDe.get(predioId);
+      if (resp) {
+        const t = movTec.get(resp.nombre) ?? { th: resp.thNumero, total: nuevoMov(), sem: {} };
+        t.total[cual]++;
+        (t.sem[k] ??= nuevoMov())[cual]++;
+        movTec.set(resp.nombre, t);
+      }
+    }
+  }
+
   const semanas: SemanaKpi[] = claves.map((k) => ({
     desde: k, etiqueta: ddmm(k), tecnicos: porSemana[k].tec.size,
     incidencias: porSemana[k].n, porProvincia: porSemana[k].prov,
@@ -331,6 +403,8 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     noConformes: volumen[k].nc,
     sinRevisar: volumen[k].pend,
     porZona: volZonas[k],
+    mov: mov[k],
+    movPorZona: movZona[k],
   }));
   const tecnicos: TecnicoKpi[] = Object.entries(matriz)
     .map(([nombre, d]) => {
@@ -364,7 +438,24 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     sinRevisar: acc.sinRevisar + s.sinRevisar,
   }), nuevoDesenlace());
 
-  return { semanas, tecnicos, ultima: semanas[semanas.length - 1],
+  const movTecnicos = Array.from(movTec.entries())
+    .map(([nombre, d]) => ({ nombre, thNumero: d.th, total: d.total, porSemana: d.sem }))
+    .sort((a, b) => b.total.conformes - a.total.conformes || a.nombre.localeCompare(b.nombre, "es"));
+
+  const zonasMov: Record<string, Movimientos> = {};
+  for (const k of claves) for (const [z, m] of Object.entries(movZona[k])) {
+    const acc = (zonasMov[z] ??= nuevoMov());
+    acc.conformes += m.conformes; acc.ncNuevos += m.ncNuevos; acc.trabajados += m.trabajados;
+  }
+  const movZonas = Object.entries(zonasMov).map(([zona, m]) => ({ zona, ...m }))
+    .sort((a, b) => b.conformes - a.conformes);
+  const movTotal = semanas.reduce((a, sm) => ({
+    conformes: a.conformes + sm.mov.conformes,
+    ncNuevos: a.ncNuevos + sm.mov.ncNuevos,
+    trabajados: a.trabajados + sm.mov.trabajados,
+  }), nuevoMov());
+
+  return { semanas, tecnicos, ultima: semanas[semanas.length - 1], movTecnicos, movZonas, movTotal,
            totalPeriodo: semanas.reduce((a, s) => a + s.incidencias, 0), ultimaCerrada,
            volumenTecnicos, volumenZonas, volumenTotal };
 }
