@@ -461,114 +461,70 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
 }
 
 /** Texto listo para pegar en el correo. */
+/**
+ * Borrador del correo a dirección.
+ *
+ * Es un RESUMEN a propósito. La version anterior listaba semana por semana, provincia por
+ * provincia y tecnico por tecnico, dos veces —una por movimientos y otra por cohorte— y
+ * quedaba tan larga que no se leia. El detalle completo va en la planilla adjunta.
+ *
+ * Lo que tiene que poder responderse de un vistazo: como viene la evolucion, que
+ * porcentaje de conformidad hay, y cuantos predios se trabajaron.
+ */
 export function textoCorreo(d: DatosKpi): string {
   const u = d.ultima;
-  const finSemana = fFecha(new Date(new Date(u.desde).getTime() + 6 * 86400000));
   const iniSemana = fFecha(new Date(u.desde));
-  const prov = Object.entries(u.porProvincia).sort((a, b) => b[1] - a[1])
-    .map(([p, n]) => `${p} ${n}`).join(" · ");
-  const evol = d.semanas.map((s) => {
-    const f = new Date(new Date(s.desde).getTime() + 6 * 86400000);
-    return `- Semana del ${ddmm(s.desde)} al ${fDia(f)}: ` +
-           `${s.tecnicos} técnicos – ${s.incidencias} incidencias`;
-  }).join("\n");
-  // Cohorte: el resultado se imputa a la semana en que se HIZO el trabajo, así las
-  // tres cifras suman siempre el total de realizados.
-  const pct = (n: number, base: number) => (base > 0 ? Math.round((n / base) * 100) : 0);
-  const volumen = d.semanas.map((s) => {
-    const f = new Date(new Date(s.desde).getTime() + 6 * 86400000);
-    const revisados = s.conformes + s.noConformes;
-    const cola = s.sinRevisar ? `, ${s.sinRevisar} sin revisar` : "";
-    return `- Semana del ${ddmm(s.desde)} al ${fDia(f)}: ${s.realizados} predios realizados – ` +
-           `${s.conformes} conformes y ${s.noConformes} no conformes${cola}. ` +
-           `Conformidad: ${pct(s.conformes, revisados)}%`;
-  }).join("\n");
-  const top = d.tecnicos.slice(0, 3).map((t) => `${t.nombre} (${t.total})`).join(", ");
+  const finSemana = fFecha(new Date(new Date(u.desde).getTime() + 6 * 86400000));
 
-  // Índice de rechazo por zona y por técnico. Se calcula sobre lo REVISADO, no sobre lo
-  // realizado: incluir lo que todavía no se miró castigaría a la última semana, que
-  // siempre tiene cola pendiente.
-  const linea = (etiqueta: string, x: Desenlace) => {
-    const nc = tasaNc(x);
-    const cola = x.sinRevisar ? ` (${x.sinRevisar} sin revisar)` : "";
-    return `- ${etiqueta}: ${x.realizados} realizados – ${x.conformes} conformes, ${x.noConformes} no conformes${cola}. ` +
-           `Conformidad ${nc === null ? "s/d" : `${tasaConformidad(x)}%`} · NC ${nc === null ? "s/d" : `${nc}%`}`;
+  /** Conformidad sobre lo resuelto: conformes / (conformes + NC). */
+  const conf = (m: Movimientos) => {
+    const base = m.conformes + m.ncNuevos;
+    return base > 0 ? Math.round((m.conformes / base) * 100) : null;
   };
-  const zonas = d.volumenZonas.map((z) => linea(z.zona, z)).join("\n");
-  // Solo los que tienen algo revisado: con uno o dos predios el porcentaje no dice nada.
-  const tecnicosVol = d.volumenTecnicos
-    .filter((t) => t.total.conformes + t.total.noConformes >= 3)
-    .map((t) => linea(t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} ${t.nombre}` : t.nombre, t.total))
-    .join("\n");
-  const tot = linea("Total del período", d.volumenTotal);
+  const pct = (m: Movimientos) => { const c = conf(m); return c === null ? "s/d" : `${c}%`; };
 
-  // ── Movimientos: es la parte que se lee primero ────────────────────────────
-  // Predios unicos por semana, con el conforme acreditado a un solo tecnico, asi que el
-  // numero de conformes coincide con lo facturado.
-  const lineaMov = (etiqueta: string, m: Movimientos) =>
-    `- ${etiqueta}: ${m.conformes} conformes · ${m.ncNuevos} no conformes nuevos · ${m.trabajados} predios trabajados`;
-  const movSemanas = d.semanas.map((sm) => {
-    const fv = new Date(new Date(sm.desde).getTime() + 6 * 86400000);
-    return lineaMov(`Semana del ${ddmm(sm.desde)} al ${fDia(fv)}`, sm.mov);
-  }).join("\n");
-  const movZonasTxt = d.movZonas.map((z) => lineaMov(z.zona, z)).join("\n");
-  const movTecTxt = d.movTecnicos
-    .filter((t) => t.total.conformes + t.total.trabajados > 0)
-    .map((t) => lineaMov(t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} ${t.nombre}` : t.nombre, t.total))
-    .join("\n");
-  const movU = u.mov;
+  // Tabla alineada: en un correo de texto plano es lo unico que se lee de un vistazo.
+  const col = (t: string | number, n: number) => String(t).padStart(n);
+  const filaSem = (etiqueta: string, m: Movimientos) =>
+    `  ${etiqueta.padEnd(16)}${col(m.conformes, 10)}${col(m.ncNuevos, 11)}${col(m.trabajados, 12)}${col(pct(m), 13)}`;
 
-  return `Asunto: Indicador semanal — Técnicos activos en incidencias de mantenimiento
+  const tabla = [
+    `  ${"Semana".padEnd(16)}${col("Conformes", 10)}${col("No conf.", 11)}${col("Trabajados", 12)}${col("Conformidad", 13)}`,
+    `  ${"-".repeat(62)}`,
+    ...d.semanas.map((sm) => filaSem(`${ddmm(sm.desde)} al ${fDia(new Date(new Date(sm.desde).getTime() + 6 * 86400000))}`, sm.mov)),
+    `  ${"-".repeat(62)}`,
+    filaSem("Total", d.movTotal),
+  ].join("\n");
+
+  const zonas = d.movZonas
+    .filter((z) => z.conformes + z.ncNuevos > 0)
+    .map((z) => `${z.zona} ${z.conformes} conformes / ${z.ncNuevos} NC (${pct(z)})`)
+    .join(" · ");
+
+  const previa = d.semanas.length > 1 ? d.semanas[d.semanas.length - 2].mov : null;
+  const delta = previa ? u.mov.conformes - previa.conformes : 0;
+  const tendencia = !previa ? ""
+    : delta > 0 ? ` (${delta} más que la semana anterior)`
+    : delta < 0 ? ` (${Math.abs(delta)} menos que la semana anterior)`
+    : " (igual que la semana anterior)";
+
+  return `Asunto: Indicador semanal — Semana del ${iniSemana} al ${finSemana}
 
 Alberto, Fernando:
 
-Les comparto el indicador semanal. Adjunto la planilla con el detalle por técnico.
+Les comparto el indicador de la semana. Adjunto la planilla con el detalle por técnico y por zona.
 
-En la semana del ${iniSemana} al ${finSemana} trabajaron ${u.tecnicos} técnicos.
-
-El resultado de la semana fue:
-
-- ${movU.conformes} conformidades
-- ${movU.ncNuevos} no conformidades nuevas
-- ${movU.trabajados} predios trabajados (pasaron a instalar o auditar)
-
-De esas conformidades, ${u.incidencias} corresponden a incidencias de mantenimiento (${prov}).
+En la semana del ${iniSemana} al ${finSemana} trabajaron ${u.tecnicos} técnicos, con ${u.mov.conformes} conformidades${tendencia} y ${u.mov.ncNuevos} no conformidades nuevas sobre ${u.mov.trabajados} predios trabajados.
 
 Evolución de las últimas ${d.semanas.length} semanas:
 
-${movSemanas}
+${tabla}
 
-Por provincia, en el período completo:
+Por provincia en el período: ${zonas}.
 
-${movZonasTxt}
+"Trabajados" son los predios que entraron a instalación o auditoría en la semana. La conformidad se calcula sobre lo ya resuelto (conformes sobre conformes más no conformes).
 
-Por técnico, en el período completo:
-
-${movTecTxt}
-
-La evolución de las últimas ${d.semanas.length} semanas:
-
-${evol}
-
-Sobre el trabajo ejecutado en campo, tomando todas las incidencias y no solo las de mantenimiento, el resultado de cada semana fue:
-
-${volumen}
-
-A cada predio se le imputa la semana en que se trabajó, con el resultado que terminó teniendo, así que las cifras suman el total realizado. La conformidad se calcula sobre lo ya revisado.
-
-Por provincia, en el período completo:
-
-${zonas}
-
-Por técnico (solo los que tienen al menos 3 predios ya revisados, para que el porcentaje signifique algo):
-
-${tecnicosVol}
-
-${tot}
-
-Mayor volumen del período: ${top}.
-
-Quedo atento a cualquier corte adicional que necesiten o si prefieren otra periodicidad.
+Quedo atento a cualquier corte adicional que necesiten.
 
 Saludos,
 Ulises`;
@@ -847,6 +803,47 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   totS.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
   wsm.getColumn(1).width = 14;
   COLS_DES.forEach((_, i) => (wsm.getColumn(2 + i).width = 13));
+
+  // ── Movimientos: los mismos numeros que muestra la pantalla ────────────────
+  // Faltaban en la planilla: se descargaba el Excel y no traia lo que se estaba viendo.
+  const COLS_MOV = ["Conformes", "No conformes nuevos", "Trabajados", "Conformidad"];
+  const filaMov = (row: ExcelJS.Row, desde: number, m: Movimientos) => {
+    const base = m.conformes + m.ncNuevos;
+    const c = base > 0 ? m.conformes / base : null;
+    const vals: (number | string | null)[] = [m.conformes || null, m.ncNuevos || null, m.trabajados || null, c === null ? "s/d" : c];
+    vals.forEach((v, i) => {
+      const cel = row.getCell(desde + i);
+      cel.value = v;
+      cel.alignment = { horizontal: "center" };
+      if (i === 3 && c !== null) {
+        cel.numFmt = "0%";
+        const p = c * 100;
+        cel.font = { bold: true, color: { argb: p >= 90 ? VERDE : p >= 80 ? "FFB26A00" : ROJO } };
+      }
+    });
+  };
+  const hojaMov = (nombre: string, etiqueta: string, filas: Array<{ n: string; m: Movimientos }>) => {
+    const w = wb.addWorksheet(nombre);
+    cabecera(w, [etiqueta, ...COLS_MOV]);
+    filas.forEach((f, i) => {
+      const row = w.getRow(i + 2);
+      row.getCell(1).value = f.n;
+      filaMov(row, 2, f.m);
+    });
+    const tot = w.getRow(filas.length + 2);
+    tot.getCell(1).value = "Total";
+    tot.getCell(1).font = { bold: true, color: { argb: AZUL } };
+    filaMov(tot, 2, d.movTotal);
+    tot.eachCell((c) => (c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } }));
+    w.getColumn(1).width = 26;
+    COLS_MOV.forEach((_, i) => (w.getColumn(2 + i).width = 19));
+  };
+
+  hojaMov("Resumen por semana", "Semana", d.semanas.map((sm) => ({ n: sm.etiqueta, m: sm.mov })));
+  hojaMov("Resumen por zona", "Provincia", d.movZonas.map((z) => ({ n: z.zona, m: z })));
+  hojaMov("Resumen por técnico", "Técnico", d.movTecnicos.map((t) => ({
+    n: t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} · ${t.nombre}` : t.nombre, m: t.total,
+  })));
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
