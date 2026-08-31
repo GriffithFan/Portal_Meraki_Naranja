@@ -50,7 +50,34 @@ GENERAR UN ACTA
 ---------------
 
   Doble clic en GENERAR-ACTA.bat, escribir el número de predio, y listo. El acta
-  sale en la carpeta "actas", armada sobre la plantilla oficial.
+  sale en la carpeta "actas-generadas", armada sobre la plantilla oficial.
+
+
+GENERAR LAS ACTAS DE UNA LISTA, Y IMPRIMIRLAS TODAS
+---------------------------------------------------
+
+  Arrastrá el archivo con la lista sobre GENERAR-ACTAS-LISTA.bat. Sirve un .csv,
+  un .txt o un .xlsx: se usa la columna PREDIO si existe, y si no la primera. Los
+  archivos que exporta Carrot funcionan tal cual, sin tocarlos.
+
+  Todo va a una carpeta nueva dentro de "actas-generadas", con la fecha y hora.
+  Ahí adentro vas a encontrar:
+
+      Acta_<predio>.docx     una por cada predio que salió bien
+      resumen.csv            qué pasó con cada uno, incluidos los que fallaron
+      IMPRIMIR TODAS.bat     doble clic y salen todas por la impresora
+
+  Antes de imprimir revisá cuál es tu impresora predeterminada, en Configuración >
+  Bluetooth y dispositivos > Impresoras. El .bat pide confirmación y te dice
+  cuántas actas va a mandar, así que si te equivocaste todavía estás a tiempo.
+
+  CUÁNTO TARDA. Se abre UNA sola sesión de Chrome para toda la lista, no una por
+  predio: cincuenta actas llevan del orden de diez minutos. La ventana de Chrome
+  que se abre no se cierra hasta terminar.
+
+  SI ALGUNO FALLA, el resto igual se genera. Los problemas quedan anotados en
+  resumen.csv con el motivo — lo más común es que el predio no exista en
+  Salesforce o que la incidencia esté cerrada.
 
 
 CUÁNTO TARDA

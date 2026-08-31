@@ -16,6 +16,10 @@ for /f "usebackq tokens=1,* delims==" %%A in ("credenciales.txt") do (
   echo %%A | findstr /b "#" >nul || set "%%A=%%B"
 )
 
+rem La cache de sesion apunta a /tmp por defecto, que en Windows no existe.
+set "SF_COOKIE_FILE=%~dp0.sf_cookies.json"
+set "ACTAS_OUT_DIR=%~dp0actas-generadas"
+
 set "PREDIO=%~1"
 if "%PREDIO%"=="" (
   echo.
