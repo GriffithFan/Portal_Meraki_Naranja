@@ -3,17 +3,17 @@ chcp 65001 >nul
 title Generar actas de una lista de predios
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\python.exe" (
-  echo  [X] Falta instalar. Ejecuta primero INSTALAR.bat
+if not exist "..\.venv\Scripts\python.exe" (
+  echo  [X] Falta instalar. Ejecuta primero INSTALAR.bat, que esta en la carpeta de arriba
   pause & exit /b 1
 )
-if not exist "credenciales.txt" (
+if not exist "..\credenciales.txt" (
   echo  [X] Falta credenciales.txt con el usuario y clave de Salesforce.
   pause & exit /b 1
 )
 
 rem Las credenciales van como variables de entorno, igual que en el servidor.
-for /f "usebackq tokens=1,* delims==" %%A in ("credenciales.txt") do (
+for /f "usebackq tokens=1,* delims==" %%A in ("..\credenciales.txt") do (
   echo %%A | findstr /b "#" >nul || set "%%A=%%B"
 )
 
@@ -49,7 +49,7 @@ echo  Trabajando. Se abre una ventana de Chrome: NO LA CIERRES.
 echo  Cada acta tarda unos segundos; una lista larga puede llevar un rato.
 echo.
 
-".venv\Scripts\python.exe" "actas\generar_actas_lote.py" "%LISTA%"
+"..\.venv\Scripts\python.exe" "generar_actas_lote.py" "%LISTA%"
 
 echo.
 pause

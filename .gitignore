@@ -63,5 +63,6 @@ tmp_deploy.sh
 /herramientas/.venv/
 /herramientas/**/__pycache__/
 /herramientas/credenciales.txt
-/herramientas/actas-generadas/
+/herramientas/**/actas-generadas/
+/herramientas/**/.sf_cookies.json
 /herramientas/.sf_cookies.json

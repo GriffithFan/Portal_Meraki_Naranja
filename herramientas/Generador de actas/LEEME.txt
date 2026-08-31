@@ -1,0 +1,81 @@
+GENERADOR DE ACTAS
+==================
+
+Arma las actas de relevamiento leyendo los datos de Salesforce y llenando la
+plantilla oficial. Dos formas de usarlo: un predio suelto, o una lista entera.
+
+
+ANTES DE LA PRIMERA VEZ
+-----------------------
+
+  Ejecutá INSTALAR.bat, que está en la carpeta de arriba, y completá el archivo
+  credenciales.txt con tu usuario y clave de Salesforce. Eso se hace una sola vez
+  y vale para todas las herramientas.
+
+
+UN ACTA SUELTA
+--------------
+
+  Doble clic en "GENERAR UN ACTA.bat" y escribí el número de predio.
+
+
+UNA LISTA ENTERA
+----------------
+
+  Arrastrá el archivo con la lista sobre "GENERAR ACTAS DE UNA LISTA.bat".
+
+  Sirve un .csv, un .txt o un .xlsx. Se usa la columna PREDIO si existe, y si no
+  la primera. Los archivos que exporta Carrot funcionan tal cual, sin tocarlos:
+  probado con los CSV de cronogramas y los Excel de asignados.
+
+  Todo va a una carpeta nueva dentro de "actas-generadas", con la fecha y la hora:
+
+      Acta_<predio>.docx     una por cada predio que salió bien
+      resumen.csv            qué pasó con cada uno, incluidos los que fallaron
+      IMPRIMIR TODAS.bat     doble clic y salen todas por la impresora
+
+
+IMPRIMIR
+--------
+
+  El "IMPRIMIR TODAS.bat" que queda en cada carpeta manda las actas a tu impresora
+  PREDETERMINADA. Antes de usarlo, fijate cuál es: Configuración > Bluetooth y
+  dispositivos > Impresoras.
+
+  Pide confirmación y te dice cuántas va a mandar, así que si te equivocaste de
+  carpeta todavía estás a tiempo de cancelar.
+
+  Necesita Word instalado: imprime con el programa asociado al .docx. Y espera
+  unos segundos entre una y otra a propósito — mandándolas todas de golpe, Word
+  se satura y pierde trabajos sin avisar.
+
+
+CUÁNTO TARDA
+------------
+
+  Se abre UNA sola sesión de Chrome para toda la lista, no una por predio. Unas
+  cincuenta actas llevan del orden de diez minutos.
+
+  La ventana de Chrome que se abre NO SE CIERRA hasta terminar. Si la cerrás, el
+  proceso queda a la mitad.
+
+
+SI ALGUNO FALLA
+---------------
+
+  El resto igual se genera: un predio con problema no frena la lista. Todos los
+  casos quedan en resumen.csv con el motivo.
+
+  Lo más común es que el predio no exista en Salesforce, o que la incidencia esté
+  cerrada. Eso no se arregla desde acá: hay que corregirlo en Salesforce y volver
+  a generar solo esos.
+
+
+QUÉ HAY EN ESTA CARPETA
+-----------------------
+
+  GENERAR UN ACTA.bat             para un predio suelto
+  GENERAR ACTAS DE UNA LISTA.bat  para una lista
+  Acta de relevamiento.docx       la plantilla oficial — no la muevas ni la renombres
+  actas-generadas\                acá aparecen las actas, en carpetas por fecha
+  *.py                            el motor; no hace falta tocarlo

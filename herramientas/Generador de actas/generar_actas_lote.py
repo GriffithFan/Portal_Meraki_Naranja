@@ -144,8 +144,10 @@ def main():
         print("No se encontro ningun numero de predio en el archivo.")
         return 1
 
+    # Dentro de esta misma carpeta: la herramienta queda autocontenida y las actas no
+    # se mezclan con las otras herramientas.
     salida = args[1] if len(args) > 1 else os.path.join(
-        os.path.dirname(AQUI), "actas-generadas", datetime.now().strftime("%Y-%m-%d %H%M"))
+        AQUI, "actas-generadas", datetime.now().strftime("%Y-%m-%d %H%M"))
     os.makedirs(salida, exist_ok=True)
 
     print(f"Predios en la lista : {len(predios)}")
