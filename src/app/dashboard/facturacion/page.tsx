@@ -9,8 +9,12 @@ import { toast } from "sonner";
 interface ReporteResumenItem {
   tecnicoId: string;
   tecnicoNombre: string;
+  /** En cuantos participo. Los compartidos figuran en dos tecnicos, asi que NO liquida. */
   cantidad: number;
-  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia?: string | null; fecha?: string | null; mas20Ap?: boolean; recablear?: string }[];
+  /** Los que le acreditan a el. La suma sobre todos da el total de predios del reporte. */
+  acreditados?: number;
+  colaboraciones?: number;
+  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia?: string | null; fecha?: string | null; mas20Ap?: boolean; recablear?: string; acreditado?: boolean; acreditadoA?: string | null }[];
 }
 
 interface Reporte {
@@ -278,13 +282,28 @@ export default function FacturacionPage() {
                                     ● {recabPredios} recableado{recabPredios !== 1 ? "s" : ""} · {recabPuntos} pts
                                   </span>
                                 )}
-                                <span className="text-[11px] font-semibold text-emerald-600">{grupo.cantidad} tarea{grupo.cantidad !== 1 ? "s" : ""}</span>
+                                {/* Acreditadas = las que le suman. Si ademas colaboro en
+                                    otras, se muestran aparte para que no se confundan
+                                    con lo que cobra. */}
+                                <span className="text-[11px] font-semibold text-emerald-600">
+                                  {grupo.acreditados ?? grupo.cantidad} tarea{(grupo.acreditados ?? grupo.cantidad) !== 1 ? "s" : ""}
+                                </span>
+                                {(grupo.colaboraciones ?? 0) > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-100 text-surface-500 border border-surface-200" title="Participó pero el predio acredita a otro técnico">
+                                    +{grupo.colaboraciones} en equipo
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div className="space-y-0.5">
                               {grupo.tareas.map((t) => (
-                                <div key={t.id} className="flex items-center gap-2 text-[11px] text-surface-500">
-                                  <span className="text-surface-800 font-medium truncate max-w-[120px]">{t.nombre}</span>
+                                /* En negrita el que acredita; en gris y con aclaracion el
+                                   que colaboro pero no cobra ese predio. */
+                                <div key={t.id} className={`flex items-center gap-2 text-[11px] ${t.acreditado === false ? "text-surface-400" : "text-surface-500"}`}>
+                                  <span className={`truncate max-w-[120px] ${t.acreditado === false ? "font-normal text-surface-400" : "font-bold text-surface-900"}`}>{t.nombre}</span>
+                                  {t.acreditado === false && t.acreditadoA && (
+                                    <span className="text-[10px] text-surface-400 italic shrink-0">acredita {t.acreditadoA}</span>
+                                  )}
                                   {t.mas20Ap && <span className="text-violet-600 font-semibold text-[10px]" title="Más de 20 AP — pago extra">● +20 AP</span>}
                                   {t.recablear && <span className="text-cyan-700 font-semibold text-[10px]" title={`Recablear: ${t.recablear} punto(s)`}>● R{t.recablear}</span>}
                                   {t.incidencia && <span className="text-surface-400 font-mono text-[10px]">{t.incidencia}</span>}

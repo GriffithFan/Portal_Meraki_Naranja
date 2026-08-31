@@ -110,7 +110,16 @@ export function xlsxBufferFacturacion(filas: FilaFacturacion[], totalTareas: num
  * los técnicos del predio (cuenta de predios por técnico), deduplicado por equipo.
  */
 export function resumenPorTecnico(predios: PredioFacturacion[]) {
-  const porTecnico: Record<string, { tecnicoId: string; tecnicoNombre: string; cantidad: number; tareas: any[] }> = {};
+  const porTecnico: Record<string, {
+    tecnicoId: string; tecnicoNombre: string;
+    /** En cuantos predios participo. NO sirve para liquidar: los compartidos estan en dos. */
+    cantidad: number;
+    /** Los que le acreditan a EL. La suma de esto sobre todos da el total de predios. */
+    acreditados: number;
+    /** Participo pero acredita otro. */
+    colaboraciones: number;
+    tareas: any[];
+  }> = {};
   for (const p of predios) {
     const tareaData = {
       id: p.id, nombre: p.nombre, codigo: p.codigo, provincia: p.provincia,
@@ -122,14 +131,30 @@ export function resumenPorTecnico(predios: PredioFacturacion[]) {
     const ordenados = ordenarTecnicosAsignados(p.asignaciones);
     if (ordenados.length === 0) {
       const k = "SIN_ASIGNAR";
-      if (!porTecnico[k]) porTecnico[k] = { tecnicoId: k, tecnicoNombre: "Sin asignar", cantidad: 0, tareas: [] };
+      if (!porTecnico[k]) porTecnico[k] = { tecnicoId: k, tecnicoNombre: "Sin asignar", cantidad: 0, acreditados: 0, colaboraciones: 0, tareas: [] };
       porTecnico[k].cantidad++;
-      porTecnico[k].tareas.push(tareaData);
+      porTecnico[k].acreditados++;
+      porTecnico[k].tareas.push({ ...tareaData, acreditado: true, acreditadoA: null });
     } else {
+      // El predio se muestra bajo TODOS los que lo trabajaron, pero acredita UNO solo:
+      // el ultimo asignado, que es el que lo resolvio y la misma regla que usa el ranking.
+      //
+      // Antes se sumaba `cantidad` para cada asignado, asi que un predio trabajado por dos
+      // se contaba dos veces: en la semana del 22/08 el detalle sumaba 127 contra 120
+      // predios reales, y cinco de esos siete eran el equipo de Ariel con los suyos.
+      // Quien liquide sumando las filas por tecnico pagaba de mas.
+      const ultimo = ordenados[ordenados.length - 1];
       for (const t of ordenados) {
-        if (!porTecnico[t.mergeKey]) porTecnico[t.mergeKey] = { tecnicoId: t.mergeKey, tecnicoNombre: t.displayName, cantidad: 0, tareas: [] };
+        if (!porTecnico[t.mergeKey]) porTecnico[t.mergeKey] = { tecnicoId: t.mergeKey, tecnicoNombre: t.displayName, cantidad: 0, acreditados: 0, colaboraciones: 0, tareas: [] };
+        const esElAcreditado = t.mergeKey === ultimo.mergeKey;
         porTecnico[t.mergeKey].cantidad++;
-        porTecnico[t.mergeKey].tareas.push(tareaData);
+        if (esElAcreditado) porTecnico[t.mergeKey].acreditados++;
+        else porTecnico[t.mergeKey].colaboraciones++;
+        porTecnico[t.mergeKey].tareas.push({
+          ...tareaData,
+          acreditado: esElAcreditado,
+          acreditadoA: esElAcreditado ? null : ultimo.displayName,
+        });
       }
     }
   }
