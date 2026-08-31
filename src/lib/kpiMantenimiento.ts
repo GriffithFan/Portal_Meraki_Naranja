@@ -502,13 +502,49 @@ export function textoCorreo(d: DatosKpi): string {
     .join("\n");
   const tot = linea("Total del período", d.volumenTotal);
 
+  // ── Movimientos: es la parte que se lee primero ────────────────────────────
+  // Predios unicos por semana, con el conforme acreditado a un solo tecnico, asi que el
+  // numero de conformes coincide con lo facturado.
+  const lineaMov = (etiqueta: string, m: Movimientos) =>
+    `- ${etiqueta}: ${m.conformes} conformes · ${m.ncNuevos} no conformes nuevos · ${m.trabajados} predios trabajados`;
+  const movSemanas = d.semanas.map((sm) => {
+    const fv = new Date(new Date(sm.desde).getTime() + 6 * 86400000);
+    return lineaMov(`Semana del ${ddmm(sm.desde)} al ${fDia(fv)}`, sm.mov);
+  }).join("\n");
+  const movZonasTxt = d.movZonas.map((z) => lineaMov(z.zona, z)).join("\n");
+  const movTecTxt = d.movTecnicos
+    .filter((t) => t.total.conformes + t.total.trabajados > 0)
+    .map((t) => lineaMov(t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} ${t.nombre}` : t.nombre, t.total))
+    .join("\n");
+  const movU = u.mov;
+
   return `Asunto: Indicador semanal — Técnicos activos en incidencias de mantenimiento
 
 Alberto, Fernando:
 
 Les comparto el indicador semanal. Adjunto la planilla con el detalle por técnico.
 
-En la semana del ${iniSemana} al ${finSemana} trabajaron ${u.tecnicos} técnicos, que finalizaron ${u.incidencias} incidencias de mantenimiento (${prov}).
+En la semana del ${iniSemana} al ${finSemana} trabajaron ${u.tecnicos} técnicos.
+
+El resultado de la semana fue:
+
+- ${movU.conformes} conformidades
+- ${movU.ncNuevos} no conformidades nuevas
+- ${movU.trabajados} predios trabajados (pasaron a instalar o auditar)
+
+De esas conformidades, ${u.incidencias} corresponden a incidencias de mantenimiento (${prov}).
+
+Evolución de las últimas ${d.semanas.length} semanas:
+
+${movSemanas}
+
+Por provincia, en el período completo:
+
+${movZonasTxt}
+
+Por técnico, en el período completo:
+
+${movTecTxt}
 
 La evolución de las últimas ${d.semanas.length} semanas:
 
