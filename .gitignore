@@ -66,3 +66,6 @@ tmp_deploy.sh
 /herramientas/**/actas-generadas/
 /herramientas/**/.sf_cookies.json
 /herramientas/.sf_cookies.json
+
+# El ZIP se genera con scripts/empaquetar-actas.js y puede llevar credenciales dentro.
+/../Generador de actas.zip
