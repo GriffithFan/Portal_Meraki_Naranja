@@ -28,7 +28,7 @@ if "%PREDIO%"=="" (
 
 echo.
 echo  Generando el acta del predio %PREDIO%...
-echo  Abre una ventana de Chrome: no la cierres.
+echo  Chrome corre en segundo plano, sin ventana. No cierres esta consola.
 echo.
 
 "..\.venv\Scripts\python.exe" "generar_acta_uno.py" %PREDIO%

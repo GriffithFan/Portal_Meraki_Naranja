@@ -56,8 +56,9 @@ CUÁNTO TARDA
   Se abre UNA sola sesión de Chrome para toda la lista, no una por predio. Unas
   cincuenta actas llevan del orden de diez minutos.
 
-  La ventana de Chrome que se abre NO SE CIERRA hasta terminar. Si la cerrás, el
-  proceso queda a la mitad.
+  Chrome corre en segundo plano, SIN VENTANA: no vas a ver nada más que la consola
+  negra con el avance. Es normal. Lo que no hay que cerrar es esa consola — si la
+  cerrás, el proceso queda a la mitad.
 
 
 SI ALGUNO FALLA

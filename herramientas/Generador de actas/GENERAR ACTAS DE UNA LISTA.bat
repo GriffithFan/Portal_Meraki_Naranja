@@ -45,8 +45,9 @@ if not exist "%LISTA%" (
 )
 
 echo.
-echo  Trabajando. Se abre una ventana de Chrome: NO LA CIERRES.
-echo  Cada acta tarda unos segundos; una lista larga puede llevar un rato.
+echo  Trabajando. Chrome corre en segundo plano, sin ventana: es normal que no
+echo  veas nada mas que esta consola. Cada acta tarda unos segundos.
+echo  NO CIERRES ESTA VENTANA hasta que termine.
 echo.
 
 "..\.venv\Scripts\python.exe" "generar_actas_lote.py" "%LISTA%"
