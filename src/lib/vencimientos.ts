@@ -6,7 +6,16 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const DIAS_ALERTA_VENCIMIENTO = 7;
+/**
+ * Con cuánta anticipación se avisa de un vencimiento.
+ *
+ * Estaba en 7 y era muy tarde: renovar un seguro o un monotributo lleva más de una
+ * semana, asi que el aviso llegaba cuando ya no se podia hacer nada. Ademas el cron
+ * documentaba "≤30 dias" en su comentario pero llamaba a `analizarVencimientos` sin
+ * argumento, o sea que usaba estos 7: el codigo y su propia documentacion decian cosas
+ * distintas. Medido el 31/08/2026: 3 fichas vencidas -dos hacia 8 dias- y 7 por vencer.
+ */
+export const DIAS_ALERTA_VENCIMIENTO = 30;
 
 export type EstadoVenc = "vencido" | "proximo" | "ok";
 

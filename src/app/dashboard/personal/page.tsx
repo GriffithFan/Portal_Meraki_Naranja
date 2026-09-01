@@ -44,6 +44,22 @@ function textoBusqueda(f: FichaListItem) {
 
 const INPUT_CLS = "w-full bg-surface-50 dark:bg-surface-700/50 border border-transparent rounded-md px-2.5 py-1.5 text-sm text-surface-800 dark:text-surface-100 placeholder:text-surface-300 focus:bg-white dark:focus:bg-surface-700 focus:border-primary-300 focus:ring-2 focus:ring-primary-500/15 focus:outline-none transition-colors";
 
+/**
+ * Qué porcentaje de los campos de la ficha tiene algo cargado.
+ *
+ * Sirve para ver de un vistazo cuáles están a medio llenar sin abrirlas una por una.
+ * Se cuentan los campos definidos, no una lista fija: cada ficha puede tener los suyos.
+ */
+function completitud(secciones: any): { pct: number; llenos: number; total: number } {
+  const secs = Array.isArray(secciones) ? secciones : [];
+  let total = 0, llenos = 0;
+  for (const s of secs) for (const c of (s?.campos || [])) {
+    total++;
+    if (String(c?.valor ?? "").trim()) llenos++;
+  }
+  return { pct: total ? Math.round((100 * llenos) / total) : 0, llenos, total };
+}
+
 export default function PersonalPage() {
   const { session, loading: sessionLoading, isAdmin } = useSession();
   const acceso = tieneAccesoFichas(session?.email);
@@ -449,6 +465,42 @@ export default function PersonalPage() {
                 {catalogo.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
+            {/* Vencimientos de TODAS las fichas, no solo de la abierta. Antes habia que
+                entrar una por una para enterarse: el 31/08 habia dos vencidos hacia 8 dias
+                y nadie lo sabia. Al tocar uno se abre esa ficha. */}
+            {(() => {
+              const urgentes = lista.flatMap((f: any) =>
+                analizarVencimientos(f.secciones)
+                  .filter((v) => v.estado !== "ok")
+                  .map((v) => ({ ...v, fichaId: f.id, fichaNombre: f.nombre })))
+                .sort((a, b) => a.dias - b.dias);
+              if (!urgentes.length) return null;
+              const vencidos = urgentes.filter((v) => v.dias < 0).length;
+              return (
+                <details open className="rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-2 dark:border-amber-900/40 dark:bg-amber-950/20">
+                  <summary className="cursor-pointer text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                    {vencidos > 0 && <span className="text-red-600 dark:text-red-400">{vencidos} vencido{vencidos !== 1 ? "s" : ""}</span>}
+                    {vencidos > 0 && urgentes.length > vencidos && " · "}
+                    {urgentes.length > vencidos && `${urgentes.length - vencidos} por vencer`}
+                  </summary>
+                  <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
+                    {urgentes.map((v, i) => (
+                      <button
+                        key={`${v.fichaId}-${v.campoId}-${i}`}
+                        onClick={() => seleccionar(v.fichaId)}
+                        className="block w-full text-left text-[11px] leading-tight hover:underline"
+                      >
+                        <span className={v.dias < 0 ? "font-semibold text-red-600 dark:text-red-400" : "font-medium text-amber-700 dark:text-amber-300"}>
+                          {v.dias < 0 ? `hace ${Math.abs(v.dias)} d` : `en ${v.dias} d`}
+                        </span>
+                        <span className="text-surface-600 dark:text-surface-300"> · {v.fichaNombre}</span>
+                        <span className="text-surface-400"> · {v.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              );
+            })()}
             <div className="flex items-center justify-between text-[11px] text-surface-400 px-0.5">
               <span>{listaFiltrada.length} de {lista.length}</span>
               {hayFiltros && (
@@ -473,6 +525,21 @@ export default function PersonalPage() {
                     {f._count?.archivos ? <span className="text-[10px] text-surface-400 shrink-0 inline-flex items-center gap-0.5"><PaperclipIcon className="w-3 h-3" />{f._count.archivos}</span> : null}
                   </span>
                   <span className="block text-[11px] text-surface-400 truncate">{[TIPO_LABEL[f.tipo] || f.tipo, ...(f.proyectos || []).map((p) => p.nombre)].filter(Boolean).join(" · ")}</span>
+                  {(() => {
+                    const c = completitud(f.secciones);
+                    if (!c.total) return null;
+                    // Barra fina bajo el nombre: dice si la ficha esta a medio llenar sin
+                    // tener que abrirla. Roja bajo 40%, ambar bajo 70%.
+                    const color = c.pct >= 70 ? "bg-emerald-500" : c.pct >= 40 ? "bg-amber-500" : "bg-red-400";
+                    return (
+                      <span className="mt-1 flex items-center gap-1.5" title={`${c.llenos} de ${c.total} campos completos`}>
+                        <span className="h-1 flex-1 rounded-full bg-surface-100 overflow-hidden">
+                          <span className={`block h-full rounded-full ${color}`} style={{ width: `${c.pct}%` }} />
+                        </span>
+                        <span className="text-[10px] tabular-nums text-surface-400">{c.pct}%</span>
+                      </span>
+                    );
+                  })()}
                 </span>
               </button>
             ))}

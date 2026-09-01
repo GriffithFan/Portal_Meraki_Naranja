@@ -201,7 +201,23 @@ async function main() {
 
   // ── Legajos ─────────────────────────────────────────────────────────────────
   // Van aparte y con el nombre de la persona, para que la carpeta se pueda restringir.
-  const fichas = await prisma.fichaPersonal.findMany({ select: { id: true, nombre: true, fotoUrl: true } });
+  const fichas = await prisma.fichaPersonal.findMany({ select: { id: true, nombre: true, fotoUrl: true, secciones: true } });
+
+  /**
+   * id de campo -> nombre legible.
+   *
+   * Los adjuntos guardan en `seccion` el ID del campo, no su etiqueta, asi que sin esto
+   * las carpetas del respaldo salian con nombres como "c_kiay6snhx1" y no habia forma de
+   * saber que documento es. Medido: 39 de 44 secciones eran ilegibles.
+   */
+  const etiquetaCampo = new Map();
+  for (const fi of fichas) {
+    for (const sec of (Array.isArray(fi.secciones) ? fi.secciones : [])) {
+      for (const campo of (sec?.campos || [])) {
+        if (campo?.id && campo?.label) etiquetaCampo.set(String(campo.id), String(campo.label));
+      }
+    }
+  }
   const nombreFicha = new Map(fichas.map((f) => [f.id, limpio(f.nombre || f.id, 60)]));
   const docs = await prisma.fichaArchivo.findMany({
     select: { fichaId: true, ruta: true, nombre: true, seccion: true, createdAt: true },
@@ -210,7 +226,8 @@ async function main() {
   for (const d of docs) {
     const quien = nombreFicha.get(d.fichaId) || "Sin identificar";
     // La sección (dni, carnet, seguro, monotributo…) es lo que hace navegable el legajo.
-    const seccion = limpio(d.seccion || "general", 30);
+    // Se prefiere la etiqueta; el id crudo solo queda si el campo ya no existe.
+    const seccion = limpio(etiquetaCampo.get(String(d.seccion)) || d.seccion || "general", 40);
     agregar(rutaDe(d.ruta), `04 Personnel/${quien}/${seccion}/${limpio(d.nombre || path.basename(d.ruta), 100)}`);
     legajos++;
   }
