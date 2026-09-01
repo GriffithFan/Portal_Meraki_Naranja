@@ -25,8 +25,12 @@ python -m venv "%~dp0.venv"
 if errorlevel 1 goto error
 
 echo  Instalando dependencias (tarda unos minutos)...
-"%~dp0.venv\Scripts\python.exe" -m pip install --quiet --upgrade pip
-"%~dp0.venv\Scripts\python.exe" -m pip install --quiet -r "%~dp0extractor\requirements.txt" python-docx
+rem --no-cache-dir: si en la cache de pip quedaron descargas de otra version de
+rem Python, las lee mal y escupe cientos de "Cache entry deserialization failed".
+rem No rompe nada -vuelve a bajar el paquete- pero son cientos de lineas amarillas
+rem que dicen "failed" y cualquiera asume que la instalacion se rompio.
+"%~dp0.venv\Scripts\python.exe" -m pip install --quiet --no-cache-dir --upgrade pip
+"%~dp0.venv\Scripts\python.exe" -m pip install --quiet --no-cache-dir -r "%~dp0extractor\requirements.txt" python-docx
 if errorlevel 1 goto error
 
 if not exist "%~dp0credenciales.txt" (
