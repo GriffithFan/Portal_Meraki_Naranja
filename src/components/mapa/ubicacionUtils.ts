@@ -7,6 +7,17 @@
  * cargue con `dynamic({ ssr: false })`, porque un import estático se resuelve igual.
  */
 
+export interface PredioAsignado {
+  codigo: string | null;
+  nombre: string;
+  ciudad: string | null;
+  estado: string | null;
+  lat: number;
+  lng: number;
+  /** Metros hasta la última posición del técnico. Null si no tiene señal. */
+  distanciaM: number | null;
+}
+
 export interface TecnicoUbicado {
   id: string;
   nombre: string;
@@ -16,6 +27,31 @@ export interface TecnicoUbicado {
     lat: number; lng: number; precision: number | null;
     origen: string; fecha: string; minutos: number;
   } | null;
+  /** Puntos de hoy, del más viejo al más nuevo. */
+  recorrido?: Array<{ lat: number; lng: number; fecha: string }>;
+  /** Predios pendientes suyos, del más cercano al más lejano. */
+  asignados?: PredioAsignado[];
+}
+
+/** "24 m", "5,6 km". Redondeo distinto por tramo: 5.634 m no aporta nada sobre 5,6 km. */
+export function distanciaLegible(metros: number | null | undefined): string {
+  if (metros == null) return "—";
+  if (metros < 1000) return `${Math.round(metros)} m`;
+  return `${(metros / 1000).toFixed(1).replace(".", ",")} km`;
+}
+
+/**
+ * Qué tan cerca está del predio pendiente más próximo.
+ *
+ * Los cortes salen de lo que se ve en los datos: bajo 300 m el técnico está en el predio
+ * (el GPS del celular tiene ese error), hasta 3 km está en la zona, y más allá está
+ * trabajando en otra cosa o no está trabajando.
+ */
+export function cercania(metros: number | null | undefined): { texto: string; color: string } {
+  if (metros == null) return { texto: "sin señal", color: "#94a3b8" };
+  if (metros < 300) return { texto: "en el predio", color: "#059669" };
+  if (metros < 3000) return { texto: "en la zona", color: "#d97706" };
+  return { texto: "lejos", color: "#dc2626" };
 }
 
 /**

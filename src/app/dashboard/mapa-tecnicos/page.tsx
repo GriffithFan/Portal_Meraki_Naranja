@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSession } from "@/hooks/useSession";
-import { colorPorEdad, edadLegible, type TecnicoUbicado } from "@/components/mapa/ubicacionUtils";
+import { cercania, colorPorEdad, distanciaLegible, edadLegible, type TecnicoUbicado } from "@/components/mapa/ubicacionUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -28,8 +28,6 @@ interface Respuesta {
 const fechaAR = (iso: string) =>
   new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-const distanciaLegible = (m: number | null) =>
-  m == null ? null : m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} km`;
 
 export default function MapaTecnicosPage() {
   const { session, loading: cargandoSesion } = useSession();
@@ -157,6 +155,36 @@ export default function MapaTecnicosPage() {
                   )}
                 </div>
               </div>
+
+              {/* Lo primero que se quiere saber: ¿está en lo que tiene asignado o no?
+                  Antes había que mirar el mapa y estimar a ojo. */}
+              {elegido.asignados && elegido.asignados.length > 0 && (() => {
+                const cerca = elegido.asignados[0];
+                const c = cercania(cerca.distanciaM);
+                return (
+                  <div className="mt-3.5 border-t border-surface-100 pt-3">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-surface-400">
+                      Pendiente más cercano
+                    </div>
+                    <div className="mt-1.5 flex items-baseline gap-2">
+                      <span className="text-lg font-semibold tabular-nums" style={{ color: c.color }}>
+                        {distanciaLegible(cerca.distanciaM)}
+                      </span>
+                      <span className="text-xs font-medium" style={{ color: c.color }}>{c.texto}</span>
+                    </div>
+                    <div className="mt-0.5 text-sm text-surface-700">
+                      <span className="font-semibold">{cerca.codigo}</span>
+                      {cerca.ciudad && <span className="text-surface-400"> · {cerca.ciudad}</span>}
+                    </div>
+                    <div className="text-[11px] text-surface-400">
+                      {elegido.asignados.length} pendiente{elegido.asignados.length !== 1 ? "s" : ""} con ubicación
+                      {elegido.recorrido && elegido.recorrido.length > 1
+                        ? ` · ${elegido.recorrido.length} marcas hoy`
+                        : ""}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="mt-3.5 border-t border-surface-100 pt-3">
                 <div className="text-[11px] font-medium uppercase tracking-wide text-surface-400">
