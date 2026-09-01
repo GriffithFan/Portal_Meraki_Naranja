@@ -18,6 +18,19 @@ export const dynamic = "force-dynamic";
  * nunca debe leerse como actual.
  */
 
+/**
+ * Medianoche de HOY en hora argentina, expresada en UTC.
+ *
+ * El servidor corre en UTC y Argentina es UTC-3 fijo. Sin este ajuste, entre las 21:00 y
+ * la medianoche argentina el "recorrido de hoy" arrancaria del dia siguiente y saldria
+ * vacio justo en el unico horario en que a nadie le sirve que salga vacio.
+ */
+function arranqueDelDia(): Date {
+  const ahora = new Date();
+  const art = new Date(ahora.getTime() - 3 * 3600 * 1000);
+  return new Date(Date.UTC(art.getUTCFullYear(), art.getUTCMonth(), art.getUTCDate(), 3, 0, 0, 0));
+}
+
 /** Distancia en metros entre dos coordenadas (haversine). */
 function metrosEntre(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371000;
@@ -51,9 +64,12 @@ export async function GET() {
       id: true, nombre: true, thNumero: true, telefono: true,
       fichaPersonal: { select: { id: true, fotoUrl: true, updatedAt: true } },
       consentimientoUbicacion: { select: { aceptadoEn: true, revocadoEn: true } },
+      // Todo lo del dia, no solo el ultimo punto: con eso se dibuja el recorrido.
+      // Llega una marca cada ~10 minutos, asi que una jornada son unos 60 puntos.
       ubicaciones: {
+        where: { createdAt: { gte: arranqueDelDia() } },
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 200,
         select: { lat: true, lng: true, precision: true, origen: true, createdAt: true },
       },
     },
@@ -112,6 +128,41 @@ export async function GET() {
     : [];
   const predioPorId = new Map(predios.map((p) => [p.id, p]));
 
+  // ── Predios asignados que todavia hay que trabajar ─────────────────────────
+  // Es el dato operativo del mapa: no alcanza con ver donde esta el tecnico, hay que
+  // poder responder si esta cerca de lo que tiene pendiente o lejos de todo.
+  //
+  // Solo los estados que significan "falta hacerlo": ya conformes o facturados no
+  // aportan nada y solo ensucian el mapa.
+  const PENDIENTES = ["SIN ASIGNAR", "EN PROGRESO", "RELEVAR", "NO CONFORME", "CAMBIO LAC"];
+  const estadosPend = await prisma.estadoConfig.findMany({
+    where: { nombre: { in: PENDIENTES } },
+    select: { id: true },
+  });
+  const idsPredioAsignado = Array.from(new Set(asignaciones.map((a) => a.predioId).filter(Boolean))) as string[];
+  const prediosPend = idsPredioAsignado.length && estadosPend.length
+    ? await prisma.predio.findMany({
+        where: { id: { in: idsPredioAsignado }, estadoId: { in: estadosPend.map((e) => e.id) } },
+        select: {
+          id: true, codigo: true, nombre: true, ciudad: true,
+          latitud: true, longitud: true, gpsPredio: true,
+          estado: { select: { nombre: true } },
+        },
+      })
+    : [];
+
+  /** userId -> predios pendientes suyos que tienen coordenadas. */
+  const pendientesDe = new Map<string, Array<{ id: string; codigo: string | null; nombre: string; ciudad: string | null; estado: string | null; lat: number; lng: number }>>();
+  for (const pr of prediosPend) {
+    const c = coordsDePredio(pr);
+    if (!c) continue; // sin coordenadas no se puede ubicar ni medir: se omite
+    for (const userId of tecnicosDePredio.get(pr.id) || []) {
+      const lista = pendientesDe.get(userId) || [];
+      lista.push({ id: pr.id, codigo: pr.codigo, nombre: pr.nombre, ciudad: pr.ciudad, estado: pr.estado?.nombre ?? null, ...c });
+      pendientesDe.set(userId, lista);
+    }
+  }
+
   const ahora = Date.now();
   const filas = tecnicos.map((t) => {
     const u = t.ubicaciones[0] || null;
@@ -142,6 +193,22 @@ export async function GET() {
             minutos: Math.round((ahora - u.createdAt.getTime()) / 60000),
           }
         : null,
+      // Recorrido del dia, de mas viejo a mas nuevo, para dibujar la linea.
+      recorrido: t.ubicaciones
+        .slice()
+        .reverse()
+        .map((x) => ({ lat: x.lat, lng: x.lng, fecha: x.createdAt.toISOString() })),
+      // Pendientes suyos, del mas cercano al mas lejano. El primero es el que importa:
+      // dice si esta en lo que tiene que hacer o lejos de todo.
+      asignados: (() => {
+        const lista = (pendientesDe.get(t.id) || []).map((x) => ({
+          codigo: x.codigo, nombre: x.nombre, ciudad: x.ciudad, estado: x.estado,
+          lat: x.lat, lng: x.lng,
+          distanciaM: u ? Math.round(metrosEntre(u.lat, u.lng, x.lat, x.lng)) : null,
+        }));
+        lista.sort((a, b) => (a.distanciaM ?? Infinity) - (b.distanciaM ?? Infinity));
+        return lista.slice(0, 60); // suficiente para el mapa; mas es ruido y payload
+      })(),
       ultimoInstalado: predio
         ? {
             codigo: predio.codigo,
