@@ -1,6 +1,6 @@
 """Genera las actas de una LISTA de predios, en una sola pasada.
 
-Uso:  generar_actas_lote.py <archivo-con-la-lista> [carpeta-de-salida]
+Uso:  generar_actas_lote.py <archivo-con-la-lista> [carpeta-de-salida] [--continuar]
 
 El archivo puede ser .csv, .txt o .xlsx. Se toma la columna PREDIO si existe; si no,
 la primera columna. Sirve tal cual el CSV que exporta Carrot.
@@ -9,6 +9,9 @@ Por que existe teniendo `generar_acta_uno.py`: ese abre un Chrome, hace login y 
 para CADA predio. Con una lista de cincuenta eso son cincuenta arranques de navegador y
 cincuenta logins — mas de una hora. Aca se abre una sola sesion y se recorre la lista,
 que es la diferencia entre que la herramienta se use o no.
+
+Con `--continuar` saltea los predios que ya tienen su .docx en la carpeta de salida, asi
+una corrida larga que se corto se retoma donde iba en vez de rehacerla entera.
 
 Al terminar deja en la carpeta de salida:
   Acta_<predio>.docx      una por predio que salio bien
@@ -128,8 +131,35 @@ pause
         fh.write(contenido)
 
 
+CAMPOS_RESUMEN = ["predio", "estado", "archivo", "establecimiento"]
+
+
+def escribir_resumen(carpeta, resultados):
+    """Se reescribe despues de cada predio: si la corrida se corta, el registro queda."""
+    with open(os.path.join(carpeta, "resumen.csv"), "w", encoding="utf-8-sig", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=CAMPOS_RESUMEN, delimiter=";")
+        w.writeheader()
+        w.writerows(resultados)
+
+
+def reabrir_sesion(driver):
+    """Salesforce corta la sesion sola en corridas largas. Devuelve True si la recupero."""
+    try:
+        driver.get(actas.URL_BASE)
+        if not uno.parece_login(driver):
+            return False          # la sesion estaba bien; el fallo era del predio
+        print("   ... la sesion de Salesforce se cayo, entrando de nuevo")
+        actas.login(driver)
+        uno.guardar_cookies(driver)
+        return True
+    except Exception as e:
+        print(f"   ... no se pudo reabrir la sesion: {str(e)[:80]}")
+        return False
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    continuar = "--continuar" in sys.argv
     if not args:
         print("Falta el archivo con la lista de predios.")
         print("Uso: generar_actas_lote.py <archivo> [carpeta-de-salida]")
@@ -150,9 +180,26 @@ def main():
         AQUI, "actas-generadas", datetime.now().strftime("%Y-%m-%d %H%M"))
     os.makedirs(salida, exist_ok=True)
 
-    print(f"Predios en la lista : {len(predios)}")
+    total_lista = len(predios)
+    ya_estaban = []
+    if continuar:
+        pendientes = []
+        for n in predios:
+            if os.path.exists(os.path.join(salida, f"Acta_{n}.docx")):
+                ya_estaban.append(n)
+            else:
+                pendientes.append(n)
+        predios = pendientes
+
+    print(f"Predios en la lista : {total_lista}")
+    if ya_estaban:
+        print(f"Ya generados        : {len(ya_estaban)} (se saltean)")
+        print(f"Quedan por generar  : {len(predios)}")
     print(f"Carpeta de salida   : {salida}")
-    print("\nAbriendo Salesforce (se abre una ventana de Chrome: no la cierres)...\n")
+    if not predios:
+        print("\nNo queda ninguno pendiente.")
+        return 0
+    print("\nAbriendo Salesforce (Chrome corre sin ventana)...\n")
 
     driver = uno.crear_driver_linux()
     resultados = []
@@ -168,31 +215,58 @@ def main():
             uno.guardar_cookies(driver)
 
         t0 = time.time()
+
+        def generar(predio):
+            """Devuelve la fila del resumen. Lanza si Salesforce no respondio."""
+            record_id = uno.resolver_id(driver, predio)
+            if not record_id:
+                return {"predio": predio, "estado": "no encontrado", "archivo": "", "establecimiento": ""}
+            actas.ir_a_registro(driver, record_id)
+            data = actas.extraer_campos_predio(driver, record_id=record_id)
+            if not data.get("Numero de Predio"):
+                data["Numero de Predio"] = predio
+            nombre = f"Acta_{data.get('Numero de Predio') or predio}.docx"
+            destino = os.path.join(salida, nombre)
+            actas.rellenar_word(TEMPLATE, data, destino)
+            ok = os.path.exists(destino)
+            return {"predio": predio, "estado": "ok" if ok else "error al escribir",
+                    "archivo": nombre if ok else "",
+                    "establecimiento": data.get("Establecimiento", "")}
+
+        seguidos_mal = 0
         for i, predio in enumerate(predios, 1):
             marca = f"[{i}/{len(predios)}] {predio}"
+            fila = None
             try:
-                record_id = uno.resolver_id(driver, predio)
-                if not record_id:
-                    print(f"{marca}  NO SE ENCONTRO en Salesforce")
-                    resultados.append({"predio": predio, "estado": "no encontrado", "archivo": "", "establecimiento": ""})
-                    continue
-                actas.ir_a_registro(driver, record_id)
-                data = actas.extraer_campos_predio(driver, record_id=record_id)
-                if not data.get("Numero de Predio"):
-                    data["Numero de Predio"] = predio
-                nombre = f"Acta_{data.get('Numero de Predio') or predio}.docx"
-                destino = os.path.join(salida, nombre)
-                actas.rellenar_word(TEMPLATE, data, destino)
-                ok = os.path.exists(destino)
-                print(f"{marca}  {'OK' if ok else 'FALLO al escribir'}  {data.get('Establecimiento', '')[:40]}")
-                resultados.append({
-                    "predio": predio, "estado": "ok" if ok else "error al escribir",
-                    "archivo": nombre if ok else "",
-                    "establecimiento": data.get("Establecimiento", ""),
-                })
+                fila = generar(predio)
             except Exception as e:
-                print(f"{marca}  ERROR: {str(e)[:90]}")
-                resultados.append({"predio": predio, "estado": f"error: {str(e)[:80]}", "archivo": "", "establecimiento": ""})
+                # Dos fallos seguidos casi siempre son la sesion caida, no el predio.
+                seguidos_mal += 1
+                if seguidos_mal >= 2 and reabrir_sesion(driver):
+                    seguidos_mal = 0
+                    try:
+                        fila = generar(predio)
+                    except Exception as e2:
+                        e = e2
+                if fila is None:
+                    print(f"{marca}  ERROR: {str(e)[:90]}")
+                    fila = {"predio": predio, "estado": f"error: {str(e)[:80]}", "archivo": "", "establecimiento": ""}
+
+            if fila["estado"] == "ok":
+                seguidos_mal = 0
+                print(f"{marca}  OK  {fila['establecimiento'][:40]}")
+            elif fila["estado"] == "no encontrado":
+                print(f"{marca}  NO SE ENCONTRO en Salesforce")
+            resultados.append(fila)
+            escribir_resumen(salida, resultados)
+
+            # En una corrida de cientos, saber cuanto falta es la diferencia entre
+            # esperar tranquilo y pensar que se colgo.
+            if i % 25 == 0 and i < len(predios):
+                pasado = time.time() - t0
+                falta = int(pasado / i * (len(predios) - i))
+                print(f"   ... {i}/{len(predios)} · {int(pasado // 60)} min corridos · "
+                      f"quedan ~{falta // 60} min")
 
         seg = int(time.time() - t0)
         print(f"\nTerminado en {seg // 60} min {seg % 60} s")
@@ -202,17 +276,15 @@ def main():
         except Exception:
             pass
 
-    # Resumen: importa sobre todo por los que fallaron.
-    with open(os.path.join(salida, "resumen.csv"), "w", encoding="utf-8-sig", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=["predio", "estado", "archivo", "establecimiento"], delimiter=";")
-        w.writeheader()
-        w.writerows(resultados)
+    escribir_resumen(salida, resultados)
     bat_imprimir(salida)
 
     ok = sum(1 for r in resultados if r["estado"] == "ok")
     print(f"\n{ok} actas generadas · {len(resultados) - ok} con problema")
+    if ya_estaban:
+        print(f"{len(ya_estaban)} ya estaban de antes · {ok + len(ya_estaban)} actas en la carpeta")
     print(f"Carpeta: {salida}")
-    if ok:
+    if ok or ya_estaban:
         print('Para imprimirlas todas: abri la carpeta y hace doble clic en "IMPRIMIR TODAS.bat"')
     return 0
 

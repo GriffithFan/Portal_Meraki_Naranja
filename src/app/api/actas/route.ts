@@ -5,7 +5,15 @@ import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
 import { sanitizeSearch } from "@/lib/sanitize";
 import { sanitizeFileName, validateAndReadUpload } from "@/lib/uploadSecurity";
-import { detectarProvincia } from "@/utils/provinciaUtils";
+import {
+  construirWhereActas,
+  ESTADOS_CHIP,
+  filtrosDesdeParams,
+  listaTecnicos,
+  resolverPredioPorNombre,
+  SELECT_LISTA,
+  type FiltrosActas,
+} from "@/lib/actasFiltros";
 
 const ACTA_ALLOWED_TYPES = [
   "application/pdf",
@@ -15,73 +23,34 @@ const ACTA_ALLOWED_TYPES = [
 const ACTA_ALLOWED_EXTENSIONS = ["pdf", "docx", "doc"];
 const ACTA_MAX_FILE_SIZE = 10 * 1024 * 1024;
 
+/**
+ * Lista de actas, paginada y filtrada en la base.
+ *
+ * Antes el filtro por provincia traía la tabla entera a memoria del servidor para
+ * descartar filas en Node, y la pantalla pedía 500 actas de entrada (3000 al buscar)
+ * para mostrar 60. Ahora todo se resuelve con `where` + `take`, y la provincia sale
+ * de la columna del predio en vez de deducirse del nombre del archivo.
+ *
+ * `contar=1` agrega los totales por estado para los chips, en un `groupBy` aparte:
+ * contar sobre las filas ya traídas daría mal apenas hay paginación.
+ */
 export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const buscar = sanitizeSearch(searchParams.get("buscar"));
-  const predioId = searchParams.get("predioId");
-  const provincia = searchParams.get("provincia");
-  const desde = searchParams.get("desde");
-  const hasta = searchParams.get("hasta");
-  const limitParam = searchParams.get("limit");
-  const limit = Math.min(Math.max(parseInt(limitParam || "100") || 100, 1), 3000);
-  const pageParam = searchParams.get("page");
-  const page = Math.max(parseInt(pageParam || "1") || 1, 1);
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "60") || 60, 1), 500);
+  const page = Math.max(parseInt(searchParams.get("page") || "1") || 1, 1);
   const skip = (page - 1) * limit;
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  const where: any = {};
-  if (predioId) where.predioId = predioId;
-  if (buscar) {
-    where.OR = [
-      { nombre: { contains: buscar, mode: "insensitive" } },
-      { descripcion: { contains: buscar, mode: "insensitive" } },
-      { archivoNombre: { contains: buscar, mode: "insensitive" } },
-      { predio: { nombre: { contains: buscar, mode: "insensitive" } } },
-    ];
-  }
-  // Filtro por rango de fecha
-  if (desde || hasta) {
-    where.createdAt = {};
-    if (desde) where.createdAt.gte = new Date(desde);
-    if (hasta) {
-      const h = new Date(hasta);
-      h.setHours(23, 59, 59, 999);
-      where.createdAt.lte = h;
-    }
-  }
-
-  // Si se filtra por provincia, necesitamos traer todo y filtrar en memoria
-  // ya que la provincia se deriva del nombre (no es un campo en DB)
-  if (provincia) {
-    const allActas = await prisma.acta.findMany({
-      where,
-      include: {
-        predio: { select: { id: true, nombre: true } },
-        subidoPor: { select: { id: true, nombre: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    const filtered = allActas.filter((a) => {
-      const prov = detectarProvincia(a.nombre);
-      return prov && prov.toLowerCase() === provincia.toLowerCase();
-    });
-
-    const total = filtered.length;
-    const paged = filtered.slice(skip, skip + limit);
-    return NextResponse.json({ actas: paged, total, page, limit });
-  }
+  const filtros = filtrosDesdeParams(searchParams, buscar);
+  const where = await construirWhereActas(filtros);
 
   const [actas, total] = await Promise.all([
     prisma.acta.findMany({
       where,
-      include: {
-        predio: { select: { id: true, nombre: true } },
-        subidoPor: { select: { id: true, nombre: true } },
-      },
+      select: SELECT_LISTA,
       orderBy: { createdAt: "desc" },
       skip,
       take: limit,
@@ -89,7 +58,49 @@ export async function GET(request: NextRequest) {
     prisma.acta.count({ where }),
   ]);
 
-  return NextResponse.json({ actas, total, page, limit });
+  const respuesta: Record<string, unknown> = { actas, total, page, limit };
+
+  // Solo en la primera carga: los chips y el desplegable de técnicos no cambian al
+  // pasar de página, así que no tiene sentido recalcularlos en cada scroll.
+  if (searchParams.get("contar") === "1") {
+    const [conteos, tecnicos] = await Promise.all([
+      contarPorEstado(filtros, ESTADOS_CHIP),
+      listaTecnicos(),
+    ]);
+    respuesta.conteos = conteos;
+    respuesta.tecnicos = tecnicos;
+    respuesta.estadosChip = ESTADOS_CHIP;
+  }
+
+  return NextResponse.json(respuesta);
+}
+
+/**
+ * Cuántas actas hay en cada estado que la pantalla muestra como chip.
+ *
+ * Se cuenta estado por estado en vez de agrupar: agrupar obligaría a traer una fila
+ * por acta para contarlas en Node, que es exactamente lo que se quiere evitar. Son
+ * tres `count()` que van por índice y corren en paralelo.
+ *
+ * El filtro de estado se ignora a propósito: si contara con el estado aplicado, cada
+ * chip mostraría su propio total y los demás en cero.
+ */
+async function contarPorEstado(filtros: FiltrosActas, estados: string[]) {
+  const base = await construirWhereActas({ ...filtros, estados: [], soloHuerfanas: false });
+
+  const [porEstado, sinPredio, total] = await Promise.all([
+    Promise.all(estados.map((nombre) =>
+      prisma.acta.count({ where: { ...base, predio: { ...(base.predio || {}), estado: { nombre } } } })
+    )),
+    prisma.acta.count({ where: { ...base, predio: undefined, predioId: null } }),
+    prisma.acta.count({ where: base }),
+  ]);
+
+  return {
+    estados: Object.fromEntries(estados.map((n, i) => [n, porEstado[i]])),
+    sinPredio,
+    total,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -103,7 +114,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File | null;
     const nombre = formData.get("nombre") as string;
     const descripcion = formData.get("descripcion") as string | null;
-    const predioId = formData.get("predioId") as string | null;
+    const predioIdForm = formData.get("predioId") as string | null;
     const overwrite = formData.get("overwrite") === "true";
 
     if (!file || !nombre) {
@@ -118,6 +129,11 @@ export async function POST(request: NextRequest) {
       label: "acta",
     });
     if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
+
+    // Si no vino el predio en el formulario, se deduce del nombre. Sin esto cada acta
+    // subida a mano nace sin enlace y deja de aparecer en los filtros por técnico y
+    // por estado, que es como se quedaron las 2300 que hubo que enlazar después.
+    const predioId = predioIdForm || (await resolverPredioPorNombre(nombre));
 
     // Detectar duplicado por nombre
     const existing = await prisma.acta.findFirst({

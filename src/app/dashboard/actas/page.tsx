@@ -49,8 +49,8 @@ const IconFolderOpen = () => (
 );
 
 export default function ActasPage() {
-  const LIST_LIMIT = 500;
-  const SEARCH_LIMIT = 3000;
+  /** Filas por página. La lista pide de a esto, no la tabla entera. */
+  const PAGINA = 60;
 
   const { isModOrAdmin, isAdmin } = useSession();
   const { puedeEditar } = usePermisos();
@@ -74,6 +74,14 @@ export default function ActasPage() {
   const [filterProvincia, setFilterProvincia] = useState("");
   const [filterDesde, setFilterDesde] = useState("");
   const [filterHasta, setFilterHasta] = useState("");
+  // Filtros que salen del predio (estado y técnico acreditado). Se resuelven en el
+  // servidor: acá solo viajan los nombres.
+  const [filterEstados, setFilterEstados] = useState<string[]>([]);
+  const [filterTecnico, setFilterTecnico] = useState("");
+  const [conteos, setConteos] = useState<{ estados: Record<string, number>; sinPredio: number; total: number } | null>(null);
+  const [tecnicos, setTecnicos] = useState<{ valor: string; nombre: string }[]>([]);
+  const [estadosChip, setEstadosChip] = useState<string[]>([]);
+  const [descargando, setDescargando] = useState(false);
 
   // Selección
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -95,7 +103,8 @@ export default function ActasPage() {
   // Progreso de subida (XHR), vista previa y paginado visual
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [previewActa, setPreviewActa] = useState<any | null>(null);
-  const [visibleCount, setVisibleCount] = useState(60);
+  const [pagina, setPagina] = useState(1);
+  const [cargandoMas, setCargandoMas] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
   // Generar acta desde Salesforce por N° de predio (solo ADMIN)
@@ -104,25 +113,56 @@ export default function ActasPage() {
   const [generando, setGenerando] = useState(false);
   const [generarDup, setGenerarDup] = useState<any | null>(null);
 
-  const fetchActas = useCallback(async () => {
-    setLoading(true);
+  /** Los filtros vigentes, en el formato que entiende la API. */
+  const paramsFiltros = useCallback(() => {
     const params = new URLSearchParams();
-    const hasSearch = !!search.trim();
     if (search) params.set("buscar", search);
     if (filterProvincia) params.set("provincia", filterProvincia);
     if (filterDesde) params.set("desde", filterDesde);
     if (filterHasta) params.set("hasta", filterHasta);
-    params.set("limit", String(hasSearch ? SEARCH_LIMIT : LIST_LIMIT));
+    if (filterEstados.length) params.set("estados", filterEstados.join(","));
+    if (filterTecnico) params.set("tecnico", filterTecnico);
+    return params;
+  }, [search, filterProvincia, filterDesde, filterHasta, filterEstados, filterTecnico]);
+
+  /**
+   * Trae una página. Antes se pedían 500 actas de entrada (3000 al buscar) para
+   * mostrar 60; ahora se piden 60 y el resto llega al apretar "Mostrar más".
+   * Los contadores y la lista de técnicos solo se piden en la primera página.
+   */
+  const traerPagina = useCallback(async (page: number, acumular: boolean) => {
+    const params = paramsFiltros();
+    params.set("limit", String(PAGINA));
+    params.set("page", String(page));
+    if (!acumular) params.set("contar", "1");
+
     const res = await fetch(`/api/actas?${params}`, { credentials: "include" });
-    if (res.ok) {
-      const data = await res.json();
-      setActas(data.actas || []);
-      setTotal(data.total || 0);
+    if (!res.ok) return;
+    const data = await res.json();
+    setActas((prev) => (acumular ? [...prev, ...(data.actas || [])] : data.actas || []));
+    setTotal(data.total || 0);
+    if (!acumular) {
+      if (data.conteos) setConteos(data.conteos);
+      if (data.tecnicos) setTecnicos(data.tecnicos);
+      if (data.estadosChip) setEstadosChip(data.estadosChip);
     }
+  }, [paramsFiltros]);
+
+  const fetchActas = useCallback(async () => {
+    setLoading(true);
+    setPagina(1);
+    await traerPagina(1, false);
     setLoading(false);
     setSelected(new Set());
-    setVisibleCount(60);
-  }, [search, filterProvincia, filterDesde, filterHasta]);
+  }, [traerPagina]);
+
+  async function mostrarMas() {
+    const siguiente = pagina + 1;
+    setCargandoMas(true);
+    await traerPagina(siguiente, true);
+    setPagina(siguiente);
+    setCargandoMas(false);
+  }
 
   // Debounce: no dispara un fetch por cada tecla de la búsqueda.
   useEffect(() => {
@@ -141,12 +181,60 @@ export default function ActasPage() {
   }, [actas]);
 
   // Filtros activos
-  const hasFilters = !!(filterProvincia || filterDesde || filterHasta);
+  const hasFilters = !!(filterProvincia || filterDesde || filterHasta || filterEstados.length || filterTecnico);
 
   function clearFilters() {
     setFilterProvincia("");
     setFilterDesde("");
     setFilterHasta("");
+    setFilterEstados([]);
+    setFilterTecnico("");
+  }
+
+  /**
+   * Descarga actas en un ZIP. Con `usarFiltro` baja todo lo que matchea el filtro
+   * actual sin tildar nada, que es lo que evita marcar 200 casillas para llevarse lo
+   * de un técnico.
+   */
+  async function descargarZip(usarFiltro: boolean) {
+    const cuantas = usarFiltro ? total : selected.size;
+    if (!cuantas) return;
+    setDescargando(true);
+    try {
+      const partes = [
+        filterTecnico ? tecnicos.find((t) => t.valor === filterTecnico)?.nombre : "",
+        filterEstados.join(" "),
+      ].filter(Boolean);
+      const res = await fetch("/api/actas/bulk-download", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          usarFiltro
+            ? { filtros: Object.fromEntries(paramsFiltros()), etiqueta: partes.join(" ") || "actas" }
+            : { ids: Array.from(selected), etiqueta: "actas seleccionadas" }
+        ),
+      });
+      if (!res.ok) {
+        const msg = await res.json().catch(() => ({}));
+        toast.error(msg?.error || "No se pudo preparar la descarga");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (res.headers.get("Content-Disposition") || "").match(/filename="(.+?)"/)?.[1] || "actas.zip";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toast.success(`${res.headers.get("X-Actas-Incluidas") || cuantas} actas descargadas`);
+    } catch {
+      toast.error("No se pudo descargar. Probá de nuevo o achicá el filtro.");
+    } finally {
+      setDescargando(false);
+    }
   }
 
   // --- Selección ---
@@ -478,24 +566,19 @@ export default function ActasPage() {
     if (bulkFiles.length === 0) return;
     setBulkChecking(true);
 
-    const allActas: any[] = [];
-    let page = 1;
-    let totalPages = 1;
-
-    while (page <= totalPages) {
-      const res = await fetch(`/api/actas?limit=${SEARCH_LIMIT}&page=${page}`, { credentials: "include" });
-      if (!res.ok) break;
-      const data = await res.json();
-      const pageActas = Array.isArray(data?.actas) ? data.actas : [];
-      allActas.push(...pageActas);
-      const total = Number(data?.total || allActas.length);
-      totalPages = Math.max(1, Math.ceil(total / SEARCH_LIMIT));
-      page += 1;
-    }
-
+    // Se pregunta solo por los nombres que se están por subir. Antes esto se bajaba
+    // la tabla entera de actas para armar el mapa en el navegador.
+    const nombres = bulkFiles.map((f) => f.name.replace(/\.(pdf|docx|doc)$/i, "").trim());
     const existingMap = new Map<string, any>();
-    for (const a of allActas) {
-      existingMap.set(a.nombre.toLowerCase(), a);
+    const res = await fetch("/api/actas/existentes", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombres }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      for (const a of data.existentes || []) existingMap.set(String(a.nombre).toLowerCase(), a);
     }
 
     const dups: { file: File; existing: any }[] = [];
@@ -630,25 +713,102 @@ export default function ActasPage() {
           </select>
           <input type="date" value={filterDesde} onChange={(e) => setFilterDesde(e.target.value)} className="px-3 py-1.5 border border-surface-200 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" title="Desde" />
           <input type="date" value={filterHasta} onChange={(e) => setFilterHasta(e.target.value)} className="px-3 py-1.5 border border-surface-200 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400" title="Hasta" />
+          <select
+            value={filterTecnico}
+            onChange={(e) => setFilterTecnico(e.target.value)}
+            className="px-3 py-1.5 border border-surface-200 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 rounded-md text-xs focus:outline-none focus:border-surface-400 bg-white min-w-[170px]"
+            title="Técnico al que está asignado el predio del acta"
+          >
+            <option value="">Todos los técnicos</option>
+            {tecnicos.map((t) => (
+              <option key={t.valor} value={t.valor}>{t.nombre}</option>
+            ))}
+          </select>
           {hasFilters && (
             <button onClick={clearFilters} className="px-3 py-1.5 text-xs text-surface-500 hover:text-surface-700 hover:bg-surface-100 rounded-md transition-colors">
               Limpiar filtros
             </button>
           )}
         </div>
+
+        {/* Estados: son casi todas las consultas reales, así que van a un clic. */}
+        {estadosChip.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {estadosChip.map((estado) => {
+              const activo = filterEstados.includes(estado);
+              const n = conteos?.estados?.[estado];
+              return (
+                <button
+                  key={estado}
+                  onClick={() => setFilterEstados((prev) =>
+                    prev.includes(estado) ? prev.filter((x) => x !== estado) : [...prev, estado]
+                  )}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+                    activo
+                      ? "bg-primary-600 text-white border-primary-600"
+                      : "bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-surface-200 dark:border-surface-600 hover:border-surface-400"
+                  }`}
+                  title={`Actas de predios en ${estado}`}
+                >
+                  {estado}
+                  {typeof n === "number" && (
+                    <span className={`ml-1.5 tabular-nums ${activo ? "text-white/75" : "text-surface-400"}`}>{n}</span>
+                  )}
+                </button>
+              );
+            })}
+            {conteos && conteos.sinPredio > 0 && (
+              <button
+                onClick={() => setFilterEstados([])}
+                className="px-2.5 py-1 rounded-full text-[11px] text-surface-400 border border-dashed border-surface-300 dark:border-surface-600"
+                title="Actas que no se pudieron enlazar a ningún predio de Carrot: no tienen estado ni técnico"
+              >
+                sin predio <span className="tabular-nums">{conteos.sinPredio}</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Barra de selección / acciones masivas */}
-      {canEdit && actas.length > 0 && (
-        <div className="flex items-center gap-3 mb-3 px-1">
-          <label className="flex items-center gap-1.5 text-xs text-surface-500 cursor-pointer select-none">
-            <input type="checkbox" checked={actas.length > 0 && selected.size === actas.length} onChange={toggleSelectAll} className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5" />
-            Seleccionar todo ({actas.length})
-          </label>
+      {actas.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 mb-3 px-1">
+          {canEdit && (
+            <label className="flex items-center gap-1.5 text-xs text-surface-500 cursor-pointer select-none">
+              <input type="checkbox" checked={actas.length > 0 && selected.size === actas.length} onChange={toggleSelectAll} className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-3.5 h-3.5" />
+              Seleccionar todo ({actas.length})
+            </label>
+          )}
+
+          {/* Bajar todo lo filtrado, sin tildar de a una. */}
+          {selected.size === 0 && total > 0 && (
+            <button
+              onClick={() => descargarZip(true)}
+              disabled={descargando}
+              className="px-2.5 py-1 text-xs text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-md transition-colors font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-wait"
+              title="Descargar en un ZIP todas las actas que coinciden con el filtro actual"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+              {descargando ? "Preparando…" : `Descargar ${hasFilters ? "lo filtrado" : "todo"} (${total})`}
+            </button>
+          )}
+
           {selected.size > 0 && (
             <>
-              <span className="text-xs text-surface-400">|</span>
               <span className="text-xs font-medium text-primary-600">{selected.size} seleccionada{selected.size !== 1 ? "s" : ""}</span>
+              <button
+                onClick={() => descargarZip(false)}
+                disabled={descargando}
+                className="px-2.5 py-1 text-xs text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-md transition-colors font-medium flex items-center gap-1 disabled:opacity-50 disabled:cursor-wait"
+                title="Descargar las actas seleccionadas en un ZIP"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                {descargando ? "Preparando…" : "Descargar seleccionadas"}
+              </button>
+            </>
+          )}
+          {canEdit && selected.size > 0 && (
+            <>
               {isAdmin && (
                 <button
                   onClick={imprimirSeleccionadas}
@@ -688,8 +848,10 @@ export default function ActasPage() {
           </div>
         ) : (
           <div className="divide-y divide-surface-100 dark:divide-surface-700">
-            {actas.slice(0, visibleCount).map((a) => {
-              const prov = detectarProvincia(a.nombre);
+            {actas.map((a) => {
+              // La provincia sale del predio; el nombre del archivo es el respaldo
+              // para las actas que no quedaron enlazadas a ninguno.
+              const prov = a.predio?.provincia || detectarProvincia(a.nombre);
               return (
                 <div key={a.id} className={`flex items-center gap-4 px-5 py-4 hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors group ${selected.has(a.id) ? "bg-primary-50/50 dark:bg-primary-900/20" : ""}`}>
                   {canEdit && (
@@ -778,13 +940,14 @@ export default function ActasPage() {
                 </div>
               );
             })}
-            {actas.length > visibleCount && (
+            {actas.length < total && (
               <div className="p-3 text-center">
                 <button
-                  onClick={() => setVisibleCount((c) => c + 100)}
-                  className="px-4 py-2 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors"
+                  onClick={mostrarMas}
+                  disabled={cargandoMas}
+                  className="px-4 py-2 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-wait"
                 >
-                  Mostrar más ({actas.length - visibleCount} restantes)
+                  {cargandoMas ? "Cargando…" : `Mostrar más (${total - actas.length} restantes)`}
                 </button>
               </div>
             )}
