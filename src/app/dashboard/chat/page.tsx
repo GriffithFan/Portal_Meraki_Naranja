@@ -69,7 +69,11 @@ function ChatArchivo({ msg, esMio, onOpenMedia }: { msg: any; esMio: boolean; on
     return (
       <div className="mt-1.5">
         <button type="button" onClick={() => onOpenMedia(msg)} className="block text-left" title="Abrir para recortar, dibujar o reenviar">
-          <Image src={inlineUrl} alt={msg.archivoNombre} width={280} height={200} unoptimized className="max-w-[280px] max-h-[200px] w-auto h-auto rounded-lg object-cover cursor-zoom-in hover:opacity-90 transition" />
+          {/* `loading="lazy"`: una conversación con fotos traía TODAS al abrirla —17
+              imágenes, 5 MB— aunque se vieran los últimos mensajes. Ahora se descarga
+              la que entra en pantalla. El alto y ancho fijos evitan que el hilo salte
+              cuando cada una termina de cargar. */}
+          <Image src={inlineUrl} alt={msg.archivoNombre} width={280} height={200} unoptimized loading="lazy" decoding="async" className="max-w-[280px] max-h-[200px] w-auto h-auto rounded-lg object-cover cursor-zoom-in hover:opacity-90 transition" />
         </button>
         <div className="flex items-center gap-2 flex-wrap">
           <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
@@ -82,7 +86,10 @@ function ChatArchivo({ msg, esMio, onOpenMedia }: { msg: any; esMio: boolean; on
   if (tipo.startsWith("video/")) {
     return (
       <div className="mt-1.5">
-        <video src={inlineUrl} controls playsInline className="max-w-[280px] max-h-[200px] rounded-lg" preload="metadata" />
+        {/* `preload="none"`: con "metadata" el navegador abría una conexión por cada
+            video del hilo apenas se cargaba la conversación. La miniatura la pone el
+            propio control hasta que alguien le da play. */}
+        <video src={inlineUrl} controls playsInline className="max-w-[280px] max-h-[200px] rounded-lg" preload="none" />
         <div className="flex items-center gap-2 flex-wrap">
           <p className={clsx("text-[10px] mt-0.5", esMio ? "text-blue-200" : "opacity-60")}>{msg.archivoNombre} · {formatFileSize(msg.archivoTamanio)}</p>
           <ExpandBtn />
