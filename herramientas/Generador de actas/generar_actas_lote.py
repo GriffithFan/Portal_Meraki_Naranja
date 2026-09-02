@@ -47,9 +47,15 @@ TEMPLATE = os.path.join(AQUI, actas.WORD_TEMPLATE)
 
 
 def leer_lista(ruta):
-    """Numeros de predio del archivo. Acepta csv, txt y xlsx."""
+    """Numeros de predio del archivo, y la incidencia de cada uno si viene.
+
+    Devuelve (predios, {predio: NI}). La incidencia se busca por patron en la misma
+    fila en vez de por nombre de columna: asi sirve igual el CSV que exporta Carrot,
+    un txt pegado a mano o un xlsx con las columnas en otro orden.
+    """
     ext = os.path.splitext(ruta)[1].lower()
     filas = []
+    lineas_crudas = []
     if ext in (".xlsx", ".xlsm"):
         import openpyxl
         wb = openpyxl.load_workbook(ruta, read_only=True, data_only=True)
@@ -70,6 +76,7 @@ def leer_lista(ruta):
             for r in it:
                 if r and r[idx] is not None:
                     filas.append(str(r[idx]).strip())
+                    lineas_crudas.append(" ".join(str(c) for c in r if c is not None))
     else:
         with open(ruta, "r", encoding="utf-8-sig", errors="replace") as fh:
             texto = fh.read()
@@ -79,16 +86,23 @@ def leer_lista(ruta):
                 continue
             primero = re.split(r"[;,\t]", linea)[0].strip().strip('"')
             filas.append(primero)
+            lineas_crudas.append(linea)
 
     # Solo numeros, sin repetidos, conservando el orden.
     vistos = set()
     salida = []
-    for f in filas:
+    incidencias = {}
+    for i, f in enumerate(filas):
         n = re.sub(r"[^0-9]", "", f)
-        if len(n) >= 5 and n not in vistos:
-            vistos.add(n)
-            salida.append(n)
-    return salida
+        if len(n) < 5 or n in vistos:
+            continue
+        vistos.add(n)
+        salida.append(n)
+        cruda = lineas_crudas[i] if i < len(lineas_crudas) else ""
+        m = re.search(r"NI-?(\d{6,})", cruda, re.I)
+        if m:
+            incidencias[n] = "NI-" + m.group(1)
+    return salida, incidencias
 
 
 def bat_imprimir(carpeta):
@@ -169,7 +183,7 @@ def main():
         print(f"No existe el archivo: {lista_path}")
         return 1
 
-    predios = leer_lista(lista_path)
+    predios, incidencias = leer_lista(lista_path)
     if not predios:
         print("No se encontro ningun numero de predio en el archivo.")
         return 1
@@ -192,6 +206,8 @@ def main():
         predios = pendientes
 
     print(f"Predios en la lista : {total_lista}")
+    print(f"Con incidencia      : {len(incidencias)}"
+          + ("" if incidencias else "  (sin ella, un predio con varias escuelas puede salir con la equivocada)"))
     if ya_estaban:
         print(f"Ya generados        : {len(ya_estaban)} (se saltean)")
         print(f"Quedan por generar  : {len(predios)}")
@@ -212,6 +228,14 @@ def main():
         if uno.parece_login(driver):
             print("Iniciando sesion...")
             actas.login(driver)
+            time.sleep(3)
+            # Solo se guardan las cookies si la sesion quedo abierta de verdad. Antes se
+            # guardaban siempre: un login fallido pisaba las cookies buenas y dejaba el
+            # archivo envenenado para las corridas siguientes.
+            if uno.parece_login(driver):
+                print("\nNO SE PUDO ENTRAR A SALESFORCE. Reviso las credenciales y no sigo:")
+                print("sin sesion, cada predio saldria como 'no encontrado' y eso es falso.")
+                return 2
             uno.guardar_cookies(driver)
 
         t0 = time.time()
@@ -223,6 +247,23 @@ def main():
                 return {"predio": predio, "estado": "no encontrado", "archivo": "", "establecimiento": ""}
             actas.ir_a_registro(driver, record_id)
             data = actas.extraer_campos_predio(driver, record_id=record_id)
+
+            # Un predio puede tener varias escuelas (varios CUEs) y extraer_campos_predio
+            # toma la primera de la lista. La incidencia dice cual hay que intervenir, asi
+            # que sus datos mandan. Esto ya lo hacia `generar_acta_uno.py`, pero el lote
+            # nunca lo llamaba: por eso una tanda podia salir con la escuela equivocada.
+            incidencia = incidencias.get(predio, "")
+            if incidencia:
+                data["Numero_Incidencia"] = incidencia
+                try:
+                    di = uno.datos_incidencia(driver, incidencia)
+                    for clave, campo in (("escuela", "Establecimiento"), ("direccion", "Direccion"),
+                                         ("localidad", "Localidad"), ("provincia", "Provincia")):
+                        if di.get(clave):
+                            data[campo] = di[clave]
+                except Exception as e:
+                    print(f"   ... no se pudo leer la incidencia {incidencia}: {str(e)[:70]}")
+
             if not data.get("Numero de Predio"):
                 data["Numero de Predio"] = predio
             nombre = f"Acta_{data.get('Numero de Predio') or predio}.docx"
