@@ -28,7 +28,11 @@ export async function POST(request: NextRequest) {
   const uploadsDir = path.resolve(process.cwd(), "uploads");
   for (const acta of actas) {
     try {
-      const filePath = path.resolve(process.cwd(), acta.archivoRuta);
+      // Sin sacar la barra inicial, path.resolve toma "/uploads/actas/x.docx" como
+      // ruta absoluta y devuelve "/uploads/...", que nunca cae dentro de uploads: el
+      // chequeo de abajo daba falso y los archivos quedaban en el disco para siempre
+      // aunque el registro se borrara.
+      const filePath = path.resolve(process.cwd(), acta.archivoRuta.replace(/^\/+/, ""));
       if (filePath.startsWith(uploadsDir)) {
         await unlink(filePath).catch(() => {});
       }

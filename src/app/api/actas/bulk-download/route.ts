@@ -92,7 +92,10 @@ export async function POST(request: NextRequest) {
   let incluidas = 0;
 
   for (const a of actas) {
-    const ruta = path.resolve(process.cwd(), a.archivoRuta);
+    // La barra inicial hay que sacarla: `archivoRuta` es "/uploads/actas/x.docx" y
+    // path.resolve trata eso como una ruta absoluta, devolviendo "/uploads/..." en vez
+    // de la carpeta del proyecto. Es el mismo saneo que hacen las demás rutas.
+    const ruta = path.resolve(process.cwd(), a.archivoRuta.replace(/^\/+/, ""));
     if (!ruta.startsWith(uploads)) continue;
     try {
       await stat(ruta);
