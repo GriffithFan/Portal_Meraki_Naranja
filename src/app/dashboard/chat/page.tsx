@@ -523,13 +523,24 @@ export default function ChatPage() {
     return () => { cerrado = true; es?.close(); };
   }, [seleccionada?.id]);
 
-  // Scroll al último mensaje solo cuando llegan mensajes nuevos
+  // Scroll al último mensaje solo cuando llegan mensajes nuevos.
+  //
+  // Al ABRIR una conversación el salto es instantáneo, no animado: el scroll suave
+  // recorría las 240 burbujas de arriba abajo y, al pasarlas por pantalla, iba
+  // disparando la carga de todas las fotos del hilo. Con el salto directo solo se
+  // descargan las que quedan a la vista. Para un mensaje que llega estando abierto
+  // sí conviene el animado, que es lo que deja ver que algo entró.
   useEffect(() => {
     if (mensajes.length > prevMsgCountRef.current) {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      const esAperturaDelHilo = prevMsgCountRef.current === 0;
+      chatEndRef.current?.scrollIntoView({ behavior: esAperturaDelHilo ? "auto" : "smooth" });
     }
     prevMsgCountRef.current = mensajes.length;
   }, [mensajes]);
+
+  // Al cambiar de conversación se vuelve a contar desde cero, para que la próxima
+  // apertura también salte de una en vez de animar.
+  useEffect(() => { prevMsgCountRef.current = 0; }, [seleccionada?.id]);
 
   // Para técnicos: auto-deseleccionar conversación cuando se cierra → muestra vista nueva consulta
   useEffect(() => {
