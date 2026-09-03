@@ -295,6 +295,63 @@ def search_predio_id(predio: str) -> dict[str, str]:
     }
 
 
+INCIDENCIA_EN_PREDIO_RE = re.compile(
+    r'href="[^"]*/(a0H[0-9A-Za-z]{12,15})[^"]*"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL
+)
+
+
+def incidencias_de_predio(sf_id: str) -> list[tuple[str, str]]:
+    """[(id, NI)] de las incidencias que lista la ficha de un predio."""
+    if not sf_id:
+        return []
+    try:
+        page = get_record_page(sf_id, use_page_cache=True)
+    except Exception:
+        return []
+    out: list[tuple[str, str]] = []
+    for match in INCIDENCIA_EN_PREDIO_RE.finditer(page):
+        visible = re.sub(r"<[^>]+>", "", match.group(2)).replace("&nbsp;", " ").strip()
+        hallado = re.search(r"NI-\d+", visible)
+        if hallado and (match.group(1), hallado.group(0)) not in out:
+            out.append((match.group(1), hallado.group(0)))
+    return out
+
+
+def make_search_incidencia(inc_a_predios: dict, predio_cache: dict):
+    """Devuelve la funcion que resuelve una incidencia entrando por su predio.
+
+    Por que no alcanza con buscarla: la cuenta con la que corre el extractor no tiene
+    el objeto Incidencia indexado en la busqueda global, asi que `sen=a0H` devuelve
+    cero SIEMPRE, exista o no. Con eso Incidencia_Id quedaba vacio en el 100% de las
+    filas, Incidencia_Estado nunca decia "Cerrado" y el enriquecimiento no movia
+    ningun predio de INSTALADO/AUDITAR a CONFORME: habia que hacerlo a mano.
+
+    Esa cuenta SI puede abrir la ficha de la incidencia; lo que no puede es buscarla.
+    Como los predios se resuelven ANTES que las incidencias, para cuando toca esto ya
+    tenemos el id de cada predio y se puede llegar por el link que figura en su ficha.
+    """
+
+    def buscar(numero: str) -> dict[str, str]:
+        revisados = []
+        for predio in inc_a_predios.get(numero, ()):  # normalmente uno solo
+            sf_id = predio_cache.get(predio, {}).get("Salesforce_Id", "")
+            if not sf_id:
+                continue
+            for cid, ni in incidencias_de_predio(sf_id):
+                if ni == numero:
+                    return {"Incidencia_Id": cid, "Incidencia_Error": ""}
+            revisados.append(f"{predio}:{sf_id}")
+        # Respaldo: la busqueda de siempre, para cuentas que si la tengan habilitada.
+        resultado = search_incidencia_id(numero)
+        if not resultado.get("Incidencia_Id") and revisados:
+            resultado["Incidencia_Error"] = (
+                "no figura en la ficha del predio (" + "; ".join(revisados[:3]) + ")"
+            )
+        return resultado
+
+    return buscar
+
+
 def search_incidencia_id(numero: str) -> dict[str, str]:
     url = (
         URL_BASE.rstrip("/")
@@ -746,9 +803,16 @@ def main() -> int:
         ["Salesforce_Id", "Predio_Error"],
         args.workers,
     )
+    # A que predio pertenece cada incidencia: es lo que permite entrar por la ficha
+    # del predio en vez de buscarla (ver make_search_incidencia).
+    inc_a_predios: dict[str, list[str]] = {}
+    for numero_predio, numero_inc in zip(rows["Numero_Predio"], rows["Numero_Incidencia"]):
+        if numero_inc:
+            inc_a_predios.setdefault(numero_inc, []).append(numero_predio)
+
     resolve_many(
         sorted(rows["Numero_Incidencia"].unique()),
-        search_incidencia_id,
+        make_search_incidencia(inc_a_predios, predio_cache),
         incidencia_cache,
         "incidencias",
         INCIDENCIA_CACHE_PATH,

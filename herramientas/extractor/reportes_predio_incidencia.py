@@ -121,7 +121,13 @@ def enrich_main_df(main_df: pd.DataFrame, assignment_source: str | Path | None =
         assigned.append(value or "Sin dato")
         assigned_sheet.append(item.get("Hoja_Asignado_Original", ""))
 
-    cron_count = pd.to_numeric(df.get("Cronogramas_Originados_Cantidad", 0), errors="coerce").fillna(0).astype(int)
+    # El default tiene que ser una Serie, no un 0: si la columna no existe -pasa cuando
+    # ningun predio del lote tiene cronogramas- df.get devolvia un int y el .fillna de
+    # abajo reventaba. Las otras dos llamadas a df.get del archivo ya lo hacian asi.
+    cron_count = pd.to_numeric(
+        df.get("Cronogramas_Originados_Cantidad", pd.Series(0, index=df.index)),
+        errors="coerce",
+    ).fillna(0).astype(int)
     cron_name = first_nonempty(df, ["Cronograma_Ultimo_Nombre_de_Cronograma", "Incidencia_Cronograma"])
     estado = first_nonempty(df, ["Incidencia_Estado"])
 

@@ -57,23 +57,33 @@ step "2/5  Instalando dependencias"
 npm ci 2>&1 | tail -1
 ok "Dependencias actualizadas"
 
-# ── Generador de actas ───────────────────────────────────────
-# actas-gen/ esta en .gitignore (guarda credenciales y cache), asi que el pull no
-# lo toca: durante meses la copia versionada no llego nunca a produccion y editarla
-# no cambiaba nada. Se copian solo los .py; el .docx y lo que no este en git se deja.
-ACTAS_SRC="herramientas/Generador de actas"
-if [[ -d "$ACTAS_SRC" && -d actas-gen ]]; then
-  CAMBIADOS=0
-  for f in "$ACTAS_SRC"/*.py; do
+# ── Herramientas de Salesforce (actas y extractor) ───────────
+# actas-gen/ y extractor/ estan en .gitignore (guardan credenciales, cache y venv),
+# asi que el pull no los toca: la copia versionada no llegaba nunca a produccion y
+# editarla no cambiaba nada. Se copian solo los .py; el venv, el .docx y todo lo que
+# no este en git se deja como esta.
+sincronizar_py() {
+  local origen="$1" destino="$2" etiqueta="$3"
+  [[ -d "$origen" && -d "$destino" ]] || return 0
+  local cambiados=0
+  for f in "$origen"/*.py; do
+    [[ -e "$f" ]] || continue
+    local base
     base=$(basename "$f")
-    if ! cmp -s "$f" "actas-gen/$base"; then
-      cp "$f" "actas-gen/$base"
-      CAMBIADOS=$((CAMBIADOS + 1))
+    # Solo se pisa lo que ya existe en produccion: los .py sueltos de exploracion
+    # que viven solo en el servidor no se tocan, y los de git que no estan alla
+    # tampoco se copian sin querer.
+    if [[ -f "$destino/$base" ]] && ! cmp -s "$f" "$destino/$base"; then
+      cp "$f" "$destino/$base"
+      cambiados=$((cambiados + 1))
     fi
   done
-  [[ $CAMBIADOS -gt 0 ]] && ok "Generador de actas: $CAMBIADOS script(s) actualizados" \
-                         || echo "  Generador de actas sin cambios"
-fi
+  [[ $cambiados -gt 0 ]] && ok "$etiqueta: $cambiados script(s) actualizados" \
+                         || echo "  $etiqueta sin cambios"
+}
+
+sincronizar_py "herramientas/Generador de actas" actas-gen "Generador de actas"
+sincronizar_py herramientas/extractor extractor "Extractor"
 
 # ── Prisma ───────────────────────────────────────────────────
 step "3/5  Sincronizando base de datos"
