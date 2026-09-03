@@ -206,23 +206,81 @@ def _labels(html, prefijo=""):
     return out
 
 
-def datos_incidencia(driver, numero):
-    """Datos del establecimiento SEGUN LA INCIDENCIA (no segun el primer CUE).
-
-    Un predio puede tener varias escuelas asociadas; la incidencia dice cual es
-    la que hay que intervenir. Devuelve {} si no se puede resolver.
-    """
-    if not numero:
-        return {}
+def _sesion_http(driver):
+    """Una sesion requests con las cookies del navegador."""
     s = requests.Session()
     for c in driver.get_cookies():
         try:
             s.cookies.set(c["name"], c.get("value", ""), domain=c.get("domain"), path=c.get("path", "/"))
         except Exception:
             pass
-    url = BASE + "/_ui/search/ui/UnifiedSearchResults?searchType=2&sen=a0H&str=" + quote_plus(numero)
+    return s
+
+
+def incidencias_del_predio(s, record_id):
+    """[(id, NI)] de las incidencias que lista la ficha de un predio."""
+    if not record_id:
+        return []
     try:
-        html = s.get(url, timeout=25).text
+        html = s.get(BASE + "/" + record_id, timeout=25).text
+    except Exception:
+        return []
+    out = []
+    for m in re.finditer(r'href="[^"]*/(a0H[0-9A-Za-z]{12,15})[^"]*"[^>]*>(.*?)</a>', html, re.S):
+        visible = re.sub(r"<[^>]+>", "", m.group(2)).replace("&nbsp;", " ").strip()
+        mm = re.search(r"NI-\d+", visible)
+        if mm and (m.group(1), mm.group(0)) not in out:
+            out.append((m.group(1), mm.group(0)))
+    return out
+
+
+def _campos_de_incidencia(s, cid, numero):
+    """Lee la ficha de la incidencia y devuelve sus datos, o {} si no es la pedida."""
+    try:
+        v = _labels(s.get(BASE + "/" + cid, timeout=25).text)
+    except Exception:
+        return {}
+    leido = v.get("Numero de Incidencia") or v.get("Número de Incidencia") or ""
+    if numero not in leido:
+        return {}
+    depto = v.get("Departamento", "")
+    dir_full = v.get("Direccion", "") or v.get("Dirección", "")
+    # "CALLE 123 LOCALIDAD, Provincia 6450 Argentina" -> calle sola
+    calle = dir_full.split(",")[0].strip()
+    if depto and calle.upper().endswith(depto.upper()):
+        calle = calle[: -len(depto)].strip()
+    return {"escuela": v.get("Nombre Escuela", ""), "direccion": calle,
+            "localidad": depto, "provincia": v.get("Provincia", "")}
+
+
+def datos_incidencia(driver, numero, record_id=None):
+    """Datos del establecimiento SEGUN LA INCIDENCIA (no segun el primer CUE).
+
+    Un predio puede tener varias escuelas asociadas; la incidencia dice cual hay
+    que intervenir. Devuelve {} si no se puede resolver.
+
+    Se entra POR LA FICHA DEL PREDIO, no por el buscador. La cuenta con la que
+    corre esto en el VPS no tiene permiso para buscar incidencias —el objeto no
+    esta indexado para su perfil y la busqueda devuelve cero siempre, aunque la
+    incidencia exista—, pero si puede abrir la ficha cuando llega por el link que
+    figura en el predio o por el id directo. La busqueda queda como respaldo para
+    las cuentas que si pueden usarla.
+    """
+    if not numero:
+        return {}
+    s = _sesion_http(driver)
+
+    # 1) el camino que siempre funciona: la lista de incidencias del predio
+    for cid, ni in incidencias_del_predio(s, record_id):
+        if ni == numero:
+            datos = _campos_de_incidencia(s, cid, numero)
+            if datos:
+                return datos
+
+    # 2) respaldo: el buscador (solo sirve con cuentas que lo tengan habilitado)
+    try:
+        html = s.get(BASE + "/_ui/search/ui/UnifiedSearchResults?searchType=2&sen=a0H&str="
+                     + quote_plus(numero), timeout=25).text
     except Exception:
         return {}
     cands = []
@@ -234,22 +292,9 @@ def datos_incidencia(driver, numero):
         if m.group(1) not in cands:
             cands.append(m.group(1))
     for cid in cands[:6]:
-        try:
-            ip = s.get(BASE + "/" + cid, timeout=25).text
-        except Exception:
-            continue
-        v = _labels(ip)
-        if numero not in (v.get("Numero de Incidencia") or v.get("Número de Incidencia") or ""):
-            continue
-        escuela = v.get("Nombre Escuela", "")
-        depto = v.get("Departamento", "")
-        dir_full = v.get("Direccion", "") or v.get("Dirección", "")
-        # "CALLE 123 LOCALIDAD, Provincia 6450 Argentina" -> calle sola
-        calle = dir_full.split(",")[0].strip()
-        if depto and calle.upper().endswith(depto.upper()):
-            calle = calle[: -len(depto)].strip()
-        return {"escuela": escuela, "direccion": calle, "localidad": depto,
-                "provincia": v.get("Provincia", "")}
+        datos = _campos_de_incidencia(s, cid, numero)
+        if datos:
+            return datos
     return {}
 
 
@@ -309,7 +354,7 @@ def main():
         # el establecimiento a intervenir: sus datos tienen prioridad.
         if incidencia:
             try:
-                di = datos_incidencia(driver, incidencia)
+                di = datos_incidencia(driver, incidencia, record_id=record_id)
                 if di.get("escuela"):
                     data["Establecimiento"] = di["escuela"]
                 if di.get("direccion"):

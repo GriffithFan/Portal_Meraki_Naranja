@@ -46,6 +46,24 @@ step "2/5  Instalando dependencias"
 npm ci 2>&1 | tail -1
 ok "Dependencias actualizadas"
 
+# ── Generador de actas ───────────────────────────────────────
+# actas-gen/ esta en .gitignore (guarda credenciales y cache), asi que el pull no
+# lo toca: durante meses la copia versionada no llego nunca a produccion y editarla
+# no cambiaba nada. Se copian solo los .py; el .docx y lo que no este en git se deja.
+ACTAS_SRC="herramientas/Generador de actas"
+if [[ -d "$ACTAS_SRC" && -d actas-gen ]]; then
+  CAMBIADOS=0
+  for f in "$ACTAS_SRC"/*.py; do
+    base=$(basename "$f")
+    if ! cmp -s "$f" "actas-gen/$base"; then
+      cp "$f" "actas-gen/$base"
+      CAMBIADOS=$((CAMBIADOS + 1))
+    fi
+  done
+  [[ $CAMBIADOS -gt 0 ]] && ok "Generador de actas: $CAMBIADOS script(s) actualizados" \
+                         || echo "  Generador de actas sin cambios"
+fi
+
 # ── Prisma ───────────────────────────────────────────────────
 step "3/5  Sincronizando base de datos"
 # --schema explícito: evita que un schema.prisma suelto en la raíz secuestre

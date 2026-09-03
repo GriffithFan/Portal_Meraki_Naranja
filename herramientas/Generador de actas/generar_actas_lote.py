@@ -256,7 +256,7 @@ def main():
             if incidencia:
                 data["Numero_Incidencia"] = incidencia
                 try:
-                    di = uno.datos_incidencia(driver, incidencia)
+                    di = uno.datos_incidencia(driver, incidencia, record_id=record_id)
                     for clave, campo in (("escuela", "Establecimiento"), ("direccion", "Direccion"),
                                          ("localidad", "Localidad"), ("provincia", "Provincia")):
                         if di.get(clave):
