@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import * as XLSX from "xlsx";
 import { mapaTh } from "@/lib/thEfectivo";
+import { cronogramaSigueAbierto } from "@/lib/cronogramaVentana";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -176,6 +177,7 @@ type ExportPredio = {
   fechaDesde: Date | null;
   fechaHasta: Date | null;
   espacioId: string | null;
+  camposExtra: unknown;
   estado: { nombre: string | null; clave: string | null } | null;
   asignaciones: { createdAt: Date; usuario: { id: string; nombre: string | null; thNumero: number | null; coordinadorId: string | null } | null }[];
   espacio: { id: string; nombre: string; parentId: string | null } | null;
@@ -193,7 +195,11 @@ type ExportPredio = {
  * un cronograma futuro queda en SI y el filtro de LAC-R ya lo dejaba afuera.
  */
 function ventanaAunNoAbrio(predio: ExportPredio, finDeHoy: Date) {
-  return predio.fechaDesde != null && predio.fechaDesde > finDeHoy;
+  if (predio.fechaDesde == null || predio.fechaDesde <= finDeHoy) return false;
+  // Con el cronograma cerrado la fecha futura no vale: la ventana quedó ahí pero no
+  // hay nada por delante, asi que el predio SI hay que volver a pedirlo y no debe
+  // quedar afuera de la lista por "PRONTO". La Orden manda sobre el tilde de activo.
+  return cronogramaSigueAbierto(predio.camposExtra) !== false;
 }
 
 /** LAC-R = NO de forma estricta. Cualquier otra cosa (SI, PEDIDO, vacio) queda afuera. */
@@ -278,6 +284,7 @@ export async function GET(request: NextRequest) {
     fechaDesde: true,
     fechaHasta: true,
     espacioId: true,
+    camposExtra: true,
     estado: { select: { nombre: true, clave: true } },
     asignaciones: { select: { createdAt: true, usuario: { select: { id: true, nombre: true, thNumero: true, coordinadorId: true } } } },
     espacio: { select: { id: true, nombre: true, parentId: true } },

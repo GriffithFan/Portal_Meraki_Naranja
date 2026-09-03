@@ -510,6 +510,13 @@ export function planificarEnriquecimiento(
         previos.lacR = p.lacR ?? null;
         if (objetivo === "SI") stats.lacRSi++; else stats.lacRNo++;
       }
+
+      // Se guarda el estado del cronograma, no solo la decisión. La pantalla necesita
+      // saber si la ventana futura vale: el cartel "PRONTO" dice "ya tiene fecha, no
+      // lo pidas", y con la orden Finalizada eso es falso. Sin esto el front solo
+      // tiene las fechas y no puede distinguir un cronograma vivo de uno cerrado.
+      if (activoReal) extra.cronograma_activo = activoReal;
+      if (ordenTrabajo) extra.cronograma_orden = ordenTrabajo;
     }
 
     // camposExtra cantidades: rellenar si vacío (formato "X,00" del reporte)

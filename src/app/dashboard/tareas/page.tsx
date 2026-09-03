@@ -20,7 +20,7 @@ import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfig
 import { toast } from "sonner";
 import { mensajeError } from "@/lib/fetchJson";
 import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
-import { estadoVentana } from "@/lib/cronogramaVentana";
+import { estadoVentana, cronogramaSigueAbierto } from "@/lib/cronogramaVentana";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useConfirm } from "@/contexts/ConfirmContext";
 import { getEspacios } from "@/lib/espaciosCache";
@@ -1500,7 +1500,13 @@ export default function TareasPage() {
       const val = t[col.field]?.toUpperCase() || "";
       // "PRONTO" (solo ADMIN): cronograma futuro (azul) todavía sin entrar en fecha.
       // Derivado de la ventana, NO se guarda. El técnico ve el LAC-R real (NO).
-      if (session?.rol === "ADMIN" && (val === "NO" || val === "") && estadoVentana(t.fechaDesde, t.fechaHasta).estado === "futuro") {
+      //
+      // Solo si el cronograma sigue en pie: con la Orden Finalizada la fecha quedó
+      // ahí pero el cronograma no sirve, y mostrar PRONTO haría que el predio no se
+      // vuelva a pedir nunca. En ese caso se muestra el NO real.
+      if (session?.rol === "ADMIN" && (val === "NO" || val === "")
+          && estadoVentana(t.fechaDesde, t.fechaHasta).estado === "futuro"
+          && cronogramaSigueAbierto(t.camposExtra) !== false) {
         return (
           <span title="Cronograma próximo (aún no en fecha) — pasará a LAC-R SI cuando entre en ventana" className="px-1.5 py-px rounded text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">
             PRONTO

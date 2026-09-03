@@ -6,6 +6,33 @@
  */
 export type VentanaEstado = "sin_fechas" | "futuro" | "en_ventana" | "por_vencer" | "vencido";
 
+/** Órdenes de trabajo con las que el cronograma todavía sirve para ir al predio. */
+const ORDENES_VIGENTES = new Set(["planificada", "lanzada"]);
+
+/**
+ * ¿La ventana futura de este predio corresponde a un cronograma que sigue en pie?
+ *
+ * Importa para el cartel "PRONTO": ese cartel dice "no lo pidas de nuevo, ya tiene
+ * fecha", y con el cronograma cerrado eso es falso — la fecha quedó ahí pero el
+ * cronograma no sirve, así que el predio SÍ hay que volver a pedirlo.
+ *
+ * Se aplica la misma regla de oro que el LAC-R: la Orden de Trabajo manda sobre el
+ * tilde de "activo", porque Salesforce deja el tilde puesto después de finalizar.
+ *
+ * Devuelve `null` cuando no hay datos (predio sin enriquecer): ante la duda no se
+ * cambia lo que se venía mostrando.
+ */
+export function cronogramaSigueAbierto(camposExtra: unknown): boolean | null {
+  if (!camposExtra || typeof camposExtra !== "object") return null;
+  const ce = camposExtra as Record<string, unknown>;
+  const activo = String(ce.cronograma_activo ?? "").trim().toUpperCase();
+  const orden = String(ce.cronograma_orden ?? "").trim().toLowerCase();
+  if (!activo && !orden) return null;
+  if (activo === "NO") return false;
+  if (orden) return ORDENES_VIGENTES.has(orden);
+  return null;               // activo SI pero sin orden legible: no se decide
+}
+
 export const VENTANA_META: Record<VentanaEstado, { label: string; corto: string }> = {
   sin_fechas: { label: "Sin fechas", corto: "Sin fechas" },
   futuro:     { label: "Futuro (aún no abre)", corto: "Futuro" },
