@@ -543,8 +543,15 @@ def build_input(path: Path, sheet: str | None, predio_col: str, incidencia_col: 
 
 
 def resolve_many(items, func, cache, label, cache_path, key_col, value_cols, workers) -> None:
-    pending = [item for item in items if item and not cache.get(item)]
-    print(f"{label}: {len(items)} unicos, {len(pending)} pendientes", flush=True)
+    # Estar en la cache no es lo mismo que estar resuelto: una entrada sin valor es un
+    # intento que fallo, y se vuelve a probar. Antes cualquier entrada contaba como
+    # resuelta, asi que un fallo quedaba congelado para siempre — por eso Incidencia_Id
+    # seguia vacio en las 1062 filas incluso despues de arreglar como se busca.
+    principal = value_cols[0]
+    pending = [item for item in items
+               if item and not str((cache.get(item) or {}).get(principal, "")).strip()]
+    ya = len(items) - len(pending)
+    print(f"{label}: {len(items)} unicos, {ya} ya resueltos, {len(pending)} a resolver", flush=True)
     if not pending:
         return
 
