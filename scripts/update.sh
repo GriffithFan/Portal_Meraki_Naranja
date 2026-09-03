@@ -30,9 +30,20 @@ AFTER=$(git rev-parse HEAD)
 
 if [[ "$BEFORE" == "$AFTER" ]]; then
   ok "Ya estás en la última versión (${AFTER:0:7})"
-  echo -e "${YELLOW}  ¿Forzar rebuild? (s/n):${NC}"
-  read -r FORCE
-  [[ "$FORCE" != "s" ]] && exit 0
+  if [[ "${FORZAR_REBUILD:-}" == "1" ]]; then
+    echo "  FORZAR_REBUILD=1: se reconstruye igual"
+  elif [[ -t 0 ]]; then
+    echo -e "${YELLOW}  ¿Forzar rebuild? (s/n):${NC}"
+    read -r FORCE
+    [[ "$FORCE" != "s" ]] && exit 0
+  else
+    # Sin terminal (deploy por ssh no interactivo) `read` lee EOF y el script cortaba
+    # con error, sin llegar a los pasos siguientes. Salir limpio es lo correcto: no
+    # hay nada nuevo que desplegar. Para reconstruir igual: FORZAR_REBUILD=1.
+    echo "  Sin cambios y sin terminal interactiva: no se reconstruye."
+    echo "  (para forzarlo:  FORZAR_REBUILD=1 bash scripts/update.sh)"
+    exit 0
+  fi
 fi
 
 COMMITS=$(git log --oneline "${BEFORE}..${AFTER}" 2>/dev/null | head -10)

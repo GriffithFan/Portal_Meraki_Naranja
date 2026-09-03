@@ -24,6 +24,32 @@ OUTPUT_WORD_DIR = "Actas_Predios"
 
 HEADLESS = False
 TIMEOUT = 1            # espera mínima absoluta
+
+# ========= Que equipos entran en el acta =========
+# Antes se exigia estado == "Conforme" y todo lo demas se descartaba. Eso dejaba el
+# cuadro "Detalle de Red Local" VACIO en predios que si tienen equipos instalados:
+# los que estan en "Licencia PNCE", por ejemplo, desaparecian del acta.
+#
+# La regla es al reves: al acta va todo lo que sigue en el piso, y solo se excluye lo
+# que ya no esta fisicamente. Se lista lo que se excluye —no lo que se incluye— para
+# que un estado nuevo en Salesforce entre por defecto en vez de desaparecer sin aviso;
+# un equipo de mas en el acta se ve y se corrige, uno de menos no se nota.
+ESTADOS_EXCLUIDOS = {"robado", "extraviado", "rechazado"}
+
+# Solo para avisar por consola cuando aparece uno que no habiamos visto.
+ESTADOS_CONOCIDOS = ESTADOS_EXCLUIDOS | {"conforme", "licencia pnce"}
+
+
+def _norm_estado(estado):
+    """minusculas, sin acentos y sin espacios de mas, para comparar sin sorpresas."""
+    txt = unicodedata.normalize("NFD", str(estado or ""))
+    txt = "".join(c for c in txt if unicodedata.category(c) != "Mn")
+    return " ".join(txt.lower().split())
+
+
+def equipo_va_al_acta(estado):
+    """True si el equipo debe figurar en el cuadro de Detalle de Red Local."""
+    return _norm_estado(estado) not in ESTADOS_EXCLUIDOS
 WAIT_LABEL = 0.05      # espera casi instantánea para labels comunes
 # =================================
 
@@ -253,24 +279,32 @@ def extraer_campos_predio(driver, record_id: str = None) -> dict:
         "Estado_Completado": "",  # Nuevo campo para el estado del div
     }
     # --- Extraer lista de APs y Z3 desde el div de equipos ---
+    # Ver ESTADOS_EXCLUIDOS arriba: al acta va todo salvo lo que ya no esta en el piso.
     aps = []
     switches = []
     utm_serial = ""
     z3_serial = ""
+    equipos_vistos = 0
     try:
         if record_id:
             equipos_div_id = f"{record_id}_00N1I0000061Onc_body"
             equipos_xpath = f"//div[@id='{equipos_div_id}']//tr[contains(@class,'dataRow')]"
             equipos_rows = driver.find_elements(By.XPATH, equipos_xpath)
+            equipos_vistos = len(equipos_rows)
             for row in equipos_rows:
                 cells = row.find_elements(By.XPATH, "./th | ./td")
                 tipo = _texto(cells[4]) if len(cells) > 4 else ""
                 sku = _texto(cells[5]) if len(cells) > 5 else ""
                 serial = _texto(cells[2]) if len(cells) > 2 else ""
                 estado = _texto(cells[3]) if len(cells) > 3 else ""
-                if estado != "Conforme":
-                    print(f"[DEBUG] Equipo descartado: {tipo} serial={serial} estado='{estado}'")
+                if not equipo_va_al_acta(estado):
+                    print(f"[DEBUG] Equipo excluido ({estado}): {tipo} serial={serial}")
                     continue
+                if _norm_estado(estado) not in ESTADOS_CONOCIDOS:
+                    # Se incluye igual, pero queda anotado: si aparece un estado nuevo
+                    # que deba excluirse, esto es lo que lo hace visible.
+                    print(f"[AVISO] Estado de equipo no visto antes: '{estado}' "
+                          f"({tipo} {serial}). Se incluye en el acta.")
                 if tipo == "AP":
                     aps.append(serial)
                 elif tipo == "Switch":
@@ -285,6 +319,15 @@ def extraer_campos_predio(driver, record_id: str = None) -> dict:
     out["Switch_Seriales"] = switches
     out["UTM_Serial"] = utm_serial
     out["Z3_Serial"] = z3_serial
+    out["Equipos_En_Salesforce"] = equipos_vistos
+    out["Equipos_En_Acta"] = len(aps) + len(switches) + (1 if utm_serial else 0) + (1 if z3_serial else 0)
+
+    # Un predio con equipos en Salesforce y el cuadro del acta vacio es la señal de que
+    # el filtro se comio algo. Asi salio a campo el acta del 601618, con seis equipos en
+    # "Licencia PNCE" y el Detalle de Red Local en blanco, sin que nada lo avisara.
+    if equipos_vistos and not out["Equipos_En_Acta"]:
+        print(f"⚠️ ATENCION: el predio tiene {equipos_vistos} equipo(s) en Salesforce y "
+              f"NINGUNO entró al acta. Revisar los estados antes de usarla.")
     """Extrae los campos solicitados desde la página de un predio abierto en SF.
     Si se proporciona `record_id`, intenta localizar la fila `<tr class='dataRow'>` que contiene ese id
     y toma las celdas por índice (establecimiento=2, direccion=3, localidad=4, provincia=5) tal como en el HTML de ejemplo.

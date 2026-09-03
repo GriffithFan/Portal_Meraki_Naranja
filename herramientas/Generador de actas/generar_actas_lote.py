@@ -145,7 +145,7 @@ pause
         fh.write(contenido)
 
 
-CAMPOS_RESUMEN = ["predio", "estado", "archivo", "establecimiento"]
+CAMPOS_RESUMEN = ["predio", "estado", "archivo", "establecimiento", "equipos", "aviso"]
 
 
 def escribir_resumen(carpeta, resultados):
@@ -244,7 +244,7 @@ def main():
             """Devuelve la fila del resumen. Lanza si Salesforce no respondio."""
             record_id = uno.resolver_id(driver, predio)
             if not record_id:
-                return {"predio": predio, "estado": "no encontrado", "archivo": "", "establecimiento": ""}
+                return {"predio": predio, "estado": "no encontrado", "archivo": "", "establecimiento": "", "equipos": "", "aviso": ""}
             actas.ir_a_registro(driver, record_id)
             data = actas.extraer_campos_predio(driver, record_id=record_id)
 
@@ -270,9 +270,17 @@ def main():
             destino = os.path.join(salida, nombre)
             actas.rellenar_word(TEMPLATE, data, destino)
             ok = os.path.exists(destino)
+            en_sf = data.get("Equipos_En_Salesforce", 0)
+            en_acta = data.get("Equipos_En_Acta", 0)
+            # Queda en el resumen, no solo en el log: con cientos de actas nadie lee
+            # la consola, pero el csv se abre.
+            aviso = ("SIN EQUIPOS: %d en Salesforce y ninguno en el acta" % en_sf
+                     if en_sf and not en_acta else "")
             return {"predio": predio, "estado": "ok" if ok else "error al escribir",
                     "archivo": nombre if ok else "",
-                    "establecimiento": data.get("Establecimiento", "")}
+                    "establecimiento": data.get("Establecimiento", ""),
+                    "equipos": "%d/%d" % (en_acta, en_sf),
+                    "aviso": aviso}
 
         seguidos_mal = 0
         for i, predio in enumerate(predios, 1):
@@ -291,7 +299,7 @@ def main():
                         e = e2
                 if fila is None:
                     print(f"{marca}  ERROR: {str(e)[:90]}")
-                    fila = {"predio": predio, "estado": f"error: {str(e)[:80]}", "archivo": "", "establecimiento": ""}
+                    fila = {"predio": predio, "estado": f"error: {str(e)[:80]}", "archivo": "", "establecimiento": "", "equipos": "", "aviso": ""}
 
             if fila["estado"] == "ok":
                 seguidos_mal = 0
