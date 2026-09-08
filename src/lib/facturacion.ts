@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { ordenarTecnicosAsignados } from "@/utils/equipoUtils";
-import { normalizarRecablear } from "@/lib/camposPredio";
+import { CAMPOS_TECNICO, mostrarValorCampo, valorCampoTecnico } from "@/lib/camposPredio";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -12,6 +12,10 @@ import { normalizarRecablear } from "@/lib/camposPredio";
  * Cada predio aparece UNA sola vez, con dos columnas de técnico:
  *  - "Técnico (resolvió)"  = ÚLTIMO asignado → pago completo.
  *  - "Técnico anterior"    = el/los asignados previos → porcentaje (vacío si es uno solo).
+ *
+ * Las columnas que carga el técnico (recablear, AP reinstalados, cambio de rack…) NO
+ * se escriben a mano acá: salen de CAMPOS_TECNICO en lib/camposPredio. Se hacía a mano
+ * y `recablear` estuvo meses sin salir en el CSV aunque el dato estaba cargado.
  */
 
 type AsigLite = {
@@ -37,16 +41,20 @@ export interface FilaFacturacion {
   nombre: string | null;
   provincia: string | null;
   fecha: string | null;
-  mas20Ap: boolean;
-  /** Puntos recableados que cargo el tecnico (1 a 5), o "" si no cargo nada. */
-  recablear: string;
+  /** Valor cargado por el técnico, por clave de CAMPOS_TECNICO. "" = sin dato. */
+  campos: Record<string, string>;
   resolvio: string;   // último asignado (pago completo), o "Sin asignar"
   anterior: string;   // asignado(s) previo(s) (porcentaje), o ""
 }
 
-const esMas20 = (camposExtra: any) => String(camposExtra?.tieneMas20Ap || "").trim().toUpperCase() === "SI";
-const recableadoDe = (camposExtra: any) => normalizarRecablear(camposExtra?.recablear) ?? "";
 const fechaAR = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("es-AR") : "");
+
+/** Los valores del técnico de un predio, ya normalizados, por clave. */
+export function camposTecnicoDe(camposExtra: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const def of CAMPOS_TECNICO) out[def.clave] = valorCampoTecnico(camposExtra, def.clave);
+  return out;
+}
 
 /** Una fila por predio, con quién resolvió (último) y quién estuvo antes. */
 export function filasFacturacion(predios: PredioFacturacion[]): FilaFacturacion[] {
@@ -61,8 +69,7 @@ export function filasFacturacion(predios: PredioFacturacion[]): FilaFacturacion[
       nombre: p.nombre,
       provincia: p.provincia,
       fecha: p.fechaActualizacion ? p.fechaActualizacion.toISOString() : null,
-      mas20Ap: esMas20(p.camposExtra),
-      recablear: recableadoDe(p.camposExtra),
+      campos: camposTecnicoDe(p.camposExtra),
       resolvio,
       anterior,
     };
@@ -71,35 +78,66 @@ export function filasFacturacion(predios: PredioFacturacion[]): FilaFacturacion[
   return filas;
 }
 
-export function csvFacturacion(filas: FilaFacturacion[], totalTareas: number, totalMas20: number): string {
-  const esc = (v: unknown) => String(v ?? "").replace(/"/g, '""');
-  const lines = ["Predio,Incidencia,Técnico (resolvió),Técnico anterior,Fecha,Provincia,Más de 20 AP"];
-  for (const t of filas) {
-    lines.push(
-      `"${esc(t.codigo || "")}","${esc(t.incidencia || "")}","${esc(t.resolvio)}","${esc(t.anterior)}","${esc(fechaAR(t.fecha))}","${esc(t.provincia || "")}","${t.mas20Ap ? "Sí" : ""}"`
-    );
+/**
+ * El pie de cada columna del técnico: "3 predios · 7 puntos", "2 chicos · 1 grande".
+ * Recibe las filas y devuelve el texto por clave, para que el CSV y el Excel muestren
+ * exactamente lo mismo.
+ */
+export function totalesCamposTecnico(valoresPorClave: (clave: string) => string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const def of CAMPOS_TECNICO) {
+    out[def.clave] = def.resumen(valoresPorClave(def.clave).filter(Boolean));
   }
+  return out;
+}
+
+const totalesDeFilas = (filas: FilaFacturacion[]) =>
+  totalesCamposTecnico((clave) => filas.map((f) => f.campos[clave] || ""));
+
+export function csvFacturacion(filas: FilaFacturacion[], totalTareas: number): string {
+  const esc = (v: unknown) => String(v ?? "").replace(/"/g, '""');
+  const encabezados = ["Predio", "Incidencia", "Técnico (resolvió)", "Técnico anterior", "Fecha", "Provincia",
+    ...CAMPOS_TECNICO.map((d) => d.etiqueta)];
+  const lines = [encabezados.join(",")];
+  for (const t of filas) {
+    const celdas = [
+      t.codigo || "", t.incidencia || "", t.resolvio, t.anterior, fechaAR(t.fecha), t.provincia || "",
+      ...CAMPOS_TECNICO.map((d) => mostrarValorCampo(d, t.campos[d.clave] || "")),
+    ];
+    lines.push(celdas.map((c) => `"${esc(c)}"`).join(","));
+  }
+  const totales = totalesDeFilas(filas);
   lines.push("");
-  lines.push(`"TOTAL: ${totalTareas} predios","","","","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
+  const pie = [`TOTAL: ${totalTareas} predios`, "", "", "", "", "", ...CAMPOS_TECNICO.map((d) => totales[d.clave])];
+  lines.push(pie.map((c) => `"${esc(c)}"`).join(","));
   return lines.join("\n");
 }
 
-export function xlsxBufferFacturacion(filas: FilaFacturacion[], totalTareas: number, totalMas20: number): Buffer {
-  const rows: any[] = filas.map((t) => ({
-    Predio: t.codigo || "",
-    Incidencia: t.incidencia || "",
-    "Técnico (resolvió)": t.resolvio,
-    "Técnico anterior": t.anterior,
-    Fecha: fechaAR(t.fecha),
-    Provincia: t.provincia || "",
-    "Más de 20 AP": t.mas20Ap ? "Sí" : "",
-    Recablear: t.recablear ? Number(t.recablear) : "",
-  }));
-  const totalRecableados = filas.filter((f) => f.recablear).length;
-  const puntosRecableados = filas.reduce((suma, f) => suma + (Number(f.recablear) || 0), 0);
-  rows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico (resolvió)": "", "Técnico anterior": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "", Recablear: totalRecableados ? `${totalRecableados} predios · ${puntosRecableados} puntos` : "" });
+export function xlsxBufferFacturacion(filas: FilaFacturacion[], totalTareas: number): Buffer {
+  const rows: any[] = filas.map((t) => {
+    const fila: any = {
+      Predio: t.codigo || "",
+      Incidencia: t.incidencia || "",
+      "Técnico (resolvió)": t.resolvio,
+      "Técnico anterior": t.anterior,
+      Fecha: fechaAR(t.fecha),
+      Provincia: t.provincia || "",
+    };
+    for (const d of CAMPOS_TECNICO) {
+      const v = t.campos[d.clave] || "";
+      // Los numéricos van como número para que Excel los pueda sumar.
+      fila[d.etiqueta] = d.tipo === "numero" ? (v ? Number(v) : "") : mostrarValorCampo(d, v);
+    }
+    return fila;
+  });
+  const totales = totalesDeFilas(filas);
+  const pie: any = { Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico (resolvió)": "", "Técnico anterior": "", Fecha: "", Provincia: "" };
+  for (const d of CAMPOS_TECNICO) pie[d.etiqueta] = totales[d.clave];
+  rows.push(pie);
+
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 13 }, { wch: 11 }];
+  ws["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 16 },
+    ...CAMPOS_TECNICO.map((d) => ({ wch: Math.max(12, d.etiqueta.length + 3) }))];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Facturación");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
@@ -121,12 +159,18 @@ export function resumenPorTecnico(predios: PredioFacturacion[]) {
     tareas: any[];
   }> = {};
   for (const p of predios) {
+    const campos = camposTecnicoDe(p.camposExtra);
     const tareaData = {
       id: p.id, nombre: p.nombre, codigo: p.codigo, provincia: p.provincia,
       incidencia: p.incidencias ?? null,
       fecha: p.fechaActualizacion ? p.fechaActualizacion.toISOString() : null,
-      mas20Ap: esMas20(p.camposExtra),
-      recablear: recableadoDe(p.camposExtra),
+      // Forma nueva: todo lo del tecnico junto, para que agregar un campo no obligue a
+      // tocar el resumen. Se guardan tambien las claves viejas porque los reportes ya
+      // emitidos las tienen y la pantalla sabe leer las dos.
+      campos,
+      mas20Ap: campos.tieneMas20Ap === "SI",
+      recablear: campos.recablear,
+      apReinstalados: campos.apReinstalados,
     };
     const ordenados = ordenarTecnicosAsignados(p.asignaciones);
     if (ordenados.length === 0) {

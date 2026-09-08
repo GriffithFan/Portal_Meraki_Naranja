@@ -98,13 +98,12 @@ export async function GET(request: NextRequest) {
     const resumen = resumenPorTecnico(prediosFacturables);
     const totalTareas = prediosFacturables.length;
     const filas = filasFacturacion(prediosFacturables);
-    const totalMas20 = filas.filter((f) => f.mas20Ap).length;
 
     const csvDir = path.join(process.cwd(), "uploads", "reportes");
     await mkdir(csvDir, { recursive: true });
     const csvFileName = `reporte-${semana}.csv`;
-    await writeFile(path.join(csvDir, csvFileName), csvFacturacion(filas, totalTareas, totalMas20), "utf-8");
-    await writeFile(path.join(csvDir, `reporte-${semana}.xlsx`), xlsxBufferFacturacion(filas, totalTareas, totalMas20));
+    await writeFile(path.join(csvDir, csvFileName), csvFacturacion(filas, totalTareas), "utf-8");
+    await writeFile(path.join(csvDir, `reporte-${semana}.xlsx`), xlsxBufferFacturacion(filas, totalTareas));
 
     // Buscar admins para asociar el reporte y notificar (una sola query)
     const admins = await prisma.user.findMany({

@@ -6,6 +6,7 @@ import { dedupeUsersByName, normalizeAssigneeName } from "@/utils/asignacionUtil
 import { hasTaskFieldConfig, sanitizeTaskFieldConfigs } from "@/utils/taskFieldConfig";
 import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
 import { toast } from "sonner";
+import { CAMPOS_TECNICO, mostrarValorCampo, normalizarCampoTecnico, valorCampoTecnico } from "@/lib/camposPredio";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -173,19 +174,10 @@ const DEFAULT_DETAIL_FIELDS: DetailFieldDef[] = [
 ];
 
 const NOTES_DETAIL_FIELD: DetailFieldDef = { id: "notas", label: "Notas", field: "notas", editable: true };
-const MAS_20_AP_KEY = "tieneMas20Ap";
-const RECABLEAR_KEY = "recablear";
-const OPCIONES_RECABLEAR = ["1", "2", "3", "4", "5"];
 
-/** "1".."5" o "" (sin dato). Cualquier otra cosa se descarta. */
-function normalizeRecablear(value: unknown): string {
-  const v = String(value ?? "").trim();
-  return OPCIONES_RECABLEAR.includes(v) ? v : "";
-}
-
-function normalizeMas20Ap(value: unknown): "SI" | "NO" | "" {
-  const normalized = String(value || "").trim().toUpperCase();
-  return normalized === "SI" || normalized === "NO" ? normalized : "";
+/** El valor guardado de un campo del técnico, ya normalizado ("" si no cargó nada). */
+function valorCampo(tarea: any, clave: string): string {
+  return valorCampoTecnico(tarea?.camposExtra, clave);
 }
 
 function labelFromKey(key: string) {
@@ -251,8 +243,9 @@ export default function TareaDetalleModal({
   const [hidingDetailField, setHidingDetailField] = useState<DetailFieldDef | null>(null);
   const [notasTecnicoDraft, setNotasTecnicoDraft] = useState("");
   const [savingNotasTecnico, setSavingNotasTecnico] = useState(false);
-  const [savingMas20Ap, setSavingMas20Ap] = useState(false);
-  const [savingRecablear, setSavingRecablear] = useState(false);
+  // Un campo del técnico guardándose a la vez, por clave: agregar un campo nuevo al
+  // registro no obliga a sumar otro useState acá.
+  const [guardandoCampo, setGuardandoCampo] = useState<string | null>(null);
 
   const formatDateTime = (d: string) =>
     new Date(d).toLocaleDateString("es-AR", {
@@ -533,25 +526,13 @@ export default function TareaDetalleModal({
     setSavingNotasTecnico(false);
   }
 
-  async function saveRecablear(value: string) {
-    if (savingRecablear) return;
-    const current = normalizeRecablear(tarea?.camposExtra?.[RECABLEAR_KEY]);
-    if (value === current) return;
-    setSavingRecablear(true);
-    const ok = await saveField("camposExtra", { [RECABLEAR_KEY]: value || null });
+  async function saveCampoTecnico(clave: string, value: string) {
+    if (guardandoCampo) return;
+    if (value === valorCampo(tarea, clave)) return;
+    setGuardandoCampo(clave);
+    const ok = await saveField("camposExtra", { [clave]: value || null });
     if (ok) toast.success("Campo guardado");
-    setSavingRecablear(false);
-  }
-
-  async function saveMas20Ap(value: "SI" | "NO" | "") {
-    if (savingMas20Ap) return;
-    const current = normalizeMas20Ap(tarea?.camposExtra?.[MAS_20_AP_KEY]);
-    if (value === current) return;
-    setSavingMas20Ap(true);
-    const payload = value ? value : null;
-    const ok = await saveField("camposExtra", { [MAS_20_AP_KEY]: payload });
-    if (ok) toast.success("Campo guardado");
-    setSavingMas20Ap(false);
+    setGuardandoCampo(null);
   }
 
   const timelineItems = useMemo(() => {
@@ -817,10 +798,10 @@ export default function TareaDetalleModal({
     if (hasOwnCamposConfig) return [];
     const extra = tarea?.camposExtra;
     if (!extra || typeof extra !== "object" || Array.isArray(extra)) return [];
-    // Los campos que ya tienen su propio bloque abajo (20 AP, Recablear) no se
+    // Los campos del tecnico ya tienen su propio bloque abajo, asi que no se
     // repiten aca: si no, el mismo dato sale dos veces — arriba como texto de solo
     // lectura y abajo como desplegable.
-    const conBloquePropio = new Set([MAS_20_AP_KEY, RECABLEAR_KEY]);
+    const conBloquePropio = new Set(CAMPOS_TECNICO.map((d) => d.clave));
     return Object.entries(extra)
       .filter(([key]) => !conBloquePropio.has(key))
       .filter(([, value]) => value !== null && value !== undefined && value !== "")
@@ -868,8 +849,6 @@ export default function TareaDetalleModal({
   }, [baseDetailFields, detalleCamposConfig, getColumnConfig, getDetailConfig, hasOwnCamposConfig, isHiddenByListStructure]);
 
   const notasTecnicoDirty = notasTecnicoDraft !== String(tarea?.notasTecnico || "");
-  const mas20ApValue = normalizeMas20Ap(tarea?.camposExtra?.[MAS_20_AP_KEY]);
-  const recablearValue = normalizeRecablear(tarea?.camposExtra?.[RECABLEAR_KEY]);
 
   // Descripción de la incidencia (de Mined/Salesforce). Se muestra como sección
   // fija (independiente de la config del espacio, así es igual en todo Predios 2026
@@ -1315,63 +1294,62 @@ export default function TareaDetalleModal({
                     </div>
                   </div>
 
-                  {/* Tiene más de 20 AP */}
-                  <div className="border border-surface-200 rounded-lg">
-                    <div className="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
-                      <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">
-                        Tiene más de 20 AP
-                      </span>
-                      {mas20ApValue === "SI" && (
-                        <span className="text-[10px] text-violet-600 font-medium">● Marcado SI</span>
-                      )}
-                    </div>
-                    <div className="p-3">
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={mas20ApValue}
-                          onChange={(e) => { void saveMas20Ap(normalizeMas20Ap(e.target.value)); }}
-                          disabled={savingMas20Ap}
-                          className="w-full max-w-[220px] rounded-md border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 focus:outline-none focus:border-primary-400 disabled:opacity-50"
-                        >
-                          <option value="">Sin dato</option>
-                          <option value="SI">Sí</option>
-                          <option value="NO">No</option>
-                        </select>
-                        {savingMas20Ap && <span className="text-[11px] text-surface-400">Guardando...</span>}
+                  {/* Campos que carga el técnico en la visita. Salen de CAMPOS_TECNICO
+                      (lib/camposPredio) para que agregar uno sea una entrada ahí y nada
+                      más: la validación, el chip de la lista y la columna de facturación
+                      leen el mismo registro. */}
+                  {CAMPOS_TECNICO.map((def) => {
+                    const valor = valorCampo(tarea, def.clave);
+                    const guardando = guardandoCampo === def.clave;
+                    return (
+                      <div key={def.clave} className="border border-surface-200 rounded-lg">
+                        <div className="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">
+                            {def.etiqueta}
+                          </span>
+                          {valor && def.chip(valor) && (
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${def.chipClase}`}>
+                              {def.chip(valor)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <div className="flex items-center gap-2">
+                            {def.tipo === "opciones" ? (
+                              <select
+                                value={valor}
+                                onChange={(e) => { void saveCampoTecnico(def.clave, String(normalizarCampoTecnico(def.clave, e.target.value) ?? "")); }}
+                                disabled={guardando}
+                                className="w-full max-w-[220px] rounded-md border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 focus:outline-none focus:border-primary-400 disabled:opacity-50"
+                              >
+                                <option value="">Sin dato</option>
+                                {(def.opciones ?? []).map((o) => (
+                                  <option key={o} value={o}>{mostrarValorCampo(def, o)}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={def.max ?? 99}
+                                step={1}
+                                key={valor}
+                                defaultValue={valor}
+                                onBlur={(e) => { void saveCampoTecnico(def.clave, String(normalizarCampoTecnico(def.clave, e.target.value) ?? "")); }}
+                                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                disabled={guardando}
+                                placeholder="Sin dato"
+                                className="w-full max-w-[220px] rounded-md border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 focus:outline-none focus:border-primary-400 disabled:opacity-50"
+                              />
+                            )}
+                            {guardando && <span className="text-[11px] text-surface-400">Guardando...</span>}
+                          </div>
+                          <p className="mt-1.5 text-[10px] text-surface-400">{def.ayuda}</p>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Recablear: lo carga el técnico segun lo que hizo en la visita (se factura por punto) */}
-                  <div className="border border-surface-200 rounded-lg">
-                    <div className="px-3 py-2 border-b border-surface-100 flex items-center justify-between">
-                      <span className="text-[11px] font-medium text-surface-400 uppercase tracking-wider">
-                        Recablear
-                      </span>
-                      {recablearValue && (
-                        <span className="text-[10px] text-cyan-700 font-medium">● {recablearValue} punto{recablearValue === "1" ? "" : "s"}</span>
-                      )}
-                    </div>
-                    <div className="p-3">
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={recablearValue}
-                          onChange={(e) => { void saveRecablear(normalizeRecablear(e.target.value)); }}
-                          disabled={savingRecablear}
-                          className="w-full max-w-[220px] rounded-md border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 focus:outline-none focus:border-primary-400 disabled:opacity-50"
-                        >
-                          <option value="">Sin dato</option>
-                          {OPCIONES_RECABLEAR.map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
-                        {savingRecablear && <span className="text-[11px] text-surface-400">Guardando...</span>}
-                      </div>
-                      <p className="mt-1.5 text-[10px] text-surface-400">
-                        Cuántos puntos tuviste que recablear en esta visita.
-                      </p>
-                    </div>
-                  </div>
+                    );
+                  })}
 
                   {/* Info de creación */}
                   <div className="flex items-center gap-4 text-[10px] text-surface-400 pt-2">

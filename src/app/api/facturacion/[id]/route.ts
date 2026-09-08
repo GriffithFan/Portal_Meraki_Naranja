@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth";
 import { unlink } from "fs/promises";
 import path from "path";
 import * as XLSX from "xlsx";
+import { CAMPOS_TECNICO, mostrarValorCampo, normalizarCampoTecnico } from "@/lib/camposPredio";
+import { totalesCamposTecnico } from "@/lib/facturacion";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -14,7 +16,12 @@ interface ResumenTarea {
   provincia: string | null;
   incidencia?: string | null;
   fecha?: string | null;
+  /** Forma nueva: los campos del técnico juntos, por clave. */
+  campos?: Record<string, string>;
+  /** Forma vieja, en los reportes ya emitidos. Se sigue leyendo. */
   mas20Ap?: boolean;
+  recablear?: string;
+  apReinstalados?: string;
 }
 interface ResumenGrupo {
   tecnicoId: string;
@@ -34,6 +41,15 @@ const fmtFecha = (fecha?: string | null) =>
  * (que usa el código/número de predio en la primera columna). Así se evita
  * servir archivos viejos en disco que pudieran tener un formato anterior
  * (p. ej. el nombre de la institución en vez del número de predio).
+ *
+ * Las columnas del técnico salen de CAMPOS_TECNICO, igual que en lib/facturacion.ts.
+ * Antes estaban escritas a mano acá y se quedaron viejas: `recablear` se cargaba, se
+ * veía en pantalla y se guardaba, pero nunca salía en el archivo descargado, que es lo
+ * único que ve quien liquida.
+ *
+ * Los reportes ya emitidos guardan los campos sueltos (`recablear`, `mas20Ap`); los
+ * nuevos los guardan juntos en `campos`. Se leen las dos formas para que un reporte
+ * viejo se siga descargando igual.
  */
 export async function GET(
   request: NextRequest,
@@ -58,7 +74,22 @@ export async function GET(
   const baseName = reporte.csvNombre?.replace(".csv", "") || `reporte-${reporte.semana}`;
 
   // Aplanar filas en el mismo orden que el resumen (agrupado por técnico)
-  const filas: { predio: string; incidencia: string; tecnico: string; fecha: string; provincia: string; mas20Ap: boolean }[] = [];
+  /** Los campos del técnico de una tarea, en la forma nueva o en la vieja. */
+  const camposDe = (t: ResumenTarea): Record<string, string> => {
+    const legado: Record<string, unknown> = {
+      tieneMas20Ap: t.mas20Ap === true ? "SI" : "",
+      recablear: t.recablear,
+      apReinstalados: t.apReinstalados,
+    };
+    const out: Record<string, string> = {};
+    for (const def of CAMPOS_TECNICO) {
+      const bruto = t.campos?.[def.clave] ?? legado[def.clave];
+      out[def.clave] = String(normalizarCampoTecnico(def.clave, bruto) ?? "");
+    }
+    return out;
+  };
+
+  const filas: { predio: string; incidencia: string; tecnico: string; fecha: string; provincia: string; campos: Record<string, string> }[] = [];
   for (const grupo of resumen) {
     for (const t of grupo.tareas || []) {
       filas.push({
@@ -67,25 +98,34 @@ export async function GET(
         tecnico: grupo.tecnicoNombre,
         fecha: fmtFecha(t.fecha),
         provincia: t.provincia || "",
-        mas20Ap: t.mas20Ap === true,
+        campos: camposDe(t),
       });
     }
   }
-  const totalMas20 = filas.filter((f) => f.mas20Ap).length;
+  const totales = totalesCamposTecnico((clave) => filas.map((f) => f.campos[clave] || ""));
 
   if (format === "xlsx") {
-    const xlsxRows = filas.map((f) => ({
-      Predio: f.predio,
-      Incidencia: f.incidencia,
-      "Técnico asignado": f.tecnico,
-      Fecha: f.fecha,
-      Provincia: f.provincia,
-      "Más de 20 AP": f.mas20Ap ? "Sí" : "",
-    }));
-    xlsxRows.push({ Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "", "Más de 20 AP": totalMas20 ? `${totalMas20} con +20 AP` : "" });
+    const xlsxRows: any[] = filas.map((f) => {
+      const fila: any = {
+        Predio: f.predio,
+        Incidencia: f.incidencia,
+        "Técnico asignado": f.tecnico,
+        Fecha: f.fecha,
+        Provincia: f.provincia,
+      };
+      for (const d of CAMPOS_TECNICO) {
+        const v = f.campos[d.clave] || "";
+        fila[d.etiqueta] = d.tipo === "numero" ? (v ? Number(v) : "") : mostrarValorCampo(d, v);
+      }
+      return fila;
+    });
+    const pie: any = { Predio: `TOTAL: ${totalTareas} predios`, Incidencia: "", "Técnico asignado": "", Fecha: "", Provincia: "" };
+    for (const d of CAMPOS_TECNICO) pie[d.etiqueta] = totales[d.clave];
+    xlsxRows.push(pie);
 
     const ws = XLSX.utils.json_to_sheet(xlsxRows);
-    ws["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 14 }];
+    ws["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 18 },
+      ...CAMPOS_TECNICO.map((d) => ({ wch: Math.max(12, d.etiqueta.length + 3) }))];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Facturación");
     const xlsxBuffer = new Uint8Array(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer);
@@ -102,12 +142,17 @@ export async function GET(
 
   // Default: CSV
   const escapeCsv = (value: string) => value.replace(/"/g, '""');
-  const csvLines = ["Predio,Incidencia,Técnico,Fecha,Provincia,Más de 20 AP"];
+  const encabezados = ["Predio", "Incidencia", "Técnico", "Fecha", "Provincia",
+    ...CAMPOS_TECNICO.map((d) => d.etiqueta)];
+  const csvLines = [encabezados.join(",")];
   for (const f of filas) {
-    csvLines.push(`"${escapeCsv(f.predio)}","${escapeCsv(f.incidencia)}","${escapeCsv(f.tecnico)}","${escapeCsv(f.fecha)}","${escapeCsv(f.provincia)}","${f.mas20Ap ? "Sí" : ""}"`);
+    const celdas = [f.predio, f.incidencia, f.tecnico, f.fecha, f.provincia,
+      ...CAMPOS_TECNICO.map((d) => mostrarValorCampo(d, f.campos[d.clave] || ""))];
+    csvLines.push(celdas.map((c) => `"${escapeCsv(c)}"`).join(","));
   }
   csvLines.push("");
-  csvLines.push(`"TOTAL: ${totalTareas} predios","","","","","${totalMas20 ? `${totalMas20} con +20 AP` : ""}"`);
+  const pieCsv = [`TOTAL: ${totalTareas} predios`, "", "", "", "", ...CAMPOS_TECNICO.map((d) => totales[d.clave])];
+  csvLines.push(pieCsv.map((c) => `"${escapeCsv(c)}"`).join(","));
   // BOM para que Excel abra el CSV con acentos correctamente
   const csvContent = "﻿" + csvLines.join("\n");
 

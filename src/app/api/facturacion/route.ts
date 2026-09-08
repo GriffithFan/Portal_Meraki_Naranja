@@ -135,13 +135,12 @@ export async function POST(request: NextRequest) {
     const resumen = resumenPorTecnico(prediosFacturables);
     const totalTareas = prediosFacturables.length;
     const filas = filasFacturacion(prediosFacturables);
-    const totalMas20 = filas.filter((f) => f.mas20Ap).length;
 
     const reportDir = path.join(process.cwd(), "uploads", "reportes");
     await mkdir(reportDir, { recursive: true });
     const csvFileName = `reporte-${semana}.csv`;
-    await writeFile(path.join(reportDir, csvFileName), csvFacturacion(filas, totalTareas, totalMas20), "utf-8");
-    await writeFile(path.join(reportDir, `reporte-${semana}.xlsx`), xlsxBufferFacturacion(filas, totalTareas, totalMas20));
+    await writeFile(path.join(reportDir, csvFileName), csvFacturacion(filas, totalTareas), "utf-8");
+    await writeFile(path.join(reportDir, `reporte-${semana}.xlsx`), xlsxBufferFacturacion(filas, totalTareas));
 
     // Crear reporte
     const reporte = await prisma.reporteFacturacion.create({

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "@/hooks/useSession";
 import { toast } from "sonner";
+import { CAMPOS_TECNICO, mostrarValorCampo, normalizarCampoTecnico } from "@/lib/camposPredio";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -14,7 +15,7 @@ interface ReporteResumenItem {
   /** Los que le acreditan a el. La suma sobre todos da el total de predios del reporte. */
   acreditados?: number;
   colaboraciones?: number;
-  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia?: string | null; fecha?: string | null; mas20Ap?: boolean; recablear?: string; acreditado?: boolean; acreditadoA?: string | null }[];
+  tareas: { id: string; nombre: string; codigo: string | null; provincia: string | null; incidencia?: string | null; fecha?: string | null; campos?: Record<string, string>; mas20Ap?: boolean; recablear?: string; apReinstalados?: string; acreditado?: boolean; acreditadoA?: string | null }[];
 }
 
 interface Reporte {
@@ -39,6 +40,27 @@ function formatDateTime(d: string) {
     day: "2-digit", month: "2-digit", year: "2-digit",
     hour: "2-digit", minute: "2-digit",
   });
+}
+
+/**
+ * Los campos del técnico de una tarea del resumen.
+ *
+ * Los reportes ya emitidos guardan las claves sueltas (`recablear`, `mas20Ap`); los
+ * nuevos las guardan juntas en `campos`. Se leen las dos para que un reporte viejo se
+ * siga viendo igual.
+ */
+function camposDeTarea(t: { campos?: Record<string, string>; mas20Ap?: boolean; recablear?: string; apReinstalados?: string }): Record<string, string> {
+  const legado: Record<string, unknown> = {
+    tieneMas20Ap: t.mas20Ap === true ? "SI" : "",
+    recablear: t.recablear,
+    apReinstalados: t.apReinstalados,
+  };
+  const out: Record<string, string> = {};
+  for (const def of CAMPOS_TECNICO) {
+    const bruto = t.campos?.[def.clave] ?? legado[def.clave];
+    out[def.clave] = String(normalizarCampoTecnico(def.clave, bruto) ?? "");
+  }
+  return out;
 }
 
 export default function FacturacionPage() {
@@ -263,25 +285,25 @@ export default function FacturacionPage() {
                     {r.resumen.length > 0 ? (
                       <div className="space-y-2">
                         {r.resumen.map((grupo) => {
-                          const mas20Count = grupo.tareas.filter((t) => t.mas20Ap).length;
-                          // Recableado: lo carga el técnico (1 a 5) y se paga por punto.
-                          const recabPredios = grupo.tareas.filter((t) => t.recablear).length;
-                          const recabPuntos = grupo.tareas.reduce((s, t) => s + (Number(t.recablear) || 0), 0);
+                          // Un resumen por campo del técnico, con el mismo texto que el pie
+                          // del reporte: si el chip y el Excel no dicen lo mismo, alguien
+                          // liquida con un número y discute con el otro.
+                          const resumenCampos = CAMPOS_TECNICO
+                            .map((def) => ({
+                              def,
+                              texto: def.resumen(grupo.tareas.map((t) => camposDeTarea(t)[def.clave]).filter(Boolean)),
+                            }))
+                            .filter((r) => r.texto);
                           return (
                           <div key={grupo.tecnicoId} className="bg-white rounded-md border border-surface-200 p-2.5">
                             <div className="flex items-center justify-between mb-1.5 gap-2">
                               <span className="text-xs font-medium text-surface-800">{grupo.tecnicoNombre}</span>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
-                                {mas20Count > 0 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 text-violet-600 border border-violet-200" title="Predios con más de 20 AP (pago extra)">
-                                    ● {mas20Count} con +20 AP
+                                {resumenCampos.map(({ def, texto }) => (
+                                  <span key={def.clave} className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${def.chipClase}`} title={def.etiqueta}>
+                                    ● {texto}
                                   </span>
-                                )}
-                                {recabPredios > 0 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700 border border-cyan-200" title="Predios con recableado y total de puntos recableados">
-                                    ● {recabPredios} recableado{recabPredios !== 1 ? "s" : ""} · {recabPuntos} pts
-                                  </span>
-                                )}
+                                ))}
                                 {/* Acreditadas = las que le suman. Si ademas colaboro en
                                     otras, se muestran aparte para que no se confundan
                                     con lo que cobra. */}
@@ -304,8 +326,16 @@ export default function FacturacionPage() {
                                   {t.acreditado === false && t.acreditadoA && (
                                     <span className="text-[10px] text-surface-400 italic shrink-0">acredita {t.acreditadoA}</span>
                                   )}
-                                  {t.mas20Ap && <span className="text-violet-600 font-semibold text-[10px]" title="Más de 20 AP — pago extra">● +20 AP</span>}
-                                  {t.recablear && <span className="text-cyan-700 font-semibold text-[10px]" title={`Recablear: ${t.recablear} punto(s)`}>● R{t.recablear}</span>}
+                                  {CAMPOS_TECNICO.map((def) => {
+                                    const valor = camposDeTarea(t)[def.clave];
+                                    const texto = def.clave === "tieneMas20Ap" ? (valor === "SI" ? "+20 AP" : "") : def.chip(valor);
+                                    if (!texto) return null;
+                                    return (
+                                      <span key={def.clave} className="font-semibold text-[10px] text-surface-600" title={`${def.etiqueta}: ${mostrarValorCampo(def, valor)}`}>
+                                        ● {texto}
+                                      </span>
+                                    );
+                                  })}
                                   {t.incidencia && <span className="text-surface-400 font-mono text-[10px]">{t.incidencia}</span>}
                                   {t.fecha && <span className="text-surface-400 text-[10px]">{formatDate(t.fecha)}</span>}
                                   {t.provincia && <span className="text-surface-300 hidden sm:inline text-[10px]">{t.provincia}</span>}

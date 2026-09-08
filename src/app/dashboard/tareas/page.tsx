@@ -18,6 +18,7 @@ import { obtenerProvincia, PROVINCIAS } from "@/utils/provinciaUtils";
 import { dedupeUsersByName, getDuplicatedAssigneeNames, assigneeLabel } from "@/utils/asignacionUtils";
 import { normalizeTaskGroupBy, normalizeTaskQuickFilter, sanitizeTaskFieldConfigs, isServerSortable } from "@/utils/taskFieldConfig";
 import { toast } from "sonner";
+import { CAMPOS_TECNICO, valorCampoTecnico } from "@/lib/camposPredio";
 import { mensajeError } from "@/lib/fetchJson";
 import { esTipoIncidenciaEspecial } from "@/lib/tipoIncidencia";
 import { estadoVentana, cronogramaSigueAbierto } from "@/lib/cronogramaVentana";
@@ -49,11 +50,15 @@ const CopyBtn = ({ text }: { text: string }) => {
 };
 
 // ── Indicador de notas/comentarios ──────────────────────────
-const NotesIndicator = ({ notas, notasTecnico, comentarios, tieneMas20Ap, recablear, tieneAdjuntos }: { notas?: string | boolean; notasTecnico?: string | boolean; comentarios?: number; tieneMas20Ap?: unknown; recablear?: unknown; tieneAdjuntos?: boolean }) => {
-  const showMas20Ap = String(tieneMas20Ap || "").trim().toUpperCase() === "SI";
-  const recableado = ["1", "2", "3", "4", "5"].includes(String(recablear ?? "").trim()) ? String(recablear).trim() : "";
+const NotesIndicator = ({ notas, notasTecnico, comentarios, camposExtra, tieneAdjuntos }: { notas?: string | boolean; notasTecnico?: string | boolean; comentarios?: number; camposExtra?: unknown; tieneAdjuntos?: boolean }) => {
+  const showMas20Ap = valorCampoTecnico(camposExtra, "tieneMas20Ap") === "SI";
+  // Los demás campos del técnico salen del registro: cada uno decide su chip y su
+  // color en lib/camposPredio, así agregar uno no obliga a tocar esta lista.
+  const chips = CAMPOS_TECNICO
+    .map((def) => ({ def, texto: def.chip(valorCampoTecnico(camposExtra, def.clave)) }))
+    .filter((c) => c.texto);
   const showTecnico = Boolean(notasTecnico) || Boolean(tieneAdjuntos);
-  if (!notas && !showTecnico && !showMas20Ap && !recableado && !(comentarios && comentarios > 0)) return null;
+  if (!notas && !showTecnico && !showMas20Ap && !chips.length && !(comentarios && comentarios > 0)) return null;
   const taskTip = [
     notas ? "Tiene notas" : "",
     comentarios ? `${comentarios} comentario${comentarios > 1 ? "s" : ""}` : "",
@@ -75,17 +80,16 @@ const NotesIndicator = ({ notas, notasTecnico, comentarios, tieneMas20Ap, recabl
           </svg>
         </span>
       )}
-      {/* Recableado: lo carga el técnico (1 a 5) y se factura por eso, así que
-          conviene verlo en la fila sin tener que abrir el predio. */}
-      {recableado && (
+      {chips.map(({ def, texto }) => (
         <span
-          title={`Recablear: ${recableado}`}
-          aria-label={`Recablear ${recableado}`}
-          className="px-1 rounded bg-cyan-50 text-cyan-700 border border-cyan-200 text-[9px] font-bold leading-[14px]"
+          key={def.clave}
+          title={`${def.etiqueta}: ${texto}`}
+          aria-label={`${def.etiqueta} ${texto}`}
+          className={`px-1 rounded border text-[9px] font-bold leading-[14px] ${def.chipClase}`}
         >
-          R{recableado}
+          {texto}
         </span>
-      )}
+      ))}
       {showTecnico && (
         <span title={notasTecnico ? (tieneAdjuntos ? "Tiene nota y archivos del técnico" : "Tiene nota de tecnico") : "Tiene archivos adjuntos"} aria-label="Nota del tecnico">
           <svg className="w-3 h-3 text-primary-500" fill="currentColor" viewBox="0 0 24 24">
@@ -1567,7 +1571,7 @@ export default function TareasPage() {
           {session?.rol === "ADMIN" && typeof t.cantidadCronogramas === "number" && t.cantidadCronogramas >= 3 && (
             <span title={`${t.cantidadCronogramas} cronogramas originados`} className="shrink-0 rounded bg-purple-100 border border-purple-300 px-1 text-[9px] font-bold leading-[1.4] text-purple-700">{t.cantidadCronogramas}c</span>
           )}
-          <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} recablear={t.camposExtra?.recablear} tieneAdjuntos={t.tieneAdjuntos} />
+          <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} camposExtra={t.camposExtra} tieneAdjuntos={t.tieneAdjuntos} />
           <CopyBtn text={t.codigo || ""} />
         </span>
       );
@@ -1828,7 +1832,7 @@ export default function TareasPage() {
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 {t.codigo && <span className="shrink-0 text-sm font-semibold text-surface-800 tabular-nums">{t.codigo}</span>}
-                <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} tieneMas20Ap={t.camposExtra?.tieneMas20Ap} recablear={t.camposExtra?.recablear} tieneAdjuntos={t.tieneAdjuntos} />
+                <NotesIndicator notas={t.notas} notasTecnico={t.notasTecnico} comentarios={t._count?.comentarios} camposExtra={t.camposExtra} tieneAdjuntos={t.tieneAdjuntos} />
                 <p className="min-w-0 truncate text-sm font-medium text-surface-700">
                   {t.incidencias || t.nombre || "Sin nombre"}
                 </p>
