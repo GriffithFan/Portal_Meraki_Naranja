@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, isModOrAdmin } from "@/lib/auth";
 import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
+// Este archivo devolvía `Predio.incidencias` como motivo, que es el CÓDIGO de la
+// incidencia y no explica nada. Ver lib/noConformidades.ts.
+import { motivoNoConformidad } from "@/lib/noConformidades";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -42,23 +45,6 @@ function getStateBucket(estado?: { nombre?: string | null; clave?: string | null
   if (label.includes("no conforme") || label.includes("noconforme") || label === "nc") return "noConforme" as const;
   if (["conforme", "cerrad", "finaliz", "bloque", "blocke", "instalad"].some((token) => label.includes(token))) return "conforme" as const;
   return "otro" as const;
-}
-
-function getNoConformeReason(predio: {
-  incidencias?: string | null;
-  notas?: string | null;
-  comentarios?: Array<{ contenido?: string | null }>;
-}) {
-  const incidencia = predio.incidencias?.trim();
-  if (incidencia) return { motivo: incidencia, fuente: "incidencia" as const };
-
-  const nota = predio.notas?.trim();
-  if (nota) return { motivo: nota, fuente: "nota" as const };
-
-  const comentario = predio.comentarios?.[0]?.contenido?.trim();
-  if (comentario) return { motivo: comentario, fuente: "comentario" as const };
-
-  return { motivo: null, fuente: null };
 }
 
 export async function GET() {
@@ -253,10 +239,11 @@ export async function GET() {
           codigo: true,
           incidencias: true,
           notas: true,
+          notasTecnico: true,
           comentarios: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            select: { contenido: true },
+            select: { contenido: true, createdAt: true, usuario: { select: { nombre: true } } },
           },
         },
         orderBy: { updatedAt: "desc" },
@@ -298,11 +285,12 @@ export async function GET() {
         auditar,
       },
       noConformesMuestra: muestraNoConformes.map((predio) => {
-        const motivoInfo = getNoConformeReason(predio);
+        const motivoInfo = motivoNoConformidad(predio);
         return {
           id: predio.id,
           codigo: predio.codigo,
-          motivo: motivoInfo.motivo,
+          // `motivo` sigue siendo null cuando no hay nada, como esperaba el front.
+          motivo: motivoInfo.motivo || null,
           fuente: motivoInfo.fuente,
         };
       }),

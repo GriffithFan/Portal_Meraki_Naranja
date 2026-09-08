@@ -15,6 +15,11 @@ import { prisma } from "@/lib/prisma";
 import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 import { provinciaCanonica } from "@/utils/provinciaUtils";
 import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
+import {
+  clasificarMotivo,
+  motivoNoConformidad,
+  terminosFrecuentes,
+} from "@/lib/noConformidades";
 
 const NO_CONTABILIZAR = ["Gustavo"];
 
@@ -87,6 +92,36 @@ export interface TecnicoKpi {
   total: number;
   promedio: number;
 }
+/**
+ * Una no conformidad, con el motivo textual por el que rebotó.
+ *
+ * Es lo que pidió el cliente para poder trabajar mejoras continuas: no alcanza con saber
+ * CUÁNTAS rebotaron, hay que ver de quién son y qué dijeron al rechazarlas.
+ */
+export interface NoConformidadDetalle {
+  predioId: string;
+  codigo: string | null;
+  incidencia: string | null;
+  provincia: string;
+  /** Clave de la semana (yyyy-mm-dd del sábado) en que quedó NC. */
+  semana: string;
+  /** dd/mm, para mostrar. */
+  etiquetaSemana: string;
+  fechaNc: Date;
+  /** El último asignado, con el mismo criterio que el ranking y la facturación. */
+  tecnico: string;
+  thNumero: number | null;
+  /** El ÚLTIMO rechazo, tal cual lo escribieron. */
+  motivo: string;
+  /** Fecha del rechazo según el propio texto (dd/mm/aaaa), cuando la trae. */
+  fechaMotivo: string | null;
+  categoria: string;
+  /** Puntos del checklist de auditoría citados ("7.2", "2.1"). */
+  puntos: string[];
+  /** Cuántas veces rebotó ese predio según el historial de la nota. */
+  rebotes: number;
+}
+
 export interface DatosKpi {
   semanas: SemanaKpi[];
   tecnicos: TecnicoKpi[];
@@ -106,6 +141,17 @@ export interface DatosKpi {
   movZonas: Array<{ zona: string } & Movimientos>;
   /** Acumulado del periodo. */
   movTotal: Movimientos;
+  // ── Detalle de no conformidades ──────────────────────────────────────────
+  /** Una fila por NC del período, con su motivo. */
+  noConformidades: NoConformidadDetalle[];
+  /** En qué se está fallando: cuántas NC por categoría. */
+  ncPorCategoria: Array<{ categoria: string; cantidad: number }>;
+  /** Lo mismo abierto por técnico, para ver en qué falla cada uno. */
+  ncPorTecnico: Array<{ tecnico: string; thNumero: number | null; total: number; categorias: Record<string, number> }>;
+  /** Puntos del checklist más citados por quien audita. */
+  ncPuntos: Array<{ punto: string; veces: number }>;
+  /** Términos más repetidos en los motivos: sirve para recalibrar las categorías. */
+  ncTerminos: Array<{ termino: string; veces: number }>;
 }
 
 const nuevoMov = (): Movimientos => ({ conformes: 0, ncNuevos: 0, trabajados: 0 });
@@ -289,6 +335,15 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
         where: { id: { in: idsCohorte } },
         select: {
           id: true, provincia: true,
+          // Para el detalle de NC: el motivo vive en notas/notasTecnico (verificado en
+          // producción), NUNCA en `incidencias` (es el código) ni en `descripcion` (es la
+          // orden de trabajo). Ver lib/noConformidades.ts.
+          codigo: true, incidencias: true, notas: true, notasTecnico: true,
+          comentarios: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { contenido: true, createdAt: true, usuario: { select: { nombre: true } } },
+          },
           asignaciones: {
             where: { tipo: { in: ["TAREA", "TECNICO"] } },
             select: { createdAt: true, usuario: { select: { nombre: true, thNumero: true } } },
@@ -300,7 +355,10 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
   /** Mismo criterio que el resto del informe: el último asignado, salteando a Gustavo. */
   const responsableDe = new Map<string, { nombre: string; thNumero: number | null } | null>();
   const zonaDe = new Map<string, string>();
+  /** El predio entero, para sacarle el motivo cuando resulte ser una NC. */
+  const predioDe = new Map<string, (typeof datosCohorte)[number]>();
   for (const p of datosCohorte) {
+    predioDe.set(p.id, p);
     zonaDe.set(p.id, provinciaCanonica(p.provincia) || "Sin provincia");
     let asignados = p.asignaciones.filter((a) => a.usuario);
     if (asignados.length && NO_CONTABILIZAR.includes(asignados[asignados.length - 1].usuario!.nombre)) {
@@ -363,6 +421,7 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
   const movTec = new Map<string, { th: number | null; total: Movimientos; sem: Record<string, Movimientos> }>();
   claves.forEach((k) => { mov[k] = nuevoMov(); movZona[k] = {}; });
 
+  const noConformidades: NoConformidadDetalle[] = [];
   const yaContado = new Set<string>();
   for (const [predioId, lista] of Array.from(eventos.entries())) {
     for (const e of lista) {
@@ -391,6 +450,28 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
         t.total[cual]++;
         (t.sem[k] ??= nuevoMov())[cual]++;
         movTec.set(resp.nombre, t);
+      }
+
+      // Cada NC nueva se guarda con su motivo: es lo que se publica en el detalle.
+      if (cual === "ncNuevos") {
+        const p = predioDe.get(predioId);
+        const m = p ? motivoNoConformidad(p) : null;
+        noConformidades.push({
+          predioId,
+          codigo: p?.codigo ?? null,
+          incidencia: p?.incidencias ?? null,
+          provincia: zona,
+          semana: k,
+          etiquetaSemana: ddmm(k),
+          fechaNc: e.fecha,
+          tecnico: resp?.nombre ?? "Sin asignar",
+          thNumero: resp?.thNumero ?? null,
+          motivo: m?.motivo ?? "",
+          fechaMotivo: m?.fecha ?? null,
+          categoria: clasificarMotivo(m?.motivo ?? ""),
+          puntos: m?.puntos ?? [],
+          rebotes: m?.rebotes ?? 0,
+        });
       }
     }
   }
@@ -455,9 +536,43 @@ export async function calcularKpi(nSemanas = 3, incluirEnCurso = false): Promise
     trabajados: a.trabajados + sm.mov.trabajados,
   }), nuevoMov());
 
+  // ── Agregados del detalle de NC ───────────────────────────────────────────
+  // Ordenado del más reciente al más viejo: lo de esta semana primero.
+  noConformidades.sort((a, b) => b.fechaNc.getTime() - a.fechaNc.getTime());
+
+  const porCategoria = new Map<string, number>();
+  const porTecnico = new Map<string, { th: number | null; total: number; cat: Record<string, number> }>();
+  const porPunto = new Map<string, number>();
+  for (const nc of noConformidades) {
+    porCategoria.set(nc.categoria, (porCategoria.get(nc.categoria) ?? 0) + 1);
+
+    const t = porTecnico.get(nc.tecnico) ?? { th: nc.thNumero, total: 0, cat: {} };
+    t.total++;
+    t.cat[nc.categoria] = (t.cat[nc.categoria] ?? 0) + 1;
+    porTecnico.set(nc.tecnico, t);
+
+    // Un punto citado dos veces en el mismo rechazo cuenta una sola vez.
+    for (const punto of nc.puntos) porPunto.set(punto, (porPunto.get(punto) ?? 0) + 1);
+  }
+
+  const ncPorCategoria = Array.from(porCategoria.entries())
+    .map(([categoria, cantidad]) => ({ categoria, cantidad }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.categoria.localeCompare(b.categoria, "es"));
+
+  const ncPorTecnico = Array.from(porTecnico.entries())
+    .map(([tecnico, d]) => ({ tecnico, thNumero: d.th, total: d.total, categorias: d.cat }))
+    .sort((a, b) => b.total - a.total || a.tecnico.localeCompare(b.tecnico, "es"));
+
+  const ncPuntos = Array.from(porPunto.entries())
+    .map(([punto, veces]) => ({ punto, veces }))
+    .sort((a, b) => b.veces - a.veces || a.punto.localeCompare(b.punto, "es"));
+
+  const ncTerminos = terminosFrecuentes(noConformidades.map((n) => n.motivo), 20);
+
   return { semanas, tecnicos, ultima: semanas[semanas.length - 1], movTecnicos, movZonas, movTotal,
            totalPeriodo: semanas.reduce((a, s) => a + s.incidencias, 0), ultimaCerrada,
-           volumenTecnicos, volumenZonas, volumenTotal };
+           volumenTecnicos, volumenZonas, volumenTotal,
+           noConformidades, ncPorCategoria, ncPorTecnico, ncPuntos, ncTerminos };
 }
 
 /** Texto listo para pegar en el correo. */
@@ -509,6 +624,23 @@ export function textoCorreo(d: DatosKpi): string {
     .map((z) => `${z.zona}: ${z.conformes} conformes y ${z.ncNuevos} NC, ${pctNc(z)} de NC`)
     .join(" · ");
 
+  // ── En qué se está fallando ───────────────────────────────────────────────
+  // Lo pidió el cliente para poder trabajar mejoras continuas. Va como párrafo en el
+  // cuerpo, no sólo en el adjunto: es lo primero que quieren leer.
+  const totalNc = d.noConformidades.length;
+  const top = d.ncPorCategoria.slice(0, 3);
+  const pctCat = (n: number) => `${Math.round((n / totalNc) * 100)}%`;
+  const repetidos = d.noConformidades.filter((n) => n.rebotes > 1).length;
+
+  const bloqueMotivos = totalNc === 0 ? "" : `
+Motivos de las no conformidades del período (${totalNc} en total):
+
+${top.map((c) => `  · ${c.categoria}: ${c.cantidad} (${pctCat(c.cantidad)})`).join("\n")}
+${repetidos > 0 ? `\nDe esas, ${repetidos} corresponden a predios que ya habían rebotado antes.` : ""}
+${d.ncPuntos.length > 0 ? `Puntos del checklist más citados por la auditoría: ${d.ncPuntos.slice(0, 4).map((p2) => `${p2.punto} (${p2.veces})`).join(", ")}.` : ""}
+En la planilla van tres hojas nuevas: "Motivos de NC" con el resumen, "NC detalle" con el texto del rechazo predio por predio, y "NC por técnico" con la apertura por persona.
+`;
+
   const previa = d.semanas.length > 1 ? d.semanas[d.semanas.length - 2].mov : null;
   const delta = previa ? u.mov.conformes - previa.conformes : 0;
   const tendencia = !previa ? ""
@@ -529,7 +661,7 @@ Evolución de las últimas ${d.semanas.length} semanas:
 ${tabla}
 
 Por provincia en el período: ${zonas}.
-
+${bloqueMotivos}
 "Trabajados" son los predios que entraron a instalación o auditoría en la semana. La conformidad se calcula sobre lo ya resuelto (conformes sobre conformes más no conformes).
 
 Quedo atento a cualquier corte adicional que necesiten.
@@ -798,6 +930,187 @@ export async function excelKpi(d: DatosKpi): Promise<Buffer> {
   hojaMov("Resumen por técnico", "Técnico", d.movTecnicos.map((t) => ({
     n: t.thNumero ? `TH${String(t.thNumero).padStart(2, "0")} · ${t.nombre}` : t.nombre, m: t.total,
   })));
+
+  // ── En qué estamos fallando ───────────────────────────────────────────────
+  // Lo pidió el cliente para trabajar mejoras continuas: no alcanza con cuántas
+  // rebotaron, hay que ver de quién son y qué dijeron al rechazarlas.
+  if (d.noConformidades.length > 0) {
+    const wm = wb.addWorksheet("Motivos de NC");
+    const totalNc = d.noConformidades.length;
+
+    wm.mergeCells(1, 1, 1, 4);
+    const tm = wm.getCell(1, 1);
+    tm.value = "EN QUÉ SE ESTÁ FALLANDO — motivos de las no conformidades";
+    tm.font = { size: 13, bold: true, color: { argb: "FFFFFFFF" } };
+    tm.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
+    tm.alignment = { horizontal: "center", vertical: "middle" };
+    wm.getRow(1).height = 26;
+
+    wm.mergeCells(2, 1, 2, 4);
+    const sub = wm.getCell(2, 1);
+    sub.value = `${totalNc} no conformidades del período. El motivo es el último rechazo ` +
+                "registrado en la nota del predio; la categoría se deduce de ese texto.";
+    sub.font = { size: 9, italic: true, color: { argb: "FF555555" } };
+    sub.alignment = { horizontal: "center" };
+
+    let rm = 4;
+    const encabezado = (texto: string, ancho: number) => {
+      wm.mergeCells(rm, 1, rm, ancho);
+      const c = wm.getCell(rm, 1);
+      c.value = texto;
+      c.font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL2 } };
+      rm++;
+    };
+
+    encabezado("Por categoría", 3);
+    const hc = wm.getRow(rm++);
+    ["Categoría", "NC", "% del total"].forEach((t, i) => {
+      const c = hc.getCell(1 + i);
+      c.value = t;
+      c.font = { bold: true, color: { argb: AZUL } };
+      c.border = { bottom: { style: "thin", color: { argb: AZUL } } };
+    });
+    for (const cat of d.ncPorCategoria) {
+      const row = wm.getRow(rm++);
+      row.getCell(1).value = cat.categoria;
+      row.getCell(2).value = cat.cantidad;
+      const pc = row.getCell(3);
+      pc.value = cat.cantidad / totalNc;
+      pc.numFmt = "0%";
+      // La categoría más grande es la que hay que atacar: va en rojo.
+      if (cat === d.ncPorCategoria[0]) row.eachCell((c) => (c.font = { bold: true, color: { argb: ROJO } }));
+      row.getCell(2).alignment = { horizontal: "center" };
+      pc.alignment = { horizontal: "center" };
+    }
+
+    if (d.ncPuntos.length > 0) {
+      rm++;
+      encabezado("Puntos del checklist más citados por la auditoría", 2);
+      const hp = wm.getRow(rm++);
+      ["Punto", "Veces"].forEach((t, i) => {
+        const c = hp.getCell(1 + i);
+        c.value = t;
+        c.font = { bold: true, color: { argb: AZUL } };
+        c.border = { bottom: { style: "thin", color: { argb: AZUL } } };
+      });
+      for (const pt of d.ncPuntos.slice(0, 12)) {
+        const row = wm.getRow(rm++);
+        row.getCell(1).value = pt.punto;
+        row.getCell(2).value = pt.veces;
+        row.getCell(2).alignment = { horizontal: "center" };
+      }
+    }
+
+    if (d.ncTerminos.length > 0) {
+      rm++;
+      encabezado("Términos más repetidos en los motivos", 2);
+      const ht = wm.getRow(rm++);
+      ["Término", "En cuántas NC"].forEach((t, i) => {
+        const c = ht.getCell(1 + i);
+        c.value = t;
+        c.font = { bold: true, color: { argb: AZUL } };
+        c.border = { bottom: { style: "thin", color: { argb: AZUL } } };
+      });
+      for (const t of d.ncTerminos.slice(0, 15)) {
+        const row = wm.getRow(rm++);
+        row.getCell(1).value = t.termino;
+        row.getCell(2).value = t.veces;
+        row.getCell(2).alignment = { horizontal: "center" };
+      }
+    }
+
+    wm.getColumn(1).width = 46;
+    wm.getColumn(2).width = 14;
+    wm.getColumn(3).width = 12;
+
+    // ── Una fila por NC, con el texto del rechazo ───────────────────────────
+    const wd = wb.addWorksheet("NC detalle", {
+      views: [{ state: "frozen", ySplit: 1 }],
+      pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    const COLS: Array<[string, number]> = [
+      ["Semana", 10], ["Fecha NC", 12], ["Técnico", 24], ["Predio", 12],
+      ["Incidencia", 16], ["Provincia", 16], ["Categoría", 34],
+      ["Punto", 10], ["Rebotes", 9], ["Motivo (último rechazo)", 90],
+    ];
+    const hd = wd.getRow(1);
+    COLS.forEach(([t], i) => {
+      const c = hd.getCell(1 + i);
+      c.value = t;
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
+      c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
+    hd.height = 24;
+    COLS.forEach(([, w], i) => (wd.getColumn(1 + i).width = w));
+
+    d.noConformidades.forEach((nc, i) => {
+      const row = wd.getRow(2 + i);
+      row.getCell(1).value = nc.etiquetaSemana;
+      row.getCell(2).value = nc.fechaMotivo || fFecha(nc.fechaNc);
+      row.getCell(3).value = nc.thNumero
+        ? `TH${String(nc.thNumero).padStart(2, "0")} · ${nc.tecnico}`
+        : nc.tecnico;
+      row.getCell(4).value = nc.codigo || "";
+      row.getCell(5).value = nc.incidencia || "";
+      row.getCell(6).value = nc.provincia;
+      row.getCell(7).value = nc.categoria;
+      row.getCell(8).value = nc.puntos.join(", ");
+      // Sólo se marca cuando volvió más de una vez: es lo que hay que mirar.
+      row.getCell(9).value = nc.rebotes > 1 ? nc.rebotes : "";
+      row.getCell(10).value = nc.motivo;
+      row.getCell(10).alignment = { wrapText: true, vertical: "top" };
+      for (let c = 1; c <= COLS.length; c++) {
+        row.getCell(c).border = { bottom: { style: "hair", color: { argb: "FFDDDDDD" } } };
+      }
+      if (nc.rebotes > 1) {
+        row.getCell(9).font = { bold: true, color: { argb: ROJO } };
+        row.getCell(9).alignment = { horizontal: "center" };
+      }
+      if (i % 2 === 1) {
+        for (let c = 1; c <= COLS.length; c++) {
+          row.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRIS } };
+        }
+      }
+    });
+    wd.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1 + d.noConformidades.length, column: COLS.length } };
+
+    // ── Categoría por técnico: en qué falla cada uno ────────────────────────
+    const wt = wb.addWorksheet("NC por técnico");
+    const cats = d.ncPorCategoria.map((c) => c.categoria);
+    const ht2 = wt.getRow(1);
+    ht2.getCell(1).value = "Técnico";
+    ht2.getCell(2).value = "Total NC";
+    cats.forEach((c, i) => (ht2.getCell(3 + i).value = c));
+    ht2.eachCell((c) => {
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
+      c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
+    ht2.height = 40;
+    d.ncPorTecnico.forEach((t, i) => {
+      const row = wt.getRow(2 + i);
+      row.getCell(1).value = t.thNumero
+        ? `TH${String(t.thNumero).padStart(2, "0")} · ${t.tecnico}`
+        : t.tecnico;
+      row.getCell(2).value = t.total;
+      row.getCell(2).font = { bold: true, color: { argb: ROJO } };
+      cats.forEach((c, j) => {
+        const cell = row.getCell(3 + j);
+        // Vacío en vez de cero: la vista tiene que dejar ver dónde se concentra.
+        cell.value = t.categorias[c] || "";
+        cell.alignment = { horizontal: "center" };
+      });
+      row.eachCell({ includeEmpty: true }, (c) => {
+        c.border = { bottom: { style: "hair", color: { argb: "FFDDDDDD" } } };
+      });
+    });
+    wt.getColumn(1).width = 26;
+    wt.getColumn(2).width = 10;
+    cats.forEach((_, i) => (wt.getColumn(3 + i).width = 18));
+    wt.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }];
+  }
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

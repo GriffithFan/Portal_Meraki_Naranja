@@ -4,6 +4,10 @@ import { getSession } from "@/lib/auth";
 import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
 import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 import { elegirTecnicoAcreditado, resolveEquipoKey, normalizeAssigneeName } from "@/utils/equipoUtils";
+// Este archivo tenía su propia copia del motivo y su propio juego de categorías, con
+// nombres distintos de los del tablero: el mismo rechazo se llamaba de una forma acá y de
+// otra allá. Una sola fuente. Ver lib/noConformidades.ts.
+import { clasificarMotivo, motivoNoConformidad } from "@/lib/noConformidades";
 
 export const dynamic = "force-dynamic";
 
@@ -24,26 +28,6 @@ function getStateBucket(estado?: { nombre?: string | null; clave?: string | null
   if (nombre === "noconforme" || clave === "noconforme" || nombre === "nc" || clave === "nc") return "noConformes";
   if (nombre.includes("instalad") || clave.includes("instalad") || nombre.includes("auditar") || clave.includes("auditar")) return "instaladosAuditar";
   return null;
-}
-
-// Motivo del NC: incidencia → nota → último comentario (misma lógica que KPIs).
-function getNoConformeReason(predio: { incidencias?: string | null; notas?: string | null; comentarios?: Array<{ contenido?: string | null }> }) {
-  const inc = predio.incidencias?.trim();
-  const nota = predio.notas?.trim();
-  const com = predio.comentarios?.[0]?.contenido?.trim();
-  return (nota || com || inc || "");
-}
-
-function classifyNoConforme(text: string) {
-  const n = normalizeText(text);
-  if (!n) return "Sin detalle";
-  if (["evidencia", "foto", "adjunto", "imagen", "captura", "visualiza", "visible", "pdu"].some((t) => n.includes(t))) return "Evidencias faltantes o con error";
-  if (["gps", "coordenada", "ubicacion", "latitud", "longitud", "mapa"].some((t) => n.includes(t))) return "GPS / ubicación";
-  if (["etiqueta", "rotulo", "rotulado", "lac", "cue"].some((t) => n.includes(t))) return "Rotulado / datos técnicos";
-  if (["instalacion", "instalado", "conexion", "conectado", "cable", "puerto", "switch", "offline", "mesh", "giga"].some((t) => n.includes(t))) return "Fallas técnicas de instalación";
-  if (["acta", "formulario", "dato", "incompleto", "documentacion", "serial", "firma"].some((t) => n.includes(t))) return "Actas / documentación";
-  if (["acceso", "ausente", "cerrado", "visita", "reprogramar", "ingresar"].some((t) => n.includes(t))) return "Acceso / visita";
-  return "Otros motivos";
 }
 
 export async function GET() {
@@ -68,6 +52,7 @@ export async function GET() {
           nombre: true,
           incidencias: true,
           notas: true,
+          notasTecnico: true,
           fechaActualizacion: true,
           updatedAt: true,
           estado: { select: { nombre: true, clave: true } },
@@ -160,8 +145,8 @@ export async function GET() {
 
     // Motivos de NC.
     if (bucket === "noConformes") {
-      const motivo = getNoConformeReason(p);
-      const categoria = classifyNoConforme(motivo);
+      const motivo = motivoNoConformidad(p).motivo;
+      const categoria = clasificarMotivo(motivo);
       ncMotivos.push(categoria);
       if (ncEjemplos.length < 8 && motivo) {
         ncEjemplos.push({ predio: p.codigo || p.nombre || "?", motivo: motivo.slice(0, 200), categoria });

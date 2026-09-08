@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { appendAndClause, appendVisibleEstadosClause, buildAssignedPredioVisibilityClause, getHiddenEstadoIdsForSession } from "@/lib/predioVisibility";
 import { getRestrictedSpaceIdsForSession } from "@/lib/spaceAccess";
+// Este archivo también devolvía `Predio.incidencias` como motivo. Ver lib/noConformidades.ts.
+import { motivoNoConformidad } from "@/lib/noConformidades";
 
 function normalizeStateLabel(value?: string | null) {
   return (value || "")
@@ -32,44 +34,6 @@ function getStateBucket(estado?: { nombre?: string | null; clave?: string | null
   }
 
   return "otro" as const;
-}
-
-function getNoConformeReason(predio: {
-  incidencias?: string | null;
-  notasTecnico?: string | null;
-  notas?: string | null;
-  comentarios?: Array<{ contenido?: string | null; createdAt?: Date | string | null; usuario?: { nombre?: string | null } | null }>;
-}) {
-  const incidencia = predio.incidencias?.trim();
-  if (incidencia) {
-    return { motivo: incidencia, fuente: "incidencia" as const, comentarioReciente: null };
-  }
-
-  const notaTecnico = predio.notasTecnico?.trim();
-  if (notaTecnico) {
-    return { motivo: notaTecnico, fuente: "nota-tecnico" as const, comentarioReciente: null };
-  }
-
-  const notaGeneral = predio.notas?.trim();
-  if (notaGeneral) {
-    return { motivo: notaGeneral, fuente: "nota" as const, comentarioReciente: null };
-  }
-
-  const comentario = predio.comentarios?.[0];
-  const contenido = comentario?.contenido?.trim();
-  if (contenido) {
-    return {
-      motivo: contenido,
-      fuente: "comentario" as const,
-      comentarioReciente: {
-        contenido,
-        createdAt: comentario?.createdAt || null,
-        autor: comentario?.usuario?.nombre || null,
-      },
-    };
-  }
-
-  return { motivo: null, fuente: null, comentarioReciente: null };
 }
 
 export async function GET() {
@@ -193,13 +157,20 @@ export async function GET() {
   const prediosEnfocados = predios
     .map((predio) => {
       const isNoConforme = getStateBucket(predio.estado) === "noConforme";
-      const motivoInfo = isNoConforme ? getNoConformeReason(predio) : { motivo: null, fuente: null, comentarioReciente: null };
+      const m = isNoConforme ? motivoNoConformidad(predio) : null;
+      // `comentarioReciente` lo consume la pantalla de mis tareas (muestra el autor), así
+      // que se arma con la misma forma de siempre; sólo tiene sentido si el motivo salió
+      // de un comentario.
+      const comentarioReciente =
+        m && m.fuente === "comentario"
+          ? { contenido: m.motivo, createdAt: predio.comentarios?.[0]?.createdAt ?? null, autor: m.autor }
+          : null;
       return {
         ...predio,
         isNoConforme,
-        motivoNoConforme: motivoInfo.motivo,
-        motivoFuente: motivoInfo.fuente,
-        comentarioReciente: motivoInfo.comentarioReciente,
+        motivoNoConforme: m?.motivo || null,
+        motivoFuente: m?.fuente ?? null,
+        comentarioReciente,
       };
     })
     .sort((a, b) => {

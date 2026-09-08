@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getEquipoDisplayName, normalizeAssigneeName, resolveEquipoKey } from "@/utils/equipoUtils";
+// El motivo de un NO CONFORME, su categoría y sus palabras clave viven en un solo lugar.
+// Este archivo tenía su propia copia, y esa copia devolvía `Predio.incidencias` —el CÓDIGO
+// de la incidencia, no un motivo— así que este mismo análisis venía reportando códigos
+// clasificados como "Otros motivos". Ver lib/noConformidades.ts.
+import {
+  clasificarMotivo,
+  motivoNoConformidad,
+  palabrasClave,
+} from "@/lib/noConformidades";
 
 const KPI_CACHE_TTL_MS = 45_000;
 
@@ -50,62 +59,6 @@ function getStateBucket(estado?: { nombre?: string | null; clave?: string | null
   if (label.includes("no conforme") || label.includes("noconforme") || label === "nc") return "noConforme" as const;
   if (["conforme", "cerrad", "finaliz", "bloque", "blocke", "instalad"].some((token) => label.includes(token))) return "conforme" as const;
   return "otro" as const;
-}
-
-function getNoConformeReason(predio: {
-  incidencias?: string | null;
-  notas?: string | null;
-  comentarios?: Array<{ contenido?: string | null }>;
-}) {
-  const incidencia = predio.incidencias?.trim();
-  if (incidencia) return { motivo: incidencia, fuente: "incidencia" as const };
-
-  const nota = predio.notas?.trim();
-  if (nota) return { motivo: nota, fuente: "nota" as const };
-
-  const comentario = predio.comentarios?.[0]?.contenido?.trim();
-  if (comentario) return { motivo: comentario, fuente: "comentario" as const };
-
-  return { motivo: "", fuente: null };
-}
-
-const STOP_WORDS = new Set([
-  "que", "para", "con", "sin", "del", "las", "los", "por", "una", "uno", "unos", "unas", "esta", "este", "estos", "estas", "desde", "hasta", "sobre", "entre", "fue", "fueron", "hay", "muy", "mas", "pero", "porque", "donde", "cuando", "como", "solo", "nota", "notas", "predio", "tecnico", "mesa", "ayuda", "aun", "aunque", "sino", "debe", "deben", "quedo", "queda", "falta", "faltan", "tiene", "tener", "ninguna", "ninguno", "mismo", "misma", "mismos", "mismas", "todo", "toda", "todos", "todas",
-]);
-
-function extractKeywords(text: string) {
-  const normalized = normalizeText(text);
-  if (!normalized) return [] as string[];
-  return normalized
-    .split(" ")
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 4 && !STOP_WORDS.has(token) && !/^\d+$/.test(token));
-}
-
-function classifyNoConforme(text: string) {
-  const normalized = normalizeText(text);
-  if (!normalized) return "Sin detalle";
-
-  if (["evidencia", "foto", "fotos", "adjunto", "adjuntar", "imagen", "imagenes", "captura", "visualiza", "visible"].some((token) => normalized.includes(token))) {
-    return "Falta o error de evidencias";
-  }
-  if (["gps", "coordenada", "ubicacion", "latitud", "longitud", "mapa"].some((token) => normalized.includes(token))) {
-    return "Problemas de GPS/ubicacion";
-  }
-  if (["etiqueta", "rotulo", "rotulado", "lac", "lacr", "cue"].some((token) => normalized.includes(token))) {
-    return "Errores de rotulado o datos tecnicos";
-  }
-  if (["instalacion", "instalado", "conexion", "conectado", "cable", "puerto", "switch", "ap"].some((token) => normalized.includes(token))) {
-    return "Fallas tecnicas de instalacion";
-  }
-  if (["acta", "formulario", "dato", "datos", "incompleto", "incompleta", "documentacion"].some((token) => normalized.includes(token))) {
-    return "Documentacion incompleta";
-  }
-  if (["acceso", "ausente", "cerrado", "visita", "reprogramar"].some((token) => normalized.includes(token))) {
-    return "Problemas de acceso/visita";
-  }
-
-  return "Otros motivos recurrentes";
 }
 
 export async function GET() {
@@ -271,6 +224,7 @@ export async function GET() {
           nombre: true,
           incidencias: true,
           notas: true,
+          notasTecnico: true,
           fechaActualizacion: true,
           asignaciones: {
             where: { tipo: { in: ["TAREA", "TECNICO"] } },
@@ -279,7 +233,7 @@ export async function GET() {
           comentarios: {
             orderBy: { createdAt: "desc" },
             take: 2,
-            select: { contenido: true, createdAt: true },
+            select: { contenido: true, createdAt: true, usuario: { select: { nombre: true } } },
           },
         },
         orderBy: { fechaActualizacion: "desc" },
@@ -304,12 +258,12 @@ export async function GET() {
   }>();
 
   for (const predio of noConformesSemana) {
-    const motivoInfo = getNoConformeReason(predio);
+    const motivoInfo = motivoNoConformidad(predio);
     const motivo = motivoInfo.motivo || "";
     const hasMotivo = motivo.trim().length > 0;
-    const categoria = classifyNoConforme(motivo);
+    const categoria = clasificarMotivo(motivo);
 
-    const keywords = extractKeywords(motivo);
+    const keywords = palabrasClave(motivo);
     for (const keyword of keywords) {
       keywordCounts.set(keyword, (keywordCounts.get(keyword) || 0) + 1);
     }
@@ -413,8 +367,8 @@ export async function GET() {
     desde: startOfWeek.toISOString(),
     hasta: endOfWeek.toISOString(),
     totalNoConformes: noConformesSemana.length,
-    conMotivo: noConformesSemana.filter((predio) => Boolean(getNoConformeReason(predio).motivo?.trim())).length,
-    sinMotivo: noConformesSemana.filter((predio) => !getNoConformeReason(predio).motivo?.trim()).length,
+    conMotivo: noConformesSemana.filter((predio) => Boolean(motivoNoConformidad(predio).motivo.trim())).length,
+    sinMotivo: noConformesSemana.filter((predio) => !motivoNoConformidad(predio).motivo.trim()).length,
     similitudes: similitudes.slice(0, 8),
     topPalabras,
     porTecnico,
