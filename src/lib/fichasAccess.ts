@@ -9,7 +9,18 @@
  * de usuarios no permite cambiarlo), por lo que una cuenta nueva no puede tomar
  * estos emails. Para cambiar quién entra hay que editar esta lista y desplegar.
  */
-export const FICHAS_EMAILS = ["griffith@thnet.com", "fernando@thnet.com", "leonel@thnet.com", "andrea@thnet.com", "enzo@thnet.com", "luis@thnet.com"] as const;
+// Ojo con el dominio: las cuentas internas usan @thnet.com (sin .ar), pero Luis tiene
+// DOS cuentas ADMIN activas, una en cada dominio. Las dos son la misma persona y las dos
+// necesitan entrar, así que están las dos. Si alguna vez se unifican, sacar la que sobre.
+export const FICHAS_EMAILS = [
+  "griffith@thnet.com",
+  "fernando@thnet.com",
+  "leonel@thnet.com",
+  "andrea@thnet.com",
+  "enzo@thnet.com",
+  "luis@thnet.com",
+  "luis@thnet.com.ar",
+] as const;
 
 export function tieneAccesoFichas(email?: string | null): boolean {
   return !!email && (FICHAS_EMAILS as readonly string[]).includes(email.trim().toLowerCase());
