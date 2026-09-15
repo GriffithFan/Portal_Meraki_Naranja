@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "@/hooks/useSession";
 import { usePermisos } from "@/hooks/usePermisos";
+import { sumarDiasFecha, sumarDiasHabiles } from "@/lib/semanaRanking";
 
 type RankingRow = {
   tecnicoId: string;
@@ -29,6 +30,7 @@ type RankingData = {
   // Solo en la vista diaria.
   dia?: string;
   hoy?: string;
+  ultimoHabil?: string; // el día más reciente que se puede ver: hoy, o el viernes si es fin de semana
   dias?: DiaResumen[];
 };
 
@@ -53,12 +55,6 @@ type EvolucionData = {
 };
 
 const DIAS_CORTOS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
-
-/** Suma días a un "YYYY-MM-DD" sin pasar por la zona horaria del navegador. */
-function sumarDias(fecha: string, n: number): string {
-  const [y, m, d] = fecha.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
 
 /** "mar 15/09" */
 function etiquetaDia(fecha: string): string {
@@ -146,8 +142,9 @@ export default function RankingTecnicosPage() {
     } catch { /* opcional */ }
   }, []);
 
-  // En la vista diaria, "hoy" es el día que no se eligió a mano o el que coincide con hoy.
-  const esHoy = modo === "dia" && (fecha === null || fecha === data?.hoy);
+  // En la vista diaria, "el último día" es hoy, o el viernes si hoy es fin de semana (sábados
+  // y domingos no se muestran). Es el que queda cuando no se eligió otro a mano.
+  const esHoy = modo === "dia" && (fecha === null || fecha === data?.ultimoHabil);
 
   useEffect(() => {
     fetchData();
@@ -205,10 +202,10 @@ export default function RankingTecnicosPage() {
 
   const diaActual = data.dia || data.hoy || "";
   const moverDia = (n: number) => {
-    if (!diaActual || !data.hoy) return;
-    const destino = sumarDias(diaActual, n);
-    if (destino > data.hoy) return;
-    setFecha(destino === data.hoy ? null : destino);
+    if (!diaActual || !data.ultimoHabil) return;
+    const destino = sumarDiasHabiles(diaActual, n); // saltea sábados y domingos
+    if (destino > data.ultimoHabil) return;
+    setFecha(destino === data.ultimoHabil ? null : destino);
   };
   const conMovimientos = modo === "movimientos" || modo === "dia";
 
@@ -224,18 +221,18 @@ export default function RankingTecnicosPage() {
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <button
                 onClick={() => moverDia(-1)}
-                title="Día anterior"
+                title="Día hábil anterior"
                 className="rounded-md border border-surface-200 bg-white px-2 py-1 text-surface-500 transition-colors hover:bg-surface-50"
               >
                 ‹
               </button>
               <span className="text-xs font-medium text-surface-600">
-                {esHoy ? "Hoy" : diaActual === sumarDias(data.hoy || "", -1) ? "Ayer" : etiquetaDia(diaActual)}
+                {diaActual === data.hoy ? "Hoy" : data.hoy && diaActual === sumarDiasFecha(data.hoy, -1) ? "Ayer" : etiquetaDia(diaActual)}
               </span>
               <button
                 onClick={() => moverDia(1)}
                 disabled={esHoy}
-                title="Día siguiente"
+                title="Día hábil siguiente"
                 className="rounded-md border border-surface-200 bg-white px-2 py-1 text-surface-500 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 ›
@@ -246,7 +243,7 @@ export default function RankingTecnicosPage() {
                   onClick={() => setFecha(null)}
                   className="ml-1 rounded-md px-2 py-1 text-[11px] font-medium text-primary-600 transition-colors hover:bg-primary-50"
                 >
-                  Volver a hoy
+                  {data.hoy === data.ultimoHabil ? "Volver a hoy" : "Volver al viernes"}
                 </button>
               )}
             </div>
@@ -297,7 +294,7 @@ export default function RankingTecnicosPage() {
           {([
             ["estado", "Estado actual", "Predios que hoy están en cada estado y se tocaron esta semana"],
             ["movimientos", "Movimientos de la semana", "Predios que PASARON a cada estado esta semana, sigan ahí o no"],
-            ["dia", "Movimientos del día", "Predios que PASARON a cada estado en un día (00 a 24 h)"],
+            ["dia", "Movimientos del día", "Predios que PASARON a cada estado en un día hábil (lunes a viernes, 00 a 24 h)"],
           ] as const).map(([valor, etiqueta, ayuda]) => (
             <button
               key={valor}
@@ -347,7 +344,7 @@ export default function RankingTecnicosPage() {
       </div>
 
       {modo === "dia" && data.dias && (
-        <DiasSemana dias={data.dias} elegido={diaActual} hoy={data.hoy || ""} onElegir={(f) => setFecha(f === data.hoy ? null : f)} />
+        <DiasSemana dias={data.dias} elegido={diaActual} hoy={data.hoy || ""} onElegir={(f) => setFecha(f === data.ultimoHabil ? null : f)} />
       )}
 
       {modo !== "dia" && evolucion && evolucion.global.conformesPorSemana.some((n) => n > 0) && (
@@ -359,7 +356,7 @@ export default function RankingTecnicosPage() {
           <p className="text-sm font-medium text-surface-700">{modo === "dia" ? "Sin movimientos este día" : "Sin actividad en esta semana"}</p>
           <p className="mt-1 text-xs text-surface-400">
             {modo === "dia"
-              ? esHoy ? "El ranking aparece cuando haya cambios de estado hoy." : "Nadie cambió de estado un predio ese día."
+              ? diaActual === data.hoy ? "El ranking aparece cuando haya cambios de estado hoy." : "Nadie cambió de estado un predio ese día."
               : data.isCurrentWeek ? "El ranking aparece cuando haya movimientos de esta semana." : "No hubo movimientos registrados en esta semana."}
           </p>
         </section>
@@ -638,8 +635,9 @@ function Stat({ label, value, tone = "default" }: { label: string; value: number
 }
 
 /**
- * Tira de los 7 días de la semana (sábado a viernes) con lo que se movió cada uno. Tocar
- * un día lo elige; los días que todavía no llegaron no se pueden elegir.
+ * Tira de los días hábiles de la semana (lunes a viernes) con lo que se movió cada uno.
+ * Sábados y domingos no se muestran: no se trabaja ni se audita. Tocar un día lo elige;
+ * los días que todavía no llegaron no se pueden elegir.
  */
 function DiasSemana({ dias, elegido, hoy, onElegir }: { dias: DiaResumen[]; elegido: string; hoy: string; onElegir: (fecha: string) => void }) {
   const maxConformes = Math.max(...dias.map((d) => d.conformes), 1);
@@ -652,7 +650,7 @@ function DiasSemana({ dias, elegido, hoy, onElegir }: { dias: DiaResumen[]; eleg
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-surface-800">Movimientos por día</h2>
-          <p className="text-[11px] text-surface-400">Semana de sábado a viernes · días de 00 a 24 h</p>
+          <p className="text-[11px] text-surface-400">Lunes a viernes · días de 00 a 24 h</p>
         </div>
         <div className="flex gap-3 text-[11px] tabular-nums">
           <span className="text-emerald-600"><b>{totales.conformes}</b> conformes</span>
@@ -661,7 +659,7 @@ function DiasSemana({ dias, elegido, hoy, onElegir }: { dias: DiaResumen[]; eleg
         </div>
       </div>
       <div className="overflow-x-auto">
-        <div className="grid min-w-[560px] grid-cols-7 gap-1.5 sm:gap-2">
+        <div className="grid min-w-[400px] grid-cols-5 gap-1.5 sm:gap-2">
           {dias.map((d) => {
             const activo = d.fecha === elegido;
             const h = Math.max(2, Math.round((d.conformes / maxConformes) * 56));

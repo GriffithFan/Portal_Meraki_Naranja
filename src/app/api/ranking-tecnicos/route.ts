@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
-import { diasDeSemanaAR, fechaAR, inicioSemana, semanaRango } from "@/lib/semanaRanking";
+import { diasHabilesDeSemanaAR, fechaAR, inicioSemana, semanaRango, ultimoDiaHabilAR } from "@/lib/semanaRanking";
 import { dayRangeAR } from "@/lib/fechas";
 import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 import { parseTransicion, bucketDeMovimiento, type BucketMovimiento } from "@/lib/transicionesEstado";
@@ -119,10 +119,12 @@ export async function GET(request: Request) {
   const now = new Date();
 
   // "dia": los movimientos de UN día calendario (00 a 24 h, hora argentina). No se puede
-  // pedir un día futuro; sin fecha o con una inválida, es hoy.
+  // pedir un día futuro; sin fecha o con una inválida, es hoy. Solo días hábiles: sábados
+  // y domingos no se trabaja ni se audita, así que se llevan al viernes anterior.
   const hoy = fechaAR(now);
+  const ultimoHabil = ultimoDiaHabilAR(hoy);
   const fechaParam = params.get("fecha") || "";
-  const dia = /^\d{4}-\d{2}-\d{2}$/.test(fechaParam) && fechaParam <= hoy ? fechaParam : hoy;
+  const dia = ultimoDiaHabilAR(/^\d{4}-\d{2}-\d{2}$/.test(fechaParam) && fechaParam <= hoy ? fechaParam : hoy);
   const rangoDia = dayRangeAR(dia);
 
   const { desde, hasta } = modo === "dia"
@@ -179,7 +181,7 @@ export async function GET(request: Request) {
     ranking.set(elegido.mergeKey, current);
   };
 
-  // Días de la semana (sábado a viernes) con sus totales: solo en la vista diaria.
+  // Días hábiles de la semana (lunes a viernes) con sus totales: solo en la vista diaria.
   let dias: { fecha: string; instaladosAuditar: number; conformes: number; noConformes: number; futuro: boolean }[] | undefined;
 
   if (modo === "movimientos") {
@@ -193,13 +195,14 @@ export async function GET(request: Request) {
       acumular(mov.elegido, mov.bucket);
     }
   } else if (modo === "dia") {
-    // Se trae la semana entera de una vez: el ranking es del día elegido y la tira de
-    // días muestra cuánto se movió cada uno. Misma regla de "una vez por cuenta", por día.
-    const fechas = diasDeSemanaAR(dia);
+    // Se trae la semana entera de una vez (lunes 00 a viernes 24): el ranking es del día
+    // elegido y la tira muestra cuánto se movió cada día. Lo del fin de semana queda afuera.
+    // Misma regla de "una vez por cuenta", por día.
+    const fechas = diasHabilesDeSemanaAR(dia);
     dias = fechas.map((fecha) => ({ fecha, instaladosAuditar: 0, conformes: 0, noConformes: 0, futuro: fecha > hoy }));
     const indice = new Map(fechas.map((f, i) => [f, i]));
     const inicio = dayRangeAR(fechas[0]).start;
-    const fin = new Date(Math.min(dayRangeAR(fechas[6]).end.getTime() - 1, now.getTime()));
+    const fin = new Date(Math.min(dayRangeAR(fechas[fechas.length - 1]).end.getTime() - 1, now.getTime()));
     const yaContado = new Set<string>();
     for (const mov of await movimientosDelPeriodo(inicio, fin, facturados)) {
       const fechaMov = fechaAR(mov.createdAt);
@@ -261,6 +264,6 @@ export async function GET(request: Request) {
     isFriday,
     resumen,
     ranking: rankingRows,
-    ...(modo === "dia" ? { dia, hoy, dias } : {}),
+    ...(modo === "dia" ? { dia, hoy, ultimoHabil, dias } : {}),
   }, { headers: { "Cache-Control": "no-store" } });
 }

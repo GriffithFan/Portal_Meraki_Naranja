@@ -51,6 +51,43 @@ export function diasDeSemanaAR(fecha: string): string[] {
   return Array.from({ length: 7 }, (_, i) => fechaAR(new Date(sabado.getTime() + i * 24 * 60 * 60 * 1000)));
 }
 
+/** Día de la semana (Dom=0 … Sáb=6) de un "YYYY-MM-DD". */
+function diaDeSemana(fecha: string): number {
+  const [y, m, d] = fecha.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Suma `n` días calendario a un "YYYY-MM-DD". */
+export function sumarDiasFecha(fecha: string, n: number): string {
+  const [y, m, d] = fecha.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/**
+ * Sábados y domingos no se trabaja ni se audita, así que la vista diaria no los muestra:
+ * un sábado o domingo se lleva al viernes anterior.
+ */
+export function ultimoDiaHabilAR(fecha: string): string {
+  const dow = diaDeSemana(fecha);
+  return dow === 6 ? sumarDiasFecha(fecha, -1) : dow === 0 ? sumarDiasFecha(fecha, -2) : fecha;
+}
+
+/** Avanza (n > 0) o retrocede (n < 0) `n` días hábiles, salteando sábados y domingos. */
+export function sumarDiasHabiles(fecha: string, n: number): string {
+  let actual = ultimoDiaHabilAR(fecha);
+  const paso = n > 0 ? 1 : -1;
+  for (let i = 0; i < Math.abs(n); i++) {
+    do actual = sumarDiasFecha(actual, paso);
+    while (diaDeSemana(actual) === 0 || diaDeSemana(actual) === 6);
+  }
+  return actual;
+}
+
+/** Lunes a viernes de la semana de negocio que contiene el día hábil `fecha`. */
+export function diasHabilesDeSemanaAR(fecha: string): string[] {
+  return diasDeSemanaAR(ultimoDiaHabilAR(fecha)).slice(2);
+}
+
 /**
  * Rango [desde, hasta] de la semana `offset` (0 = actual, 1 = pasada, …).
  * Semana actual: hasta = min(ahora, viernes 17:00 ART). Semanas pasadas: viernes 17:00 ART.
