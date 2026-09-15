@@ -7,6 +7,7 @@ import { useSession } from "@/hooks/useSession";
 import { useChatReminders } from "@/hooks/useChatReminders";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
 import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload, intervaloPollingAdaptativo } from "@/lib/chatUpload";
+import { cursorDeMensajes, fusionarMensajes } from "@/lib/chatSync";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
@@ -232,10 +233,14 @@ export default function ChatFloatingWidget() {
   const supportLoadingRef = useRef(false);
   const supportConvsJsonRef = useRef("");
   const pollMensajesLoadingRef = useRef(false);
+  // Avisos que llegaron con un pedido en curso: se juntan en uno más al terminar.
+  const pollMensajesPendienteRef = useRef(false);
+  const conversacionIdRef = useRef<string | undefined>(undefined);
   // Ref espejo de mensajes para que el polling lea el último timestamp sin
   // reiniciar el intervalo en cada mensaje nuevo.
   const mensajesRef = useRef<any[]>([]);
   mensajesRef.current = mensajes;
+  conversacionIdRef.current = conversacion?.id;
   const isHidden = pathname === "/dashboard/chat";
   const isSupportUser = isMesa || isModOrAdmin;
   useChatReminders(Boolean(session) && !isHidden, session?.userId || "default");
@@ -264,13 +269,11 @@ export default function ChatFloatingWidget() {
     fetch(`/api/chat/${conversacion.id}/typing`, { method: "POST", credentials: "include" }).catch(() => {});
   }, [conversacion?.id, conversacion?.estado, isMesa]);
 
+  // Si lo que llega ya estaba igual, fusionarMensajes devuelve el mismo arreglo y no hay
+  // render (ver lib/chatSync.ts).
   const mergeMensajes = useCallback((nuevos: any[]) => {
     if (nuevos.length === 0) return;
-    setMensajes(prev => {
-      const byId = new Map(prev.map((msg: any) => [msg.id, msg]));
-      for (const msg of nuevos) byId.set(msg.id, msg);
-      return Array.from(byId.values()).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    });
+    setMensajes(prev => fusionarMensajes(prev, nuevos));
   }, []);
 
   const checkUnread = useCallback(async () => {
@@ -427,15 +430,17 @@ export default function ChatFloatingWidget() {
   // Trae los mensajes nuevos (fetch incremental ?since=). Reutilizado por el
   // polling y por el SSE, para no duplicar la lógica de merge/estado.
   const sincronizarMensajes = useCallback(async (convId: string) => {
-    if (pollMensajesLoadingRef.current) return;
+    if (pollMensajesLoadingRef.current) { pollMensajesPendienteRef.current = true; return; }
     pollMensajesLoadingRef.current = true;
     try {
-      const actuales = mensajesRef.current;
-      const ultimo = actuales[actuales.length - 1]?.createdAt;
+      // Cursor = updatedAt más nuevo, no el createdAt del último: si no, un mensaje editado,
+      // borrado o con reacción volvía en cada pedido y alimentaba un bucle de pedidos.
+      const ultimo = cursorDeMensajes(mensajesRef.current);
       const query = ultimo ? `?since=${encodeURIComponent(ultimo)}` : "";
       const res = await fetch(`/api/chat/${convId}${query}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
+        if (conversacionIdRef.current !== convId) return; // ya se cambió de conversación
         if (ultimo) mergeMensajes(data.mensajes || []);
         else setMensajes(data.mensajes || []);
         if (data.estado === "CERRADA") {
@@ -455,8 +460,17 @@ export default function ChatFloatingWidget() {
         }
       }
     } catch { /* silenciar */ }
-    finally { pollMensajesLoadingRef.current = false; }
+    finally {
+      pollMensajesLoadingRef.current = false;
+      if (pollMensajesPendienteRef.current) {
+        pollMensajesPendienteRef.current = false;
+        // Un respiro para que el render con lo recién fusionado actualice el cursor.
+        window.setTimeout(() => { if (conversacionIdRef.current === convId) sincronizarRef.current(convId); }, 150);
+      }
+    }
   }, [mergeMensajes]);
+  const sincronizarRef = useRef(sincronizarMensajes);
+  sincronizarRef.current = sincronizarMensajes;
 
   useEffect(() => {
     if (!open || !conversacion?.id) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { useSession } from "@/hooks/useSession";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
 import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload, intervaloPollingAdaptativo } from "@/lib/chatUpload";
 import { CHAT_COMANDOS } from "@/lib/chatComandos";
+import { cursorDeMensajes, fusionarMensajes } from "@/lib/chatSync";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import clsx from "clsx";
@@ -265,14 +266,21 @@ export default function ChatPage() {
   const conversacionesJsonRef = useRef("");
   const mensajesAbortRef = useRef<AbortController | null>(null);
 
+  // Si lo que llega ya estaba igual, fusionarMensajes devuelve el mismo arreglo y React no
+  // vuelve a dibujar el hilo (ver lib/chatSync.ts).
   const mergeMensajes = useCallback((nuevos: any[]) => {
     if (nuevos.length === 0) return;
-    setMensajes(prev => {
-      const byId = new Map(prev.map((msg: any) => [msg.id, msg]));
-      for (const msg of nuevos) byId.set(msg.id, msg);
-      return Array.from(byId.values()).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    });
+    setMensajes(prev => fusionarMensajes(prev, nuevos));
   }, []);
+  const mensajesRef = useRef<any[]>([]);
+  mensajesRef.current = mensajes;
+  // Un solo pedido incremental a la vez; los avisos que lleguen mientras tanto se juntan
+  // en uno más al terminar, en vez de disparar un pedido cada uno.
+  const syncEnCursoRef = useRef(false);
+  const syncPendienteRef = useRef(false);
+  // Para descartar una respuesta que llega después de cambiar de conversación.
+  const seleccionadaIdRef = useRef<string | undefined>(undefined);
+  seleccionadaIdRef.current = seleccionada?.id;
 
   const scrollToMessage = useCallback((id: string) => {
     const node = messageRefs.current.get(id);
@@ -412,12 +420,17 @@ export default function ChatPage() {
   }, []);
 
   const cargarMensajesNuevos = useCallback(async (id: string) => {
-    const ultimo = mensajes[mensajes.length - 1]?.createdAt;
+    if (syncEnCursoRef.current) { syncPendienteRef.current = true; return; }
+    // Cursor = updatedAt más nuevo, no el createdAt del último: si no, un mensaje editado,
+    // borrado o con reacción volvía en cada pedido para siempre.
+    const ultimo = cursorDeMensajes(mensajesRef.current);
     if (!ultimo) return cargarMensajes(id);
+    syncEnCursoRef.current = true;
     try {
       const res = await fetch(`/api/chat/${id}?since=${encodeURIComponent(ultimo)}`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
+        if (seleccionadaIdRef.current !== id) return; // ya se cambió de conversación
         mergeMensajes(data.mensajes || []);
         // Si nada relevante cambió, conservar la misma referencia: React
         // saltea el re-render (esto corre cada pocos segundos).
@@ -433,7 +446,15 @@ export default function ChatPage() {
         });
       }
     } catch { /* silenciar */ }
-  }, [cargarMensajes, mensajes, mergeMensajes]);
+    finally {
+      syncEnCursoRef.current = false;
+      if (syncPendienteRef.current) {
+        syncPendienteRef.current = false;
+        // Se deja un respiro para que el render con lo recién fusionado actualice el cursor.
+        window.setTimeout(() => { if (seleccionadaIdRef.current === id) cargarNuevosRef.current(id); }, 150);
+      }
+    }
+  }, [cargarMensajes, mergeMensajes]);
 
   useEffect(() => {
     cargarConversaciones().finally(() => setLoading(false));
@@ -872,6 +893,154 @@ export default function ChatPage() {
     }
   };
 
+  // ── Hilo de mensajes memorizado ──
+  // Se reconstruye solo cuando cambia algo del hilo, NO con cada tecla del cuadro de texto:
+  // antes escribir volvía a dibujar hasta 300 burbujas (con sus íconos, horas y reacciones)
+  // por letra, y en celulares de gama baja el tipeo se trababa. Las acciones se leen de un
+  // ref para que el hilo memorizado no quede con versiones viejas de esas funciones.
+  const accionesMsgRef = useRef({ iniciarEdicion, cancelarEdicion, guardarEdicion, eliminarMensaje, reaccionarMensaje });
+  accionesMsgRef.current = { iniciarEdicion, cancelarEdicion, guardarEdicion, eliminarMensaje, reaccionarMensaje };
+  const miUserId = session?.userId;
+  const miRol = session?.rol;
+  const haySeleccionada = Boolean(seleccionada);
+  const convCreadorId = seleccionada?.creadorId;
+  const convEstado = seleccionada?.estado;
+  const convLeidoMesa = seleccionada?.leidoPorMesaAt;
+  const convLeidoCreador = seleccionada?.leidoPorCreadorAt;
+  const hiloMensajes = useMemo(() => {
+    if (!haySeleccionada) return null;
+    // reaccionarMensaje va por un contenedor que llama siempre a la versión actual.
+    const acciones = { reaccionarMensaje: (msg: any, emoji: string) => accionesMsgRef.current.reaccionarMensaje(msg, emoji) };
+    // Recibo de lectura bidireccional: la "otra parte" depende de si soy el creador
+    return mensajes.map((msg) => {
+      const esMio = msg.autorId === miUserId;
+      // Timestamp de lectura de la otra parte: si soy el creador (técnico), miro
+      // cuándo leyó Mesa; si soy Mesa/agente, miro cuándo leyó el creador.
+      const soyCreadorConv = convCreadorId === miUserId;
+      const lecturaOtraParte = soyCreadorConv ? convLeidoMesa : convLeidoCreador;
+      const leidoPorOtro = esMio && lecturaOtraParte
+        ? new Date(msg.createdAt) <= new Date(lecturaOtraParte)
+        : false;
+      const editando = editandoMsgId === msg.id;
+      return (
+        <div
+          key={msg.id}
+          ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
+          style={MSG_ROW_STYLE}
+          className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
+        >
+          {/* Botones de acción (hover) — lado izquierdo para mensajes míos */}
+          {esMio && !editando && !msg.eliminadoAt && convEstado !== "CERRADA" && !soloLectura && (
+            <div className="relative flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
+              {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={acciones.reaccionarMensaje} placement={reactionPickerMsg.placement} />}
+              <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
+                <span className="text-sm leading-none">🙂</span>
+              </button>
+              <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+              </button>
+              {!msg.archivoUrl && (
+                <button onClick={() => accionesMsgRef.current.iniciarEdicion(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Editar">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+                </button>
+              )}
+              <button onClick={() => accionesMsgRef.current.eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+              </button>
+            </div>
+          )}
+          <div className={clsx(
+            "max-w-[80%] rounded-2xl px-4 py-2.5",
+            esMio
+              ? "bg-blue-600 text-white rounded-br-md"
+              : "bg-surface-100 dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-bl-md"
+          )}>
+            <div className={clsx("mb-1.5 flex", esMio ? "justify-end" : "justify-start")}>
+              <span className={clsx(
+                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ring-1",
+                esMio ? "bg-white/15 text-white ring-white/25" : participantColor(msg.autorId)
+              )}>
+                {participantLabel(msg, miUserId, isMesa, soloLectura)}
+                {msg.autor?.esMesa && (isMesa || soloLectura) && msg.autorId !== miUserId && (
+                  <span className="ml-1 text-[9px] font-semibold opacity-75">Mesa</span>
+                )}
+              </span>
+            </div>
+            {editando ? (
+              <div className="space-y-1.5">
+                <input
+                  type="text"
+                  value={editandoTxt}
+                  onChange={(e) => setEditandoTxt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") accionesMsgRef.current.guardarEdicion(); if (e.key === "Escape") accionesMsgRef.current.cancelarEdicion(); }}
+                  maxLength={2000}
+                  autoFocus
+                  className="w-full px-2 py-1 rounded border border-blue-300 bg-white text-surface-800 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                />
+                <div className="flex gap-1">
+                  <button onClick={() => accionesMsgRef.current.guardarEdicion()} className="px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition">Guardar</button>
+                  <button onClick={() => accionesMsgRef.current.cancelarEdicion()} className="px-2 py-0.5 bg-white/10 hover:bg-white/20 rounded text-[10px] transition">Cancelar</button>
+                </div>
+              </div>
+            ) : msg.eliminadoAt ? (
+              <p className={clsx("flex items-center gap-1.5 text-sm italic", esMio ? "text-blue-100/80" : "text-surface-400 dark:text-surface-500")}>
+                <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                Se eliminó este mensaje
+              </p>
+            ) : (
+              <>
+                <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
+                {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
+                <ChatArchivo msg={msg} esMio={esMio} onOpenMedia={setMediaViewerMsg} />
+              </>
+            )}
+            <div className={clsx("flex items-center gap-1 mt-1", esMio ? "justify-end" : "")}>
+              <span className={clsx(
+                "text-[10px]",
+                esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500"
+              )}>
+                {new Date(msg.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+              {msg.editadoAt && (
+                <span className={clsx("text-[9px] italic", esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500")}>
+                  (editado)
+                </span>
+              )}
+              {/* Confirmación de lectura en mis mensajes: ✓ enviado / ✓✓ leído */}
+              {esMio && !msg.eliminadoAt && (
+                <svg className={clsx("w-3.5 h-3.5 ml-0.5", leidoPorOtro ? "text-cyan-300" : "text-blue-300/60")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-label={leidoPorOtro ? "Leído" : "Enviado"}>
+                  {leidoPorOtro ? (
+                    <><path strokeLinecap="round" strokeLinejoin="round" d="M1 13l5 5L17 7" /><path strokeLinecap="round" strokeLinejoin="round" d="M7 13l5 5L23 7" /></>
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  )}
+                </svg>
+              )}
+            </div>
+            <ReactionSummary msg={msg} sessionUserId={miUserId} onReact={acciones.reaccionarMensaje} />
+          </div>
+          {/* Botones de acción (hover) — lado derecho para mensajes ajenos (solo Mesa/Admin) */}
+          {!esMio && !editando && !msg.eliminadoAt && convEstado !== "CERRADA" && !soloLectura && (
+            <div className="relative flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
+              {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={acciones.reaccionarMensaje} placement={reactionPickerMsg.placement} />}
+              <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
+                <span className="text-sm leading-none">🙂</span>
+              </button>
+              <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+              </button>
+              {(isMesa || miRol === "ADMIN") && (
+                <button onClick={() => accionesMsgRef.current.eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    });
+  }, [mensajes, haySeleccionada, convCreadorId, convEstado, convLeidoMesa, convLeidoCreador, miUserId, miRol, isMesa, soloLectura, editandoMsgId, editandoTxt, highlightMsgId, reactionPickerMsg, toggleReactionPicker, scrollToMessage]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1169,134 +1338,7 @@ export default function ChatPage() {
 
               {/* Mensajes */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {/* Recibo de lectura bidireccional: la "otra parte" depende de si soy el creador */}
-                {mensajes.map((msg) => {
-                  const esMio = msg.autorId === session?.userId;
-                  // Timestamp de lectura de la otra parte: si soy el creador (técnico), miro
-                  // cuándo leyó Mesa; si soy Mesa/agente, miro cuándo leyó el creador.
-                  const soyCreadorConv = seleccionada.creadorId === session?.userId;
-                  const lecturaOtraParte = soyCreadorConv ? seleccionada.leidoPorMesaAt : seleccionada.leidoPorCreadorAt;
-                  const leidoPorOtro = esMio && lecturaOtraParte
-                    ? new Date(msg.createdAt) <= new Date(lecturaOtraParte)
-                    : false;
-                  const editando = editandoMsgId === msg.id;
-                  return (
-                    <div
-                      key={msg.id}
-                      ref={(el) => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
-                      style={MSG_ROW_STYLE}
-                      className={clsx("group/msg flex rounded-lg transition-colors", esMio ? "justify-end" : "justify-start", highlightMsgId === msg.id && "bg-amber-100/70 dark:bg-amber-900/30")}
-                    >
-                      {/* Botones de acción (hover) — lado izquierdo para mensajes míos */}
-                      {esMio && !editando && !msg.eliminadoAt && seleccionada.estado !== "CERRADA" && !soloLectura && (
-                        <div className="relative flex items-center gap-0.5 mr-1 opacity-0 group-hover/msg:opacity-100 transition">
-                          {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
-                          <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
-                            <span className="text-sm leading-none">🙂</span>
-                          </button>
-                          <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
-                          </button>
-                          {!msg.archivoUrl && (
-                            <button onClick={() => iniciarEdicion(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Editar">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
-                            </button>
-                          )}
-                          <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                          </button>
-                        </div>
-                      )}
-                      <div className={clsx(
-                        "max-w-[80%] rounded-2xl px-4 py-2.5",
-                        esMio
-                          ? "bg-blue-600 text-white rounded-br-md"
-                          : "bg-surface-100 dark:bg-surface-700 text-surface-800 dark:text-surface-100 rounded-bl-md"
-                      )}>
-                        <div className={clsx("mb-1.5 flex", esMio ? "justify-end" : "justify-start")}>
-                          <span className={clsx(
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ring-1",
-                            esMio ? "bg-white/15 text-white ring-white/25" : participantColor(msg.autorId)
-                          )}>
-                            {participantLabel(msg, session?.userId, isMesa, soloLectura)}
-                            {msg.autor?.esMesa && (isMesa || soloLectura) && msg.autorId !== session?.userId && (
-                              <span className="ml-1 text-[9px] font-semibold opacity-75">Mesa</span>
-                            )}
-                          </span>
-                        </div>
-                        {editando ? (
-                          <div className="space-y-1.5">
-                            <input
-                              type="text"
-                              value={editandoTxt}
-                              onChange={(e) => setEditandoTxt(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === "Enter") guardarEdicion(); if (e.key === "Escape") cancelarEdicion(); }}
-                              maxLength={2000}
-                              autoFocus
-                              className="w-full px-2 py-1 rounded border border-blue-300 bg-white text-surface-800 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-                            />
-                            <div className="flex gap-1">
-                              <button onClick={guardarEdicion} className="px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-medium transition">Guardar</button>
-                              <button onClick={cancelarEdicion} className="px-2 py-0.5 bg-white/10 hover:bg-white/20 rounded text-[10px] transition">Cancelar</button>
-                            </div>
-                          </div>
-                        ) : msg.eliminadoAt ? (
-                          <p className={clsx("flex items-center gap-1.5 text-sm italic", esMio ? "text-blue-100/80" : "text-surface-400 dark:text-surface-500")}>
-                            <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                            Se eliminó este mensaje
-                          </p>
-                        ) : (
-                          <>
-                            <ReplyQuote msg={msg.replyTo} esMio={esMio} onClick={() => msg.replyTo?.id && scrollToMessage(msg.replyTo.id)} />
-                            {!msg.archivoUrl && <p className="text-sm whitespace-pre-wrap break-words">{msg.contenido}</p>}
-                            <ChatArchivo msg={msg} esMio={esMio} onOpenMedia={setMediaViewerMsg} />
-                          </>
-                        )}
-                        <div className={clsx("flex items-center gap-1 mt-1", esMio ? "justify-end" : "")}>
-                          <span className={clsx(
-                            "text-[10px]",
-                            esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500"
-                          )}>
-                            {new Date(msg.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                          {msg.editadoAt && (
-                            <span className={clsx("text-[9px] italic", esMio ? "text-blue-200" : "text-surface-400 dark:text-surface-500")}>
-                              (editado)
-                            </span>
-                          )}
-                          {/* Confirmación de lectura en mis mensajes: ✓ enviado / ✓✓ leído */}
-                          {esMio && !msg.eliminadoAt && (
-                            <svg className={clsx("w-3.5 h-3.5 ml-0.5", leidoPorOtro ? "text-cyan-300" : "text-blue-300/60")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-label={leidoPorOtro ? "Leído" : "Enviado"}>
-                              {leidoPorOtro ? (
-                                <><path strokeLinecap="round" strokeLinejoin="round" d="M1 13l5 5L17 7" /><path strokeLinecap="round" strokeLinejoin="round" d="M7 13l5 5L23 7" /></>
-                              ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                              )}
-                            </svg>
-                          )}
-                        </div>
-                        <ReactionSummary msg={msg} sessionUserId={session?.userId} onReact={reaccionarMensaje} />
-                      </div>
-                      {/* Botones de acción (hover) — lado derecho para mensajes ajenos (solo Mesa/Admin) */}
-                      {!esMio && !editando && !msg.eliminadoAt && seleccionada.estado !== "CERRADA" && !soloLectura && (
-                        <div className="relative flex items-center gap-0.5 ml-1 opacity-0 group-hover/msg:opacity-100 transition">
-                          {reactionPickerMsg && reactionPickerMsg.id === msg.id && <ReactionPicker msg={msg} onReact={reaccionarMensaje} placement={reactionPickerMsg.placement} />}
-                          <button type="button" onClick={(event) => toggleReactionPicker(msg.id, event)} className="p-1 text-surface-300 hover:text-amber-500 dark:text-surface-600 dark:hover:text-amber-400 transition" title="Reaccionar">
-                            <span className="text-sm leading-none">🙂</span>
-                          </button>
-                          <button type="button" onClick={() => setRespondiendoA(msg)} className="p-1 text-surface-300 hover:text-blue-500 dark:text-surface-600 dark:hover:text-blue-400 transition" title="Responder">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
-                          </button>
-                          {(isMesa || session?.rol === "ADMIN") && (
-                            <button onClick={() => eliminarMensaje(msg.id)} className="p-1 text-surface-300 hover:text-red-500 dark:text-surface-600 dark:hover:text-red-400 transition" title="Eliminar">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {hiloMensajes}
                 <div ref={chatEndRef} />
               </div>
 

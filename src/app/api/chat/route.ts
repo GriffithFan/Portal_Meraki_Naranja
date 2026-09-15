@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { sanitizeSearch } from "@/lib/sanitize";
@@ -90,11 +91,6 @@ export async function GET(request: NextRequest) {
     include: {
       creador: { select: { id: true, nombre: true } },
       agente: { select: { id: true, nombre: true } },
-      mensajes: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { contenido: true, createdAt: true, autorId: true, eliminadoAt: true, autor: { select: { esMesa: true, nombre: true } } },
-      },
     },
     orderBy: { updatedAt: "desc" },
     take: limit + 1,
@@ -102,7 +98,36 @@ export async function GET(request: NextRequest) {
   });
 
   const hayMas = conversaciones.length > limit;
-  const pagina = hayMas ? conversaciones.slice(0, limit) : conversaciones;
+  const paginaSinMensaje = hayMas ? conversaciones.slice(0, limit) : conversaciones;
+
+  // Último mensaje de cada conversación, UNA fila por conversación. Antes iba como
+  // `include: { mensajes: { take: 1 } }`, pero Prisma resuelve ese `take` en memoria: pedía
+  // TODOS los mensajes de las 60 conversaciones y se quedaba con uno. El 15/09/2026 eran
+  // 3.908 mensajes con su texto para mostrar 61, cada 5 segundos por pestaña abierta.
+  const ultimos = paginaSinMensaje.length
+    ? await prisma.$queryRaw<Array<{ conversacionId: string; contenido: string; createdAt: Date; autorId: string; eliminadoAt: Date | null; esMesa: boolean; nombre: string }>>(Prisma.sql`
+        SELECT c.id AS "conversacionId", m.contenido, m."createdAt", m."autorId", m."eliminadoAt", u."esMesa", u.nombre
+        FROM unnest(${paginaSinMensaje.map((c) => c.id)}::text[]) AS c(id)
+        CROSS JOIN LATERAL (
+          SELECT x.contenido, x."createdAt", x."autorId", x."eliminadoAt"
+          FROM "ChatMensaje" x
+          WHERE x."conversacionId" = c.id
+          ORDER BY x."createdAt" DESC
+          LIMIT 1
+        ) m
+        JOIN "User" u ON u.id = m."autorId"
+      `)
+    : [];
+  const ultimoPorConv = new Map(ultimos.map((m) => [m.conversacionId, m]));
+  const pagina = paginaSinMensaje.map((c) => {
+    const u = ultimoPorConv.get(c.id);
+    return {
+      ...c,
+      mensajes: u
+        ? [{ contenido: u.contenido, createdAt: u.createdAt, autorId: u.autorId, eliminadoAt: u.eliminadoAt, autor: { esMesa: u.esMesa, nombre: u.nombre } }]
+        : [],
+    };
+  });
 
   // Cantidad de mensajes en UNA sola consulta agrupada, en vez de `_count` dentro del
   // include. Ese _count es una subconsulta por fila: con 622 conversaciones eran 622

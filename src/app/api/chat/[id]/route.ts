@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { isSomeoneTyping, clearTyping } from "@/lib/chatTyping";
 import { publicarCambioChat } from "@/lib/chatBus";
 import { expandirComandoChat } from "@/lib/chatComandos";
+import { haySinLeerDeOtro } from "@/lib/chatSync";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -51,6 +52,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           archivoTipo: true,
           archivoTamanio: true,
           createdAt: true,
+          // El cliente lo usa de cursor para ?since= (ver lib/chatSync.ts).
+          updatedAt: true,
           editadoAt: true,
           eliminadoAt: true,
           autor: { select: { id: true, nombre: true, esMesa: true } },
@@ -85,15 +88,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
   }
 
-  // Marcar como leído (fire-and-forget). Solo cuando es la carga inicial o el
-  // polling incremental trajo mensajes nuevos: evita una escritura a la DB
-  // cada 2,5s por cada chat abierto (con 15 usuarios era churn constante).
-  const hayNovedades = !validSinceDate || conversacion.mensajes.length > 0;
-  if (hayNovedades) {
-    if (esCreador) {
+  // Marcar como leído (fire-and-forget) SOLO si hay mensajes de otro posteriores a la
+  // última lectura. Antes alcanzaba con que el pedido trajera cualquier mensaje: uno viejo
+  // que volvía por una reacción o una edición marcaba leída, avisaba por SSE a todos, y
+  // todos volvían a pedir — un bucle de cientos de pedidos por minuto (ver lib/chatSync.ts).
+  if (esCreador) {
+    if (haySinLeerDeOtro(conversacion.mensajes, session.userId, conversacion.leidoPorCreadorAt)) {
       prisma.chatConversacion.update({ where: { id }, data: { leidoPorCreadorAt: new Date() } })
         .then(() => publicarCambioChat(id, { tipo: "leida" })).catch(() => {});
-    } else if (esMesa || esAdminOMod) {
+    }
+  } else if (esMesa || esAdminOMod) {
+    if (haySinLeerDeOtro(conversacion.mensajes, session.userId, conversacion.leidoPorMesaAt)) {
       prisma.chatConversacion.update({ where: { id }, data: { leidoPorMesaAt: new Date() } })
         .then(() => publicarCambioChat(id, { tipo: "leida" })).catch(() => {});
     }
