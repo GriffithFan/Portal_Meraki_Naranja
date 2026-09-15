@@ -85,20 +85,38 @@ export async function GET(request: NextRequest) {
   // 437 KB por llamada y crece para siempre. `limit` deja pedir mas desde el front.
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "60", 10) || 60, 1), 200);
   const cursor = searchParams.get("cursor");
+  const include = {
+    creador: { select: { id: true, nombre: true } },
+    agente: { select: { id: true, nombre: true } },
+  } as const;
 
-  const conversaciones = await prisma.chatConversacion.findMany({
-    where,
-    include: {
-      creador: { select: { id: true, nombre: true } },
-      agente: { select: { id: true, nombre: true } },
-    },
-    orderBy: { updatedAt: "desc" },
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-  });
+  // Bandeja de Mesa (?bandeja=1): TODAS las conversaciones activas + las últimas cerradas.
+  // Con el corte por "las 60 más recientes" una conversación activa podía quedar afuera si
+  // se habían cerrado muchas hace poco. Las activas son pocas (una por consulta en curso).
+  const esVistaGlobal = user?.esMesa === true || esAdminOMod;
+  const bandeja = searchParams.get("bandeja") === "1" && esVistaGlobal && !estado && !search && !cursor;
 
-  const hayMas = conversaciones.length > limit;
-  const paginaSinMensaje = hayMas ? conversaciones.slice(0, limit) : conversaciones;
+  let conversaciones;
+  let hayMas: boolean;
+  if (bandeja) {
+    const [activas, cerradas] = await Promise.all([
+      prisma.chatConversacion.findMany({ where: { estado: { in: ["ABIERTA", "EN_CURSO"] } }, include, orderBy: { updatedAt: "desc" }, take: 500 }),
+      prisma.chatConversacion.findMany({ where: { estado: "CERRADA" }, include, orderBy: { updatedAt: "desc" }, take: limit + 1 }),
+    ]);
+    hayMas = cerradas.length > limit;
+    conversaciones = [...activas, ...cerradas.slice(0, limit)];
+  } else {
+    const encontradas = await prisma.chatConversacion.findMany({
+      where,
+      include,
+      orderBy: { updatedAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    hayMas = encontradas.length > limit;
+    conversaciones = hayMas ? encontradas.slice(0, limit) : encontradas;
+  }
+  const paginaSinMensaje = conversaciones;
 
   // Último mensaje de cada conversación, UNA fila por conversación. Antes iba como
   // `include: { mensajes: { take: 1 } }`, pero Prisma resuelve ese `take` en memoria: pedía
@@ -142,11 +160,39 @@ export async function GET(request: NextRequest) {
     : [];
   const conteoPorConv = new Map(conteos.map((c) => [c.conversacionId, c._count._all]));
 
+  // Para Mesa: cuánto hace que espera cada conversación activa y cuántos mensajes del
+  // técnico quedaron sin responder. "Respuesta" es cualquier mensaje que NO sea del creador
+  // (el técnico); los borrados no cuentan para ninguno de los dos lados. Lo usa la bandeja
+  // para ordenar por quién espera hace más (ver lib/chatBandeja.ts).
+  const idsActivas = esVistaGlobal ? pagina.filter((c) => c.estado !== "CERRADA").map((c) => c.id) : [];
+  const esperas = idsActivas.length
+    ? await prisma.$queryRaw<Array<{ conversacionId: string; pendientes: number; esperandoDesde: Date | null }>>(Prisma.sql`
+        SELECT c.id AS "conversacionId", COALESCE(p.n, 0)::int AS pendientes, p.desde AS "esperandoDesde"
+        FROM "ChatConversacion" c
+        LEFT JOIN LATERAL (
+          SELECT max(m."createdAt") AS ultimo
+          FROM "ChatMensaje" m
+          WHERE m."conversacionId" = c.id AND m."autorId" <> c."creadorId" AND m."eliminadoAt" IS NULL
+        ) r ON true
+        LEFT JOIN LATERAL (
+          SELECT count(*) AS n, min(m."createdAt") AS desde
+          FROM "ChatMensaje" m
+          WHERE m."conversacionId" = c.id AND m."autorId" = c."creadorId" AND m."eliminadoAt" IS NULL
+            AND (r.ultimo IS NULL OR m."createdAt" > r.ultimo)
+        ) p ON true
+        WHERE c.id = ANY(${idsActivas}::text[])
+      `)
+    : [];
+  const esperaPorConv = new Map(esperas.map((e) => [e.conversacionId, e]));
+
   return NextResponse.json({
     conversaciones: pagina.map((c) => ({
       ...c,
       _count: { mensajes: conteoPorConv.get(c.id) ?? 0 },
       noLeida: isUnreadForUser(c, session.userId, user?.esMesa === true, esAdminOMod),
+      ...(esVistaGlobal
+        ? { pendientes: esperaPorConv.get(c.id)?.pendientes ?? 0, esperandoDesde: esperaPorConv.get(c.id)?.esperandoDesde ?? null }
+        : {}),
     })),
     hayMas,
     proximoCursor: hayMas ? pagina[pagina.length - 1]?.id ?? null : null,
@@ -154,8 +200,58 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/chat — Técnico crea nueva conversación (chat en vivo)
- * Body: { mensaje: string }
+ * Mesa le escribe primero a un técnico. La conversación queda igual que una que abrió el
+ * técnico y Mesa ya tomó: creador = el técnico (así la ve como suya y le llegan los avisos),
+ * agente = quien escribe, EN_CURSO, y el primer mensaje es de Mesa.
+ */
+async function crearDesdeMesa(session: { userId: string; nombre: string }, tecnicoId: string, mensaje: string) {
+  const mesa = await prisma.user.findUnique({ where: { id: session.userId }, select: { esMesa: true } });
+  if (!mesa?.esMesa) {
+    return NextResponse.json({ error: "Solo Mesa de Ayuda puede iniciar conversaciones con técnicos" }, { status: 403 });
+  }
+  const tecnico = await prisma.user.findUnique({ where: { id: tecnicoId }, select: { id: true, activo: true, esMesa: true } });
+  if (!tecnico || !tecnico.activo || tecnico.esMesa || tecnico.id === session.userId) {
+    return NextResponse.json({ error: "Técnico no válido" }, { status: 400 });
+  }
+
+  const ahora = new Date();
+  const conversacion = await prisma.chatConversacion.create({
+    data: {
+      creadorId: tecnico.id,
+      agenteId: session.userId,
+      estado: "EN_CURSO",
+      leidoPorMesaAt: ahora,
+      mensajes: { create: { contenido: mensaje.slice(0, 2000), autorId: session.userId } },
+    },
+    include: {
+      creador: { select: { id: true, nombre: true } },
+      agente: { select: { id: true, nombre: true } },
+      mensajes: true,
+    },
+  });
+
+  publicarCambioChat(conversacion.id, { tipo: "conversacion-nueva" });
+
+  // Aviso al técnico (fire-and-forget): el enlace abre esa conversación directamente.
+  import("@/lib/pushNotifications").then(({ enviarPushYBandeja }) =>
+    enviarPushYBandeja(tecnico.id, {
+      tipo: "CHAT",
+      titulo: "Mesa de Ayuda te escribió",
+      mensaje: mensaje.slice(0, 80),
+      enlace: `/dashboard/chat?id=${conversacion.id}`,
+      entidad: "CHAT",
+      entidadId: conversacion.id,
+      tag: `chat-mesa-${conversacion.id}`,
+    }).catch((e) => console.error("[Chat] Error avisando al técnico:", e))
+  );
+
+  return NextResponse.json(conversacion, { status: 201 });
+}
+
+/**
+ * POST /api/chat — Crea una conversación nueva.
+ * - Técnico: `{ mensaje }` abre una consulta a Mesa.
+ * - Mesa: `{ mensaje, tecnicoId }` le escribe primero a un técnico.
  */
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -163,13 +259,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { mensaje } = body;
+    const { mensaje, tecnicoId } = body;
 
     if (!mensaje?.trim()) {
       return NextResponse.json(
         { error: "Mensaje requerido" },
         { status: 400 }
       );
+    }
+
+    if (typeof tecnicoId === "string" && tecnicoId) {
+      return await crearDesdeMesa(session, tecnicoId, mensaje.trim());
     }
 
     // El técnico puede abrir una consulta nueva cuando quiera (varios temas en

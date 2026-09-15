@@ -8,6 +8,7 @@ import { useChatReminders } from "@/hooks/useChatReminders";
 import ChatMediaViewer from "@/components/chat/ChatMediaViewer";
 import { prepararArchivosChat, subirArchivosChat, mensajesDeRespuestaUpload, intervaloPollingAdaptativo } from "@/lib/chatUpload";
 import { cursorDeMensajes, fusionarMensajes } from "@/lib/chatSync";
+import { ordenarBandeja } from "@/lib/chatBandeja";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
@@ -323,9 +324,10 @@ export default function ChatFloatingWidget() {
     supportLoadingRef.current = true;
     setSupportLoading(true);
     try {
-      const res = await fetch("/api/chat?limit=8", { credentials: "include" });
+      // Misma cola que la bandeja de Mesa: primero quien espera hace más (lib/chatBandeja.ts).
+      const res = await fetch("/api/chat?bandeja=1&limit=8", { credentials: "include" });
       if (res.ok) {
-        const lista = listaDeConversaciones(await res.json()).slice(0, 8);
+        const lista = ordenarBandeja(listaDeConversaciones(await res.json())).slice(0, 8);
         // Solo actualizar estado (y re-renderizar) si la lista realmente cambió
         const raw = JSON.stringify(lista);
         if (raw !== supportConvsJsonRef.current) {
