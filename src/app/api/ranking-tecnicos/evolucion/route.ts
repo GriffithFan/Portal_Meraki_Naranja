@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
 import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
-import { inicioSemana, SEMANA_MS } from "@/lib/semanaRanking";
+import { inicioSemana, mismoMomentoSemanaPrevia, SEMANA_MS } from "@/lib/semanaRanking";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +35,8 @@ type SerieTecnico = {
   equipoKey: string;
   conformesPorSemana: number[];
   totalPorSemana: number[];
+  /** Conformes de la semana pasada hasta el mismo momento que va la actual. */
+  conformesPreviaMismoMomento: number;
 };
 
 // Evolución de conformes/total por semana de cada técnico durante las últimas N semanas.
@@ -83,6 +85,9 @@ export async function GET(request: Request) {
   const series = new Map<string, SerieTecnico>();
   const globalConformes = new Array(semanas).fill(0);
   const globalTotal = new Array(semanas).fill(0);
+  // La última barra es la semana en curso: se compara contra el mismo tramo de la pasada.
+  const tramoPrevio = mismoMomentoSemanaPrevia(now);
+  let globalPreviaMismoMomento = 0;
 
   // Un predio YA FACTURADO que vuelve a CONFORME (alguien lo pasa a INSTALADO y lo
   // devuelve) mueve su fechaActualizacion a la semana actual y volveria a contar en
@@ -99,6 +104,7 @@ export async function GET(request: Request) {
     if (bucket === "conformes" && yaFueFacturado(facturados, predio.id, fecha)) continue;
     const weekIndex = Math.floor((inicioSemana(fecha).getTime() - startMonday.getTime()) / SEMANA_MS);
     if (weekIndex < 0 || weekIndex >= semanas) continue;
+    const enTramoPrevio = bucket === "conformes" && fecha >= tramoPrevio.desde && fecha <= tramoPrevio.hasta;
 
     // Se acredita a UN SOLO técnico (el último asignado) para no duplicar el predio.
     const elegido = elegirTecnicoAcreditado(predio.asignaciones);
@@ -111,16 +117,19 @@ export async function GET(request: Request) {
           equipoKey: elegido.equipoKey,
           conformesPorSemana: new Array(semanas).fill(0),
           totalPorSemana: new Array(semanas).fill(0),
+          conformesPreviaMismoMomento: 0,
         };
         series.set(elegido.mergeKey, serie);
       }
       serie.totalPorSemana[weekIndex] += 1;
       if (bucket === "conformes") serie.conformesPorSemana[weekIndex] += 1;
+      if (enTramoPrevio) serie.conformesPreviaMismoMomento += 1;
     }
 
     // Global (sin duplicar por técnico): cuenta el predio una vez.
     globalTotal[weekIndex] += 1;
     if (bucket === "conformes") globalConformes[weekIndex] += 1;
+    if (enTramoPrevio) globalPreviaMismoMomento += 1;
   }
 
   const tecnicos = Array.from(series.values())
@@ -134,7 +143,13 @@ export async function GET(request: Request) {
   return NextResponse.json({
     generatedAt: now.toISOString(),
     semanas: semanasMeta,
-    global: { conformesPorSemana: globalConformes, totalPorSemana: globalTotal },
+    global: {
+      conformesPorSemana: globalConformes,
+      totalPorSemana: globalTotal,
+      conformesPreviaMismoMomento: globalPreviaMismoMomento,
+    },
+    // Hasta cuándo se contó la semana pasada para compararla con la actual.
+    corteSemanaPrevia: tramoPrevio.hasta.toISOString(),
     tecnicos,
   }, { headers: { "Cache-Control": "no-store" } });
 }

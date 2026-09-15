@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { elegirTecnicoAcreditado } from "@/utils/equipoUtils";
-import { semanaRango } from "@/lib/semanaRanking";
+import { diasDeSemanaAR, fechaAR, inicioSemana, semanaRango } from "@/lib/semanaRanking";
+import { dayRangeAR } from "@/lib/fechas";
 import { prediosFacturadosHasta, yaFueFacturado } from "@/lib/prediosFacturados";
-import { parseTransicion, bucketDeMovimiento } from "@/lib/transicionesEstado";
+import { parseTransicion, bucketDeMovimiento, type BucketMovimiento } from "@/lib/transicionesEstado";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,52 @@ function addMetric(row: MutableRankingRow, bucket: ReturnType<typeof getStateBuc
   row.total += 1;
 }
 
+type Elegido = NonNullable<ReturnType<typeof elegirTecnicoAcreditado>>;
+type Movimiento = { predioId: string; createdAt: Date; bucket: BucketMovimiento; elegido: Elegido };
+
+/**
+ * Cambios de estado de [desde, hasta] que cuentan para el ranking, en orden cronológico.
+ * Las mismas reglas para la vista semanal y la diaria: un conforme de un predio ya
+ * facturado antes no vuelve a sumar, y cada predio se acredita a un solo técnico.
+ */
+async function movimientosDelPeriodo(desde: Date, hasta: Date, facturados: Map<string, Date>): Promise<Movimiento[]> {
+  const acts = await prisma.actividad.findMany({
+    where: { entidad: "PREDIO", descripcion: { contains: "Estado:" }, createdAt: { gte: desde, lte: hasta } },
+    select: { entidadId: true, descripcion: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const idsMovidos = Array.from(new Set(acts.map((a) => a.entidadId).filter(Boolean))) as string[];
+  const prediosMovidos = idsMovidos.length
+    ? await prisma.predio.findMany({
+        where: { id: { in: idsMovidos } },
+        select: {
+          id: true,
+          asignaciones: {
+            where: { tipo: { in: ["TAREA", "TECNICO"] } },
+            select: { createdAt: true, usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
+          },
+        },
+      })
+    : [];
+  const asignacionesPorPredio = new Map(prediosMovidos.map((p) => [p.id, p.asignaciones]));
+
+  const movimientos: Movimiento[] = [];
+  for (const act of acts) {
+    if (!act.entidadId) continue;
+    const tr = parseTransicion(act.descripcion);
+    if (!tr) continue;
+    const bucket = bucketDeMovimiento(tr.antes, tr.despues);
+    if (!bucket) continue;
+    // Un predio ya facturado antes no vuelve a sumar como conforme, pero un NC o una
+    // reinstalación posterior sí se ven.
+    if (bucket === "conformes" && yaFueFacturado(facturados, act.entidadId, act.createdAt)) continue;
+    const elegido = elegirTecnicoAcreditado(asignacionesPorPredio.get(act.entidadId) || []);
+    if (!elegido) continue;
+    movimientos.push({ predioId: act.entidadId, createdAt: act.createdAt, bucket, elegido });
+  }
+  return movimientos;
+}
+
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -67,10 +114,21 @@ export async function GET(request: Request) {
    * "movimientos": predios que PASARON a cada estado durante la semana, sigan ahí o no.
    * Ver lib/transicionesEstado.ts para por qué las dos formas dan números distintos.
    */
-  const modo = params.get("modo") === "movimientos" ? "movimientos" : "estado";
-  const isCurrentWeek = offset === 0;
+  const modoParam = params.get("modo");
+  const modo = modoParam === "movimientos" ? "movimientos" : modoParam === "dia" ? "dia" : "estado";
   const now = new Date();
-  const { desde, hasta } = semanaRango(now, offset);
+
+  // "dia": los movimientos de UN día calendario (00 a 24 h, hora argentina). No se puede
+  // pedir un día futuro; sin fecha o con una inválida, es hoy.
+  const hoy = fechaAR(now);
+  const fechaParam = params.get("fecha") || "";
+  const dia = /^\d{4}-\d{2}-\d{2}$/.test(fechaParam) && fechaParam <= hoy ? fechaParam : hoy;
+  const rangoDia = dayRangeAR(dia);
+
+  const { desde, hasta } = modo === "dia"
+    ? { desde: rangoDia.start, hasta: new Date(Math.min(rangoDia.end.getTime() - 1, now.getTime())) }
+    : semanaRango(now, offset);
+  const isCurrentWeek = modo === "dia" ? inicioSemana(now).getTime() <= rangoDia.start.getTime() + 12 * 3600e3 : offset === 0;
   const estados = await prisma.estadoConfig.findMany({
     where: { activo: true },
     select: { id: true, nombre: true, clave: true },
@@ -121,45 +179,36 @@ export async function GET(request: Request) {
     ranking.set(elegido.mergeKey, current);
   };
 
-  if (modo === "movimientos") {
-    const acts = await prisma.actividad.findMany({
-      where: { entidad: "PREDIO", descripcion: { contains: "Estado:" }, createdAt: { gte: desde, lte: hasta } },
-      select: { entidadId: true, descripcion: true, createdAt: true },
-      orderBy: { createdAt: "asc" },
-    });
-    const idsMovidos = Array.from(new Set(acts.map((a) => a.entidadId).filter(Boolean))) as string[];
-    const prediosMovidos = idsMovidos.length
-      ? await prisma.predio.findMany({
-          where: { id: { in: idsMovidos } },
-          select: {
-            id: true,
-            asignaciones: {
-              where: { tipo: { in: ["TAREA", "TECNICO"] } },
-              select: { createdAt: true, usuario: { select: { id: true, nombre: true, rol: true, activo: true } } },
-            },
-          },
-        })
-      : [];
-    const asignacionesPorPredio = new Map(prediosMovidos.map((p) => [p.id, p.asignaciones]));
+  // Días de la semana (sábado a viernes) con sus totales: solo en la vista diaria.
+  let dias: { fecha: string; instaladosAuditar: number; conformes: number; noConformes: number; futuro: boolean }[] | undefined;
 
+  if (modo === "movimientos") {
     // Un predio que rebota (conforme -> NC -> conforme) en la misma semana cuenta UNA
     // vez por cuenta, para que el total siga siendo predios únicos como en el otro modo.
     const yaContado = new Set<string>();
-    for (const act of acts) {
-      if (!act.entidadId) continue;
-      const tr = parseTransicion(act.descripcion);
-      if (!tr) continue;
-      const bucket = bucketDeMovimiento(tr.antes, tr.despues);
-      if (!bucket) continue;
-      const clave = `${act.entidadId}|${bucket}`;
+    for (const mov of await movimientosDelPeriodo(desde, hasta, facturados)) {
+      const clave = `${mov.predioId}|${mov.bucket}`;
       if (yaContado.has(clave)) continue;
-      // Misma regla que el otro modo: un predio ya facturado antes no vuelve a sumar
-      // como conforme, pero un NC o una reinstalación posterior sí se ven.
-      if (bucket === "conformes" && yaFueFacturado(facturados, act.entidadId, act.createdAt)) continue;
-      const elegido = elegirTecnicoAcreditado(asignacionesPorPredio.get(act.entidadId) || []);
-      if (!elegido) continue;
       yaContado.add(clave);
-      acumular(elegido, bucket);
+      acumular(mov.elegido, mov.bucket);
+    }
+  } else if (modo === "dia") {
+    // Se trae la semana entera de una vez: el ranking es del día elegido y la tira de
+    // días muestra cuánto se movió cada uno. Misma regla de "una vez por cuenta", por día.
+    const fechas = diasDeSemanaAR(dia);
+    dias = fechas.map((fecha) => ({ fecha, instaladosAuditar: 0, conformes: 0, noConformes: 0, futuro: fecha > hoy }));
+    const indice = new Map(fechas.map((f, i) => [f, i]));
+    const inicio = dayRangeAR(fechas[0]).start;
+    const fin = new Date(Math.min(dayRangeAR(fechas[6]).end.getTime() - 1, now.getTime()));
+    const yaContado = new Set<string>();
+    for (const mov of await movimientosDelPeriodo(inicio, fin, facturados)) {
+      const fechaMov = fechaAR(mov.createdAt);
+      const clave = `${fechaMov}|${mov.predioId}|${mov.bucket}`;
+      if (yaContado.has(clave)) continue;
+      yaContado.add(clave);
+      const i = indice.get(fechaMov);
+      if (i !== undefined) dias[i][mov.bucket] += 1;
+      if (fechaMov === dia) acumular(mov.elegido, mov.bucket);
     }
   } else {
   for (const predio of predios) {
@@ -189,7 +238,8 @@ export async function GET(request: Request) {
     ...row,
     puesto: index + 1,
     // Semana actual: corona solo el viernes (en vivo). Semanas pasadas (cerradas): corona al #1.
-    esGanadorViernes: index === 0 && row.conformes > 0 && row.conformes === maxConformes && (isCurrentWeek ? isFriday : true),
+    // La vista diaria no corona: la corona es del ganador de la semana.
+    esGanadorViernes: modo !== "dia" && index === 0 && row.conformes > 0 && row.conformes === maxConformes && (isCurrentWeek ? isFriday : true),
   }));
 
   const resumen = rankingRows.reduce((acc, row) => {
@@ -205,11 +255,12 @@ export async function GET(request: Request) {
     offset,
     modo,
     isCurrentWeek,
-    semana: getISOWeek(desde),
+    semana: getISOWeek(modo === "dia" ? inicioSemana(new Date(rangoDia.start.getTime() + 12 * 3600e3)) : desde),
     desde: desde.toISOString(),
     hasta: hasta.toISOString(),
     isFriday,
     resumen,
     ranking: rankingRows,
+    ...(modo === "dia" ? { dia, hoy, dias } : {}),
   }, { headers: { "Cache-Control": "no-store" } });
 }

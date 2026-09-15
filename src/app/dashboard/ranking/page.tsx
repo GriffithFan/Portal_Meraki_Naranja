@@ -26,7 +26,15 @@ type RankingData = {
   isFriday: boolean;
   resumen: { instaladosAuditar: number; conformes: number; noConformes: number; total: number };
   ranking: RankingRow[];
+  // Solo en la vista diaria.
+  dia?: string;
+  hoy?: string;
+  dias?: DiaResumen[];
 };
+
+type DiaResumen = { fecha: string; instaladosAuditar: number; conformes: number; noConformes: number; futuro: boolean };
+
+type Modo = "estado" | "movimientos" | "dia";
 
 type SerieTecnico = {
   tecnicoId: string;
@@ -34,13 +42,30 @@ type SerieTecnico = {
   equipoKey: string;
   conformesPorSemana: number[];
   totalPorSemana: number[];
+  conformesPreviaMismoMomento: number;
 };
 
 type EvolucionData = {
   semanas: { label: string; desde: string }[];
-  global: { conformesPorSemana: number[]; totalPorSemana: number[] };
+  global: { conformesPorSemana: number[]; totalPorSemana: number[]; conformesPreviaMismoMomento: number };
+  corteSemanaPrevia: string;
   tecnicos: SerieTecnico[];
 };
+
+const DIAS_CORTOS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+
+/** Suma días a un "YYYY-MM-DD" sin pasar por la zona horaria del navegador. */
+function sumarDias(fecha: string, n: number): string {
+  const [y, m, d] = fecha.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** "mar 15/09" */
+function etiquetaDia(fecha: string): string {
+  const [y, m, d] = fecha.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${DIAS_CORTOS[dow]} ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
 
 // Métricas internas (solo admin): NC/conformes por transición real.
 type MatrizTecnico = {
@@ -82,16 +107,20 @@ export default function RankingTecnicosPage() {
   /**
    * "estado": predios que HOY están en cada estado y se tocaron esta semana (la foto).
    * "movimientos": predios que PASARON a cada estado durante la semana, sigan ahí o no.
-   * Los dos son correctos y dan numeros distintos; ver lib/transicionesEstado.ts.
+   * "dia": lo mismo que "movimientos", pero de un solo día.
+   * Los dos primeros son correctos y dan numeros distintos; ver lib/transicionesEstado.ts.
    */
-  const [modo, setModo] = useState<"estado" | "movimientos">("estado");
+  const [modo, setModo] = useState<Modo>("estado");
+  // Día elegido en la vista diaria ("YYYY-MM-DD"); null = hoy (lo resuelve el servidor).
+  const [fecha, setFecha] = useState<string | null>(null);
 
   const fetchData = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/ranking-tecnicos?offset=${offset}&modo=${modo}`, { credentials: "include", cache: "no-store" });
+      const query = modo === "dia" ? `modo=dia${fecha ? `&fecha=${fecha}` : ""}` : `offset=${offset}&modo=${modo}`;
+      const res = await fetch(`/api/ranking-tecnicos?${query}`, { credentials: "include", cache: "no-store" });
       if (!res.ok) throw new Error(res.status === 401 ? "No autenticado" : "No se pudo cargar el ranking");
       setData(await res.json());
     } catch (err) {
@@ -100,7 +129,7 @@ export default function RankingTecnicosPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [offset, modo]);
+  }, [offset, modo, fecha]);
 
   const fetchEvolucion = useCallback(async () => {
     try {
@@ -117,13 +146,16 @@ export default function RankingTecnicosPage() {
     } catch { /* opcional */ }
   }, []);
 
+  // En la vista diaria, "hoy" es el día que no se eligió a mano o el que coincide con hoy.
+  const esHoy = modo === "dia" && (fecha === null || fecha === data?.hoy);
+
   useEffect(() => {
     fetchData();
-    // Auto-refresco solo en la semana actual (las pasadas ya están cerradas).
-    if (offset !== 0) return;
+    // Auto-refresco solo en la semana actual / el día de hoy (lo pasado ya está cerrado).
+    if (modo === "dia" ? fecha !== null : offset !== 0) return;
     const interval = window.setInterval(() => fetchData(true), 60000);
     return () => window.clearInterval(interval);
-  }, [fetchData, offset]);
+  }, [fetchData, offset, modo, fecha]);
 
   useEffect(() => { fetchEvolucion(); }, [fetchEvolucion]);
   useEffect(() => { if (isAdmin) fetchMatriz(); }, [isAdmin, fetchMatriz]);
@@ -171,14 +203,54 @@ export default function RankingTecnicosPage() {
     );
   }
 
+  const diaActual = data.dia || data.hoy || "";
+  const moverDia = (n: number) => {
+    if (!diaActual || !data.hoy) return;
+    const destino = sumarDias(diaActual, n);
+    if (destino > data.hoy) return;
+    setFecha(destino === data.hoy ? null : destino);
+  };
+  const conMovimientos = modo === "movimientos" || modo === "dia";
+
   return (
     <div className="mx-auto max-w-6xl animate-fade-in-up space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold text-surface-800">Ranking semanal</h1>
-            {data.isFriday && data.isCurrentWeek && topConformes > 0 && <CrownIcon className="h-5 w-5 text-amber-500" />}
+            <h1 className="text-xl font-semibold text-surface-800">{modo === "dia" ? "Ranking del día" : "Ranking semanal"}</h1>
+            {modo !== "dia" && data.isFriday && data.isCurrentWeek && topConformes > 0 && <CrownIcon className="h-5 w-5 text-amber-500" />}
           </div>
+          {modo === "dia" ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <button
+                onClick={() => moverDia(-1)}
+                title="Día anterior"
+                className="rounded-md border border-surface-200 bg-white px-2 py-1 text-surface-500 transition-colors hover:bg-surface-50"
+              >
+                ‹
+              </button>
+              <span className="text-xs font-medium text-surface-600">
+                {esHoy ? "Hoy" : diaActual === sumarDias(data.hoy || "", -1) ? "Ayer" : etiquetaDia(diaActual)}
+              </span>
+              <button
+                onClick={() => moverDia(1)}
+                disabled={esHoy}
+                title="Día siguiente"
+                className="rounded-md border border-surface-200 bg-white px-2 py-1 text-surface-500 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ›
+              </button>
+              <span className="text-xs text-surface-400">· {etiquetaDia(diaActual)} · {data.semana}</span>
+              {!esHoy && (
+                <button
+                  onClick={() => setFecha(null)}
+                  className="ml-1 rounded-md px-2 py-1 text-[11px] font-medium text-primary-600 transition-colors hover:bg-primary-50"
+                >
+                  Volver a hoy
+                </button>
+              )}
+            </div>
+          ) : (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <button
               onClick={() => setOffset((o) => Math.min(o + 1, 52))}
@@ -208,6 +280,7 @@ export default function RankingTecnicosPage() {
               </button>
             )}
           </div>
+          )}
         </div>
         <button
           onClick={() => fetchData(true)}
@@ -224,6 +297,7 @@ export default function RankingTecnicosPage() {
           {([
             ["estado", "Estado actual", "Predios que hoy están en cada estado y se tocaron esta semana"],
             ["movimientos", "Movimientos de la semana", "Predios que PASARON a cada estado esta semana, sigan ahí o no"],
+            ["dia", "Movimientos del día", "Predios que PASARON a cada estado en un día (00 a 24 h)"],
           ] as const).map(([valor, etiqueta, ayuda]) => (
             <button
               key={valor}
@@ -242,7 +316,9 @@ export default function RankingTecnicosPage() {
         <span className="text-[11px] text-surface-400">
           {modo === "estado"
             ? "Foto del momento: un NC abierto de semanas pasadas cuenta si lo tocaron."
-            : "Crecimiento real: solo lo que cambió de estado dentro de la semana."}
+            : modo === "movimientos"
+              ? "Crecimiento real: solo lo que cambió de estado dentro de la semana."
+              : "Lo que cambió de estado ese día. Tocá un día de la semana para verlo."}
         </span>
       </div>
 
@@ -250,14 +326,14 @@ export default function RankingTecnicosPage() {
         {/* En "movimientos" el total NO son predios unicos: un predio que paso a
             instalado y despues a conforme en la misma semana cuenta en las dos cuentas.
             Por eso cambia de nombre, para no leerlo como cantidad de predios. */}
-        <Stat label={modo === "movimientos" ? "Movimientos" : "Total"} value={data.resumen.total} />
-        <Stat label={modo === "movimientos" ? "Inst./Auditar nuevos" : "Inst./Auditar"} value={data.resumen.instaladosAuditar} tone="primary" />
+        <Stat label={conMovimientos ? "Movimientos" : "Total"} value={data.resumen.total} />
+        <Stat label={conMovimientos ? "Inst./Auditar nuevos" : "Inst./Auditar"} value={data.resumen.instaladosAuditar} tone="primary" />
         <Stat label="Conformes" value={data.resumen.conformes} tone="success" />
-        <Stat label={modo === "movimientos" ? "NC nuevos" : "No conformes"} value={data.resumen.noConformes} tone="danger" />
-        {modo === "movimientos" && (() => {
+        <Stat label={conMovimientos ? "NC nuevos" : "No conformes"} value={data.resumen.noConformes} tone="danger" />
+        {conMovimientos && (() => {
           const t = tasaNc(data.resumen.noConformes, data.resumen.instaladosAuditar);
           return (
-            <div className="rounded-lg border border-surface-200 bg-white p-3 sm:p-4" title="NC nuevos sobre instalados/auditados de la semana">
+            <div className="rounded-lg border border-surface-200 bg-white p-3 sm:p-4" title={`NC nuevos sobre instalados/auditados ${modo === "dia" ? "del día" : "de la semana"}`}>
               <p className="text-[11px] font-medium uppercase tracking-wide text-surface-400">NC sobre realizados</p>
               <p className={`mt-1 text-2xl font-semibold tabular-nums ${t === null ? "text-surface-400" : tonoTasa(t)}`}>
                 {t === null ? "—" : `${t}%`}
@@ -270,14 +346,22 @@ export default function RankingTecnicosPage() {
         })()}
       </div>
 
-      {evolucion && evolucion.global.conformesPorSemana.some((n) => n > 0) && (
+      {modo === "dia" && data.dias && (
+        <DiasSemana dias={data.dias} elegido={diaActual} hoy={data.hoy || ""} onElegir={(f) => setFecha(f === data.hoy ? null : f)} />
+      )}
+
+      {modo !== "dia" && evolucion && evolucion.global.conformesPorSemana.some((n) => n > 0) && (
         <EvolucionGlobal evolucion={evolucion} />
       )}
 
       {data.ranking.length === 0 ? (
         <section className="rounded-lg border border-surface-200 bg-white p-8 text-center">
-          <p className="text-sm font-medium text-surface-700">Sin actividad en esta semana</p>
-          <p className="mt-1 text-xs text-surface-400">{data.isCurrentWeek ? "El ranking aparece cuando haya movimientos de esta semana." : "No hubo movimientos registrados en esta semana."}</p>
+          <p className="text-sm font-medium text-surface-700">{modo === "dia" ? "Sin movimientos este día" : "Sin actividad en esta semana"}</p>
+          <p className="mt-1 text-xs text-surface-400">
+            {modo === "dia"
+              ? esHoy ? "El ranking aparece cuando haya cambios de estado hoy." : "Nadie cambió de estado un predio ese día."
+              : data.isCurrentWeek ? "El ranking aparece cuando haya movimientos de esta semana." : "No hubo movimientos registrados en esta semana."}
+          </p>
         </section>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -433,23 +517,36 @@ function Sparkline({ values, width = 72, height = 22, stroke = "#10b981" }: { va
   );
 }
 
-// Delta entre las dos últimas semanas cerradas (la última de la serie está en curso).
-function deltaSemanal(values: number[]): { delta: number; hayDatos: boolean } {
-  if (!values || values.length < 3) return { delta: 0, hayDatos: false };
-  const ultimaCerrada = values[values.length - 2];
-  const previa = values[values.length - 3];
-  return { delta: ultimaCerrada - previa, hayDatos: true };
+/**
+ * La semana en curso contra la semana pasada HASTA EL MISMO MOMENTO (mismo día y hora).
+ *
+ * Antes se comparaban las dos últimas semanas cerradas, pero el badge se mostraba al lado
+ * de la semana en curso y se leía como si hablara de ella: el martes 15/09/2026 decía
+ * "▲21 vs semana previa" (W36 contra W35) cuando W37 iba 48 contra 52 de W36 a esa altura.
+ */
+function deltaEnCurso(values: number[], previaMismoMomento: number | undefined): { actual: number; previa: number; delta: number; hayDatos: boolean } {
+  if (!values || values.length === 0 || previaMismoMomento === undefined) return { actual: 0, previa: 0, delta: 0, hayDatos: false };
+  const actual = values[values.length - 1];
+  return { actual, previa: previaMismoMomento, delta: actual - previaMismoMomento, hayDatos: true };
 }
 
-function DeltaBadge({ values }: { values: number[] }) {
-  const { delta, hayDatos } = deltaSemanal(values);
+/** "mar 15/09 13:51" en hora argentina. */
+function momentoAR(iso: string): string {
+  const d = new Date(new Date(iso).getTime() - 3 * 3600e3);
+  const fecha = etiquetaDia(d.toISOString().slice(0, 10));
+  return `${fecha} ${d.toISOString().slice(11, 16)}`;
+}
+
+function DeltaBadge({ values, previaMismoMomento }: { values: number[]; previaMismoMomento?: number }) {
+  const { actual, previa, delta, hayDatos } = deltaEnCurso(values, previaMismoMomento);
+  const detalle = `Esta semana lleva ${actual} conformes; la pasada, a esta misma altura, llevaba ${previa}.`;
   if (!hayDatos || delta === 0) {
-    return <span className="text-[10px] font-medium text-surface-400">→ estable</span>;
+    return <span className="text-[10px] font-medium text-surface-400" title={hayDatos ? detalle : undefined}>→ igual que la semana pasada</span>;
   }
   const up = delta > 0;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${up ? "text-emerald-600" : "text-red-500"}`} title="Variación de conformes entre las dos últimas semanas cerradas">
-      {up ? "▲" : "▼"} {Math.abs(delta)}
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${up ? "text-emerald-600" : "text-red-500"}`} title={detalle}>
+      {up ? "▲" : "▼"} {Math.abs(delta)} vs semana pasada
     </span>
   );
 }
@@ -459,18 +556,31 @@ function EvolucionGlobal({ evolucion }: { evolucion: EvolucionData }) {
   const labels = evolucion.semanas.map((s) => s.label.replace(/^\d+-/, "")); // "W30"
   const max = Math.max(...valores, 1);
   const total = valores.reduce((a, b) => a + b, 0);
-  const { delta, hayDatos } = deltaSemanal(valores);
+  const { actual, previa, delta, hayDatos } = deltaEnCurso(valores, evolucion.global.conformesPreviaMismoMomento);
+  const semanaActual = labels[labels.length - 1];
+  const semanaPrevia = labels[labels.length - 2];
+  const cerroPrevia = valores[valores.length - 2];
+  const detalle = hayDatos
+    ? `${semanaActual} lleva ${actual} conformes. ${semanaPrevia} llevaba ${previa} al mismo momento (${momentoAR(evolucion.corteSemanaPrevia)}) y cerró con ${cerroPrevia}.`
+    : "";
   return (
     <section className="rounded-lg border border-surface-200 bg-white p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-surface-800">Evolución de conformes</h2>
           <p className="text-[11px] text-surface-400">Últimas {valores.length} semanas · {total} conformes en total</p>
         </div>
-        {hayDatos && delta !== 0 && (
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${delta > 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"}`}>
-            {delta > 0 ? "▲" : "▼"} {Math.abs(delta)} vs semana previa
-          </span>
+        {hayDatos && (
+          <div className="text-right" title={detalle}>
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${
+              delta > 0 ? "bg-emerald-50 text-emerald-600" : delta < 0 ? "bg-red-50 text-red-500" : "bg-surface-100 text-surface-500"
+            }`}>
+              {delta > 0 ? "▲" : delta < 0 ? "▼" : "→"} {delta === 0 ? "igual" : Math.abs(delta)} vs semana pasada a esta altura
+            </span>
+            <p className="mt-1 text-[10px] tabular-nums text-surface-400">
+              {semanaActual}: {actual} · {semanaPrevia} al mismo momento: {previa}
+            </p>
+          </div>
         )}
       </div>
       <div className="flex items-end gap-1.5 sm:gap-2" style={{ height: 96 }}>
@@ -527,7 +637,72 @@ function Stat({ label, value, tone = "default" }: { label: string; value: number
   );
 }
 
-function RankingCard({ tecnico, maxConformes, serie, modo }: { tecnico: RankingRow; maxConformes: number; serie?: SerieTecnico; modo: "estado" | "movimientos" }) {
+/**
+ * Tira de los 7 días de la semana (sábado a viernes) con lo que se movió cada uno. Tocar
+ * un día lo elige; los días que todavía no llegaron no se pueden elegir.
+ */
+function DiasSemana({ dias, elegido, hoy, onElegir }: { dias: DiaResumen[]; elegido: string; hoy: string; onElegir: (fecha: string) => void }) {
+  const maxConformes = Math.max(...dias.map((d) => d.conformes), 1);
+  const totales = dias.reduce(
+    (acc, d) => ({ conformes: acc.conformes + d.conformes, noConformes: acc.noConformes + d.noConformes, instaladosAuditar: acc.instaladosAuditar + d.instaladosAuditar }),
+    { conformes: 0, noConformes: 0, instaladosAuditar: 0 },
+  );
+  return (
+    <section className="rounded-lg border border-surface-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-surface-800">Movimientos por día</h2>
+          <p className="text-[11px] text-surface-400">Semana de sábado a viernes · días de 00 a 24 h</p>
+        </div>
+        <div className="flex gap-3 text-[11px] tabular-nums">
+          <span className="text-emerald-600"><b>{totales.conformes}</b> conformes</span>
+          <span className="text-red-500"><b>{totales.noConformes}</b> NC nuevos</span>
+          <span className="text-primary-600"><b>{totales.instaladosAuditar}</b> inst./auditar</span>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="grid min-w-[560px] grid-cols-7 gap-1.5 sm:gap-2">
+          {dias.map((d) => {
+            const activo = d.fecha === elegido;
+            const h = Math.max(2, Math.round((d.conformes / maxConformes) * 56));
+            return (
+              <button
+                key={d.fecha}
+                onClick={() => onElegir(d.fecha)}
+                disabled={d.futuro}
+                aria-pressed={activo}
+                title={d.futuro ? "Todavía no llegó" : `${etiquetaDia(d.fecha)}: ${d.conformes} conformes, ${d.noConformes} NC nuevos, ${d.instaladosAuditar} inst./auditar`}
+                className={`flex flex-col items-center gap-1 rounded-md border px-1 pb-2 pt-1.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-40 ${
+                  activo ? "border-primary-500 bg-primary-50/60" : "border-surface-100 hover:border-surface-300 hover:bg-surface-50"
+                }`}
+              >
+                <div className="flex w-full items-end justify-center" style={{ height: 60 }}>
+                  <div
+                    className={`w-3/5 rounded-t ${d.fecha === hoy ? "bg-emerald-300" : "bg-emerald-500"}`}
+                    style={{ height: d.futuro ? 2 : h }}
+                  />
+                </div>
+                <span className="text-sm font-semibold tabular-nums text-emerald-600">{d.futuro ? "—" : d.conformes}</span>
+                <span className="flex gap-1.5 text-[10px] tabular-nums">
+                  <span className="text-red-500" title="NC nuevos">{d.futuro ? "" : d.noConformes}</span>
+                  <span className="text-primary-600" title="Inst./Auditar nuevos">{d.futuro ? "" : d.instaladosAuditar}</span>
+                </span>
+                <span className={`text-[10px] ${activo ? "font-semibold text-primary-700" : "text-surface-400"}`}>
+                  {d.fecha === hoy ? "hoy" : etiquetaDia(d.fecha)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <p className="mt-2 text-[10px] text-surface-400">
+        <span className="text-emerald-600">verde</span> conformes · <span className="text-red-500">rojo</span> NC nuevos · <span className="text-primary-600">azul</span> instalados/auditar
+      </p>
+    </section>
+  );
+}
+
+function RankingCard({ tecnico, maxConformes, serie, modo }: { tecnico: RankingRow; maxConformes: number; serie?: SerieTecnico; modo: Modo }) {
   const progress = maxConformes > 0 ? Math.round((tecnico.conformes / maxConformes) * 100) : 0;
   const positionClass = tecnico.puesto === 1 ? "bg-amber-50 text-amber-700 border-amber-200" : tecnico.puesto === 2 ? "bg-surface-100 text-surface-700 border-surface-200" : tecnico.puesto === 3 ? "bg-orange-50 text-orange-700 border-orange-200" : "bg-white text-surface-500 border-surface-200";
   const conformesSerie = serie?.conformesPorSemana || [];
@@ -558,7 +733,7 @@ function RankingCard({ tecnico, maxConformes, serie, modo }: { tecnico: RankingR
         <Metric label="No conf." value={tecnico.noConformes} tone="danger" />
       </div>
 
-      {modo === "movimientos" && (() => {
+      {(modo === "movimientos" || modo === "dia") && (() => {
         const t = tasaNc(tecnico.noConformes, tecnico.instaladosAuditar);
         if (t === null) return null;
         return (
@@ -583,7 +758,7 @@ function RankingCard({ tecnico, maxConformes, serie, modo }: { tecnico: RankingR
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-100 pt-2.5">
           <div className="min-w-0">
             <p className="text-[10px] uppercase tracking-wide text-surface-400">Tendencia (8 sem.)</p>
-            <DeltaBadge values={conformesSerie} />
+            <DeltaBadge values={conformesSerie} previaMismoMomento={serie?.conformesPreviaMismoMomento} />
           </div>
           <Sparkline values={conformesSerie} />
         </div>

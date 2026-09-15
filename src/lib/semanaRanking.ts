@@ -21,6 +21,37 @@ export function inicioSemana(d: Date): Date {
 }
 
 /**
+ * El mismo tramo de la semana PASADA que lleva transcurrido la actual: desde su inicio
+ * hasta exactamente una semana antes de `now`.
+ *
+ * Es contra lo que hay que comparar una semana en curso. Compararla con la semana pasada
+ * completa la hace ver siempre peor (un martes nunca alcanza a un viernes), y comparar las
+ * dos últimas semanas cerradas —lo que se mostraba antes— habla de otra cosa: el martes
+ * 15/09/2026 decía "▲21 vs semana previa" (W36 contra W35) cuando W37 iba 48 contra 52.
+ */
+export function mismoMomentoSemanaPrevia(now = new Date()): { desde: Date; hasta: Date } {
+  const desde = new Date(inicioSemana(now).getTime() - SEMANA_MS);
+  return { desde, hasta: new Date(now.getTime() - SEMANA_MS) };
+}
+
+/** "YYYY-MM-DD" del día calendario argentino (UTC-3) que contiene `d`. */
+export function fechaAR(d: Date): string {
+  return new Date(d.getTime() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Los 7 días calendario (sábado a viernes, "YYYY-MM-DD" en hora argentina) de la semana
+ * de negocio que contiene el día `fecha`. Se toma el mediodía del día para ubicarlo: así
+ * un sábado cae en la semana que empieza ese sábado y no en la anterior.
+ */
+export function diasDeSemanaAR(fecha: string): string[] {
+  const [y, m, d] = fecha.split("-").map(Number);
+  const mediodia = new Date(Date.UTC(y, m - 1, d, 15, 0, 0)); // 12:00 ART
+  const sabado = inicioSemana(mediodia);
+  return Array.from({ length: 7 }, (_, i) => fechaAR(new Date(sabado.getTime() + i * 24 * 60 * 60 * 1000)));
+}
+
+/**
  * Rango [desde, hasta] de la semana `offset` (0 = actual, 1 = pasada, …).
  * Semana actual: hasta = min(ahora, viernes 17:00 ART). Semanas pasadas: viernes 17:00 ART.
  */
