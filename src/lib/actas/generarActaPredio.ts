@@ -13,6 +13,8 @@ const ACTAS_PYTHON =
   path.join(process.env.EXTRACTOR_DIR || "/var/www/carrot/extractor", ".venv/bin/python");
 const ACTAS_SCRIPT = "generar_acta_uno.py";
 const CREDS = ["SALESFORCE_URL_BASE", "SALESFORCE_USERNAME", "SALESFORCE_PASSWORD"] as const;
+// Cuenta dinatechst: el script de actas la usa por defecto cuando no le pasan la de arriba.
+const CREDS_OPCIONALES = ["SALESFORCE_ST_USERNAME", "SALESFORCE_ST_PASSWORD"] as const;
 
 export interface ResultadoActa {
   ok: boolean;
@@ -34,7 +36,7 @@ export interface ResultadoActa {
  */
 function envConCredenciales(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  const faltan = CREDS.filter((k) => !env[k]);
+  const faltan = [...CREDS, ...CREDS_OPCIONALES].filter((k) => !env[k]);
   if (faltan.length > 0) {
     try {
       const envPath = path.join(process.env.APP_DIR || "/var/www/carrot", ".env");

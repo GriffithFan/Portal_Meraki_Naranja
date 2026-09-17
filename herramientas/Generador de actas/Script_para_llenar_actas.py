@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import csv
@@ -13,8 +14,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from docx import Document
 
 # ========= Configuración =========
-USERNAME = "dinatechst@mined.sf"
-PASSWORD = "Dinatech2026I!"
+# Cuenta por defecto: dinatechst. La clave NO va en el código: sale del entorno
+# (SALESFORCE_ST_* en el .env del servidor o en herramientas/credenciales.txt). Los
+# wrappers generar_acta_uno.py / generar_actas_lote.py la pisan con
+# SALESFORCE_USERNAME/PASSWORD cuando están definidas.
+USERNAME = os.getenv("SALESFORCE_ST_USERNAME", "dinatechst@mined.sf")
+PASSWORD = os.getenv("SALESFORCE_ST_PASSWORD", "")
 URL_BASE = "https://d1i0000001z2ruaq.my.site.com/mined/"
 
 INPUT_IDS_PATH = "Predios_Para_Crear_Actas.xlsx"
